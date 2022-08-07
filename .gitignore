@@ -1,0 +1,6 @@
+yt-dlp/
+.ipynb_checkpoints/
+*.webm
+*.m4a
+*.txt
+embedding.ipynb
