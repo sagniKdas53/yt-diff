@@ -1,4 +1,5 @@
 yt-dlp/
+ffmpeg/
 .ipynb_checkpoints/
 *.webm
 *.m4a
