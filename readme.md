@@ -18,7 +18,7 @@ yt-dlp packed in together with my little script to regularly keep dowining vidoe
 - [ ] Add the rest of the functionality of diff-maker.ipynb
   - [ ] Find soething better faster and smaller than python
   - [ ] Maybe rust
-- [ ] Test if cURLing form github is viable or not 
+- [ ] Test if cURLing form github is viable or not
   - [ ] wget is better
   - [ ] Else build form the git clone
 - [ ] Make a docker-compose.yml

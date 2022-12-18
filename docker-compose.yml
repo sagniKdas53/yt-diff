@@ -1,7 +1,7 @@
 version: '3'
 services:
   diff-maker:
-    image: purevert/diff-maker
+    image: purevert/yt-diff
     container_name: yt-diff
     network_mode: service:vpn-proton
     build:
@@ -11,7 +11,7 @@ services:
       - ./yt-dlp:/home
     privileged: true
 
-  vpn:
+  vpn-proton:
     image: qmcgaw/gluetun
     container_name: vpn-proton
     cap_add:

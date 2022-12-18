@@ -1,0 +1,23 @@
+{
+  "name": "yt-diff",
+  "version": "1.0.0",
+  "description": "downloads vidoes using yt-dlp and maintains a database",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sagniKdas53/yt-diff.git"
+  },
+  "keywords": [
+    "database",
+    "yt-dlp"
+  ],
+  "author": "Sagnik Das",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sagniKdas53/yt-diff/issues"
+  },
+  "homepage": "https://github.com/sagniKdas53/yt-diff#readme"
+}
