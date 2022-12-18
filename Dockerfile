@@ -10,24 +10,25 @@ RUN echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/00-docker
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update \
-    && apt install curl ca-certificates xz-utils -y \
-    && rm -rf /var/lib/apt/lists/*
+    && apt install ca-certificates xz-utils wget -y 
+#&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
 
 COPY /ffmpeg/yt-dlp_linux /
 
-#RUN curl -LJO https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux 
+#RUN wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" -O "yt-dlp_linux"
 
 RUN chmod +x yt-dlp_linux && mv yt-dlp_linux bin/
 
-#RUN curl -LJO https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz 
+#RUN wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz"
 
 COPY /ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz /
 
 RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ffmpeg-master-latest-linux64-gpl/bin \
     && mv ffmpeg ffplay ffprobe ../../bin \
+    && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
 
 CMD ["tail", "-f", "/dev/null"]

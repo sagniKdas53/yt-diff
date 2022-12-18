@@ -10,13 +10,16 @@ yt-dlp packed in together with my little script to regularly keep dowining vidoe
   4. yt-dlp_linux --flat-playlist --print "%(title)s [%(id)s](%(webpage_url))" <https://www.youtube.com/playlist?list=PLgcoT7-W0fP2Bqm6KqWPIaTvF4_WLfv3b>
   5. yt-dlp_linux --flat-playlist --print "%(title)s [%(id)s]-{%(webpage_url)s}" <https://www.youtube.com/playlist?list=PLgcoT7-W0fP2Bqm6KqWPIaTvF4_WLfv3b> >> test2.tx
   6. TODO
+  7. Test VPN by using wget -qO- <https://ipinfo.io>
 
 ## TODO
 
+- [x] Add a VPN to download without geo restriction.
 - [ ] Add the rest of the functionality of diff-maker.ipynb
   - [ ] Find soething better faster and smaller than python
   - [ ] Maybe rust
-- [ ] Test if cURLing form github is viable or not
+- [ ] Test if cURLing form github is viable or not 
+  - [ ] wget is better
   - [ ] Else build form the git clone
 - [ ] Make a docker-compose.yml
 - [ ] Push to docker hub

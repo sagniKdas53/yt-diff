@@ -5,3 +5,4 @@ ffmpeg/
 *.m4a
 *.txt
 embedding.ipynb
+.env

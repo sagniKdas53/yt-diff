@@ -1,3 +1,31 @@
 version: '3'
 services:
   diff-maker:
+    image: purevert/diff-maker
+    container_name: yt-diff
+    network_mode: service:vpn-proton
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./yt-dlp:/home
+    privileged: true
+
+  vpn:
+    image: qmcgaw/gluetun
+    container_name: vpn-proton
+    cap_add:
+      - NET_ADMIN
+    env_file:
+      - .env
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - OPENVPN_USER=${USERNAME_VPN}
+      - OPENVPN_PASSWORD=${PASSWORD_VPN}
+      - SERVER_COUNTRIES=Japan
+      - FREE_ONLY=on
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: "unless-stopped"
