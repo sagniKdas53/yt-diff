@@ -7,3 +7,4 @@ ffmpeg/
 embedding.ipynb
 .env
 gluetun/
+pgdata/
