@@ -19,13 +19,38 @@ services:
     env_file:
       - .env
     environment:
-      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
       - OPENVPN_USER=${USERNAME_VPN}
       - OPENVPN_PASSWORD=${PASSWORD_VPN}
-      - SERVER_COUNTRIES=Japan
-      - FREE_ONLY=on
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
+      - FREE_ONLY=${FREE}
+      - Tz=${TZ_PREFERRED}
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./gluetun:/gluetun
     ports:
       - 9091:9091
       - 51413:51413
       - 51413:51413/udp
     restart: "unless-stopped"
+
+  db:
+    image: postgres:14
+    container_name: postgres-diff
+    network_mode: service:vpn-proton
+    env_file:
+      - .env
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      PG_DATA: /var/lib/postgresql/data
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    restart: always
+
+volumes:
+  pgdata:

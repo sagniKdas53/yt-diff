@@ -6,3 +6,4 @@ ffmpeg/
 *.txt
 embedding.ipynb
 .env
+gluetun/
