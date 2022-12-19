@@ -44,4 +44,4 @@
     # DB CONFIGURATION
     DB_PASSWORD='REDACTED'
     DB_USERNAME=yt-diff
-    DB_DATABASE_NAME=vid-list
+    DB_NAME=vid-list
