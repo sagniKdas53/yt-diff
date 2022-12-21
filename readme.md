@@ -10,6 +10,7 @@ yt-dlp packed in together with my little script to regularly keep dowining vidoe
   4. ```` yt-dlp_linux --flat-playlist --print "%(title)s [%(id)s]-{%(webpage_url)s}" https://www.youtube.com/playlist?list=PLgcoT7-W0fP2Bqm6KqWPIaTvF4_WLfv3b >> test2.tx ````
   5. TODO
   6. Test VPN by using ```` docker exec -it vpn-proton wget -qO- https://ipinfo.io ````
+  7. ```` yt-dlp --playlist-start 1 --playlist-end 10 --flat-playlist --print "%(title)s [%(id)s]-{%(webpage_url)s}" https://www.youtube.com/playlist?list=PLgcoT7-W0fP2Bqm6KqWPIaTvF4_WLfv3b ````
 
 ## TODO
 

@@ -66,12 +66,26 @@ var server = http.createServer((req, res) => {
                 request.connection.destroy();
         });
         req.on('end', function () {
-            body_url = qs.parse(body);
+            var body_url = qs.parse(body);
+            var start_num = body_url['start'] || 1;
+            var stop_num = body_url['stop'] || 10; // send these from the clinet too, add a way to loop and list
+            // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
             console.log("url: ", body_url['url_input']);
-            const yt_list = spawn("yt-dlp", ["--flat-playlist", "--print",
-                '%(title)s | %(id)s | %(webpage_url)s', body_url['url_input']]);
+            const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
+                "--print", '%(title)s \t %(id)s \t %(webpage_url)s', body_url['url_input']]);
             yt_list.stdout.on("data", data => {
                 response += data;
+                data = '' + data;
+                console.log(data);
+                var items = data.split("\t");
+                console.log(items);
+                vid_list.create({
+                    url: items[2],
+                    reference: body_url['url_input'],
+                    title: items[0],
+                    downloaded: false,
+                    available: true
+                });
                 //return (`stdout: ${data}`);
             });
             yt_list.stderr.on("data", data => {
@@ -91,7 +105,7 @@ var server = http.createServer((req, res) => {
         });
     }
     else {
-        console.log(res.url);
+        //console.log("This: ",res.url);
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('404');
     }
