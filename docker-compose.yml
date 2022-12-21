@@ -1,39 +1,39 @@
 version: '3'
 services:
-  diff-maker:
-    image: purevert/yt-diff
-    container_name: yt-diff
-    network_mode: service:vpn-proton
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./yt-dlp:/home
-    privileged: true
+  #diff-maker:
+  #  image: purevert/yt-diff
+  #  container_name: yt-diff
+  #  network_mode: service:vpn-proton
+  #  build:
+  #    context: .
+  #    dockerfile: Dockerfile
+  #  volumes:
+  #    - ./yt-dlp:/home
+  #  privileged: true
 
-  vpn-proton:
-    image: qmcgaw/gluetun
-    container_name: vpn-proton
-    cap_add:
-      - NET_ADMIN
-    env_file:
-      - .env
-    environment:
-      - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
-      - OPENVPN_USER=${USERNAME_VPN}
-      - OPENVPN_PASSWORD=${PASSWORD_VPN}
-      - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
-      - FREE_ONLY=${FREE}
-      - Tz=${TZ_PREFERRED}
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    volumes:
-      - ./gluetun:/gluetun
-    ports:
-      - 9091:9091
-      - 51413:51413
-      - 51413:51413/udp
-    restart: "unless-stopped"
+  #vpn-proton:
+  #  image: qmcgaw/gluetun
+  #  container_name: vpn-proton
+  #  cap_add:
+  #    - NET_ADMIN
+  #  env_file:
+  #    - .env
+  #  environment:
+  #    - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
+  #    - OPENVPN_USER=${USERNAME_VPN}
+  #    - OPENVPN_PASSWORD=${PASSWORD_VPN}
+  #    - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
+  #    - FREE_ONLY=${FREE}
+  #    - Tz=${TZ_PREFERRED}
+  #  devices:
+  #    - /dev/net/tun:/dev/net/tun
+  #  volumes:
+  #    - ./gluetun:/gluetun
+  #  ports:
+  #    - 9091:9091
+  #    - 51413:51413
+  #    - 51413:51413/udp
+  #  restart: "unless-stopped"
 
   database:
     image: postgres:13.9-alpine3.17
@@ -48,7 +48,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - ./ytdata:/var/lib/postgresql/data
 
   adminer:
     image: adminer:4.8.1-standalone

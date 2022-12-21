@@ -1,10 +1,5 @@
 yt-dlp/
-ffmpeg/
-.ipynb_checkpoints/
-*.webm
-*.m4a
-*.txt
-embedding.ipynb
-.env
+ytdata/
+node_modules/
 gluetun/
-pgdata/
+ffmpeg/
