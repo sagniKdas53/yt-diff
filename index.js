@@ -65,13 +65,16 @@ var server = http.createServer((req, res) => {
                 request.connection.destroy();
         });
         req.on('end', function () {
-            var body_url = qs.parse(body);
-            var start_num = body_url['start'] || 1;
-            var stop_num = body_url['stop'] || 10; // send these from the clinet too, add a way to loop and list
+            body = JSON.parse(body);
+            console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
+                'stop_num:', body['stop'], 'single:', body['single']);
+            var body_url = body['url'];
+            var start_num = body['start'] || 1;
+            var stop_num = body['stop'] || 10; // send these from the clinet too, add a way to loop and list
             // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
-            console.log("url: ", body_url['url_input']);
+            console.log("url: ", body_url);
             const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
-                "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url['url_input']]);
+                "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
             yt_list.stdout.on("data", async data => {
                 response += data;
             });
@@ -83,15 +86,14 @@ var server = http.createServer((req, res) => {
             });
             yt_list.on("close", code => {
                 end = `child process exited with code ${code}`;
-
                 response_list = response.slice(0, -2).split("\n");
                 console.log(response_list, response_list.length);
-                response_list.forEach(async element => { 
+                response_list.forEach(async element => {
                     var items = element.split("\t");
                     console.log(items, items.length);
                     const video = await vid_list.create({
                         url: items[2],
-                        reference: body_url['url_input'],
+                        reference: body_url,
                         title: items[0],
                         downloaded: false,
                         available: true

@@ -7,59 +7,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>yt-diff</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css"
-        integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/grids-responsive-min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+        crossorigin="anonymous"></script>
     <style>
-        body {
-            padding: 0;
-            margin: 0;
-        }
-
-        .l-box {
-            padding: 0.5em;
-        }
-
-        .header {
-            background-color: rgb(0, 119, 255);
-            margin: 0em;
-        }
-
-        .header>h4 {
-            margin-left: 1em;
-            margin-top: 0.5em;
-            margin-bottom: 0.5em;
-            height: 1.5em;
-            font-weight: bold;
+        .list-group {
+            max-height: 80vmin;
+            overflow-y: scroll;
+            padding-bottom: 15px;
         }
     </style>
 </head>
 
 <body>
-    <div class="pure-g">
-        <div class="pure-u-1 header">
-            <h4>yt-diff</h4>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <!--<img src="nav.svg" alt="" width="30" height="24"
+                    class="d-inline-block align-text-top">-->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 5 40 40" width="30px" height="24px">
+                    <path fill="#FF3D00"
+                        d="M43.2,33.9c-0.4,2.1-2.1,3.7-4.2,4c-3.3,0.5-8.8,1.1-15,1.1c-6.1,0-11.6-0.6-15-1.1c-2.1-0.3-3.8-1.9-4.2-4C4.4,31.6,4,28.2,4,24c0-4.2,0.4-7.6,0.8-9.9c0.4-2.1,2.1-3.7,4.2-4C12.3,9.6,17.8,9,24,9c6.2,0,11.6,0.6,15,1.1c2.1,0.3,3.8,1.9,4.2,4c0.4,2.3,0.9,5.7,0.9,9.9C44,28.2,43.6,31.6,43.2,33.9z" />
+                    <path fill="#FFF" d="M20 31L20 17 32 24z" />
+                </svg><span>-diff</span>
+            </a>
+            <a href="http://localhost:8080/?pgsql=database&username=ytdiff&db=vidlist&ns=public"
+                class="link-warning">See DB</a>
         </div>
-    </div>
-    <div class="pure-g">
-        <div class="pure-u-sm-1 pure-u-md-1-2 pure-u-lg-1-2">
-            <div class="l-box">
-                <form class="pure-form" action="/list" method="POST">
-                    <fieldset>
-                        <input type="text" placeholder="url" name="url_input" id="url" />
-                        <button id="listit" type="submit" class="pure-button pure-button-primary">Download</button>
-                    </fieldset>
+    </nav>
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <form>
+                    <label for="url" class="form-label">URL: </label>
+                    <input type="text" class="form-control" placeholder="url" name="url_input" id="url" />
+                    <label for="start" class="form-label">Start: </label>
+                    <input type="number" class="form-control" placeholder="1" name="start_input" id="start" />
+                    <label for="stop" class="form-label">Stop: </label>
+                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
+                    <label for="is_single" class="form-label">Single video:</label>
+                    <input type="checkbox" class="form-check-input" name="is_single" id="is_single">
                 </form>
+                <button id="listit" onclick="post()" class="btn btn-primary">Download</button>
+
             </div>
-        </div>
-        <div class="pure-u-sm-1 pure-u-md-1-2 pure-u-lg-1-2">
-            <div class="l-box">
+            <div class="col">
                 <h3>To Download:</h3>
-                <ul id="listing"></ul>
+                <ul class="list-group list-group-flush overflow-scroll" id="listing">
+                    <!--<li class="list-group-item">An item</li>-->
+                </ul>
                 <!--Add the files that will be downloaded here as a list-->
             </div>
         </div>
     </div>
+    <script defer>
+        function post() {
+            var url = document.getElementById("url").value;
+            var start = document.getElementById("start").value;
+            var stop = document.getElementById("stop").value;
+            var single = document.getElementById("is_single").checked;
+            let output = document.getElementById("listing");
+            console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Single: " + single);
+            fetch("/list", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+
+                //make sure to serialize your JSON body
+                body: JSON.stringify({
+                    url: url,
+                    start: start,
+                    stop: stop,
+                    single: single
+                })
+            }).then((response) => response.text()).then((text) => {
+                response_list = text.slice(0, -2).split("\n").slice(0, -1);
+                // instead of discarding the return code display it somewhere and also make
+                // a way to show the errors
+                // finally the list should have check boxes to select which vidoes to download
+                // passing them to the backend
+                console.log(response_list, response_list.length);
+                response_list.forEach(async element => {
+                    var items = element.split("\t");
+                    console.log(items, items.length);
+                    let item = document.createElement("li");
+                    item.className = "list-group-item";
+                    item.textContent = items[0];
+                    output.appendChild(item);
+                });
+            });
+        };
+    </script>
 </body>
 
 </html>
