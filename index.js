@@ -73,16 +73,16 @@ async function download_background_parallel(url_list) {
             });
             yt_list.on("close", async (code) => {
                 console.log(`child process exited with code ${code}`);
-                
-                console.log("Updating");
-                var entity = await vid_list.findOne({ where: { url: url_str } });
-                console.log(entity.downloaded);
-                entity.set({
-                    downloaded: true
-                });
-                await entity.save();
-                console.log(entity.downloaded);
-                
+                if (code == 0) {
+                    console.log("Updating");
+                    var entity = await vid_list.findOne({ where: { url: url_str } });
+                    console.log(entity.downloaded);
+                    entity.set({
+                        downloaded: true
+                    });
+                    await entity.save();
+                    console.log(entity.downloaded);
+                }
             });
         } catch (error) {
             console.error(error);
@@ -94,10 +94,10 @@ async function download_background_sequential(url_list) {
     console.log('Downloading in background');
     var i = 0;
     var save_loc = 'yt-dlp';
-    for (const url of url_list) {
+    for (const url_str of url_list) {
         console.log(`Downloading video ${++i}`);
         try {
-            const yt_list = spawn("yt-dlp", ["-P", save_loc, url]);
+            const yt_list = spawn("yt-dlp", ["-P", save_loc, url_str]);
             yt_list.stdout.on("data", async data => {
                 console.log(`${data}`);
             });
@@ -108,9 +108,19 @@ async function download_background_sequential(url_list) {
                 console.log(`error: ${error.message}`);
                 throw "Error Skipping";
             });
-            yt_list.on("close", code => {
+            yt_list.on("close", async (code) => {
                 console.log(`child process exited with code ${code}`);
                 // add the db update here
+                if (code == 0) {
+                    console.log("Updating");
+                    var entity = await vid_list.findOne({ where: { url: url_str } });
+                    console.log(entity.downloaded);
+                    entity.set({
+                        downloaded: true
+                    });
+                    await entity.save();
+                    console.log(entity.downloaded);
+                }
             });
             await new Promise((resolve) => yt_list.on("close", resolve));
         } catch (error) {
