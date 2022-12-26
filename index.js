@@ -24,6 +24,10 @@ const vid_list = sequelize.define('vid_list', {
     url: {
         type: DataTypes.STRING,
         allowNull: false,
+    },
+    id: {
+        type: DataTypes.STRING,
+        allowNull: false,
         primaryKey: true
     },
     title: {
@@ -48,6 +52,73 @@ sequelize.sync().then(() => {
 }).catch((error) => {
     console.error('Unable to create table : ', error);
 });
+
+async function download_background_parallel(url_list) {
+    console.log('Downloading in background')
+    var i = 0;
+    var save_loc = 'yt-dlp';
+    for (const url_str of url_list) {
+        console.log(`Downloading video ${++i}`);
+        try {
+            const yt_list = spawn("yt-dlp", ["-P", save_loc, url_str]);
+            yt_list.stdout.on("data", async data => {
+                console.log(`${data}`);
+            });
+            yt_list.stderr.on("data", data => {
+                console.log(`stderr: ${data}`);
+            });
+            yt_list.on('error', (error) => {
+                console.log(`error: ${error.message}`);
+                throw 'Error Skipping';
+            });
+            yt_list.on("close", async (code) => {
+                console.log(`child process exited with code ${code}`);
+                
+                console.log("Updating");
+                var entity = await vid_list.findOne({ where: { url: url_str } });
+                console.log(entity.downloaded);
+                entity.set({
+                    downloaded: true
+                });
+                await entity.save();
+                console.log(entity.downloaded);
+                
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    }
+}
+
+async function download_background_sequential(url_list) {
+    console.log('Downloading in background');
+    var i = 0;
+    var save_loc = 'yt-dlp';
+    for (const url of url_list) {
+        console.log(`Downloading video ${++i}`);
+        try {
+            const yt_list = spawn("yt-dlp", ["-P", save_loc, url]);
+            yt_list.stdout.on("data", async data => {
+                console.log(`${data}`);
+            });
+            yt_list.stderr.on("data", data => {
+                console.log(`stderr: ${data}`);
+            });
+            yt_list.on("error", error => {
+                console.log(`error: ${error.message}`);
+                throw "Error Skipping";
+            });
+            yt_list.on("close", code => {
+                console.log(`child process exited with code ${code}`);
+                // add the db update here
+            });
+            await new Promise((resolve) => yt_list.on("close", resolve));
+        } catch (error) {
+            console.error(error);
+        }
+    }
+}
+
 
 var server = http.createServer((req, res) => {
     if (req.url === '/') {
@@ -94,6 +165,7 @@ var server = http.createServer((req, res) => {
                     try {
                         const video = await vid_list.create({
                             url: items[2],
+                            id: items[1],
                             reference: body_url,
                             title: items[0],
                             downloaded: false,
@@ -118,23 +190,29 @@ var server = http.createServer((req, res) => {
             if (body.length > 1e6)
                 request.connection.destroy();
         });
-        req.on('end', function () {
+        req.on('end', async function () {
             body = JSON.parse(body);
-            var ids = body['ids']
-            console.log('Recieved: ' + ids);
-            ids.forEach(id => {
-                //download here
-                //setup websocket if i feel like it
-                //the idea here is simple query the id form the db get the url
-                //pass the url to a spwan instance and then download if error occures
-                //pass the error to the client as a notification or if websocket is added then via 
-                //that, now once the download is done update the db that the video is saved
-                //finally notify the client if the window is still open
-                console.log('Downloading: ' + id);
-            });
+            var urls = [];
+            console.log('Recieved: ' + body['ids']);
+            //download here
+            //setup websocket if i feel like it
+            //the idea here is simple query the id form the db get the url
+            //pass the url to a spwan instance and then download if error occures
+            //pass the error to the client as a notification or if websocket is added then via 
+            //that, now once the download is done update the db that the video is saved
+            //finally notify the client if the window is still open
+            var i = 0;
+            for (const id_str of body['ids']) {
+                console.log(`Finding the url of the video ${++i}`);
+                const entry = await vid_list.findOne({ where: { id: id_str } });
+                urls.push(entry.url);
+            }
+
+            console.log(urls);
+            download_background_sequential(urls);
             response = 'Downloading started, it will take a while ...';
             res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end(response);
+            res.end('[' + urls.join(' , ') + ']');
         });
     }
     else {
