@@ -40,16 +40,19 @@
     <div class="container">
         <div class="row">
             <div class="col">
-                <form>
+                <form class="mb-2">
                     <label for="url" class="form-label">URL: </label>
                     <input type="text" class="form-control" placeholder="url" name="url_input" id="url" />
                     <label for="start" class="form-label">Start: </label>
                     <input type="number" class="form-control" placeholder="1" name="start_input" id="start" />
                     <label for="stop" class="form-label">Stop: </label>
                     <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
-                    <!--Removing this wouldn't be such a bad idea-->
-                    <label for="is_single" class="form-label">Single video:</label>
-                    <input type="checkbox" class="form-check-input" name="is_single" id="is_single">
+                    <!--Removing this wouldn't be such a bad idea, yt-dlp can handle it on it's own,
+                        if you are passing an url like this https://www.youtube.com/watch?v=id&list=id
+                        and wnat to use the --no-playlist option it's more work than it's worth just pass
+                        the url as https://www.youtube.com/watch?v=id -->
+                    <!--<label for="is_single" class="form-label">Single video:</label>
+                    <input type="checkbox" class="form-check-input" name="is_single" id="is_single">-->
                 </form>
                 <button id="listit" type="button" onclick="post()" class="btn btn-primary">List</button>
                 <div class="btn-group" role="group">
@@ -73,9 +76,9 @@
             var url = document.getElementById("url").value;
             var start = document.getElementById("start").value;
             var stop = document.getElementById("stop").value;
-            var single = document.getElementById("is_single").checked;
+            //var single = document.getElementById("is_single").checked;
             let output = document.getElementById("listing");
-            console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Single: " + single);
+            console.log("URL: " + url, "Start: " + start, "Stop: " + stop);//, "Single: " + single);
             fetch("/list", {
                 method: "post",
                 headers: {
@@ -87,8 +90,7 @@
                 body: JSON.stringify({
                     url: url,
                     start: start,
-                    stop: stop,
-                    single: single
+                    stop: stop
                 })
             }).then((response) => response.text()).then((text) => {
                 response_list = text.slice(0, -2).split("\n").slice(0, -1);
@@ -139,11 +141,27 @@
             });
         }
 
-        function dnld() {
-            const checkedBoxes = document.querySelectorAll('input[type=checkbox]:checked');
-            checkedBoxes.forEach(element => {
-
+        function download() {
+            var id = []
+            document.querySelectorAll('input[type=checkbox]:checked')
+                .forEach(element => {
+                    id.push(element.id);
+                })
+            console.log(id);
+            fetch("/download", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                //make sure to serialize your JSON body
+                body: JSON.stringify({
+                    ids: id,
+                })
+            }).then((response) => response.text()).then((text) => {
+                console.log(text);
             });
+            //set up a websocket to check on the status although it won't be really useful
         }
     </script>
 </body>

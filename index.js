@@ -56,7 +56,7 @@ var server = http.createServer((req, res) => {
         res.end();
     }
     else if (req.url === '/list' && req.method === 'POST') {
-        var body = '', body_url = '', response = '', end = '';
+        var body = '', response = '', end = '';
         req.on('data', function (data) {
             body += data;
             // Too much POST data, kill the connection!
@@ -67,7 +67,7 @@ var server = http.createServer((req, res) => {
         req.on('end', function () {
             body = JSON.parse(body);
             console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
-                'stop_num:', body['stop'], 'single:', body['single']);
+                'stop_num:', body['stop'])//, 'single:', body['single']);
             var body_url = body['url'];
             var start_num = body['start'] || 1;
             var stop_num = body['stop'] || 10; // send these from the clinet too, add a way to loop and list
@@ -107,6 +107,34 @@ var server = http.createServer((req, res) => {
                 res.writeHead(200, { 'Content-Type': 'text/plain' });
                 res.end(response + end);
             });
+        });
+    }
+    else if (req.url === '/download' && req.method === 'POST') {
+        var body = '', response = '';
+        req.on('data', function (data) {
+            body += data;
+            // Too much POST data, kill the connection!
+            // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+            if (body.length > 1e6)
+                request.connection.destroy();
+        });
+        req.on('end', function () {
+            body = JSON.parse(body);
+            var ids = body['ids']
+            console.log('Recieved: ' + ids);
+            ids.forEach(id => {
+                //download here
+                //setup websocket if i feel like it
+                //the idea here is simple query the id form the db get the url
+                //pass the url to a spwan instance and then download if error occures
+                //pass the error to the client as a notification or if websocket is added then via 
+                //that, now once the download is done update the db that the video is saved
+                //finally notify the client if the window is still open
+                console.log('Downloading: ' + id);
+            });
+            response = 'Downloading started, it will take a while ...';
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end(response);
         });
     }
     else {
