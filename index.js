@@ -91,13 +91,18 @@ var server = http.createServer((req, res) => {
                 response_list.forEach(async element => {
                     var items = element.split("\t");
                     console.log(items, items.length);
-                    const video = await vid_list.create({
-                        url: items[2],
-                        reference: body_url,
-                        title: items[0],
-                        downloaded: false,
-                        available: true
-                    }).then(function () { console.log(items[0], 'saved'); });
+                    try {
+                        const video = await vid_list.create({
+                            url: items[2],
+                            reference: body_url,
+                            title: items[0],
+                            downloaded: false,
+                            available: true
+                        }).then(function () { console.log(items[0], 'saved'); });
+                    } catch (error) {
+                        console.log(error);
+                        // do better here, later
+                    }
                 });
                 res.writeHead(200, { 'Content-Type': 'text/plain' });
                 res.end(response + end);

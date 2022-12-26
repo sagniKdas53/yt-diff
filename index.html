@@ -22,7 +22,7 @@
 </head>
 
 <body>
-    <nav class="navbar navbar-dark bg-dark">
+    <nav class="mt-0 pt-0 mb-0 pb-0 navbar navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
                 <!--<img src="nav.svg" alt="" width="30" height="24"
@@ -47,17 +47,23 @@
                     <input type="number" class="form-control" placeholder="1" name="start_input" id="start" />
                     <label for="stop" class="form-label">Stop: </label>
                     <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
+                    <!--Removing this wouldn't be such a bad idea-->
                     <label for="is_single" class="form-label">Single video:</label>
                     <input type="checkbox" class="form-check-input" name="is_single" id="is_single">
                 </form>
-                <button id="listit" onclick="post()" class="btn btn-primary">Download</button>
-
+                <button id="listit" type="button" onclick="post()" class="btn btn-primary">List</button>
+                <div class="btn-group" role="group">
+                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">Select all</button>
+                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">Select none</button>
+                </div>
+                <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download
+                    Selected</button>
             </div>
             <div class="col">
-                <h3>To Download:</h3>
-                <ul class="list-group list-group-flush overflow-scroll" id="listing">
+                <h3>List:</h3>
+                <div class="list-group list-group-flush overflow-scroll" id="listing">
                     <!--<li class="list-group-item">An item</li>-->
-                </ul>
+                </div>
                 <!--Add the files that will be downloaded here as a list-->
             </div>
         </div>
@@ -91,16 +97,54 @@
                 // finally the list should have check boxes to select which vidoes to download
                 // passing them to the backend
                 console.log(response_list, response_list.length);
+                //<div class="list-group">
+                //<label class="list-group-item">
+                //   <input class="form-check-input me-1" type="checkbox" value="">
+                //  First checkbox
+                //</label>
+                //</div>
                 response_list.forEach(async element => {
                     var items = element.split("\t");
                     console.log(items, items.length);
-                    let item = document.createElement("li");
-                    item.className = "list-group-item";
-                    item.textContent = items[0];
-                    output.appendChild(item);
+
+                    let label = document.createElement("label");
+                    label.className = "list-group-item";
+
+                    let checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.className = "form-check-input me-1";
+                    checkbox.value = "";
+                    checkbox.id = items[1];
+
+                    let link = document.createElement('a');
+                    link.href = items[2];
+                    link.appendChild(document.createTextNode(items[0]));
+
+                    label.appendChild(checkbox);
+                    label.appendChild(link);
+                    output.appendChild(label);
                 });
             });
         };
+
+        function select_all() {
+            document.querySelectorAll('input[type=checkbox]').forEach(element => {
+                element.checked = true;
+            });
+        }
+
+        function select_none() {
+            document.querySelectorAll('input[type=checkbox]').forEach(element => {
+                element.checked = false;
+            });
+        }
+
+        function dnld() {
+            const checkedBoxes = document.querySelectorAll('input[type=checkbox]:checked');
+            checkedBoxes.forEach(element => {
+
+            });
+        }
     </script>
 </body>
 
