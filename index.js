@@ -60,18 +60,18 @@ async function download_background_parallel(url_list) {
     for (const url_str of url_list) {
         console.log(`Downloading video ${++i}`);
         try {
-            const yt_list = spawn("yt-dlp", ["-P", save_loc, url_str]);
-            yt_list.stdout.on("data", async data => {
+            const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
+            yt_dlp.stdout.on("data", async data => {
                 console.log(`${data}`);
             });
-            yt_list.stderr.on("data", data => {
+            yt_dlp.stderr.on("data", data => {
                 console.log(`stderr: ${data}`);
             });
-            yt_list.on('error', (error) => {
+            yt_dlp.on('error', (error) => {
                 console.log(`error: ${error.message}`);
                 throw 'Error Skipping';
             });
-            yt_list.on("close", async (code) => {
+            yt_dlp.on("close", async (code) => {
                 console.log(`child process exited with code ${code}`);
                 if (code == 0) {
                     console.log("Updating");
@@ -97,18 +97,18 @@ async function download_background_sequential(url_list) {
     for (const url_str of url_list) {
         console.log(`Downloading video ${++i}`);
         try {
-            const yt_list = spawn("yt-dlp", ["-P", save_loc, url_str]);
-            yt_list.stdout.on("data", async data => {
+            const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
+            yt_dlp.stdout.on("data", async data => {
                 console.log(`${data}`);
             });
-            yt_list.stderr.on("data", data => {
+            yt_dlp.stderr.on("data", data => {
                 console.log(`stderr: ${data}`);
             });
-            yt_list.on("error", error => {
+            yt_dlp.on("error", error => {
                 console.log(`error: ${error.message}`);
                 throw "Error Skipping";
             });
-            yt_list.on("close", async (code) => {
+            yt_dlp.on("close", async (code) => {
                 console.log(`child process exited with code ${code}`);
                 // add the db update here
                 if (code == 0) {
@@ -122,7 +122,7 @@ async function download_background_sequential(url_list) {
                     console.log(entity.downloaded);
                 }
             });
-            await new Promise((resolve) => yt_list.on("close", resolve));
+            await new Promise((resolve) => yt_dlp.on("close", resolve));
         } catch (error) {
             console.error(error);
         }
