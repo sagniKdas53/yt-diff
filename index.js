@@ -1,8 +1,6 @@
 const { spawn } = require("child_process");
 const http = require('http');
 const fs = require('fs');
-const path = require('path');
-var qs = require('querystring');
 const { Sequelize, DataTypes } = require('sequelize');
 
 var port = process.argv[2] || 8888;
@@ -68,7 +66,7 @@ async function download_background_parallel(url_list) {
                 console.log(`stderr: ${data}`);
             });
             yt_dlp.on('error', (error) => {
-                console.log(`error: ${error.message}`);
+                console.error(`error: ${error.message}`);
                 throw 'Error Skipping';
             });
             yt_dlp.on("close", async (code) => {
@@ -105,7 +103,7 @@ async function download_background_sequential(url_list) {
                 console.log(`stderr: ${data}`);
             });
             yt_dlp.on("error", error => {
-                console.log(`error: ${error.message}`);
+                console.error(`error: ${error.message}`);
                 throw "Error Skipping";
             });
             yt_dlp.on("close", async (code) => {
@@ -167,28 +165,30 @@ var server = http.createServer((req, res) => {
             });
             yt_list.on("close", code => {
                 end = `child process exited with code ${code}`;
-                response_list = response.slice(0, -2).split("\n");
+                response_list = response.split("\n");
                 console.log(response_list, response_list.length);
                 response_list.forEach(async element => {
-                    var items = element.split("\t");
-                    console.log(items, items.length);
-                    try {
-                        const video = await vid_list.create({
-                            url: items[2],
-                            id: items[1],
-                            reference: body_url,
-                            title: items[0],
-                            downloaded: false,
-                            available: true
-                        }).then(function () { console.log(items[0], 'saved'); });
-                    } catch (error) {
-                        console.log(error);
-                        // do better here, later
-                    }
+                  var items = element.split("\t");
+                  console.log(items, items.length);
+                  try {
+                    const video = await vid_list.create({
+                      url: items[2],
+                      id: items[1],
+                      reference: body_url,
+                      title: items[0],
+                      downloaded: false,
+                      available: true
+                    }).then(function () {
+                      console.log(items[0], "saved");
+                    });
+                  } catch (error) {
+                    console.error(error);
+                    // do better here, later
+                  }
                 });
-                res.writeHead(200, { 'Content-Type': 'text/plain' });
+                res.writeHead(200, { "Content-Type": "text/plain" });
                 res.end(response + end);
-            });
+              });              
         });
     }
     else if (req.url === '/download' && req.method === 'POST') {
