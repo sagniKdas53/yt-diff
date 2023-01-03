@@ -12,7 +12,7 @@ yt-dlp packed in together with my little script to regularly keep dowining vidoe
   6. Test VPN by using ```` docker exec -it vpn-proton wget -qO- https://ipinfo.io ````
   7. ```` yt-dlp --playlist-start 1 --playlist-end 10 --flat-playlist --print "%(title)s [%(id)s]-{%(webpage_url)s}" https://www.youtube.com/playlist?list=PLgcoT7-W0fP2Bqm6KqWPIaTvF4_WLfv3b ````
   8. ```` yt-dlp -f "bv*[height<=480]+ba/b[height<=480] / wv*+ba/w" https://www.youtube.com/watch?v=C6aCCp-Umcw --sponsorblock-remove sponsor ````
-  9. ```` docker run -it -v /home/sagnik/Projects/yt-diff/yt-dlp:/home purevert/yt-diff /bin/bash ````
+  9. ```` docker run -it -p 8888:8888 -v /home/sagnik/Projects/yt-diff/yt-dlp:/home purevert/yt-diff  /bin/bash ````
 
 ## TODO
 

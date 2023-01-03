@@ -4,3 +4,4 @@ node_modules/
 gluetun/
 ffmpeg/
 ffmpeg_aarch64/
+nvm/

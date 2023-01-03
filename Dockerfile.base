@@ -17,7 +17,7 @@ COPY /ffmpeg/yt-dlp_linux /
 
 #RUN wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" -O "yt-dlp_linux"
 
-RUN chmod +x yt-dlp_linux && mv yt-dlp_linux bin/
+RUN chmod +x yt-dlp_linux && mv yt-dlp_linux bin/yt-dlp
 
 #RUN wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz"
 
@@ -29,4 +29,28 @@ RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
 
-CMD ["tail", "-f", "/dev/null"]
+COPY index.js index.html package-lock.json package.json /
+
+EXPOSE 8888
+
+#This will get the install.sh
+#RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+
+# Adding nvm from local filesystem, although the actual node is installed form network
+COPY nvm/install.sh /
+
+RUN chmod +x install.sh && ./install.sh 
+
+# This is needed in both cases
+RUN export NVM_DIR="$HOME/.nvm" && \
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" && \
+    nvm install 18.12 && npm install 
+
+COPY --chown=node:node . .
+
+# Only this fails to connect to port 5432 of localhost
+# ConnectionRefusedError [SequelizeConnectionRefusedError]: connect ECONNREFUSED 127.0.0.1:5432
+CMD [ "node", "index.js" ]
+
+#CMD ["tail", "-f", "/dev/null"]
