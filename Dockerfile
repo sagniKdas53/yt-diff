@@ -45,8 +45,6 @@ RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
     && node node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
     && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz 
 
-# Only this fails to connect to port 5432 of localhost
-# ConnectionRefusedError [SequelizeConnectionRefusedError]: connect ECONNREFUSED 127.0.0.1:5432
 CMD [ "node", "index.js" ]
 
 #CMD ["tail", "-f", "/dev/null"]

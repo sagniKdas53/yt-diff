@@ -5,7 +5,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 
 var port = process.argv[2] || 8888;
 const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
-    host: 'localhost',
+    host: 'database',
     dialect: 'postgres'
 });
 

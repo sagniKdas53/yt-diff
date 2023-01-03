@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ./ytdata:/var/lib/postgresql/data
+      - ../ytdata:/var/lib/postgresql/data
 
   diff-maker:
     image: purevert/yt-diff
@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile.base
     volumes:
-      - ./yt-dlp:/home
+      - ./yt-dlp:/yt-dlp
     depends_on:
       - database
     ports:
