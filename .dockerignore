@@ -1,3 +1,6 @@
 yt-dlp/
 node_modules/
 gluetun/
+ffmpeg_aarch64/
+ytdata/
+*.ipynb
