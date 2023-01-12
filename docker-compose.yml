@@ -1,6 +1,5 @@
-version: '3'
+version: "3"
 services:
-
   database:
     image: postgres:13.9-alpine3.17
     container_name: yt-db
@@ -66,5 +65,5 @@ services:
   #  restart: "unless-stopped"
 
   # will implement later
-volumes:
-  ytdata:
+#volumes:
+#  ytdata:
