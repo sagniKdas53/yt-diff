@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ../ytdata:/var/lib/postgresql/data
+      - ./ytdata:/var/lib/postgresql/data
 
   diff-maker:
     image: purevert/yt-diff
@@ -21,7 +21,7 @@ services:
     # network_mode: service:vpn-proton
     build:
       context: .
-      dockerfile: Dockerfile.base
+      dockerfile: Dockerfile
     volumes:
       - ./yt-dlp:/yt-dlp
     depends_on:
