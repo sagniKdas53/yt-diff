@@ -53,8 +53,8 @@
                     <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
                 </form>
                 <div class="btn-group" role="group">
-                    <button id="next" type="button" onclick="select_next()" class="btn btn-primary">Next</button>
-                    <button id="back" type="button" onclick="select_back()" class="btn btn-primary">Back</button>
+                    <button id="next" type="button" onclick="next()" class="btn btn-primary">Next</button>
+                    <button id="back" type="button" onclick="back()" class="btn btn-primary">Back</button>
                 </div>
             </div>
             <div class="col">
@@ -71,16 +71,54 @@
         </div>
     </div>
     <script defer>
-        window.onload = populateList();
-        function populateList() {
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
+        window.onload = init();
+        function init() {
             if (document.getElementById("start").value === "") {
                 document.getElementById("start").value = 0;
             }
-            var start_val = document.getElementById("start").value;
             if (document.getElementById("stop").value === "") {
                 document.getElementById("stop").value = 10;
             }
+            populateList();
+        }
+        function next() {
+            depopulateList();
+            if (document.getElementById("start").value === "") {
+                document.getElementById("start").value = 0;
+            } else {
+                document.getElementById("start").value = parseInt(document.getElementById("start").value, 10) + 10;
+            }
+            if (document.getElementById("stop").value === "") {
+                document.getElementById("stop").value = 10;
+            } else {
+                document.getElementById("stop").value = parseInt(document.getElementById("stop").value, 10) + 10;
+            }
+            populateList();
+        }
+        function back() {
+            depopulateList();
+
+            if (document.getElementById("start").value === "") {
+                document.getElementById("start").value = 0;
+            } else if ((parseInt(document.getElementById("start").value, 10) - 10) <= 0) {
+                document.getElementById("start").value = 0;
+            } else {
+                document.getElementById("start").value = parseInt(document.getElementById("start").value, 10) - 10;
+            }
+
+            if (document.getElementById("stop").value === "") {
+                document.getElementById("stop").value = 10;
+            } else if ((parseInt(document.getElementById("stop").value, 10) - 10) <= 10) {
+                document.getElementById("stop").value = 10;
+            } else {
+                document.getElementById("stop").value = parseInt(document.getElementById("stop").value, 10) - 10;
+            }
+
+            populateList();
+        }
+        function populateList() {
+            const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
+            var start_val = document.getElementById("start").value;
             var stop_val = document.getElementById("stop").value;
             console.log("Start: " + start_val + " stop: " + stop_val);
             fetch("/ytdiff/showdb", {
@@ -118,8 +156,18 @@
                     createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
                     updatedAt.innerHTML = new Date(element.updatedAt).toLocaleDateString("en-US", options);
                     show.innerHTML = ""
+                    /*
+                    Add the more button that loads the list of vidoes associted with the playlist 
+                    and add the download buttons here too also make sure to add the web sockets
+                    */
                 });
             });
+        };
+        function depopulateList() {
+            const table = document.getElementById("placeholder");
+            for (var i = 1; i < table.rows.length;) {
+                table.deleteRow(i);
+            }
         }
 
     </script>

@@ -259,7 +259,7 @@ var server = http.createServer((req, res) => {
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/show.html'));
         res.end();
-    }
+    } 
     else if (req.url === url_base + '/showdb' && req.method === 'POST') {
         db_to_table(req, res);
     }
