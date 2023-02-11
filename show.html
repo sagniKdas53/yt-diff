@@ -32,30 +32,23 @@
         <div class="row">
             <div class="col">
                 <h3>list_of_play_lists:</h3>
-                <table class="table">
+                <table class="table table-responsive" id="placeholder">
                     <thead>
                         <tr>
                             <th scope="col">id</th>
                             <th scope="col">url</th>
                             <th scope="col">createdAt</th>
                             <th scope="col">updatedAt</th>
-                            <th scope="col">Show more?</th>
+                            <th scope="col">more</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <!--<tr>
-                            <th scope="row">1</th>
-                            <td>Mark</td>
-                            <td>Otto</td>
-                            <td>@mdo</td>
-                        </tr>
-                    Remember only list a few items not all at once.
-                    -->
+
                     </tbody>
                 </table>
                 <form class="mb-2">
                     <label for="start" class="form-label">Start: </label>
-                    <input type="number" class="form-control" placeholder="1" name="start_input" id="start" />
+                    <input type="number" class="form-control" placeholder="0" name="start_input" id="start" />
                     <label for="stop" class="form-label">Stop: </label>
                     <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
                 </form>
@@ -80,6 +73,16 @@
     <script defer>
         window.onload = populateList();
         function populateList() {
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' };
+            if (document.getElementById("start").value === "") {
+                document.getElementById("start").value = 0;
+            }
+            var start_val = document.getElementById("start").value;
+            if (document.getElementById("stop").value === "") {
+                document.getElementById("stop").value = 10;
+            }
+            var stop_val = document.getElementById("stop").value;
+            console.log("Start: " + start_val + " stop: " + stop_val);
             fetch("/ytdiff/showdb", {
                 method: "post",
                 headers: {
@@ -89,14 +92,32 @@
 
                 //make sure to serialize your JSON body
                 body: JSON.stringify({
-                    start: 0, // get these later from the document
-                    stop: 10
+                    start: start_val, // get these later from the document
+                    stop: stop_val
                 })
             }).then((response) => response.text()).then((text) => {
                 text = JSON.parse(text)
+                const table = document.getElementById("placeholder");
                 text['rows'].forEach(element => {
                     console.log(element);
-                    // make the document generate the table here
+                    /*
+                    id 	url 	createdAt 	updatedAt 	more
+                    */
+                    const row = table.insertRow();
+                    const id = row.insertCell(0);
+                    const url = row.insertCell(1);
+                    const createdAt = row.insertCell(2);
+                    const updatedAt = row.insertCell(3);
+                    const show = row.insertCell(4);
+
+                    id.innerHTML = element.order_added;
+                    url.innerHTML = element.url;
+                    //overflow-wrap: break-word;width;word-wrap: anywhere;width: 17vw;
+                    url.style.wordWrap = "anywhere";
+                    url.style.width = "17vw";
+                    createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
+                    updatedAt.innerHTML = new Date(element.updatedAt).toLocaleDateString("en-US", options);
+                    show.innerHTML = ""
                 });
             });
         }
