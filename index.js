@@ -2,10 +2,13 @@ const { spawn } = require("child_process");
 const http = require('http');
 const fs = require('fs');
 const { Sequelize, DataTypes } = require('sequelize');
+var url = require('url');
+const url_base = '/ytdiff'; // get this form env in docker config
 
-var port = process.argv[2] || 8888;
+var port = process.argv[2] || 8888; // get this form env in docker config
 const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
-    host: 'database',
+    //host: 'yt-db',
+    host: 'localhost',
     dialect: 'postgres'
 });
 
@@ -43,6 +46,21 @@ const vid_list = sequelize.define('vid_list', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+});
+
+
+const play_lists = sequelize.define('list_of_play_lists', {
+    // Model attributes are defined here
+    url: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        primaryKey: true
+    },
+    play_lists_monitored: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        autoIncrement: true
+    }
 });
 
 sequelize.sync().then(() => {
@@ -127,71 +145,93 @@ async function download_background_sequential(url_list) {
     }
 }
 
+async function list(req, res) {
+    var body = '', response = '', end = '';
+    req.on('data', function (data) {
+        body += data;
+        // Too much POST data, kill the connection!
+        // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+        if (body.length > 1e6)
+            request.connection.destroy();
+    });
+    req.on('end', function () {
+        body = JSON.parse(body);
+        console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
+            'stop_num:', body['stop'])//, 'single:', body['single']);
+        var body_url = body['url'];
+        var start_num = body['start'] || 1;
+        var stop_num = body['stop'] || 10; // add a way to send -1 to list it all in one go
+        // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
+        console.log("url: ", body_url);
+        const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
+            "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
+        yt_list.stdout.on("data", async data => {
+            response += data;
+        });
+        yt_list.stderr.on("data", data => {
+            response = `stderr: ${data}`;
+        });
+        yt_list.on('error', (error) => {
+            response = `error: ${error.message}`;
+        });
+        yt_list.on("close", code => {
+            end = `child process exited with code ${code}`;
+            response_list = response.split("\n");
+            // remove the "" from the end of the list
+            response_list.pop();
+            console.log(response_list, response_list.length);
+            // Check if this is indeed a playlist then add or update the play_lists
+            if (response_list.length > 1) {
+                play_lists.findOrCreate({
+                    where: { url: body_url }
+                });
+            }
+            response_list.forEach(async element => {
+                var items = element.split("\t");
+                console.log(items, items.length);
+                try {
+                    const video = await vid_list.create({
+                        url: items[2],
+                        id: items[1],
+                        reference: body_url,
+                        title: items[0],
+                        downloaded: false,
+                        available: true
+                    }).then(function () {
+                        console.log(items[0], "saved");
+                    });
+                } catch (error) {
+                    console.error(error);
+                    // do better here, later
+                }
+            });
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end(response + end);
+        });
+    });
+}
+
 
 var server = http.createServer((req, res) => {
-    if (req.url === '/') {
+    var hostname = req.headers.host; // hostname = 'localhost:8080'
+    var pathname = url.parse(req.url).pathname; // pathname = '/MyApp'
+    console.log('http://' + hostname + pathname)
+    if (req.url === url_base) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/index.html'));
         res.end();
     }
-    else if (req.url === '/list' && req.method === 'POST') {
-        var body = '', response = '', end = '';
-        req.on('data', function (data) {
-            body += data;
-            // Too much POST data, kill the connection!
-            // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
-            if (body.length > 1e6)
-                request.connection.destroy();
-        });
-        req.on('end', function () {
-            body = JSON.parse(body);
-            console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
-                'stop_num:', body['stop'])//, 'single:', body['single']);
-            var body_url = body['url'];
-            var start_num = body['start'] || 1;
-            var stop_num = body['stop'] || 10; // send these from the clinet too, add a way to loop and list
-            // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
-            console.log("url: ", body_url);
-            const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
-                "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
-            yt_list.stdout.on("data", async data => {
-                response += data;
-            });
-            yt_list.stderr.on("data", data => {
-                response = `stderr: ${data}`;
-            });
-            yt_list.on('error', (error) => {
-                response = `error: ${error.message}`;
-            });
-            yt_list.on("close", code => {
-                end = `child process exited with code ${code}`;
-                response_list = response.split("\n");
-                console.log(response_list, response_list.length);
-                response_list.forEach(async element => {
-                  var items = element.split("\t");
-                  console.log(items, items.length);
-                  try {
-                    const video = await vid_list.create({
-                      url: items[2],
-                      id: items[1],
-                      reference: body_url,
-                      title: items[0],
-                      downloaded: false,
-                      available: true
-                    }).then(function () {
-                      console.log(items[0], "saved");
-                    });
-                  } catch (error) {
-                    console.error(error);
-                    // do better here, later
-                  }
-                });
-                res.writeHead(200, { "Content-Type": "text/plain" });
-                res.end(response + end);
-              });              
-        });
+    else if (req.url === url_base + '/list' && req.method === 'POST') {
+        list(req, res);
     }
-    else if (req.url === '/download' && req.method === 'POST') {
+    else if (req.url === url_base + '/showdb' && req.method === 'POST') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/show.html'));
+        res.end();
+    }
+    else if (req.url === url_base + '/download' && req.method === 'POST') {
         var body = '', response = '';
         req.on('data', function (data) {
             body += data;

@@ -33,8 +33,7 @@
                     <path fill="#FFF" d="M20 31L20 17 32 24z" />
                 </svg><span>-diff</span>
             </a>
-            <a href="http://localhost:8080/?pgsql=database&username=ytdiff&db=vidlist&ns=public"
-                class="link-warning">See DB</a>
+            <a href="http://localhost:8888/ytdiff/showdb" class="link-warning">See DB</a>
         </div>
     </nav>
     <div class="container">
@@ -79,7 +78,7 @@
             //var single = document.getElementById("is_single").checked;
             let output = document.getElementById("listing");
             console.log("URL: " + url, "Start: " + start, "Stop: " + stop);//, "Single: " + single);
-            fetch("/list", {
+            fetch("/ytdiff/list", {
                 method: "post",
                 headers: {
                     'Accept': 'application/json',
@@ -148,7 +147,7 @@
                     id.push(element.id);
                 })
             console.log(id);
-            fetch("/download", {
+            fetch("/ytdiff/download", {
                 method: "post",
                 headers: {
                     'Accept': 'application/json',

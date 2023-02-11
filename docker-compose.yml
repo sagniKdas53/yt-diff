@@ -1,7 +1,7 @@
 version: "3"
 services:
-  database:
-    image: postgres:13.9-alpine3.17
+  yt-db:
+    image: postgres:14
     container_name: yt-db
     ports:
       - "5432:5432"
@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ./ytdata:/var/lib/postgresql/data
+      - ./yt-data:/var/lib/postgresql/data
 
   diff-maker:
     image: purevert/yt-diff
@@ -25,20 +25,20 @@ services:
     volumes:
       - ./yt-dlp:/yt-dlp
     depends_on:
-      - database
+      - yt-db
     ports:
       - 8888:8888
-    privileged: true
+    #privileged: true
 
   adminer:
     image: adminer:4.8.1-standalone
     container_name: adminer
     restart: always
     depends_on:
-      - database
+      - yt-db
     ports:
       - 8080:8080
-  #http://localhost:8080/?pgsql=database&username=ytdiff&db=vidlist&ns=public
+  #http://localhost:8080/?pgsql=yt-db&username=ytdiff&db=vidlist&ns=public
 
   #vpn-proton:
   #  image: qmcgaw/gluetun
