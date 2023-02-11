@@ -2,7 +2,7 @@ const { spawn } = require("child_process");
 const http = require('http');
 const fs = require('fs');
 const { Sequelize, DataTypes } = require('sequelize');
-var url = require('url');
+//var url = require('url');
 const url_base = '/ytdiff'; // get this form env in docker config
 
 var port = process.argv[2] || 8888; // get this form env in docker config
@@ -213,23 +213,53 @@ async function list(req, res) {
 
 
 var server = http.createServer((req, res) => {
-    var hostname = req.headers.host; // hostname = 'localhost:8080'
-    var pathname = url.parse(req.url).pathname; // pathname = '/MyApp'
-    console.log('http://' + hostname + pathname)
     if (req.url === url_base) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/index.html'));
         res.end();
     }
-    else if (req.url === url_base + '/list' && req.method === 'POST') {
-        list(req, res);
+    else if (req.url === url_base + '/assets/bootstrap.min.css' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css'));
+        res.end();
     }
-    else if (req.url === url_base + '/showdb' && req.method === 'POST') {
+    else if (req.url === url_base + '/assets/bootstrap.min.css.map' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css.map'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/bootstrap.bundle.min.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/favicon.ico' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'image/vnd.microsoft.icon' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/favicon.ico'));
+        res.end();
+    }
+    else if (req.url === url_base + '/showdb' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/show.html'));
         res.end();
+    }
+    else if (req.url === url_base + '/list' && req.method === 'POST') {
+        list(req, res);
+    }
+    else if (req.url === url_base + '/showdb' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/show.html'));
+        res.end();
+    }
+    else if (req.url === url_base + '/showdb' && req.method === 'POST') {
+        // Do the fetch stuff here
     }
     else if (req.url === url_base + '/download' && req.method === 'POST') {
         var body = '', response = '';
