@@ -56,7 +56,7 @@ const play_lists = sequelize.define('list_of_play_lists', {
         allowNull: false,
         primaryKey: true
     },
-    play_lists_monitored: {
+    order_added: {
         type: DataTypes.INTEGER,
         allowNull: false,
         autoIncrement: true
@@ -211,36 +211,38 @@ async function list(req, res) {
     });
 }
 
+async function db_to_table(req, res) {
+    var body = '';
+    req.on('data', function (data) {
+        body += data;
+        // Too much POST data, kill the connection!
+        // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+        if (body.length > 1e6)
+            request.connection.destroy();
+    });
+    req.on('end', function () {
+        body = JSON.parse(body);
+        //console.log('start_num: ', body['start'], 'stop_num:', body['stop']);
+        var start_num = body['start'] || 0;
+        var stop_num = body['stop'] || 10;
+        console.log('start_num: ' + start_num + ' stop_num: ' + stop_num);
+        play_lists.findAndCountAll({
+            limit: stop_num - start_num,
+            offset: start_num
+        }).then(result => {
+            console.log("Here");
+            res.writeHead(200, { "Content-Type": "text/json" });
+            res.end(JSON.stringify(result, null, 2));
+        });
+    });
+}
+
 
 var server = http.createServer((req, res) => {
     if (req.url === url_base) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/index.html'));
-        res.end();
-    }
-    else if (req.url === url_base + '/assets/bootstrap.min.css' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
-        // don't forget to remove this sync method
-        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css'));
-        res.end();
-    }
-    else if (req.url === url_base + '/assets/bootstrap.min.css.map' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
-        // don't forget to remove this sync method
-        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css.map'));
-        res.end();
-    }
-    else if (req.url === url_base + '/assets/bootstrap.bundle.min.js' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-        // don't forget to remove this sync method
-        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js'));
-        res.end();
-    }
-    else if (req.url === url_base + '/assets/favicon.ico' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'image/vnd.microsoft.icon' });
-        // don't forget to remove this sync method
-        res.write(fs.readFileSync(__dirname + '/favicon.ico'));
         res.end();
     }
     else if (req.url === url_base + '/showdb' && req.method === 'GET') {
@@ -259,7 +261,7 @@ var server = http.createServer((req, res) => {
         res.end();
     }
     else if (req.url === url_base + '/showdb' && req.method === 'POST') {
-        // Do the fetch stuff here
+        db_to_table(req, res);
     }
     else if (req.url === url_base + '/download' && req.method === 'POST') {
         var body = '', response = '';
@@ -294,6 +296,30 @@ var server = http.createServer((req, res) => {
             res.writeHead(200, { 'Content-Type': 'text/plain' });
             res.end('[' + urls.join(' , ') + ']');
         });
+    }
+    else if (req.url === url_base + '/assets/bootstrap.min.css' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/bootstrap.min.css.map' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css.map'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/bootstrap.bundle.min.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/favicon.ico' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'image/vnd.microsoft.icon' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/favicon.ico'));
+        res.end();
     }
     else {
         //console.log("This: ",res.url);

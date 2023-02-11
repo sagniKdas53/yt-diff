@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>List of Playlists</title>
+    <title>Database interface</title>
     <link rel="icon" href="/ytdiff/assets/favicon.ico">
     <link href="/ytdiff/assets/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
@@ -28,6 +28,80 @@
             <a href="http://localhost:8888/ytdiff" class="link-warning">Back</a>
         </div>
     </nav>
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <h3>list_of_play_lists:</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">id</th>
+                            <th scope="col">url</th>
+                            <th scope="col">createdAt</th>
+                            <th scope="col">updatedAt</th>
+                            <th scope="col">Show more?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!--<tr>
+                            <th scope="row">1</th>
+                            <td>Mark</td>
+                            <td>Otto</td>
+                            <td>@mdo</td>
+                        </tr>
+                    Remember only list a few items not all at once.
+                    -->
+                    </tbody>
+                </table>
+                <form class="mb-2">
+                    <label for="start" class="form-label">Start: </label>
+                    <input type="number" class="form-control" placeholder="1" name="start_input" id="start" />
+                    <label for="stop" class="form-label">Stop: </label>
+                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
+                </form>
+                <div class="btn-group" role="group">
+                    <button id="next" type="button" onclick="select_next()" class="btn btn-primary">Next</button>
+                    <button id="back" type="button" onclick="select_back()" class="btn btn-primary">Back</button>
+                </div>
+            </div>
+            <div class="col">
+                <h3>List:</h3>
+                <div class="list-group list-group-flush overflow-scroll" id="listing">
+                    <!--
+                        Cliking the show more buttons will load up the 
+                        most recent changes to the playlist on this side
+                        it might also need a limiter and functionality to 
+                        go back and forth between pages, chaching maybe.
+                    -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <script defer>
+        window.onload = populateList();
+        function populateList() {
+            fetch("/ytdiff/showdb", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+
+                //make sure to serialize your JSON body
+                body: JSON.stringify({
+                    start: 0, // get these later from the document
+                    stop: 10
+                })
+            }).then((response) => response.text()).then((text) => {
+                text = JSON.parse(text)
+                text['rows'].forEach(element => {
+                    console.log(element);
+                    // make the document generate the table here
+                });
+            });
+        }
+
+    </script>
 
 </body>
 
