@@ -230,7 +230,7 @@ async function db_to_table(req, res) {
             limit: stop_num - start_num,
             offset: start_num
         }).then(result => {
-            console.log("Here");
+            //console.log("Here");
             res.writeHead(200, { "Content-Type": "text/json" });
             res.end(JSON.stringify(result, null, 2));
         });
