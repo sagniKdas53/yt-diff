@@ -3,7 +3,8 @@ const http = require('http');
 const fs = require('fs');
 const { Sequelize, DataTypes } = require('sequelize');
 const { Server } = require("socket.io");
-//var url = require('url');
+var sock = null;
+const regex = /(\d{1,3}\.\d)%/;
 const url_base = '/ytdiff'; // get this form env in docker config
 
 var port = process.argv[2] || 8888; // get this form env in docker config
@@ -121,6 +122,16 @@ async function download_background_sequential(url_list) {
             const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
             yt_dlp.stdout.on("data", async data => {
                 console.log(`${data}`);
+                try {
+                    let m;
+                    if ((m = regex.exec(`${data}`)) !== null) {
+                        // The result can be accessed through the `m`-variable.\
+                        sock.emit('progress', { message: m[0] });
+                    }
+                } catch (error) {
+                    console.log(`${error}`);
+                    sock.emit('error', { message: `${error}` });
+                }
             });
             yt_dlp.stderr.on("data", data => {
                 console.log(`stderr: ${data}`);
@@ -141,6 +152,8 @@ async function download_background_sequential(url_list) {
                     });
                     await entity.save();
                     console.log(entity.downloaded);
+                    console.log(entity.title);
+                    sock.emit('done', { message: `${entity.title}` });
                 }
             });
             await new Promise((resolve) => yt_dlp.on("close", resolve));
@@ -250,7 +263,6 @@ async function db_to_table(req, res) {
     });
 }
 
-
 var server = http.createServer((req, res) => {
     if (req.url === url_base) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -344,6 +356,7 @@ var server = http.createServer((req, res) => {
 const io = new Server(server, { /* options */ });
 io.on("connection", (socket) => {
     //console.log('connection', socket);
+    sock = socket;
     socket.emit('init', { message: "Connected", id: socket.id });
     socket.on('acknowledge', console.log);
 });

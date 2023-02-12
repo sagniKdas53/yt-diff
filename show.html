@@ -95,7 +95,7 @@
                 socket.emit('acknowledge', { data: 'Connected', id: data.id });
             });
             socket.on('progress', function (data) {
-                pbar.setAttribute("value", data.progress);
+                console.log(data);
             });
             socket.on('error', console.error.bind(console));
             socket.on('message', console.log.bind(console));
