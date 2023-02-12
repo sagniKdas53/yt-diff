@@ -2,6 +2,7 @@ const { spawn } = require("child_process");
 const http = require('http');
 const fs = require('fs');
 const { Sequelize, DataTypes } = require('sequelize');
+const { Server } = require("socket.io");
 //var url = require('url');
 const url_base = '/ytdiff'; // get this form env in docker config
 
@@ -51,6 +52,10 @@ const vid_list = sequelize.define('vid_list', {
 
 const play_lists = sequelize.define('list_of_play_lists', {
     // Model attributes are defined here
+    title: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
     url: {
         type: DataTypes.STRING,
         allowNull: false,
@@ -181,9 +186,17 @@ async function list(req, res) {
             response_list.pop();
             console.log(response_list, response_list.length);
             // Check if this is indeed a playlist then add or update the play_lists
-            if (response_list.length > 1) {
-                play_lists.findOrCreate({
-                    where: { url: body_url }
+            if ((response_list.length > 1) || body_url.includes('playlist')) {
+                let title_str = "";
+                const get_title = spawn("yt-dlp", ["--playlist-end", 1, "--flat-playlist", "--print", '%(playlist_title)s', body_url]);
+                get_title.stdout.on("data", async (data) => {
+                    title_str += data;
+                });
+                get_title.on("close", code => {
+                    play_lists.findOrCreate({
+                        where: { url: body_url },
+                        defaults: { title: title_str }
+                    });
                 });
             }
             response_list.forEach(async element => {
@@ -259,7 +272,7 @@ var server = http.createServer((req, res) => {
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/show.html'));
         res.end();
-    } 
+    }
     else if (req.url === url_base + '/showdb' && req.method === 'POST') {
         db_to_table(req, res);
     }
@@ -326,6 +339,13 @@ var server = http.createServer((req, res) => {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('404');
     }
+});
+
+const io = new Server(server, { /* options */ });
+io.on("connection", (socket) => {
+    //console.log('connection', socket);
+    socket.emit('init', { message: "Connected", id: socket.id });
+    socket.on('acknowledge', console.log);
 });
 
 server.listen(port, () => {

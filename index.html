@@ -9,6 +9,9 @@
     <link rel="icon" href="/ytdiff/assets/favicon.ico">
     <link href="/ytdiff/assets/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.socket.io/4.5.3/socket.io.min.js"
+        integrity="sha384-WPFUvHkB1aHA5TDSZi6xtDgkF0wXJcIIxXhC6h8OT8EH3fC5PWro5pWJ1THjcfEi"
+        crossorigin="anonymous"></script>
     <style>
         .list-group {
             max-height: 80vmin;
@@ -63,6 +66,7 @@
         </div>
     </div>
     <script defer>
+        window.onload = sockSetup();
         function post() {
             var url = document.getElementById("url").value;
             var start = document.getElementById("start").value;
@@ -153,6 +157,21 @@
                 console.log(text);
             });
             //set up a websocket to check on the status although it won't be really useful
+        }
+
+        function sockSetup() {
+            console.log("Sock setup started");
+            var socket = io();
+            socket.on('init', function (data) {
+                console.log(data.message);
+                // Respond with a message including this clients' id sent from the server
+                socket.emit('acknowledge', { data: 'Connected', id: data.id });
+            });
+            socket.on('progress', function (data) {
+                pbar.setAttribute("value", data.progress);
+            });
+            socket.on('error', console.error.bind(console));
+            socket.on('message', console.log.bind(console));
         }
     </script>
 </body>
