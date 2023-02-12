@@ -29,7 +29,7 @@ RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
 
-COPY index.js index.html package-lock.json package.json /
+COPY index.js index.html package-lock.json package.json favicon.ico show.html /
 
 EXPOSE 8888
 
@@ -43,7 +43,8 @@ RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
     && mv node ../../bin \
     && cd ../.. \
     && node node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
-    && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz 
+    && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz \
+    && sed -i 's/localhost/yt-db/g' index.js
 
 CMD [ "node", "index.js" ]
 

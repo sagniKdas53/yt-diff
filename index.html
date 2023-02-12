@@ -13,7 +13,7 @@
         integrity="sha384-WPFUvHkB1aHA5TDSZi6xtDgkF0wXJcIIxXhC6h8OT8EH3fC5PWro5pWJ1THjcfEi"
         crossorigin="anonymous"></script>
     <style>
-        .list-group {
+        .list-table {
             max-height: 80vmin;
             overflow-y: scroll;
             padding-bottom: 15px;
@@ -58,9 +58,17 @@
             </div>
             <div class="col">
                 <h3>List:</h3>
-                <div class="list-group list-group-flush overflow-scroll" id="listing">
-                    <!--<li class="list-group-item">An item</li>-->
-                </div>
+                <table class="table table-responsive" id="listing">
+                    <thead class="list-table">
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Title</th>
+                        </tr>
+                    </thead>
+                    <tbody class="list-table">
+
+                    </tbody>
+                </table>
                 <!--Add the files that will be downloaded here as a list-->
             </div>
         </div>
@@ -71,8 +79,7 @@
             var url = document.getElementById("url").value;
             var start = document.getElementById("start").value;
             var stop = document.getElementById("stop").value;
-            //var single = document.getElementById("is_single").checked;
-            let output = document.getElementById("listing");
+            const table = document.getElementById("listing");
             console.log("URL: " + url, "Start: " + start, "Stop: " + stop);//, "Single: " + single);
             fetch("/ytdiff/list", {
                 method: "post",
@@ -89,20 +96,18 @@
                 })
             }).then((response) => response.text()).then((text) => {
                 response_list = text.slice(0, -2).split("\n").slice(0, -1);
-                // instead of discarding the return code display it somewhere and also make
-                // a way to show the errors
-                // finally the list should have check boxes to select which vidoes to download
-                // passing them to the backend
-                console.log(response_list, response_list.length);
-                //<div class="list-group">
-                //<label class="list-group-item">
-                //   <input class="form-check-input me-1" type="checkbox" value="">
-                //  First checkbox
-                //</label>
-                //</div>
+                console.log(response_list, response_list.length)
+
                 response_list.forEach(async element => {
                     var items = element.split("\t");
                     console.log(items, items.length);
+                    /*
+                        # 	Title 
+                    */
+                    const row = table.insertRow();
+                    const select = row.insertCell(0);
+                    const title = row.insertCell(1);
+
 
                     let label = document.createElement("label");
                     label.className = "list-group-item";
@@ -117,9 +122,9 @@
                     link.href = items[2];
                     link.appendChild(document.createTextNode(items[0]));
 
-                    label.appendChild(checkbox);
-                    label.appendChild(link);
-                    output.appendChild(label);
+                    select.appendChild(checkbox);
+                    title.appendChild(link);
+                    //output.appendChild(label);
                 });
             });
         };

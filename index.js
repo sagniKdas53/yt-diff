@@ -3,11 +3,10 @@ const http = require('http');
 const fs = require('fs');
 const { Sequelize, DataTypes } = require('sequelize');
 const { Server } = require("socket.io");
-var sock = null;
 const regex = /(\d{1,3}\.\d)%/;
 const url_base = '/ytdiff'; // get this form env in docker config
-
-var port = process.argv[2] || 8888; // get this form env in docker config
+const port = process.argv[2] || 8888; // get this form env in docker config
+// maybe use try catch to fix this
 const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
     //host: 'yt-db',
     host: 'localhost',
@@ -44,7 +43,8 @@ const vid_list = sequelize.define('vid_list', {
     available: {
         type: DataTypes.BOOLEAN,
         allowNull: false
-    }, reference: {
+    },
+    reference: {
         type: DataTypes.STRING,
         allowNull: false,
     },
@@ -263,7 +263,38 @@ async function db_to_table(req, res) {
     });
 }
 
-var server = http.createServer((req, res) => {
+async function sub_list(req, res) {
+    var body = '';
+    req.on('data', function (data) {
+        body += data;
+        // Too much POST data, kill the connection!
+        // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+        if (body.length > 1e6)
+            request.connection.destroy();
+    });
+    req.on('end', function () {
+        body = JSON.parse(body);
+        console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
+            'stop_num:', body['stop'])//, 'single:', body['single']);
+        var body_url = body['url'];
+        var start_num = body['start'] || 0;
+        var stop_num = body['stop'] || 10; // add a way to send -1 to list it all in one go
+        console.log("url: ", body_url, "Start: ", start_num, "Stop: ", stop_num);
+        vid_list.findAndCountAll({
+            where: {
+                reference: body_url
+            },
+            limit: stop_num - start_num,
+            offset: start_num
+        }).then(result => {
+            res.writeHead(200, { "Content-Type": "text/json" });
+            res.end(JSON.stringify(result, null, 2));
+        })
+    });
+
+}
+
+const server = http.createServer((req, res) => {
     if (req.url === url_base) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         // don't forget to remove this sync method
@@ -288,6 +319,9 @@ var server = http.createServer((req, res) => {
     else if (req.url === url_base + '/showdb' && req.method === 'POST') {
         db_to_table(req, res);
     }
+    else if (req.url === url_base + '/getsub' && req.method === 'POST') {
+        sub_list(req, res);
+    }
     else if (req.url === url_base + '/download' && req.method === 'POST') {
         var body = '', response = '';
         req.on('data', function (data) {
@@ -301,13 +335,6 @@ var server = http.createServer((req, res) => {
             body = JSON.parse(body);
             var urls = [];
             console.log('Recieved: ' + body['ids']);
-            //download here
-            //setup websocket if i feel like it
-            //the idea here is simple query the id form the db get the url
-            //pass the url to a spwan instance and then download if error occures
-            //pass the error to the client as a notification or if websocket is added then via 
-            //that, now once the download is done update the db that the video is saved
-            //finally notify the client if the window is still open
             var i = 0;
             for (const id_str of body['ids']) {
                 console.log(`Finding the url of the video ${++i}`);
@@ -354,11 +381,11 @@ var server = http.createServer((req, res) => {
 });
 
 const io = new Server(server, { /* options */ });
-io.on("connection", (socket) => {
+const sock = io.on("connection", (socket) => {
     //console.log('connection', socket);
-    sock = socket;
     socket.emit('init', { message: "Connected", id: socket.id });
     socket.on('acknowledge', console.log);
+    return socket;
 });
 
 server.listen(port, () => {

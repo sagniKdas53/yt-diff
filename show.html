@@ -13,7 +13,7 @@
         integrity="sha384-WPFUvHkB1aHA5TDSZi6xtDgkF0wXJcIIxXhC6h8OT8EH3fC5PWro5pWJ1THjcfEi"
         crossorigin="anonymous"></script>
     <style>
-        .list-group {
+        .list-table {
             max-height: 80vmin;
             overflow-y: scroll;
             padding-bottom: 15px;
@@ -59,18 +59,34 @@
                     <button id="next" type="button" onclick="next()" class="btn btn-primary">Next</button>
                     <button id="back" type="button" onclick="back()" class="btn btn-primary">Back</button>
                 </div>
+                <div class="btn-group" role="group">
+                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">Select all</button>
+                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">Select none</button>
+                </div>
+                <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download
+                    Selected</button>
             </div>
             <div class="col">
                 <h3>List:</h3>
-                <div class="list-group list-group-flush overflow-scroll" id="listing">
-                    <!--
-                        Cliking the show more buttons will load up the 
-                        most recent changes to the playlist on this side
-                        it might also need a limiter and functionality to 
-                        go back and forth between pages, chaching maybe.
-                    -->
+                <table class="table table-responsive" id="listing">
+                    <thead class="list-table">
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Downloaded</th>
+                            <th scope="col">Available</th>
+                        </tr>
+                    </thead>
+                    <tbody class="list-table">
 
-                </div>
+                    </tbody>
+                </table>
+                <form class="mb-2">
+                    <label for="start" class="form-label">Start: </label>
+                    <input type="number" class="form-control" placeholder="0" name="start_input" id="start_sub" />
+                    <label for="stop" class="form-label">Stop: </label>
+                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop_sub" />
+                </form>
             </div>
         </div>
     </div>
@@ -190,8 +206,88 @@
         };
         function getSubList(url) {
             console.log(url);
+            var start = document.getElementById("start_sub").value;
+            var stop = document.getElementById("stop_sub").value;
+            const table = document.getElementById("listing");
+            fetch("/ytdiff/getsub", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+
+                //make sure to serialize your JSON body
+                body: JSON.stringify({
+                    url: url,
+                    start: start,
+                    stop: stop
+                })
+            }).then((response) => response.text()).then((text) => {
+                //console.log(text);
+                data = JSON.parse(text);
+                data["rows"].forEach(element => {
+                    /*
+                        # 	Title 	Downloaded 	Available
+                    */
+                    const row = table.insertRow();
+                    const select = row.insertCell(0);
+                    const title = row.insertCell(1);
+                    const download = row.insertCell(2);
+                    const status = row.insertCell(3);
+
+                    let checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.className = "form-check-input me-1";
+                    checkbox.value = "";
+                    checkbox.id = element.id;
+
+                    let link = document.createElement('a');
+                    link.href = element.url;
+                    link.appendChild(document.createTextNode(element.title));
+                    select.appendChild(checkbox);
+                    title.appendChild(link);
+                    download.innerHTML = element.downloaded;
+                    status.innerHTML = element.available;
+                });
+                // generate the table here
+
+            });
         };
 
+        function select_all() {
+            document.querySelectorAll('input[type=checkbox]').forEach(element => {
+                element.checked = true;
+            });
+        }
+
+        function select_none() {
+            document.querySelectorAll('input[type=checkbox]').forEach(element => {
+                element.checked = false;
+            });
+        }
+
+        function download() {
+            var id = []
+            document.querySelectorAll('input[type=checkbox]:checked')
+                .forEach(element => {
+                    id.push(element.id);
+                })
+            console.log(id);
+            fetch("/ytdiff/download", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                //make sure to serialize your JSON body
+                body: JSON.stringify({
+                    ids: id,
+                })
+            }).then((response) => response.text()).then((text) => {
+                console.log(text);
+            });
+            //set up a websocket to check on the status although it won't be really useful
+        }
     </script>
 
 </body>
