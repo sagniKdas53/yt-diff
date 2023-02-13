@@ -12,7 +12,7 @@
     <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
     <style>
         .list-table {
-            max-height: 80vmin;
+            max-height: 80vh;
             overflow-y: scroll;
             padding-bottom: 15px;
         }
@@ -56,18 +56,21 @@
             </div>
             <div class="col">
                 <h3>List:</h3>
-                <table class="table table-responsive" id="listing">
-                    <thead class="list-table">
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Title</th>
-                        </tr>
-                    </thead>
-                    <tbody class="list-table">
-
-                    </tbody>
-                </table>
-                <!--Add the files that will be downloaded here as a list-->
+                <div class="list-table">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Title</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listing">
+                            <!--all items would be added here
+                            get the pagenition to work also make only the tbody
+                            scrollable not the entire table-->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
