@@ -75,6 +75,34 @@ sequelize.sync().then(() => {
     console.error('Unable to create table : ', error);
 });
 
+async function download_stuff(req, res, next) {
+    var body = '', response = '';
+    req.on('data', function (data) {
+        body += data;
+        // Too much POST data, kill the connection!
+        // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+        if (body.length > 1e6)
+            req.connection.destroy();
+    });
+    req.on('end', async function () {
+        body = JSON.parse(body);
+        var urls = [];
+        console.log('Recieved: ' + body['ids']);
+        var i = 0;
+        for (const id_str of body['ids']) {
+            console.log(`Finding the url of the video ${++i}`);
+            const entry = await vid_list.findOne({ where: { id: id_str } });
+            urls.push(entry.url);
+        }
+
+        console.log(urls);
+        download_background_sequential(urls);
+        response = 'Downloading started, it will take a while ...';
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('[' + urls.join(' , ') + ']');
+    });
+}
+
 async function download_background_parallel(url_list) {
     console.log('Downloading in background')
     var i = 0;
@@ -170,9 +198,9 @@ async function list(req, res) {
         // Too much POST data, kill the connection!
         // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
         if (body.length > 1e6)
-            request.connection.destroy();
+            req.connection.destroy();
     });
-    req.on('end', function () {
+    req.on('end', async function () {
         body = JSON.parse(body);
         console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
             'stop_num:', body['stop'])//, 'single:', body['single']);
@@ -181,7 +209,11 @@ async function list(req, res) {
         var stop_num = body['stop'] || 10; // add a way to send -1 to list it all in one go
         // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
         console.log("url: ", body_url);
-        const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
+        // lsiting the playlists in parts is actually wasteful, considering the time it takes query stuff
+        // ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist", "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]
+        // alternatively a loop can be used to process the list in parts a d when there are no more vidoes returned it can stop
+        //do {
+        const yt_list = spawn("yt-dlp", ["--flat-playlist",
             "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
         yt_list.stdout.on("data", async data => {
             response += data;
@@ -192,29 +224,48 @@ async function list(req, res) {
         yt_list.on('error', (error) => {
             response = `error: ${error.message}`;
         });
-        yt_list.on("close", code => {
+        yt_list.on("close", async code => {
             end = `child process exited with code ${code}`;
             response_list = response.split("\n");
             // remove the "" from the end of the list
             response_list.pop();
             console.log(response_list, response_list.length);
             // Check if this is indeed a playlist then add or update the play_lists
-            if ((response_list.length > 1) || body_url.includes('playlist')) {
+            if ((response_list.length > 1) && body_url.includes('playlist')) { // change this && to || later when the errosr messages can be filtered out
                 let title_str = "";
-                const get_title = spawn("yt-dlp", ["--playlist-end", 1, "--flat-playlist", "--print", '%(playlist_title)s', body_url]);
-                get_title.stdout.on("data", async (data) => {
-                    title_str += data;
+                var is_alredy_indexed = await play_lists.findOne({
+                    where: { url: body_url }
                 });
-                get_title.on("close", code => {
-                    play_lists.findOrCreate({
-                        where: { url: body_url },
-                        defaults: { title: title_str }
+                try {
+                    // this isn't updating the field, need to look into it
+                    is_alredy_indexed.set({
+                        updatedAt: new Date()
                     });
-                });
+                    await is_alredy_indexed.save();
+                    console.log("playlist updated");
+                    title_str = 'No need to update'
+                } catch (error) {
+                    console.log("playlist not enocuntered");
+                }
+                if (title_str === "") {
+                    const get_title = spawn("yt-dlp", ["--playlist-end", 1, "--flat-playlist", "--print", '%(playlist_title)s', body_url]);
+                    get_title.stdout.on("data", async (data) => {
+                        title_str += data;
+                    });
+                    get_title.on("close", code => {
+                        play_lists.findOrCreate({
+                            where: { url: body_url },
+                            defaults: { title: title_str }
+                        });
+                    });
+                }
+            } else {
+                body_url = "None";
             }
             response_list.forEach(async element => {
                 var items = element.split("\t");
                 console.log(items, items.length);
+                // update the vidoes too here by looking for any changes that could have been made
                 try {
                     const video = await vid_list.create({
                         url: items[2],
@@ -227,13 +278,14 @@ async function list(req, res) {
                         console.log(items[0], "saved");
                     });
                 } catch (error) {
-                    console.error(error);
+                    // console.error(error);
                     // do better here, later
                 }
             });
             res.writeHead(200, { "Content-Type": "text/plain" });
             res.end(response + end);
         });
+        //} while (condition);
     });
 }
 
@@ -244,7 +296,7 @@ async function db_to_table(req, res) {
         // Too much POST data, kill the connection!
         // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
         if (body.length > 1e6)
-            request.connection.destroy();
+            req.connection.destroy();
     });
     req.on('end', function () {
         body = JSON.parse(body);
@@ -270,7 +322,7 @@ async function sub_list(req, res) {
         // Too much POST data, kill the connection!
         // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
         if (body.length > 1e6)
-            request.connection.destroy();
+            req.connection.destroy();
     });
     req.on('end', function () {
         body = JSON.parse(body);
@@ -323,31 +375,7 @@ const server = http.createServer((req, res) => {
         sub_list(req, res);
     }
     else if (req.url === url_base + '/download' && req.method === 'POST') {
-        var body = '', response = '';
-        req.on('data', function (data) {
-            body += data;
-            // Too much POST data, kill the connection!
-            // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
-            if (body.length > 1e6)
-                request.connection.destroy();
-        });
-        req.on('end', async function () {
-            body = JSON.parse(body);
-            var urls = [];
-            console.log('Recieved: ' + body['ids']);
-            var i = 0;
-            for (const id_str of body['ids']) {
-                console.log(`Finding the url of the video ${++i}`);
-                const entry = await vid_list.findOne({ where: { id: id_str } });
-                urls.push(entry.url);
-            }
-
-            console.log(urls);
-            download_background_sequential(urls);
-            response = 'Downloading started, it will take a while ...';
-            res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end('[' + urls.join(' , ') + ']');
-        });
+        download_stuff(req, res);
     }
     else if (req.url === url_base + '/assets/bootstrap.min.css' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
@@ -367,10 +395,28 @@ const server = http.createServer((req, res) => {
         res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js'));
         res.end();
     }
+    else if (req.url === url_base + '/assets/bootstrap.bundle.min.js.map' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js.map'));
+        res.end();
+    }
     else if (req.url === url_base + '/assets/favicon.ico' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'image/vnd.microsoft.icon' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/favicon.ico'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/socket.io.min.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/socket.io.min.js.map' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js.map'));
         res.end();
     }
     else {

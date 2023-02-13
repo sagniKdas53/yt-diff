@@ -9,9 +9,7 @@
     <link rel="icon" href="/ytdiff/assets/favicon.ico">
     <link href="/ytdiff/assets/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.socket.io/4.5.3/socket.io.min.js"
-        integrity="sha384-WPFUvHkB1aHA5TDSZi6xtDgkF0wXJcIIxXhC6h8OT8EH3fC5PWro5pWJ1THjcfEi"
-        crossorigin="anonymous"></script>
+    <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
     <style>
         .list-table {
             max-height: 80vmin;
@@ -59,12 +57,8 @@
                     <button id="next" type="button" onclick="next()" class="btn btn-primary">Next</button>
                     <button id="back" type="button" onclick="back()" class="btn btn-primary">Back</button>
                 </div>
-                <div class="btn-group" role="group">
-                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">Select all</button>
-                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">Select none</button>
-                </div>
-                <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download
-                    Selected</button>
+                <button id="orphan" type="button" onclick="getSubList('None')" class="btn btn-primary">Orphaned
+                    Videos</button>
             </div>
             <div class="col">
                 <h3>List:</h3>
@@ -87,11 +81,22 @@
                     <label for="stop" class="form-label">Stop: </label>
                     <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop_sub" />
                 </form>
+                <div class="btn-group" role="group">
+                    <button id="next" type="button" onclick="next_sub()" class="btn btn-primary">Next</button>
+                    <button id="back" type="button" onclick="back_sub()" class="btn btn-primary">Back</button>
+                    <button id="back" type="button" onclick="depopulateSubList()" class="btn btn-primary">Clear</button>
+                </div>
+                <div class="btn-group" role="group">
+                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">Select all</button>
+                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">Select none</button>
+                </div>
+                <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download</button>
             </div>
         </div>
     </div>
     <script defer>
         window.onload = init();
+        var url_global = "None";
         function init() {
             if (document.getElementById("start").value === "") {
                 document.getElementById("start").value = 0;
@@ -249,32 +254,8 @@
                     download.innerHTML = element.downloaded;
                     status.innerHTML = element.available;
                 });
-                /*TODO:
-                Add pageniation ie: the auto removal of table and update of values that is done for List of Playlists
-                 to the sublists and the main page
-
-                Next add an option to list and show vidoes that are not associated with any Playlists to do this update the 
-                listing to add the reference to the vidoes that are not associated with any Playlists as to be associated with
-                none this will make querying easier
-
-                Alternatively there can be a way to query vidoes whos url and reference are same seems stupid tho.
-
-                Add the socket.io javascript to being locally served
-
-                Test traefik with socket and then port the entire thing
-
-                Also find a way to make the downloads work in parallel but only 3||n running parallelly
-
-                Next add a way to update the playlist UpdatedAt when the playlist is updated or re-encountered
-
-                Lastly find a way to change the status of vidoes in the Available column when they are found to be 
-                removed or something when re-checking the playlist
-
-                Thats is add a way to re-check the playlist after a few weeks (or as specified by the user) form the last 
-                UpdatedAt time of the playlist.
-                */
-
             });
+            url_global = url;
         };
 
         function select_all() {
@@ -288,6 +269,13 @@
                 element.checked = false;
             });
         }
+
+        function depopulateSubList() {
+            const table = document.getElementById("listing");
+            for (var i = 1; i < table.rows.length;) {
+                table.deleteRow(i);
+            }
+        };
 
         function download() {
             var id = []
@@ -310,6 +298,38 @@
                 console.log(text);
             });
             //set up a websocket to check on the status although it won't be really useful
+        }
+
+        function next_sub() {
+            if (document.getElementById("start_sub").value === "") {
+                document.getElementById("start_sub").value = 0;
+            } else {
+                document.getElementById("start_sub").value = parseInt(document.getElementById("start_sub").value, 10) + 10;
+            }
+            if (document.getElementById("stop_sub").value === "") {
+                document.getElementById("stop_sub").value = 10;
+            } else {
+                document.getElementById("stop_sub").value = parseInt(document.getElementById("stop_sub").value, 10) + 10;
+            }
+            getSubList(url_global);
+        }
+        function back_sub() {
+            if (document.getElementById("start_sub").value === "") {
+                document.getElementById("start_sub").value = 0;
+            } else if ((parseInt(document.getElementById("start_sub").value, 10) - 10) <= 0) {
+                document.getElementById("start_sub").value = 0;
+            } else {
+                document.getElementById("start_sub").value = parseInt(document.getElementById("start_sub").value, 10) - 10;
+            }
+
+            if (document.getElementById("stop_sub").value === "") {
+                document.getElementById("stop_sub").value = 10;
+            } else if ((parseInt(document.getElementById("stop_sub").value, 10) - 10) <= 10) {
+                document.getElementById("stop_sub").value = 10;
+            } else {
+                document.getElementById("stop_sub").value = parseInt(document.getElementById("stop_sub").value, 10) - 10;
+            }
+            getSubList(url_global);
         }
     </script>
 

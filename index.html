@@ -9,9 +9,7 @@
     <link rel="icon" href="/ytdiff/assets/favicon.ico">
     <link href="/ytdiff/assets/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.socket.io/4.5.3/socket.io.min.js"
-        integrity="sha384-WPFUvHkB1aHA5TDSZi6xtDgkF0wXJcIIxXhC6h8OT8EH3fC5PWro5pWJ1THjcfEi"
-        crossorigin="anonymous"></script>
+    <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
     <style>
         .list-table {
             max-height: 80vmin;
@@ -70,6 +68,16 @@
                     </tbody>
                 </table>
                 <!--Add the files that will be downloaded here as a list-->
+            </div>
+        </div>
+    </div>
+    <div style="position: absolute; bottom: 10px; right: 10px;">
+        <div class="toast align-items-bottom" role="alert" aria-live="assertive" aria-atomic="true" id="notify">
+            <div class="d-flex">
+                <div class="toast-body">
+
+                </div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         </div>
     </div>
@@ -178,8 +186,19 @@
             socket.on('error', console.error.bind(console));
             socket.on('done', function (data) {
                 console.log(data.message);
-                alert('Downloaded: ' + `${data.message}`);
+                //alert(`Downloaded: ${data.message}`);
+                var myToastEl = document.getElementById('notify');
+                myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
+                var myToast = new bootstrap.Toast(myToastEl, {
+                    delay: 5000
+                }); // Returns a Bootstrap toast instance
+                //myToast.dispose();
+                myToast.show();
             });
+        }
+
+        function alert_bs() {
+
         }
     </script>
 </body>
