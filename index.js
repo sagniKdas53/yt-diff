@@ -212,8 +212,9 @@ async function list(req, res) {
         // lsiting the playlists in parts is actually wasteful, considering the time it takes query stuff
         // ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist", "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]
         // alternatively a loop can be used to process the list in parts a d when there are no more vidoes returned it can stop
-        //do {
-        const yt_list = spawn("yt-dlp", ["--flat-playlist",
+
+        // creating the response first
+        const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
             "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
         yt_list.stdout.on("data", async data => {
             response += data;
@@ -238,9 +239,7 @@ async function list(req, res) {
                 });
                 try {
                     // this isn't updating the field, need to look into it
-                    is_alredy_indexed.set({
-                        updatedAt: new Date()
-                    });
+                    is_alredy_indexed.changed('updatedAt', true);
                     await is_alredy_indexed.save();
                     console.log("playlist updated");
                     title_str = 'No need to update'
@@ -278,15 +277,70 @@ async function list(req, res) {
                         console.log(items[0], "saved");
                     });
                 } catch (error) {
-                    // console.error(error);
+                    // remember to uncomment this later
+                    console.error(error);
                     // do better here, later
                 }
             });
             res.writeHead(200, { "Content-Type": "text/plain" });
             res.end(response + end);
+            // get the chunk size from user too
+            await list_background(body_url, start_num, stop_num, 10);
         });
-        //} while (condition);
+
     });
+}
+
+async function list_background(body_url, start_num, stop_num, chunk_size) {
+    var response = '';
+    console.log('listing in background');
+    do {
+        response = '';
+        start_num = parseInt(start_num) + chunk_size;
+        stop_num = parseInt(stop_num) + chunk_size;
+        console.log('start_num:', start_num, 'stop_num:', stop_num, 'chunk_size:', chunk_size);
+        const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
+            "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
+        yt_list.stdout.on("data", async data => {
+            response += data;
+        });
+        yt_list.stderr.on("data", data => {
+            response = `stderr: ${data}`;
+        });
+        yt_list.on('error', (error) => {
+            response = `error: ${error.message}`;
+        });
+        yt_list.on("close", async code => {
+            end = `child process exited with code ${code}`;
+            response_list = response.split("\n");
+            // remove the "" from the end of the list
+            response_list.pop();
+            console.log(response_list, response_list.length);
+            // adding the items to db
+            response_list.forEach(async element => {
+                var items = element.split("\t");
+                console.log(items, items.length);
+                // update the vidoes too here by looking for any changes that could have been made
+                try {
+                    const video = await vid_list.create({
+                        url: items[2],
+                        id: items[1],
+                        reference: body_url,
+                        title: items[0],
+                        downloaded: false,
+                        available: true
+                    }).then(function () {
+                        console.log(items[0], "saved");
+                    });
+                } catch (error) {
+                    // remember to uncomment this later
+                    console.error(error);
+                    // do better here, later
+                }
+            });
+        });
+    } while (response != []);
+    console.log('done listing');
 }
 
 async function db_to_table(req, res) {

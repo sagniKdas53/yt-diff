@@ -211,6 +211,7 @@
         };
         function getSubList(url) {
             console.log(url);
+            depopulateSubList();
             var start = document.getElementById("start_sub").value;
             var stop = document.getElementById("stop_sub").value;
             const table = document.getElementById("listing");
@@ -301,6 +302,7 @@
         }
 
         function next_sub() {
+            depopulateSubList();
             if (document.getElementById("start_sub").value === "") {
                 document.getElementById("start_sub").value = 0;
             } else {
@@ -314,6 +316,7 @@
             getSubList(url_global);
         }
         function back_sub() {
+            depopulateSubList();
             if (document.getElementById("start_sub").value === "") {
                 document.getElementById("start_sub").value = 0;
             } else if ((parseInt(document.getElementById("start_sub").value, 10) - 10) <= 0) {
