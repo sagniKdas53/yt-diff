@@ -262,7 +262,9 @@ async function list(req, res) {
             } else {
                 body_url = "None";
             }
-            response_list.forEach(async element => {
+
+            // making the response 
+            Promise.all(response_list.map(async element => {
                 var items = element.split("\t");
                 console.log(items, items.length);
                 // update the vidoes too here by looking for any changes that could have been made
@@ -276,38 +278,38 @@ async function list(req, res) {
                             downloaded: false,
                             available: true
                         }
-                    })//.then(function () {
-                    //console.log(items[0], "saved");
-                    // JSON.stringify(result, null, 2)
+                    })
+                    // update if found
                     if (found) {
                         console.log("Updating entry");
                         resp_json['count'] += 1;
-                        resp_json['rows'].push(JSON.stringify(found, null, 2));
+                        resp_json['rows'].push(found);
                         console.log("resp_json", resp_json);
                         found.changed('updatedAt', true);
                         // if found doesn't have the same data then it needs to be updated
                         // list_background also needs this to be implemented
                     }
+                    // okey if it's made
                     else if (made) {
                         resp_json['count'] += 1;
-                        resp_json['rows'].push(JSON.stringify(made, null, 2));
+                        resp_json['rows'].push(made, null, 2);
                         console.log("resp_json", resp_json);
                     }
-                    // });
                 } catch (error) {
                     // remember to uncomment this later
-                    // console.error(error);
+                    console.error(error);
                     // do better here, later
                 }
+            })).then(function () {
+                console.log('here');
+                console.log("resp_json: " + resp_json);
+                res.writeHead(200, { "Content-Type": "text/json" });
+                res.end(JSON.stringify(resp_json, null, 2));
             });
-            console.log("resp_json: " + resp_json);
-            res.writeHead(200, { "Content-Type": "text/plain" });
-            res.end(response + end);
             // get the chunk size from user too
             await list_background(body_url, start_num, stop_num, chunk_size);
 
         });
-
     });
 }
 

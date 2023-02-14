@@ -83,6 +83,9 @@
                         </div>
                     </table>
                 </div>
+                <!--
+                    Add the navigation buttons here
+                -->
             </div>
         </div>
     </div>
@@ -98,8 +101,10 @@
     </div>
     <script defer>
         window.onload = sockSetup();
+        var url_global = "None";
         function send_data() {
             var url = document.getElementById("url").value;
+            url_global = url;
             var start = document.getElementById("start").value;
             var stop = document.getElementById("stop").value;
             var chunk = document.getElementById("chunk").value;
@@ -120,18 +125,22 @@
                     chunk: chunk
                 })
             }).then((response) => response.text()).then((text) => {
-                response_list = text.slice(0, -2).split("\n").slice(0, -1);
-                console.log(response_list, response_list.length)
 
-                response_list.forEach(async element => {
-                    var items = element.split("\t");
-                    console.log(items, items.length);
+                console.log(text);
+                response_list = JSON.parse(text);
+                //response_list = text.slice(0, -2).split("\n").slice(0, -1);
+                console.log(response_list['rows'], response_list['rows'].length)
+
+                response_list['rows'].forEach(async element => {
+                    console.log(element);
                     /*
-                        # 	Title 
+                        # 	Title 	Saved 	Avail.
                     */
                     const row = table.insertRow();
                     const select = row.insertCell(0);
                     const title = row.insertCell(1);
+                    const saved = row.insertCell(2);
+                    const avail = row.insertCell(3);
 
 
                     let label = document.createElement("label");
@@ -141,14 +150,16 @@
                     checkbox.type = "checkbox";
                     checkbox.className = "form-check-input me-1";
                     checkbox.value = "";
-                    checkbox.id = items[1];
+                    checkbox.id = element['id'];
 
                     let link = document.createElement('a');
-                    link.href = items[2];
-                    link.appendChild(document.createTextNode(items[0]));
-
+                    link.href = element['url'];
+                    link.appendChild(document.createTextNode(element['title']));
+                    // make it so if the saved is true it should be green and if the available is false it should be red
                     select.appendChild(checkbox);
                     title.appendChild(link);
+                    saved.innerHTML = element['downloaded'];
+                    avail.innerHTML = element['available'];
                     //output.appendChild(label);
                 });
             });
