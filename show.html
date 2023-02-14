@@ -11,10 +11,15 @@
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
     <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
     <style>
-        .list-table {
-            max-height: 80vmin;
+        .container-table {
+            max-height: 80vh;
             overflow-y: scroll;
             padding-bottom: 15px;
+        }
+
+        .container-table table thead th {
+            position: sticky;
+            top: 0;
         }
     </style>
 </head>
@@ -33,20 +38,22 @@
         <div class="row">
             <div class="col">
                 <h3>List of Playlists:</h3>
-                <table class="table table-responsive" id="placeholder">
-                    <thead>
-                        <tr>
-                            <th scope="col">ID</th>
-                            <th scope="col">Title</th>
-                            <th scope="col">CreatedAt</th>
-                            <th scope="col">UpdatedAt</th>
-                            <th scope="col">Expand</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                <div class="container-table">
+                    <table class="table table-responsive">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="table-dark">ID</th>
+                                <th scope="col" class="table-dark">Title</th>
+                                <th scope="col" class="table-dark">CreatedAt</th>
+                                <th scope="col" class="table-dark">UpdatedAt</th>
+                                <th scope="col" class="table-dark">Expand</th>
+                            </tr>
+                        </thead>
+                        <tbody id="placeholder">
 
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
                 <form class="mb-2">
                     <label for="start" class="form-label">Start: </label>
                     <input type="number" class="form-control" placeholder="0" name="start_input" id="start" />
@@ -62,35 +69,53 @@
             </div>
             <div class="col">
                 <h3>List:</h3>
-                <table class="table table-responsive" id="listing">
-                    <thead class="list-table">
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Title</th>
-                            <th scope="col">Downloaded</th>
-                            <th scope="col">Available</th>
-                        </tr>
-                    </thead>
-                    <tbody class="list-table">
+                <div class="container-table">
+                    <table class="table table-responsive">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="table-dark">#</th>
+                                <th scope="col" class="table-dark">Title</th>
+                                <th scope="col" class="table-dark">Downloaded</th>
+                                <th scope="col" class="table-dark">Available</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listing">
 
-                    </tbody>
-                </table>
-                <form class="mb-2">
-                    <label for="start" class="form-label">Start: </label>
-                    <input type="number" class="form-control" placeholder="0" name="start_input" id="start_sub" />
-                    <label for="stop" class="form-label">Stop: </label>
-                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop_sub" />
-                </form>
-                <div class="btn-group" role="group">
-                    <button id="next" type="button" onclick="next_sub()" class="btn btn-primary">Next</button>
-                    <button id="back" type="button" onclick="back_sub()" class="btn btn-primary">Back</button>
-                    <button id="back" type="button" onclick="depopulateSubList()" class="btn btn-primary">Clear</button>
+                        </tbody>
+                    </table>
                 </div>
-                <div class="btn-group" role="group">
-                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">Select all</button>
-                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">Select none</button>
+                <div class="container">
+                    <div class="row">
+                        <div class="input-group mb-3 mt-3">
+                            <input type="number" class="form-control" placeholder="0" name="start_input"
+                                id="start_sub" />
+                            <span class="input-group-text">-</span>
+                            <input type="number" class="form-control" placeholder="10" name="stop_input"
+                                id="stop_sub" />
+
+                            <button id="next" type="button" onclick="next_sub()"
+                                class="btn btn-info border-dark">Next</button>
+                            <button id="back" type="button" onclick="back_sub()"
+                                class="btn btn-info border-dark">Back</button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-8">
+                            <div class="btn-group" role="group" aria-label="Basic example">
+                                <button id="all" type="button" onclick="select_all()"
+                                    class="btn btn-info border-dark">Select all</button>
+                                <button id="none" type="button" onclick="select_none()"
+                                    class="btn btn-info border-dark">Select none</button>
+                                <button id="clear" type="button" onclick="depopulateSubList()"
+                                    class="btn btn-info border-dark">Clear</button>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <button id="dnld" type="button" onclick="download()"
+                                class="btn btn-info border-dark">Download</button>
+                        </div>
+                    </div>
                 </div>
-                <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download</button>
             </div>
         </div>
     </div>
@@ -205,7 +230,7 @@
         };
         function depopulateList() {
             const table = document.getElementById("placeholder");
-            for (var i = 1; i < table.rows.length;) {
+            for (var i = 0; i < table.rows.length;) {
                 table.deleteRow(i);
             }
         };
@@ -274,7 +299,7 @@
 
         function depopulateSubList() {
             const table = document.getElementById("listing");
-            for (var i = 1; i < table.rows.length;) {
+            for (var i = 0; i < table.rows.length;) {
                 table.deleteRow(i);
             }
         };

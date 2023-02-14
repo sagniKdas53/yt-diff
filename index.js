@@ -10,7 +10,8 @@ const port = process.argv[2] || 8888; // get this form env in docker config
 const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
     //host: 'yt-db',
     host: 'localhost',
-    dialect: 'postgres'
+    dialect: 'postgres',
+    logging: false
 });
 
 try {
@@ -70,7 +71,7 @@ const play_lists = sequelize.define('list_of_play_lists', {
 });
 
 sequelize.sync().then(() => {
-    console.log('vid_list table created successfully!');
+    console.log('vid_list and play_lists tables exist or are created successfully!');
 }).catch((error) => {
     console.error('Unable to create table : ', error);
 });
