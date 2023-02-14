@@ -192,7 +192,7 @@ async function download_background_sequential(url_list) {
 }
 
 async function list(req, res) {
-    var body = '', response = '', end = '';
+    var body = '', response = '', end = '', resp_json = { count: 0, rows: [] };
     req.on('data', function (data) {
         body += data;
         // Too much POST data, kill the connection!
@@ -206,9 +206,10 @@ async function list(req, res) {
             'stop_num:', body['stop'])//, 'single:', body['single']);
         var body_url = body['url'];
         var start_num = body['start'] || 1;
-        var stop_num = body['stop'] || 10; // add a way to send -1 to list it all in one go
-        // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
+        var stop_num = body['stop'] || 10;
+        var chunk_size = body['chunk_size'] || 10;
         console.log("url: ", body_url);
+        // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
         // lsiting the playlists in parts is actually wasteful, considering the time it takes query stuff
         // ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist", "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]
         // alternatively a loop can be used to process the list in parts a d when there are no more vidoes returned it can stop
@@ -266,26 +267,45 @@ async function list(req, res) {
                 console.log(items, items.length);
                 // update the vidoes too here by looking for any changes that could have been made
                 try {
-                    const video = await vid_list.create({
-                        url: items[2],
-                        id: items[1],
-                        reference: body_url,
-                        title: items[0],
-                        downloaded: false,
-                        available: true
-                    }).then(function () {
-                        console.log(items[0], "saved");
-                    });
+                    const [found, made] = await vid_list.findOrCreate({
+                        where: { url: items[2] },
+                        defaults: {
+                            id: items[1],
+                            reference: body_url,
+                            title: items[0],
+                            downloaded: false,
+                            available: true
+                        }
+                    })//.then(function () {
+                    //console.log(items[0], "saved");
+                    // JSON.stringify(result, null, 2)
+                    if (found) {
+                        console.log("Updating entry");
+                        resp_json['count'] += 1;
+                        resp_json['rows'].push(JSON.stringify(found, null, 2));
+                        console.log("resp_json", resp_json);
+                        found.changed('updatedAt', true);
+                        // if found doesn't have the same data then it needs to be updated
+                        // list_background also needs this to be implemented
+                    }
+                    else if (made) {
+                        resp_json['count'] += 1;
+                        resp_json['rows'].push(JSON.stringify(made, null, 2));
+                        console.log("resp_json", resp_json);
+                    }
+                    // });
                 } catch (error) {
                     // remember to uncomment this later
-                    console.error(error);
+                    // console.error(error);
                     // do better here, later
                 }
             });
+            console.log("resp_json: " + resp_json);
             res.writeHead(200, { "Content-Type": "text/plain" });
             res.end(response + end);
             // get the chunk size from user too
-            await list_background(body_url, start_num, stop_num, 10);
+            await list_background(body_url, start_num, stop_num, chunk_size);
+
         });
 
     });
@@ -294,6 +314,7 @@ async function list(req, res) {
 async function list_background(body_url, start_num, stop_num, chunk_size) {
     var response = '';
     console.log('listing in background');
+    console.log("body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
     do {
         response = '';
         start_num = parseInt(start_num) + chunk_size;

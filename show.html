@@ -231,6 +231,7 @@
             }).then((response) => response.text()).then((text) => {
                 //console.log(text);
                 data = JSON.parse(text);
+                console.log(data);
                 data["rows"].forEach(element => {
                     /*
                         # 	Title 	Downloaded 	Available
