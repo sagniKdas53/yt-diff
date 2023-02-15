@@ -12,6 +12,7 @@
     <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
     <style>
         .container-table {
+            height: 80vh;
             max-height: 80vh;
             overflow-y: scroll;
             padding-bottom: 15px;
@@ -127,6 +128,8 @@
         var url_global = "None";
         function init() {
             document.getElementById("chunk").value = 10;
+            document.getElementById("start").value = 0;
+            document.getElementById("stop").value = 10;
             sockSetup();
         }
         function sockSetup() {
@@ -158,8 +161,14 @@
             depopulateList();
             var url = document.getElementById("url").value;
             url_global = url;
+            if (document.getElementById("start").value === "") {
+                document.getElementById("start").value = 0;
+            }
+            if (document.getElementById("stop").value === "") {
+                document.getElementById("stop").value = 10;
+            }
             var start = document.getElementById("start").value;
-            if (start == "0"){
+            if (start == "0") {
                 start = 1; // yt-dlp doesn't start counting form 0 but sequelize does
             }
             var stop = document.getElementById("stop").value;

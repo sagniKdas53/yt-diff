@@ -12,6 +12,7 @@
     <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
     <style>
         .container-table {
+            height: 80vh;
             max-height: 80vh;
             overflow-y: scroll;
             padding-bottom: 15px;
@@ -37,13 +38,13 @@
     <div class="container">
         <div class="row">
             <div class="col">
-                <h3>List of Playlists:</h3>
+                <!--<h3>List of Playlists:</h3>-->
                 <div class="container-table">
                     <table class="table table-responsive">
                         <thead>
                             <tr>
                                 <th scope="col" class="table-dark">ID</th>
-                                <th scope="col" class="table-dark">Title</th>
+                                <th scope="col" class="table-dark">List Title</th>
                                 <th scope="col" class="table-dark">CreatedAt</th>
                                 <th scope="col" class="table-dark">UpdatedAt</th>
                                 <th scope="col" class="table-dark">Expand</th>
@@ -66,22 +67,16 @@
                                 class="btn btn-primary border-dark">Back</button>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-3">
-                            <button id="orphan" type="button" onclick="getSubList('None')"
-                                class="btn btn-info border-dark">Orphaned</button>
-                        </div>
-                    </div>
                 </div>
             </div>
             <div class="col">
-                <h3>List:</h3>
+                <!--<h3>List:</h3>-->
                 <div class="container-table">
                     <table class="table table-responsive">
                         <thead>
                             <tr>
                                 <th scope="col" class="table-dark">#</th>
-                                <th scope="col" class="table-dark">Title</th>
+                                <th scope="col" class="table-dark">Video Title</th>
                                 <th scope="col" class="table-dark">Downloaded</th>
                                 <th scope="col" class="table-dark">Available</th>
                             </tr>
@@ -115,7 +110,8 @@
                                     class="btn btn-info border-dark">None</button>
                                 <button id="clear" type="button" onclick="depopulateSubList()"
                                     class="btn btn-info border-dark">Clear</button>
-                                <!--<button id="orphan" type="button" onclick="getSubList('None')" class="btn btn-info border-dark"></button>-->
+                                <button id="orphan" type="button" onclick="getSubList('None')"
+                                    class="btn btn-info border-dark">Orphaned</button>
                             </div>
                         </div>
                         <div class="col-3">
@@ -124,6 +120,16 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+    <div style="position: absolute; top: 10px; right: 10px;">
+        <div class="toast align-items-bottom" role="alert" aria-live="assertive" aria-atomic="true" id="notify">
+            <div class="d-flex">
+                <div class="toast-body">
+
+                </div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         </div>
     </div>
@@ -152,7 +158,17 @@
                 console.log(data);
             });
             socket.on('error', console.error.bind(console));
-            socket.on('message', console.log.bind(console));
+            socket.on('done', function (data) {
+                console.log(data.message);
+                //alert(`Downloaded: ${data.message}`);
+                var myToastEl = document.getElementById('notify');
+                myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
+                var myToast = new bootstrap.Toast(myToastEl, {
+                    delay: 5000
+                }); // Returns a Bootstrap toast instance
+                //myToast.dispose();
+                myToast.show();
+            });
         }
         function next() {
             depopulateList();

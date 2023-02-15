@@ -1056,3 +1056,377 @@ Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" W
 Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://youtube.com/playlist?list=PL4j9sdcFKwqmqZHilHBjn_GkkEkvVLmKC' LIMIT 10 OFFSET '40';
 Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://youtube.com/playlist?list=PL4j9sdcFKwqmqZHilHBjn_GkkEkvVLmKC';
 Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://youtube.com/playlist?list=PL4j9sdcFKwqmqZHilHBjn_GkkEkvVLmKC' LIMIT 10 OFFSET '30';
+
+
+
+
+
+
+
+
+Server listening on http://localhost:8888
+Executing (default): SELECT 1+1 AS result
+Executing (default): SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vid_lists'
+Connection has been established successfully.
+Executing (default): SELECT i.relname AS name, ix.indisprimary AS primary, ix.indisunique AS unique, ix.indkey AS indkey, array_agg(a.attnum) as column_indexes, array_agg(a.attname) AS column_names, pg_get_indexdef(ix.indexrelid) AS definition FROM pg_class t, pg_class i, pg_index ix, pg_attribute a WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid AND t.relkind = 'r' and t.relname = 'vid_lists' GROUP BY i.relname, ix.indexrelid, ix.indisprimary, ix.indisunique, ix.indkey ORDER BY i.relname;
+Executing (default): SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'play_lists'
+Executing (default): SELECT i.relname AS name, ix.indisprimary AS primary, ix.indisunique AS unique, ix.indkey AS indkey, array_agg(a.attnum) as column_indexes, array_agg(a.attname) AS column_names, pg_get_indexdef(ix.indexrelid) AS definition FROM pg_class t, pg_class i, pg_index ix, pg_attribute a WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid AND t.relkind = 'r' and t.relname = 'play_lists' GROUP BY i.relname, ix.indexrelid, ix.indisprimary, ix.indisunique, ix.indkey ORDER BY i.relname;
+vid_list and play_lists tables exist or are created successfully!
+{ data: 'Connected', id: 'UxYPvx-663QSykaUAAAB' }
+body_url: https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ start_num: 1 stop_num: 10
+[
+  'Starting Dwarfs ONLY in a World of Danger | Rimworld: Seven Dwarfs #1\tqSfx5xtc0sI\thttps://www.youtube.com/watch?v=qSfx5xtc0sI',
+  'Record Time to Pure Hatred | Rimworld: Seven Dwarfs #2\t39LrvFhRelE\thttps://www.youtube.com/watch?v=39LrvFhRelE',
+  'Dwarven Heavy Industry | Rimworld: Seven Dwarfs #3\t6HrJ_lNHCwk\thttps://www.youtube.com/watch?v=6HrJ_lNHCwk',
+  'Dryad Infested Trees | Rimworld: Seven Dwarfs #4\tKtiFcxXML4w\thttps://www.youtube.com/watch?v=KtiFcxXML4w',
+  'The Last (Seven) of Us | Rimworld: Seven Dwarfs #6\t8EAZulJakDA\thttps://www.youtube.com/watch?v=8EAZulJakDA',
+  'The Doctor Will See You Now | Rimworld: Seven Dwarfs #5\tw3uQ0OEKQIg\thttps://www.youtube.com/watch?v=w3uQ0OEKQIg',
+  'This is Not a Rimworld Episode, this is a Documentary of my Decline | Rimworld: Seven Dwarfs #7\tzM9pgcdiuEs\thttps://www.youtube.com/watch?v=zM9pgcdiuEs',
+  'Tear it All Down | Rimworld: Seven Dwarfs #8\tdyjpN_G9MmM\thttps://www.youtube.com/watch?v=dyjpN_G9MmM',
+  'A Better Dwarvern Citadel | Rimworld: Seven Dwarfs #9\tKrodQV_gRe8\thttps://www.youtube.com/watch?v=KrodQV_gRe8',
+  'MORE! MORE MINITURRETS! MORE CONCRETE BAYBEE! | Rimworld: Seven Dwarfs #10\tOUsl-CdRec0\thttps://www.youtube.com/watch?v=OUsl-CdRec0'
+] 10
+Executing (default): SELECT "title", "url", "order_added", "createdAt", "updatedAt" FROM "play_lists" AS "play_lists" WHERE "play_lists"."url" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ';
+playlist not enocuntered
+
+listing in background
+
+body_url https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ start_num 1 stop_num 10 chunk_size 10
+response None
+resposne != 'done':  true
+start_num: 11 stop_num: 20 chunk_size: 10
+response 
+resposne != 'done':  true
+start_num: 21 stop_num: 30 chunk_size: 10
+response 
+resposne != 'done':  true
+start_num: 31 stop_num: 40 chunk_size: 10
+response 
+resposne != 'done':  true
+breaking to not crash and burn
+================================
+Outside loop
+response 
+resposne != 'done':  true
+done listing
+Executing (8c14ab0b-73a9-4912-8922-c2280ff6d994): START TRANSACTION;
+Executing (dc8d8ad9-fb85-4fe9-b092-55afa6eda3e0): START TRANSACTION;
+Executing (8c14ab0b-73a9-4912-8922-c2280ff6d994): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=qSfx5xtc0sI' LIMIT 1;
+Executing (dc8d8ad9-fb85-4fe9-b092-55afa6eda3e0): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=39LrvFhRelE' LIMIT 1;
+Executing (8c14ab0b-73a9-4912-8922-c2280ff6d994): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_da6c134038f847aebb74ef333fc041e1$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=qSfx5xtc0sI','qSfx5xtc0sI','Starting Dwarfs ONLY in a World of Danger | Rimworld: Seven Dwarfs #1',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.254 +00:00','2023-02-15 18:08:58.254 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_da6c134038f847aebb74ef333fc041e1$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (dc8d8ad9-fb85-4fe9-b092-55afa6eda3e0): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_a29ef0d2adaf4f67905588c5533e05d5$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=39LrvFhRelE','39LrvFhRelE','Record Time to Pure Hatred | Rimworld: Seven Dwarfs #2',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.275 +00:00','2023-02-15 18:08:58.275 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_a29ef0d2adaf4f67905588c5533e05d5$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (8c14ab0b-73a9-4912-8922-c2280ff6d994): COMMIT;
+Executing (dc8d8ad9-fb85-4fe9-b092-55afa6eda3e0): COMMIT;
+Updating entry
+Executing (410d7099-b232-4f87-9793-9215affb4ce5): START TRANSACTION;
+Updating entry
+Executing (de46ff19-af3e-4e8e-b0d4-47160df53f49): START TRANSACTION;
+Executing (43c4d43e-2ed7-4e47-9344-ba699d48609d): START TRANSACTION;
+Executing (238a2629-40a6-4332-ac9b-f3b178da9ed5): START TRANSACTION;
+Executing (7b839ad4-8a76-4ff8-9b06-78a5fff19c36): START TRANSACTION;
+Executing (410d7099-b232-4f87-9793-9215affb4ce5): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=6HrJ_lNHCwk' LIMIT 1;
+Executing (de46ff19-af3e-4e8e-b0d4-47160df53f49): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=KtiFcxXML4w' LIMIT 1;
+Executing (43c4d43e-2ed7-4e47-9344-ba699d48609d): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=8EAZulJakDA' LIMIT 1;
+Executing (238a2629-40a6-4332-ac9b-f3b178da9ed5): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=w3uQ0OEKQIg' LIMIT 1;
+Executing (7b839ad4-8a76-4ff8-9b06-78a5fff19c36): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=zM9pgcdiuEs' LIMIT 1;
+Executing (410d7099-b232-4f87-9793-9215affb4ce5): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_16c43f1117284c0194113333500fecc8$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=6HrJ_lNHCwk','6HrJ_lNHCwk','Dwarven Heavy Industry | Rimworld: Seven Dwarfs #3',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.620 +00:00','2023-02-15 18:08:58.620 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_16c43f1117284c0194113333500fecc8$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (de46ff19-af3e-4e8e-b0d4-47160df53f49): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_2af342d4388449468c33f8ef616b43e4$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=KtiFcxXML4w','KtiFcxXML4w','Dryad Infested Trees | Rimworld: Seven Dwarfs #4',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.624 +00:00','2023-02-15 18:08:58.624 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_2af342d4388449468c33f8ef616b43e4$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (43c4d43e-2ed7-4e47-9344-ba699d48609d): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_2cb66abb3a5c4f49b65b921ac9a675f9$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=8EAZulJakDA','8EAZulJakDA','The Last (Seven) of Us | Rimworld: Seven Dwarfs #6',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.630 +00:00','2023-02-15 18:08:58.630 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_2cb66abb3a5c4f49b65b921ac9a675f9$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (238a2629-40a6-4332-ac9b-f3b178da9ed5): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_582cd7e29d3a4c7b9cb5bfad53face85$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=w3uQ0OEKQIg','w3uQ0OEKQIg','The Doctor Will See You Now | Rimworld: Seven Dwarfs #5',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.633 +00:00','2023-02-15 18:08:58.633 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_582cd7e29d3a4c7b9cb5bfad53face85$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (7b839ad4-8a76-4ff8-9b06-78a5fff19c36): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_bb184362c43946d8944218d92c8b1b10$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=zM9pgcdiuEs','zM9pgcdiuEs','This is Not a Rimworld Episode, this is a Documentary of my Decline | Rimworld: Seven Dwarfs #7',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.636 +00:00','2023-02-15 18:08:58.636 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_bb184362c43946d8944218d92c8b1b10$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (410d7099-b232-4f87-9793-9215affb4ce5): COMMIT;
+Executing (de46ff19-af3e-4e8e-b0d4-47160df53f49): COMMIT;
+Executing (43c4d43e-2ed7-4e47-9344-ba699d48609d): COMMIT;
+Executing (238a2629-40a6-4332-ac9b-f3b178da9ed5): COMMIT;
+Executing (7b839ad4-8a76-4ff8-9b06-78a5fff19c36): COMMIT;
+Updating entry
+Executing (b0a3d8fa-1b1c-4c7e-a841-5b442e63f68e): START TRANSACTION;
+Updating entry
+Executing (307159a7-b9bd-4288-a6d3-31b4d2947279): START TRANSACTION;
+Updating entry
+Executing (951215db-8058-4890-9b5b-cf625f0da8d8): START TRANSACTION;
+Updating entry
+Updating entry
+Executing (b0a3d8fa-1b1c-4c7e-a841-5b442e63f68e): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=dyjpN_G9MmM' LIMIT 1;
+Executing (307159a7-b9bd-4288-a6d3-31b4d2947279): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=KrodQV_gRe8' LIMIT 1;
+Executing (951215db-8058-4890-9b5b-cf625f0da8d8): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=OUsl-CdRec0' LIMIT 1;
+Executing (b0a3d8fa-1b1c-4c7e-a841-5b442e63f68e): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_f766346933c240b2a624d22fe767a698$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=dyjpN_G9MmM','dyjpN_G9MmM','Tear it All Down | Rimworld: Seven Dwarfs #8',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.687 +00:00','2023-02-15 18:08:58.687 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_f766346933c240b2a624d22fe767a698$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (307159a7-b9bd-4288-a6d3-31b4d2947279): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_49613b115117446bbd2fabdffff39bd2$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=KrodQV_gRe8','KrodQV_gRe8','A Better Dwarvern Citadel | Rimworld: Seven Dwarfs #9',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.691 +00:00','2023-02-15 18:08:58.691 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_49613b115117446bbd2fabdffff39bd2$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (951215db-8058-4890-9b5b-cf625f0da8d8): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_4d72791cbfa34cd29f78e59e6a687679$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=OUsl-CdRec0','OUsl-CdRec0','MORE! MORE MINITURRETS! MORE CONCRETE BAYBEE! | Rimworld: Seven Dwarfs #10',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:08:58.697 +00:00','2023-02-15 18:08:58.697 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_4d72791cbfa34cd29f78e59e6a687679$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (b0a3d8fa-1b1c-4c7e-a841-5b442e63f68e): COMMIT;
+Executing (307159a7-b9bd-4288-a6d3-31b4d2947279): COMMIT;
+Executing (951215db-8058-4890-9b5b-cf625f0da8d8): COMMIT;
+Updating entry
+Updating entry
+Updating entry
+31 40  [] 0
+done
+31 40  [] 0
+done
+Executing (e3cbacc9-e828-4626-b9b0-082ab784f63e): START TRANSACTION;
+Executing (e3cbacc9-e828-4626-b9b0-082ab784f63e): SELECT "title", "url", "order_added", "createdAt", "updatedAt" FROM "play_lists" AS "play_lists" WHERE "play_lists"."url" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ';
+Executing (e3cbacc9-e828-4626-b9b0-082ab784f63e): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "play_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_259da7924244468ca5022699d6a2f1fc$ BEGIN INSERT INTO "play_lists" ("title","url","createdAt","updatedAt") VALUES ('Rimworld: Seven Dwarfs
+','https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ','2023-02-15 18:09:00.506 +00:00','2023-02-15 18:09:00.506 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_259da7924244468ca5022699d6a2f1fc$ LANGUAGE plpgsql; SELECT (testfunc.response)."title", (testfunc.response)."url", (testfunc.response)."order_added", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (e3cbacc9-e828-4626-b9b0-082ab784f63e): COMMIT;
+31 40 Nuclear-Fueled Infinite Concrete Factory | Rimworld: Seven Dwarfs #10	5raQYTGDeJI	https://www.youtube.com/watch?v=5raQYTGDeJI
+ [
+  'Nuclear-Fueled Infinite Concrete Factory | Rimworld: Seven Dwarfs #10\t5raQYTGDeJI\thttps://www.youtube.com/watch?v=5raQYTGDeJI'
+] 1
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Nuclear-Fueled Infinite Concrete Factory | Rimworld: Seven Dwarfs #10 saved
+Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ';
+Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ' LIMIT 10 OFFSET '10';
+Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ';
+Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ' LIMIT 10 OFFSET '0';
+Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ';
+Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH21t0nHxIT2V3nvkiiPGLQ' LIMIT 10 OFFSET '0';
+Server listening on http://localhost:8888
+Executing (default): SELECT 1+1 AS result
+Executing (default): SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vid_lists'
+Connection has been established successfully.
+Executing (default): SELECT i.relname AS name, ix.indisprimary AS primary, ix.indisunique AS unique, ix.indkey AS indkey, array_agg(a.attnum) as column_indexes, array_agg(a.attname) AS column_names, pg_get_indexdef(ix.indexrelid) AS definition FROM pg_class t, pg_class i, pg_index ix, pg_attribute a WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid AND t.relkind = 'r' and t.relname = 'vid_lists' GROUP BY i.relname, ix.indexrelid, ix.indisprimary, ix.indisunique, ix.indkey ORDER BY i.relname;
+Executing (default): SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'play_lists'
+Executing (default): SELECT i.relname AS name, ix.indisprimary AS primary, ix.indisunique AS unique, ix.indkey AS indkey, array_agg(a.attnum) as column_indexes, array_agg(a.attname) AS column_names, pg_get_indexdef(ix.indexrelid) AS definition FROM pg_class t, pg_class i, pg_index ix, pg_attribute a WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid AND t.relkind = 'r' and t.relname = 'play_lists' GROUP BY i.relname, ix.indexrelid, ix.indisprimary, ix.indisunique, ix.indkey ORDER BY i.relname;
+vid_list and play_lists tables exist or are created successfully!
+{ data: 'Connected', id: 'EJnhO1qV3OkWGSUSAAAB' }
+body_url: https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz start_num: 1 stop_num: 10
+[
+  'Transforming Raiders into Bugs for the Hivemind | Rimworld: Hive #1\t-XfyDKPkM9g\thttps://www.youtube.com/watch?v=-XfyDKPkM9g',
+  'Embracing the Insect Lifestyle | Rimworld: Hive #2\tjQRcAsMOcMc\thttps://www.youtube.com/watch?v=jQRcAsMOcMc',
+  'Taming an Insect Army | Rimworld: Hive #3\t4qC-Z5EEVxg\thttps://www.youtube.com/watch?v=4qC-Z5EEVxg',
+  'Bring on the Mutations! | Rimworld: Hive #4\tHL3RLGDvF6U\thttps://www.youtube.com/watch?v=HL3RLGDvF6U',
+  'Rip and Tear | Rimworld: Hive #5\tHKO9knhnvU8\thttps://www.youtube.com/watch?v=HKO9knhnvU8',
+  'Psychic Bug Queen Gets Mutated | Rimworld: Hive #6\t6xqGOFfOQjI\thttps://www.youtube.com/watch?v=6xqGOFfOQjI',
+  'Last Charge of the Kwarma | Rimworld: Hive #7\tOzx7n7RofbE\thttps://www.youtube.com/watch?v=Ozx7n7RofbE',
+  'An Unexpected Surprise (Especially for the Prisoners) | Rimworld: Hive #8\tzx3M8YcPCDY\thttps://www.youtube.com/watch?v=zx3M8YcPCDY',
+  'Vampire Prisoners vs The Mad Insect Surgeon | Rimworld: Hive #9\t-DTHeaQlFZM\thttps://www.youtube.com/watch?v=-DTHeaQlFZM',
+  'Ultimate Insectoid Warriors | Rimworld: Hive #10\trcQkRHwceRA\thttps://www.youtube.com/watch?v=rcQkRHwceRA'
+] 10
+Executing (default): SELECT "title", "url", "order_added", "createdAt", "updatedAt" FROM "play_lists" AS "play_lists" WHERE "play_lists"."url" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz';
+playlist not enocuntered
+
+listing in background
+
+body_url https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz start_num 1 stop_num 10 chunk_size 10
+response None
+resposne != 'done':  true
+start_num: 11 stop_num: 20 chunk_size: 10
+response 
+resposne != 'done':  true
+start_num: 21 stop_num: 30 chunk_size: 10
+response 
+resposne != 'done':  true
+start_num: 31 stop_num: 40 chunk_size: 10
+response 
+resposne != 'done':  true
+breaking to not crash and burn
+================================
+Outside loop
+response 
+resposne != 'done':  true
+done listing
+Executing (4f459119-0edd-4687-bbd8-58704e227950): START TRANSACTION;
+Executing (aac61bf0-0875-4216-adc9-4a8408b622cd): START TRANSACTION;
+Executing (4f459119-0edd-4687-bbd8-58704e227950): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=-XfyDKPkM9g' LIMIT 1;
+Executing (aac61bf0-0875-4216-adc9-4a8408b622cd): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=jQRcAsMOcMc' LIMIT 1;
+Executing (4f459119-0edd-4687-bbd8-58704e227950): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_4d5d7c617f024426b7e284bb91cfa232$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=-XfyDKPkM9g','-XfyDKPkM9g','Transforming Raiders into Bugs for the Hivemind | Rimworld: Hive #1',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:02.947 +00:00','2023-02-15 18:12:02.947 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_4d5d7c617f024426b7e284bb91cfa232$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (aac61bf0-0875-4216-adc9-4a8408b622cd): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_77f43eaa0ddb48ae93a583d330997219$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=jQRcAsMOcMc','jQRcAsMOcMc','Embracing the Insect Lifestyle | Rimworld: Hive #2',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:02.969 +00:00','2023-02-15 18:12:02.969 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_77f43eaa0ddb48ae93a583d330997219$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (4f459119-0edd-4687-bbd8-58704e227950): COMMIT;
+Executing (aac61bf0-0875-4216-adc9-4a8408b622cd): COMMIT;
+Updating entry
+Executing (71fede06-3fc1-4a83-bb1d-30b469660ad3): START TRANSACTION;
+Executing (71fede06-3fc1-4a83-bb1d-30b469660ad3): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=4qC-Z5EEVxg' LIMIT 1;
+Updating entry
+Executing (5048fed5-6f97-4150-893c-fcfd2764e7fc): START TRANSACTION;
+Executing (71fede06-3fc1-4a83-bb1d-30b469660ad3): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_7c249f2b8e6f48f6a6886afacd8821fa$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=4qC-Z5EEVxg','4qC-Z5EEVxg','Taming an Insect Army | Rimworld: Hive #3',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.222 +00:00','2023-02-15 18:12:03.222 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_7c249f2b8e6f48f6a6886afacd8821fa$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (f361293c-8463-46c4-9ee8-7314bd0d9d35): START TRANSACTION;
+Executing (8b3f21fa-2bd5-475b-bb65-25eb992cd180): START TRANSACTION;
+Executing (5048fed5-6f97-4150-893c-fcfd2764e7fc): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=HL3RLGDvF6U' LIMIT 1;
+Executing (71fede06-3fc1-4a83-bb1d-30b469660ad3): COMMIT;
+Executing (f361293c-8463-46c4-9ee8-7314bd0d9d35): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=HKO9knhnvU8' LIMIT 1;
+Executing (8b3f21fa-2bd5-475b-bb65-25eb992cd180): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=6xqGOFfOQjI' LIMIT 1;
+Executing (d11e5a7a-7fbf-41cd-a5dd-dbdf2dcf3a00): START TRANSACTION;
+Executing (5048fed5-6f97-4150-893c-fcfd2764e7fc): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_92ea7d29a4b04a83ad0c57ef6f874456$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=HL3RLGDvF6U','HL3RLGDvF6U','Bring on the Mutations! | Rimworld: Hive #4',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.247 +00:00','2023-02-15 18:12:03.247 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_92ea7d29a4b04a83ad0c57ef6f874456$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Updating entry
+Executing (950885d5-fec0-4cf5-90c8-34b7c62c3831): START TRANSACTION;
+Executing (f361293c-8463-46c4-9ee8-7314bd0d9d35): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_d9bf549071414bfe8ad02a539cdefb4f$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=HKO9knhnvU8','HKO9knhnvU8','Rip and Tear | Rimworld: Hive #5',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.254 +00:00','2023-02-15 18:12:03.254 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_d9bf549071414bfe8ad02a539cdefb4f$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (8b3f21fa-2bd5-475b-bb65-25eb992cd180): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_e07efbca5f5c45c8b538538fe5a32102$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=6xqGOFfOQjI','6xqGOFfOQjI','Psychic Bug Queen Gets Mutated | Rimworld: Hive #6',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.260 +00:00','2023-02-15 18:12:03.260 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_e07efbca5f5c45c8b538538fe5a32102$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (d11e5a7a-7fbf-41cd-a5dd-dbdf2dcf3a00): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=Ozx7n7RofbE' LIMIT 1;
+Executing (5048fed5-6f97-4150-893c-fcfd2764e7fc): COMMIT;
+Executing (950885d5-fec0-4cf5-90c8-34b7c62c3831): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=zx3M8YcPCDY' LIMIT 1;
+Executing (f361293c-8463-46c4-9ee8-7314bd0d9d35): COMMIT;
+Executing (8b3f21fa-2bd5-475b-bb65-25eb992cd180): COMMIT;
+Executing (d11e5a7a-7fbf-41cd-a5dd-dbdf2dcf3a00): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_88e6a9b1aa8d4858aec5d3f4f4cb9fe9$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=Ozx7n7RofbE','Ozx7n7RofbE','Last Charge of the Kwarma | Rimworld: Hive #7',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.281 +00:00','2023-02-15 18:12:03.281 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_88e6a9b1aa8d4858aec5d3f4f4cb9fe9$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (950885d5-fec0-4cf5-90c8-34b7c62c3831): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_a16b12e0e9e54467a799ba5c74ac4c1c$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=zx3M8YcPCDY','zx3M8YcPCDY','An Unexpected Surprise (Especially for the Prisoners) | Rimworld: Hive #8',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.288 +00:00','2023-02-15 18:12:03.288 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_a16b12e0e9e54467a799ba5c74ac4c1c$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Updating entry
+Executing (ad61e54e-525a-4dda-9cc3-129334d55d98): START TRANSACTION;
+Updating entry
+Executing (06a395f5-bbc0-4c5b-a062-a00ba569eceb): START TRANSACTION;
+Executing (d11e5a7a-7fbf-41cd-a5dd-dbdf2dcf3a00): COMMIT;
+Updating entry
+Executing (950885d5-fec0-4cf5-90c8-34b7c62c3831): COMMIT;
+Executing (ad61e54e-525a-4dda-9cc3-129334d55d98): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=-DTHeaQlFZM' LIMIT 1;
+Executing (06a395f5-bbc0-4c5b-a062-a00ba569eceb): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."url" = 'https://www.youtube.com/watch?v=rcQkRHwceRA' LIMIT 1;
+Updating entry
+Updating entry
+Executing (ad61e54e-525a-4dda-9cc3-129334d55d98): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_64b8f6bd14774b5a8e76172b5cd882f8$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=-DTHeaQlFZM','-DTHeaQlFZM','Vampire Prisoners vs The Mad Insect Surgeon | Rimworld: Hive #9',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.312 +00:00','2023-02-15 18:12:03.312 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_64b8f6bd14774b5a8e76172b5cd882f8$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (06a395f5-bbc0-4c5b-a062-a00ba569eceb): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "vid_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_6b6ceb71537c430aab7e394beb774c6c$ BEGIN INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ('https://www.youtube.com/watch?v=rcQkRHwceRA','rcQkRHwceRA','Ultimate Insectoid Warriors | Rimworld: Hive #10',false,true,'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:03.318 +00:00','2023-02-15 18:12:03.318 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_6b6ceb71537c430aab7e394beb774c6c$ LANGUAGE plpgsql; SELECT (testfunc.response)."url", (testfunc.response)."id", (testfunc.response)."title", (testfunc.response)."downloaded", (testfunc.response)."available", (testfunc.response)."reference", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (ad61e54e-525a-4dda-9cc3-129334d55d98): COMMIT;
+Executing (06a395f5-bbc0-4c5b-a062-a00ba569eceb): COMMIT;
+Updating entry
+Updating entry
+31 40 100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21	4ZbVePkHMsg	https://www.youtube.com/watch?v=4ZbVePkHMsg
+You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22	CLOXGVF92Fg	https://www.youtube.com/watch?v=CLOXGVF92Fg
+GOD BABY BURSTS FREE | Rimworld: Hive #23	SEOzsGbeCXQ	https://www.youtube.com/watch?v=SEOzsGbeCXQ
+Buggsy VS The World | Rimworld: Hive #24	8QJMlQ0U-eQ	https://www.youtube.com/watch?v=8QJMlQ0U-eQ
+Backfire of the Century | Rimworld: Hive #25	6TVJuKjtSn4	https://www.youtube.com/watch?v=6TVJuKjtSn4
+Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26	OFrfPvPpYFk	https://www.youtube.com/watch?v=OFrfPvPpYFk
+The Empire Strikes Back | Rimworld: Hive #27	QZzB4Hm_azs	https://www.youtube.com/watch?v=QZzB4Hm_azs
+Hell for the Stellarch! [Finale] | Rimworld: Hive #28	gFnSFtYoptk	https://www.youtube.com/watch?v=gFnSFtYoptk
+10 Year Bug Hive Timelapse | Rimworld: Hive #29	g0TN1K68c4k	https://www.youtube.com/watch?v=g0TN1K68c4k
+ [
+  '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21\t4ZbVePkHMsg\thttps://www.youtube.com/watch?v=4ZbVePkHMsg',
+  'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22\tCLOXGVF92Fg\thttps://www.youtube.com/watch?v=CLOXGVF92Fg',
+  'GOD BABY BURSTS FREE | Rimworld: Hive #23\tSEOzsGbeCXQ\thttps://www.youtube.com/watch?v=SEOzsGbeCXQ',
+  'Buggsy VS The World | Rimworld: Hive #24\t8QJMlQ0U-eQ\thttps://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+  'Backfire of the Century | Rimworld: Hive #25\t6TVJuKjtSn4\thttps://www.youtube.com/watch?v=6TVJuKjtSn4',
+  "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26\tOFrfPvPpYFk\thttps://www.youtube.com/watch?v=OFrfPvPpYFk",
+  'The Empire Strikes Back | Rimworld: Hive #27\tQZzB4Hm_azs\thttps://www.youtube.com/watch?v=QZzB4Hm_azs',
+  'Hell for the Stellarch! [Finale] | Rimworld: Hive #28\tgFnSFtYoptk\thttps://www.youtube.com/watch?v=gFnSFtYoptk',
+  '10 Year Bug Hive Timelapse | Rimworld: Hive #29\tg0TN1K68c4k\thttps://www.youtube.com/watch?v=g0TN1K68c4k'
+] 9
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Backfire of the Century | Rimworld: Hive #25 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+GOD BABY BURSTS FREE | Rimworld: Hive #23 saved
+Buggsy VS The World | Rimworld: Hive #24 saved
+Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26 saved
+The Empire Strikes Back | Rimworld: Hive #27 saved
+Hell for the Stellarch! [Finale] | Rimworld: Hive #28 saved
+10 Year Bug Hive Timelapse | Rimworld: Hive #29 saved
+Executing (06bf75ec-fb99-4278-b450-0be610967575): START TRANSACTION;
+Executing (06bf75ec-fb99-4278-b450-0be610967575): SELECT "title", "url", "order_added", "createdAt", "updatedAt" FROM "play_lists" AS "play_lists" WHERE "play_lists"."url" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz';
+Executing (06bf75ec-fb99-4278-b450-0be610967575): CREATE OR REPLACE FUNCTION pg_temp.testfunc(OUT response "play_lists", OUT sequelize_caught_exception text) RETURNS RECORD AS $func_bea9c29f4185477b85f6a9a13ba92462$ BEGIN INSERT INTO "play_lists" ("title","url","createdAt","updatedAt") VALUES ('Rimworld: The Hive
+','https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz','2023-02-15 18:12:05.497 +00:00','2023-02-15 18:12:05.497 +00:00') RETURNING * INTO response; EXCEPTION WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL; END $func_bea9c29f4185477b85f6a9a13ba92462$ LANGUAGE plpgsql; SELECT (testfunc.response)."title", (testfunc.response)."url", (testfunc.response)."order_added", (testfunc.response)."createdAt", (testfunc.response)."updatedAt", testfunc.sequelize_caught_exception FROM pg_temp.testfunc(); DROP FUNCTION IF EXISTS pg_temp.testfunc();
+Executing (06bf75ec-fb99-4278-b450-0be610967575): COMMIT;
+31 40 100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21	4ZbVePkHMsg	https://www.youtube.com/watch?v=4ZbVePkHMsg
+You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22	CLOXGVF92Fg	https://www.youtube.com/watch?v=CLOXGVF92Fg
+GOD BABY BURSTS FREE | Rimworld: Hive #23	SEOzsGbeCXQ	https://www.youtube.com/watch?v=SEOzsGbeCXQ
+Buggsy VS The World | Rimworld: Hive #24	8QJMlQ0U-eQ	https://www.youtube.com/watch?v=8QJMlQ0U-eQ
+Backfire of the Century | Rimworld: Hive #25	6TVJuKjtSn4	https://www.youtube.com/watch?v=6TVJuKjtSn4
+Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26	OFrfPvPpYFk	https://www.youtube.com/watch?v=OFrfPvPpYFk
+The Empire Strikes Back | Rimworld: Hive #27	QZzB4Hm_azs	https://www.youtube.com/watch?v=QZzB4Hm_azs
+Hell for the Stellarch! [Finale] | Rimworld: Hive #28	gFnSFtYoptk	https://www.youtube.com/watch?v=gFnSFtYoptk
+10 Year Bug Hive Timelapse | Rimworld: Hive #29	g0TN1K68c4k	https://www.youtube.com/watch?v=g0TN1K68c4k
+ [
+  '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21\t4ZbVePkHMsg\thttps://www.youtube.com/watch?v=4ZbVePkHMsg',
+  'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22\tCLOXGVF92Fg\thttps://www.youtube.com/watch?v=CLOXGVF92Fg',
+  'GOD BABY BURSTS FREE | Rimworld: Hive #23\tSEOzsGbeCXQ\thttps://www.youtube.com/watch?v=SEOzsGbeCXQ',
+  'Buggsy VS The World | Rimworld: Hive #24\t8QJMlQ0U-eQ\thttps://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+  'Backfire of the Century | Rimworld: Hive #25\t6TVJuKjtSn4\thttps://www.youtube.com/watch?v=6TVJuKjtSn4',
+  "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26\tOFrfPvPpYFk\thttps://www.youtube.com/watch?v=OFrfPvPpYFk",
+  'The Empire Strikes Back | Rimworld: Hive #27\tQZzB4Hm_azs\thttps://www.youtube.com/watch?v=QZzB4Hm_azs',
+  'Hell for the Stellarch! [Finale] | Rimworld: Hive #28\tgFnSFtYoptk\thttps://www.youtube.com/watch?v=gFnSFtYoptk',
+  '10 Year Bug Hive Timelapse | Rimworld: Hive #29\tg0TN1K68c4k\thttps://www.youtube.com/watch?v=g0TN1K68c4k'
+] 9
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+31 40 100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21	4ZbVePkHMsg	https://www.youtube.com/watch?v=4ZbVePkHMsg
+You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22	CLOXGVF92Fg	https://www.youtube.com/watch?v=CLOXGVF92Fg
+GOD BABY BURSTS FREE | Rimworld: Hive #23	SEOzsGbeCXQ	https://www.youtube.com/watch?v=SEOzsGbeCXQ
+Buggsy VS The World | Rimworld: Hive #24	8QJMlQ0U-eQ	https://www.youtube.com/watch?v=8QJMlQ0U-eQ
+Backfire of the Century | Rimworld: Hive #25	6TVJuKjtSn4	https://www.youtube.com/watch?v=6TVJuKjtSn4
+Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26	OFrfPvPpYFk	https://www.youtube.com/watch?v=OFrfPvPpYFk
+The Empire Strikes Back | Rimworld: Hive #27	QZzB4Hm_azs	https://www.youtube.com/watch?v=QZzB4Hm_azs
+Hell for the Stellarch! [Finale] | Rimworld: Hive #28	gFnSFtYoptk	https://www.youtube.com/watch?v=gFnSFtYoptk
+10 Year Bug Hive Timelapse | Rimworld: Hive #29	g0TN1K68c4k	https://www.youtube.com/watch?v=g0TN1K68c4k
+Let the Brainwashing Begin! | Rimworld: Hive #11	fI_NvrrB284	https://www.youtube.com/watch?v=fI_NvrrB284
+Hives Within Hives Within Hives Within Hives Within Hives Within Hives Within H | Rimworld: Hive #12	xD0H0ARz_HM	https://www.youtube.com/watch?v=xD0H0ARz_HM
+The Empire Sends a Kind Gift for Gene Ripping | Rimworld: Hive #13	Kc9n7Y8F8HA	https://www.youtube.com/watch?v=Kc9n7Y8F8HA
+Bug Queen's Perfection | Rimworld: Hive #14	S8HDsLl6uEc	https://www.youtube.com/watch?v=S8HDsLl6uEc
+Next Step in Evolution | Rimworld: Hive #15	96vsCw64m5w	https://www.youtube.com/watch?v=96vsCw64m5w
+Finally, BIG Egg | Rimworld: Hive #16	sNQTBqiz43I	https://www.youtube.com/watch?v=sNQTBqiz43I
+The Genome Scrambler! | Rimworld: Hive #17	fxkhGk7YJos	https://www.youtube.com/watch?v=fxkhGk7YJos
+The Enormous Moth Baby Finally Hatches | Rimworld: Hive #18	r7LwWBm-_Y0	https://www.youtube.com/watch?v=r7LwWBm-_Y0
+JOIN US IN EVOLUTION | Rimworld: Hive #19	Dor9fnl0X3Y	https://www.youtube.com/watch?v=Dor9fnl0X3Y
+Breeding a Friendly Colony Guardian | Rimworld: Hive #20	PsmnSEsOyig	https://www.youtube.com/watch?v=PsmnSEsOyig
+ [
+  '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21\t4ZbVePkHMsg\thttps://www.youtube.com/watch?v=4ZbVePkHMsg',
+  'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22\tCLOXGVF92Fg\thttps://www.youtube.com/watch?v=CLOXGVF92Fg',
+  'GOD BABY BURSTS FREE | Rimworld: Hive #23\tSEOzsGbeCXQ\thttps://www.youtube.com/watch?v=SEOzsGbeCXQ',
+  'Buggsy VS The World | Rimworld: Hive #24\t8QJMlQ0U-eQ\thttps://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+  'Backfire of the Century | Rimworld: Hive #25\t6TVJuKjtSn4\thttps://www.youtube.com/watch?v=6TVJuKjtSn4',
+  "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26\tOFrfPvPpYFk\thttps://www.youtube.com/watch?v=OFrfPvPpYFk",
+  'The Empire Strikes Back | Rimworld: Hive #27\tQZzB4Hm_azs\thttps://www.youtube.com/watch?v=QZzB4Hm_azs',
+  'Hell for the Stellarch! [Finale] | Rimworld: Hive #28\tgFnSFtYoptk\thttps://www.youtube.com/watch?v=gFnSFtYoptk',
+  '10 Year Bug Hive Timelapse | Rimworld: Hive #29\tg0TN1K68c4k\thttps://www.youtube.com/watch?v=g0TN1K68c4k',
+  'Let the Brainwashing Begin! | Rimworld: Hive #11\tfI_NvrrB284\thttps://www.youtube.com/watch?v=fI_NvrrB284',
+  'Hives Within Hives Within Hives Within Hives Within Hives Within Hives Within H | Rimworld: Hive #12\txD0H0ARz_HM\thttps://www.youtube.com/watch?v=xD0H0ARz_HM',
+  'The Empire Sends a Kind Gift for Gene Ripping | Rimworld: Hive #13\tKc9n7Y8F8HA\thttps://www.youtube.com/watch?v=Kc9n7Y8F8HA',
+  "Bug Queen's Perfection | Rimworld: Hive #14\tS8HDsLl6uEc\thttps://www.youtube.com/watch?v=S8HDsLl6uEc",
+  'Next Step in Evolution | Rimworld: Hive #15\t96vsCw64m5w\thttps://www.youtube.com/watch?v=96vsCw64m5w',
+  'Finally, BIG Egg | Rimworld: Hive #16\tsNQTBqiz43I\thttps://www.youtube.com/watch?v=sNQTBqiz43I',
+  'The Genome Scrambler! | Rimworld: Hive #17\tfxkhGk7YJos\thttps://www.youtube.com/watch?v=fxkhGk7YJos',
+  'The Enormous Moth Baby Finally Hatches | Rimworld: Hive #18\tr7LwWBm-_Y0\thttps://www.youtube.com/watch?v=r7LwWBm-_Y0',
+  'JOIN US IN EVOLUTION | Rimworld: Hive #19\tDor9fnl0X3Y\thttps://www.youtube.com/watch?v=Dor9fnl0X3Y',
+  'Breeding a Friendly Colony Guardian | Rimworld: Hive #20\tPsmnSEsOyig\thttps://www.youtube.com/watch?v=PsmnSEsOyig'
+] 19
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Let the Brainwashing Begin! | Rimworld: Hive #11 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Hives Within Hives Within Hives Within Hives Within Hives Within Hives Within H | Rimworld: Hive #12 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+The Empire Sends a Kind Gift for Gene Ripping | Rimworld: Hive #13 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Bug Queen's Perfection | Rimworld: Hive #14 saved
+Executing (default): INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";
+Next Step in Evolution | Rimworld: Hive #15 saved
+Finally, BIG Egg | Rimworld: Hive #16 saved
+The Genome Scrambler! | Rimworld: Hive #17 saved
+The Enormous Moth Baby Finally Hatches | Rimworld: Hive #18 saved
+Breeding a Friendly Colony Guardian | Rimworld: Hive #20 saved
+JOIN US IN EVOLUTION | Rimworld: Hive #19 saved
+Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz';
+Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz' LIMIT 10 OFFSET '10';
+Executing (default): SELECT count(*) AS "count" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz';
+Executing (default): SELECT "url", "id", "title", "downloaded", "available", "reference", "createdAt", "updatedAt" FROM "vid_lists" AS "vid_list" WHERE "vid_list"."reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz' LIMIT 10 OFFSET '0';
+Restarting 'index.js'
+Server listening on http://localhost:8888
+Executing (default): SELECT 1+1 AS result
+Executing (default): SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vid_lists'
+Connection has been established successfully.
+Executing (default): SELECT i.relname AS name, ix.indisprimary AS primary, ix.indisunique AS unique, ix.indkey AS indkey, array_agg(a.attnum) as column_indexes, array_agg(a.attname) AS column_names, pg_get_indexdef(ix.indexrelid) AS definition FROM pg_class t, pg_class i, pg_index ix, pg_attribute a WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid AND t.relkind = 'r' and t.relname = 'vid_lists' GROUP BY i.relname, ix.indexrelid, ix.indisprimary, ix.indisunique, ix.indkey ORDER BY i.relname;
+Executing (default): SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'play_lists'
+Executing (default): SELECT i.relname AS name, ix.indisprimary AS primary, ix.indisunique AS unique, ix.indkey AS indkey, array_agg(a.attnum) as column_indexes, array_agg(a.attname) AS column_names, pg_get_indexdef(ix.indexrelid) AS definition FROM pg_class t, pg_class i, pg_index ix, pg_attribute a WHERE t.oid = ix.indrelid AND i.oid = ix.indexrelid AND a.attrelid = t.oid AND t.relkind = 'r' and t.relname = 'play_lists' GROUP BY i.relname, ix.indexrelid, ix.indisprimary, ix.indisunique, ix.indkey ORDER BY i.relname;
+vid_list and play_lists tables exist or are created successfully!
+{ data: 'Connected', id: 'EdDfQwGzaHltcGk6AAAB' }

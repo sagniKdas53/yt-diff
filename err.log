@@ -13910,3 +13910,1897 @@ Error
   fields: { id: 'Ffac6Sr1U5E' },
   sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
 }
+(node:15513) ExperimentalWarning: Watch mode is an experimental feature. This feature could change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:15922) ExperimentalWarning: Watch mode is an experimental feature. This feature could change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 0)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: '4ZbVePkHMsg',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(4ZbVePkHMsg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=4ZbVePkHMsg',
+      '4ZbVePkHMsg',
+      '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(4ZbVePkHMsg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=4ZbVePkHMsg',
+      '4ZbVePkHMsg',
+      '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: '4ZbVePkHMsg' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 1)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'CLOXGVF92Fg',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(CLOXGVF92Fg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=CLOXGVF92Fg',
+      'CLOXGVF92Fg',
+      'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(CLOXGVF92Fg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=CLOXGVF92Fg',
+      'CLOXGVF92Fg',
+      'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: 'CLOXGVF92Fg' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 2)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'SEOzsGbeCXQ',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(SEOzsGbeCXQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=SEOzsGbeCXQ',
+      'SEOzsGbeCXQ',
+      'GOD BABY BURSTS FREE | Rimworld: Hive #23',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(SEOzsGbeCXQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=SEOzsGbeCXQ',
+      'SEOzsGbeCXQ',
+      'GOD BABY BURSTS FREE | Rimworld: Hive #23',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: 'SEOzsGbeCXQ' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 5)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'OFrfPvPpYFk',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(OFrfPvPpYFk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=OFrfPvPpYFk',
+      'OFrfPvPpYFk',
+      "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26",
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(OFrfPvPpYFk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=OFrfPvPpYFk',
+      'OFrfPvPpYFk',
+      "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26",
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: 'OFrfPvPpYFk' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 6)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'QZzB4Hm_azs',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(QZzB4Hm_azs) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=QZzB4Hm_azs',
+      'QZzB4Hm_azs',
+      'The Empire Strikes Back | Rimworld: Hive #27',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(QZzB4Hm_azs) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=QZzB4Hm_azs',
+      'QZzB4Hm_azs',
+      'The Empire Strikes Back | Rimworld: Hive #27',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: 'QZzB4Hm_azs' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 7)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'gFnSFtYoptk',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(gFnSFtYoptk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=gFnSFtYoptk',
+      'gFnSFtYoptk',
+      'Hell for the Stellarch! [Finale] | Rimworld: Hive #28',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(gFnSFtYoptk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=gFnSFtYoptk',
+      'gFnSFtYoptk',
+      'Hell for the Stellarch! [Finale] | Rimworld: Hive #28',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: 'gFnSFtYoptk' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 4)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: '6TVJuKjtSn4',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(6TVJuKjtSn4) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=6TVJuKjtSn4',
+      '6TVJuKjtSn4',
+      'Backfire of the Century | Rimworld: Hive #25',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(6TVJuKjtSn4) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=6TVJuKjtSn4',
+      '6TVJuKjtSn4',
+      'Backfire of the Century | Rimworld: Hive #25',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: '6TVJuKjtSn4' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 3)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: '8QJMlQ0U-eQ',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(8QJMlQ0U-eQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+      '8QJMlQ0U-eQ',
+      'Buggsy VS The World | Rimworld: Hive #24',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(8QJMlQ0U-eQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+      '8QJMlQ0U-eQ',
+      'Buggsy VS The World | Rimworld: Hive #24',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.511 +00:00',
+      '2023-02-15 18:12:05.511 +00:00'
+    ]
+  },
+  fields: { id: '8QJMlQ0U-eQ' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 8)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'g0TN1K68c4k',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(g0TN1K68c4k) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=g0TN1K68c4k',
+      'g0TN1K68c4k',
+      '10 Year Bug Hive Timelapse | Rimworld: Hive #29',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.512 +00:00',
+      '2023-02-15 18:12:05.512 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(g0TN1K68c4k) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=g0TN1K68c4k',
+      'g0TN1K68c4k',
+      '10 Year Bug Hive Timelapse | Rimworld: Hive #29',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.512 +00:00',
+      '2023-02-15 18:12:05.512 +00:00'
+    ]
+  },
+  fields: { id: 'g0TN1K68c4k' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 0)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: '4ZbVePkHMsg',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(4ZbVePkHMsg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=4ZbVePkHMsg',
+      '4ZbVePkHMsg',
+      '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.685 +00:00',
+      '2023-02-15 18:12:05.685 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(4ZbVePkHMsg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=4ZbVePkHMsg',
+      '4ZbVePkHMsg',
+      '100 Angry Insects VS 1 Friendly Bug | Rimworld: Hive #21',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.685 +00:00',
+      '2023-02-15 18:12:05.685 +00:00'
+    ]
+  },
+  fields: { id: '4ZbVePkHMsg' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 2)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'SEOzsGbeCXQ',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(SEOzsGbeCXQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=SEOzsGbeCXQ',
+      'SEOzsGbeCXQ',
+      'GOD BABY BURSTS FREE | Rimworld: Hive #23',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(SEOzsGbeCXQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=SEOzsGbeCXQ',
+      'SEOzsGbeCXQ',
+      'GOD BABY BURSTS FREE | Rimworld: Hive #23',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: 'SEOzsGbeCXQ' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 1)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'CLOXGVF92Fg',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(CLOXGVF92Fg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=CLOXGVF92Fg',
+      'CLOXGVF92Fg',
+      'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.685 +00:00',
+      '2023-02-15 18:12:05.685 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(CLOXGVF92Fg) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=CLOXGVF92Fg',
+      'CLOXGVF92Fg',
+      'You VS The Bee She Tells You Not to Worry About | Rimworld: Hive #22',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.685 +00:00',
+      '2023-02-15 18:12:05.685 +00:00'
+    ]
+  },
+  fields: { id: 'CLOXGVF92Fg' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 5)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'OFrfPvPpYFk',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(OFrfPvPpYFk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=OFrfPvPpYFk',
+      'OFrfPvPpYFk',
+      "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26",
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(OFrfPvPpYFk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=OFrfPvPpYFk',
+      'OFrfPvPpYFk',
+      "Colonist So Large We Can't Feed it Fast Enough | Rimworld: Hive #26",
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: 'OFrfPvPpYFk' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 6)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'QZzB4Hm_azs',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(QZzB4Hm_azs) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=QZzB4Hm_azs',
+      'QZzB4Hm_azs',
+      'The Empire Strikes Back | Rimworld: Hive #27',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(QZzB4Hm_azs) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=QZzB4Hm_azs',
+      'QZzB4Hm_azs',
+      'The Empire Strikes Back | Rimworld: Hive #27',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: 'QZzB4Hm_azs' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 7)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'gFnSFtYoptk',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(gFnSFtYoptk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=gFnSFtYoptk',
+      'gFnSFtYoptk',
+      'Hell for the Stellarch! [Finale] | Rimworld: Hive #28',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(gFnSFtYoptk) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=gFnSFtYoptk',
+      'gFnSFtYoptk',
+      'Hell for the Stellarch! [Finale] | Rimworld: Hive #28',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: 'gFnSFtYoptk' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 4)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: '6TVJuKjtSn4',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(6TVJuKjtSn4) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=6TVJuKjtSn4',
+      '6TVJuKjtSn4',
+      'Backfire of the Century | Rimworld: Hive #25',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(6TVJuKjtSn4) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=6TVJuKjtSn4',
+      '6TVJuKjtSn4',
+      'Backfire of the Century | Rimworld: Hive #25',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: '6TVJuKjtSn4' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 3)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: '8QJMlQ0U-eQ',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(8QJMlQ0U-eQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+      '8QJMlQ0U-eQ',
+      'Buggsy VS The World | Rimworld: Hive #24',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(8QJMlQ0U-eQ) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=8QJMlQ0U-eQ',
+      '8QJMlQ0U-eQ',
+      'Buggsy VS The World | Rimworld: Hive #24',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: '8QJMlQ0U-eQ' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}
+Error
+    at Query.run (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/postgres/query.js:50:25)
+    at /home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/sequelize.js:314:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async PostgresQueryInterface.insert (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:2432:35)
+    at async vid_list.create (/home/sagnik/Projects/yt-diff/node_modules/sequelize/lib/model.js:1344:12)
+    at async /home/sagnik/Projects/yt-diff/index.js:364:39
+    at async Promise.all (index 8)
+    at async ChildProcess.<anonymous> (/home/sagnik/Projects/yt-diff/index.js:358:17) {
+  name: 'SequelizeUniqueConstraintError',
+  errors: [
+    ValidationErrorItem {
+      message: 'id must be unique',
+      type: 'unique violation',
+      path: 'id',
+      value: 'g0TN1K68c4k',
+      origin: 'DB',
+      instance: [vid_list],
+      validatorKey: 'not_unique',
+      validatorName: null,
+      validatorArgs: []
+    }
+  ],
+  parent: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(g0TN1K68c4k) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=g0TN1K68c4k',
+      'g0TN1K68c4k',
+      '10 Year Bug Hive Timelapse | Rimworld: Hive #29',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  original: error: duplicate key value violates unique constraint "vid_lists_pkey"
+      at Parser.parseErrorMessage (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:287:98)
+      at Parser.handlePacket (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:126:29)
+      at Parser.parse (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/parser.js:39:38)
+      at Socket.<anonymous> (/home/sagnik/Projects/yt-diff/node_modules/pg-protocol/dist/index.js:11:42)
+      at Socket.emit (node:events:513:28)
+      at addChunk (node:internal/streams/readable:324:12)
+      at readableAddChunk (node:internal/streams/readable:297:9)
+      at Readable.push (node:internal/streams/readable:234:10)
+      at TCP.onStreamRead (node:internal/stream_base_commons:190:23) {
+    length: 202,
+    severity: 'ERROR',
+    code: '23505',
+    detail: 'Key (id)=(g0TN1K68c4k) already exists.',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'vid_lists',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'vid_lists_pkey',
+    file: 'nbtinsert.c',
+    line: '663',
+    routine: '_bt_check_unique',
+    sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";',
+    parameters: [
+      'https://www.youtube.com/watch?v=g0TN1K68c4k',
+      'g0TN1K68c4k',
+      '10 Year Bug Hive Timelapse | Rimworld: Hive #29',
+      false,
+      true,
+      'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz',
+      '2023-02-15 18:12:05.686 +00:00',
+      '2023-02-15 18:12:05.686 +00:00'
+    ]
+  },
+  fields: { id: 'g0TN1K68c4k' },
+  sql: 'INSERT INTO "vid_lists" ("url","id","title","downloaded","available","reference","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "url","id","title","downloaded","available","reference","createdAt","updatedAt";'
+}

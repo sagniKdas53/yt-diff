@@ -265,6 +265,9 @@ async function list(req, res) {
             }
 
             // making the response 
+            // the idea here is to make a response form the data we have at our disposal now
+            // since we may be sending the list to background for further listing so the database 
+            // might be busy with that and not able to handle the request in time.
             Promise.all(response_list.map(async element => {
                 var items = element.split("\t");
                 //console.log(items, items.length);
@@ -307,14 +310,16 @@ async function list(req, res) {
                 res.writeHead(200, { "Content-Type": "text/json" });
                 res.end(JSON.stringify(resp_json, null, 2));
             });
-            // get the chunk size from user too
-            await list_background(body_url, start_num, stop_num, chunk_size);
-
+            // sending it to the background to do the rest
+            list_background(body_url, start_num, stop_num, chunk_size);
         });
     });
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
+    // SELECT * FROM "vid_lists" WHERE "reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz' ORDER BY "createdAt" LIMIT 50
+    // This query shows that vidoes aren't being added to the db in order thus suggesting that this function isn't 
+    // working as expected or intended, it should  divide the the massive list into chunks and then save them in order.
     var response = 'None';
     var i = 0;
     console.log('\nlisting in background\n');
