@@ -10,8 +10,8 @@ const port = process.argv[2] || 8888; // get this form env in docker config
 const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
     //host: 'yt-db',
     host: 'localhost',
-    dialect: 'postgres',
-    logging: false
+    dialect: 'postgres'
+    //,logging: false
 });
 
 try {
@@ -52,7 +52,7 @@ const vid_list = sequelize.define('vid_list', {
 });
 
 
-const play_lists = sequelize.define('list_of_play_lists', {
+const play_lists = sequelize.define('play_lists', {
     // Model attributes are defined here
     title: {
         type: DataTypes.STRING,
@@ -88,15 +88,15 @@ async function download_stuff(req, res, next) {
     req.on('end', async function () {
         body = JSON.parse(body);
         var urls = [];
-        console.log('Recieved: ' + body['ids']);
+        //console.log('Recieved: ' + body['ids']);
         var i = 0;
         for (const id_str of body['ids']) {
-            console.log(`Finding the url of the video ${++i}`);
+            //console.log(`Finding the url of the video ${++i}`);
             const entry = await vid_list.findOne({ where: { id: id_str } });
             urls.push(entry.url);
         }
 
-        console.log(urls);
+        //console.log(urls);
         download_background_sequential(urls);
         response = 'Downloading started, it will take a while ...';
         res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -105,52 +105,52 @@ async function download_stuff(req, res, next) {
 }
 
 async function download_background_parallel(url_list) {
-    console.log('Downloading in background')
+    //console.log('Downloading in background')
     var i = 0;
     var save_loc = 'yt-dlp';
     for (const url_str of url_list) {
-        console.log(`Downloading video ${++i}`);
+        //console.log(`Downloading video ${++i}`);
         try {
             const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
             yt_dlp.stdout.on("data", async data => {
-                console.log(`${data}`);
+                //console.log(`${data}`);
             });
             yt_dlp.stderr.on("data", data => {
-                console.log(`stderr: ${data}`);
+                //console.log(`stderr: ${data}`);
             });
             yt_dlp.on('error', (error) => {
-                console.error(`error: ${error.message}`);
+                //console.error(`error: ${error.message}`);
                 throw 'Error Skipping';
             });
             yt_dlp.on("close", async (code) => {
-                console.log(`child process exited with code ${code}`);
+                //console.log(`child process exited with code ${code}`);
                 if (code == 0) {
-                    console.log("Updating");
+                    //console.log("Updating");
                     var entity = await vid_list.findOne({ where: { url: url_str } });
-                    console.log(entity.downloaded);
+                    //console.log(entity.downloaded);
                     entity.set({
                         downloaded: true
                     });
                     await entity.save();
-                    console.log(entity.downloaded);
+                    //console.log(entity.downloaded);
                 }
             });
         } catch (error) {
-            console.error(error);
+            //console.error(error);
         }
     }
 }
 
 async function download_background_sequential(url_list) {
-    console.log('Downloading in background');
+    //console.log('Downloading in background');
     var i = 0;
     var save_loc = 'yt-dlp';
     for (const url_str of url_list) {
-        console.log(`Downloading video ${++i}`);
+        //console.log(`Downloading video ${++i}`);
         try {
             const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
             yt_dlp.stdout.on("data", async data => {
-                console.log(`${data}`);
+                //console.log(`${data}`);
                 try {
                     let m;
                     if ((m = regex.exec(`${data}`)) !== null) {
@@ -158,30 +158,30 @@ async function download_background_sequential(url_list) {
                         sock.emit('progress', { message: m[0] });
                     }
                 } catch (error) {
-                    console.log(`${error}`);
+                    //console.log(`${error}`);
                     sock.emit('error', { message: `${error}` });
                 }
             });
             yt_dlp.stderr.on("data", data => {
-                console.log(`stderr: ${data}`);
+                //console.log(`stderr: ${data}`);
             });
             yt_dlp.on("error", error => {
-                console.error(`error: ${error.message}`);
+                //console.error(`error: ${error.message}`);
                 throw "Error Skipping";
             });
             yt_dlp.on("close", async (code) => {
-                console.log(`child process exited with code ${code}`);
+                //console.log(`child process exited with code ${code}`);
                 // add the db update here
                 if (code == 0) {
-                    console.log("Updating");
+                    //console.log("Updating");
                     var entity = await vid_list.findOne({ where: { url: url_str } });
-                    console.log(entity.downloaded);
+                    //console.log(entity.downloaded);
                     entity.set({
                         downloaded: true
                     });
                     await entity.save();
-                    console.log(entity.downloaded);
-                    console.log(entity.title);
+                    //console.log(entity.downloaded);
+                    //console.log(entity.title);
                     sock.emit('done', { message: `${entity.title}` });
                 }
             });
@@ -209,7 +209,7 @@ async function list(req, res) {
         var start_num = body['start'] || 1;
         var stop_num = body['stop'] || 10;
         var chunk_size = body['chunk_size'] || 10;
-        console.log("url: ", body_url);
+        //console.log("url: ", body_url);
         // as it seems these options are depricated `--playlist-start ${start_num}`, `--playlist-end ${stop_num}`, but still work
         // lsiting the playlists in parts is actually wasteful, considering the time it takes query stuff
         // ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist", "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]
@@ -267,7 +267,7 @@ async function list(req, res) {
             // making the response 
             Promise.all(response_list.map(async element => {
                 var items = element.split("\t");
-                console.log(items, items.length);
+                //console.log(items, items.length);
                 // update the vidoes too here by looking for any changes that could have been made
                 try {
                     const [found, made] = await vid_list.findOrCreate({
@@ -285,7 +285,7 @@ async function list(req, res) {
                         console.log("Updating entry");
                         resp_json['count'] += 1;
                         resp_json['rows'].push(found);
-                        console.log("resp_json", resp_json);
+                        //console.log("resp_json", resp_json);
                         found.changed('updatedAt', true);
                         // if found doesn't have the same data then it needs to be updated
                         // list_background also needs this to be implemented
@@ -294,7 +294,7 @@ async function list(req, res) {
                     else if (made) {
                         resp_json['count'] += 1;
                         resp_json['rows'].push(made, null, 2);
-                        console.log("resp_json", resp_json);
+                        //console.log("resp_json", resp_json);
                     }
                 } catch (error) {
                     // remember to uncomment this later
@@ -302,8 +302,8 @@ async function list(req, res) {
                     // do better here, later
                 }
             })).then(function () {
-                console.log('here');
-                console.log("resp_json: " + resp_json);
+                //console.log('here');
+                //console.log("resp_json: " + resp_json);
                 res.writeHead(200, { "Content-Type": "text/json" });
                 res.end(JSON.stringify(resp_json, null, 2));
             });
@@ -315,11 +315,20 @@ async function list(req, res) {
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    var response = '';
-    console.log('listing in background');
+    var response = 'None';
+    var i = 0;
+    console.log('\nlisting in background\n');
     console.log("body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
-    do {
+    // use a for loop instead of do loop
+    listing: while (response != 'done') {
+        console.log('response', response);
+        console.log("resposne != 'done': ", response != 'done');
         response = '';
+        if (i == 3) {
+            console.log('breaking to not crash and burn');
+            break;
+        }
+        i++;
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
         console.log('start_num:', start_num, 'stop_num:', stop_num, 'chunk_size:', chunk_size);
@@ -339,31 +348,42 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
             response_list = response.split("\n");
             // remove the "" from the end of the list
             response_list.pop();
-            console.log(response_list, response_list.length);
-            // adding the items to db
-            response_list.forEach(async element => {
-                var items = element.split("\t");
-                console.log(items, items.length);
-                // update the vidoes too here by looking for any changes that could have been made
-                try {
-                    const video = await vid_list.create({
-                        url: items[2],
-                        id: items[1],
-                        reference: body_url,
-                        title: items[0],
-                        downloaded: false,
-                        available: true
-                    }).then(function () {
-                        console.log(items[0], "saved");
-                    });
-                } catch (error) {
-                    // remember to uncomment this later
-                    console.error(error);
-                    // do better here, later
-                }
-            });
+            console.log(start_num, stop_num, response, response_list, response_list.length);
+            if (response_list == '') {
+                // basically when the resonse is empty it means that all 
+                // the items have been listed and the function can just return 
+                // this should then break the outer listing loop
+                console.log("done");
+            } else {
+                // adding the items to db
+                await Promise.all(response_list.map(async element => {
+                    var items = element.split("\t");
+                    // console.log(items, items.length);
+                    // update the vidoes too here by looking for any changes that could have been made
+                    // use find or create here to update the entries
+                    try {
+                        const video = await vid_list.create({
+                            url: items[2],
+                            id: items[1],
+                            reference: body_url,
+                            title: items[0],
+                            downloaded: false,
+                            available: true
+                        }).then(function () {
+                            console.log(items[0], "saved");
+                        });
+                    } catch (error) {
+                        // remember to uncomment this later
+                        console.error(error);
+                        // do better here, later
+                    }
+                }));
+            }
         });
-    } while (response != []);
+    }
+    console.log('================================\nOutside loop');
+    console.log('response', response);
+    console.log("resposne != 'done': ", response != 'done');
     console.log('done listing');
 }
 
@@ -378,15 +398,15 @@ async function db_to_table(req, res) {
     });
     req.on('end', function () {
         body = JSON.parse(body);
-        //console.log('start_num: ', body['start'], 'stop_num:', body['stop']);
+        ////console.log('start_num: ', body['start'], 'stop_num:', body['stop']);
         var start_num = body['start'] || 0;
         var stop_num = body['stop'] || 10;
-        console.log('start_num: ' + start_num + ' stop_num: ' + stop_num);
+        //console.log('start_num: ' + start_num + ' stop_num: ' + stop_num);
         play_lists.findAndCountAll({
             limit: stop_num - start_num,
             offset: start_num
         }).then(result => {
-            //console.log("Here");
+            ////console.log("Here");
             res.writeHead(200, { "Content-Type": "text/json" });
             res.end(JSON.stringify(result, null, 2));
         });
@@ -404,12 +424,12 @@ async function sub_list(req, res) {
     });
     req.on('end', function () {
         body = JSON.parse(body);
-        console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
-            'stop_num:', body['stop'])//, 'single:', body['single']);
+        //console.log('body_url: ' + body['url'], 'start_num: ' + body['start'],
+        //    'stop_num:', body['stop'])//, 'single:', body['single']);
         var body_url = body['url'];
         var start_num = body['start'] || 0;
         var stop_num = body['stop'] || 10; // add a way to send -1 to list it all in one go
-        console.log("url: ", body_url, "Start: ", start_num, "Stop: ", stop_num);
+        //console.log("url: ", body_url, "Start: ", start_num, "Stop: ", stop_num);
         vid_list.findAndCountAll({
             where: {
                 reference: body_url
@@ -498,7 +518,7 @@ const server = http.createServer((req, res) => {
         res.end();
     }
     else {
-        //console.log("This: ",res.url);
+        ////console.log("This: ",res.url);
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('404');
     }
@@ -506,7 +526,7 @@ const server = http.createServer((req, res) => {
 
 const io = new Server(server, { /* options */ });
 const sock = io.on("connection", (socket) => {
-    //console.log('connection', socket);
+    ////console.log('connection', socket);
     socket.emit('init', { message: "Connected", id: socket.id });
     socket.on('acknowledge', console.log);
     return socket;

@@ -37,41 +37,53 @@
     <div class="container">
         <div class="row">
             <div class="col">
-                <h3 style="visibility: hidden;">#</h3>
-                <form class="mb-2">
-                    <label for="url" class="form-label">URL: </label>
-                    <input type="text" class="form-control" placeholder="url" name="url_input" id="url" />
-                    <label for="start" class="form-label">Start: </label>
-                    <input type="number" class="form-control" placeholder="1" name="start_input" id="start" />
-                    <label for="stop" class="form-label">Stop: </label>
-                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
-                    <label for="chunk" class="form-label">Chunk: </label>
-                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="chunk" />
-                    <!--Removing this wouldn't be such a bad idea, yt-dlp can handle it on it's own,
-                        if you are passing an url like this https://www.youtube.com/watch?v=id&list=id
-                        and wnat to use the --no-playlist option it's more work than it's worth just pass
-                        the url as https://www.youtube.com/watch?v=id -->
-                    <!--<label for="is_single" class="form-label">Single video:</label>
-                    <input type="checkbox" class="form-check-input" name="is_single" id="is_single">-->
-                </form>
-                <button id="listit" type="button" onclick="send_data()" class="btn btn-primary">List</button>
-                <div class="btn-group" role="group">
-                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">Select all</button>
-                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">Select none</button>
+                <h3>Controls:</h3>
+
+                <div class="row">
+                    <form class="mb-2">
+                        <label for="url" class="form-label">URL: </label>
+                        <input type="text" class="form-control" placeholder="url" name="url_input" id="url" />
+                    </form>
                 </div>
-                <form class="mb-2">
-                    <label for="start" class="form-label">Start: </label>
-                    <input type="number" class="form-control" placeholder="11" name="start_input" id="start_sub" />
-                    <label for="stop" class="form-label">Stop: </label>
-                    <input type="number" class="form-control" placeholder="20" name="stop_input" id="stop_sub" />
-                </form>
-                <div class="btn-group" role="group">
-                    <button id="next-sub" type="button" onclick="next_sub()" class="btn btn-primary">Next</button>
-                    <button id="back-sub" type="button" onclick="back_sub()" class="btn btn-primary">Back</button>
-                    <button id="clear" type="button" onclick="depopulateSubList()" class="btn btn-primary">Clear</button>
+
+                <div class="row">
+                    <div class="input-group mb-3 mt-3">
+                        <input type="number" class="form-control" placeholder="0" name="start_input" id="start" />
+                        <span class="input-group-text">-</span>
+                        <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
+                        <span class="input-group-text">Chunk</span>
+                        <input type="number" class="form-control" placeholder="10" name="stop_input" id="chunk" />
+                    </div>
                 </div>
-                <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download
-                    Selected</button>
+
+                <div class="row">
+                    <div class="col-7">
+                        <button id="listit" type="button" onclick="send_data()" class="btn btn-primary">List</button>
+                    </div>
+                    <div class="col">
+                        <div class="btn-group" role="group">
+                            <button id="next-sub" type="button" onclick="next()" class="btn btn-primary">Next</button>
+                            <button id="back-sub" type="button" onclick="back()" class="btn btn-primary">Back</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-7">
+                        <div class="btn-group" role="group">
+                            <span class="input-group-text" id="basic-addon1">Select</span>
+                            <button id="all" type="button" onclick="select_all()" class="btn btn-primary">All</button>
+                            <button id="none" type="button" onclick="select_none()"
+                                class="btn btn-primary">None</button>
+                            <button id="clear" type="button" onclick="depopulateList()"
+                                class="btn btn-primary">Clear</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <button id="dnld" type="button" onclick="download()" class="btn btn-primary">Download
+                            Selected</button>
+
+                    </div>
+                </div>
             </div>
             <div class="col">
                 <h3>List:</h3>
@@ -88,15 +100,15 @@
                         <div>
                             <tbody id="listing">
                                 <!--all items would be added here
-                            get the pagenition to work also make only the tbody
-                            scrollable not the entire table-->
+                                get the pagenition to work also make only the tbody
+                                scrollable not the entire table-->
                             </tbody>
                         </div>
                     </table>
                 </div>
                 <!--
-                    Add the navigation buttons here
-                -->
+                        Add the navigation buttons here
+                    -->
             </div>
         </div>
     </div>
@@ -111,16 +123,49 @@
         </div>
     </div>
     <script defer>
-        window.onload = sockSetup();
+        window.onload = init();
         var url_global = "None";
+        function init() {
+            document.getElementById("chunk").value = 10;
+            sockSetup();
+        }
+        function sockSetup() {
+            console.log("Sock setup started");
+            var socket = io();
+            socket.on('init', function (data) {
+                console.log(data.message);
+                // Respond with a message including this clients' id sent from the server
+                socket.emit('acknowledge', { data: 'Connected', id: data.id });
+            });
+            socket.on('progress', function (data) {
+                console.log(data);
+            });
+            socket.on('error', console.error.bind(console));
+            socket.on('done', function (data) {
+                console.log(data.message);
+                //alert(`Downloaded: ${data.message}`);
+                var myToastEl = document.getElementById('notify');
+                myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
+                var myToast = new bootstrap.Toast(myToastEl, {
+                    delay: 5000
+                }); // Returns a Bootstrap toast instance
+                //myToast.dispose();
+                myToast.show();
+            });
+        }
+
         function send_data() {
+            depopulateList();
             var url = document.getElementById("url").value;
             url_global = url;
             var start = document.getElementById("start").value;
+            if (start == "0"){
+                start = 1; // yt-dlp doesn't start counting form 0 but sequelize does
+            }
             var stop = document.getElementById("stop").value;
             var chunk = document.getElementById("chunk").value;
             const table = document.getElementById("listing");
-            console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk: " + chunk);
+            console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
             fetch("/ytdiff/list", {
                 method: "post",
                 headers: {
@@ -180,7 +225,6 @@
                 element.checked = true;
             });
         }
-
         function select_none() {
             document.querySelectorAll('input[type=checkbox]').forEach(element => {
                 element.checked = false;
@@ -210,42 +254,17 @@
             //set up a websocket to check on the status although it won't be really useful
         }
 
-        function sockSetup() {
-            console.log("Sock setup started");
-            var socket = io();
-            socket.on('init', function (data) {
-                console.log(data.message);
-                // Respond with a message including this clients' id sent from the server
-                socket.emit('acknowledge', { data: 'Connected', id: data.id });
-            });
-            socket.on('progress', function (data) {
-                console.log(data);
-            });
-            socket.on('error', console.error.bind(console));
-            socket.on('done', function (data) {
-                console.log(data.message);
-                //alert(`Downloaded: ${data.message}`);
-                var myToastEl = document.getElementById('notify');
-                myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
-                var myToast = new bootstrap.Toast(myToastEl, {
-                    delay: 5000
-                }); // Returns a Bootstrap toast instance
-                //myToast.dispose();
-                myToast.show();
-            });
-        }
-
-        function next_sub() {
-            depopulateSubList();
-            if (document.getElementById("start_sub").value === "") {
-                document.getElementById("start_sub").value = 0;
+        function next() {
+            depopulateList();
+            if (document.getElementById("start").value === "") {
+                document.getElementById("start").value = 0;
             } else {
-                document.getElementById("start_sub").value = parseInt(document.getElementById("start_sub").value, 10) + 10;
+                document.getElementById("start").value = parseInt(document.getElementById("start").value, 10) + 10;
             }
-            if (document.getElementById("stop_sub").value === "") {
-                document.getElementById("stop_sub").value = 10;
+            if (document.getElementById("stop").value === "") {
+                document.getElementById("stop").value = 10;
             } else {
-                document.getElementById("stop_sub").value = parseInt(document.getElementById("stop_sub").value, 10) + 10;
+                document.getElementById("stop").value = parseInt(document.getElementById("stop").value, 10) + 10;
             }
             // maybe get add an orphaned button too just in case
             // this is a quick test it probably shouldn't work
@@ -253,29 +272,29 @@
                 url_global = document.getElementById("url").value;
             getSubList(url_global);
         }
-        function back_sub() {
-            depopulateSubList();
-            if (document.getElementById("start_sub").value === "") {
-                document.getElementById("start_sub").value = 0;
-            } else if ((parseInt(document.getElementById("start_sub").value, 10) - 10) <= 0) {
-                document.getElementById("start_sub").value = 0;
+        function back() {
+            depopulateList();
+            if (document.getElementById("start").value === "") {
+                document.getElementById("start").value = 0;
+            } else if ((parseInt(document.getElementById("start").value, 10) - 10) <= 0) {
+                document.getElementById("start").value = 0;
             } else {
-                document.getElementById("start_sub").value = parseInt(document.getElementById("start_sub").value, 10) - 10;
+                document.getElementById("start").value = parseInt(document.getElementById("start").value, 10) - 10;
             }
 
-            if (document.getElementById("stop_sub").value === "") {
-                document.getElementById("stop_sub").value = 10;
-            } else if ((parseInt(document.getElementById("stop_sub").value, 10) - 10) <= 10) {
-                document.getElementById("stop_sub").value = 10;
+            if (document.getElementById("stop").value === "") {
+                document.getElementById("stop").value = 10;
+            } else if ((parseInt(document.getElementById("stop").value, 10) - 10) <= 10) {
+                document.getElementById("stop").value = 10;
             } else {
-                document.getElementById("stop_sub").value = parseInt(document.getElementById("stop_sub").value, 10) - 10;
+                document.getElementById("stop").value = parseInt(document.getElementById("stop").value, 10) - 10;
             }
             if ((url_global == "None") && (document.getElementById("url").value != ""))
                 url_global = document.getElementById("url").value;
             getSubList(url_global);
         }
 
-        function depopulateSubList() {
+        function depopulateList() {
             const table = document.getElementById("listing");
             // now that listing is done it tbody i needs to start form 0, change it in other places too
             for (var i = 0; i < table.rows.length;) {
@@ -285,9 +304,9 @@
 
         function getSubList(url) {
             console.log("Querying url: ", url);
-            depopulateSubList();
-            var start = document.getElementById("start_sub").value;
-            var stop = document.getElementById("stop_sub").value;
+            depopulateList();
+            var start = document.getElementById("start").value;
+            var stop = document.getElementById("stop").value;
             const table = document.getElementById("listing");
             fetch("/ytdiff/getsub", {
                 method: "post",

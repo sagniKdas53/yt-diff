@@ -54,18 +54,25 @@
                         </tbody>
                     </table>
                 </div>
-                <form class="mb-2">
-                    <label for="start" class="form-label">Start: </label>
-                    <input type="number" class="form-control" placeholder="0" name="start_input" id="start" />
-                    <label for="stop" class="form-label">Stop: </label>
-                    <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
-                </form>
-                <div class="btn-group" role="group">
-                    <button id="next" type="button" onclick="next()" class="btn btn-primary">Next</button>
-                    <button id="back" type="button" onclick="back()" class="btn btn-primary">Back</button>
+                <div class="container">
+                    <div class="row">
+                        <div class="input-group mb-3 mt-3">
+                            <input type="number" class="form-control" placeholder="0" name="start_input" id="start" />
+                            <span class="input-group-text">-</span>
+                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
+                            <button id="next" type="button" onclick="next()"
+                                class="btn btn-primary border-dark">Next</button>
+                            <button id="back" type="button" onclick="back()"
+                                class="btn btn-primary border-dark">Back</button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-3">
+                            <button id="orphan" type="button" onclick="getSubList('None')"
+                                class="btn btn-info border-dark">Orphaned</button>
+                        </div>
+                    </div>
                 </div>
-                <button id="orphan" type="button" onclick="getSubList('None')" class="btn btn-primary">Orphaned
-                    Videos</button>
             </div>
             <div class="col">
                 <h3>List:</h3>
@@ -92,27 +99,28 @@
                             <span class="input-group-text">-</span>
                             <input type="number" class="form-control" placeholder="10" name="stop_input"
                                 id="stop_sub" />
-
-                            <button id="next" type="button" onclick="next_sub()"
+                            <button id="next-sub" type="button" onclick="next_sub()"
                                 class="btn btn-info border-dark">Next</button>
-                            <button id="back" type="button" onclick="back_sub()"
+                            <button id="back-sub" type="button" onclick="back_sub()"
                                 class="btn btn-info border-dark">Back</button>
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-8">
+                        <div class="col-9">
                             <div class="btn-group" role="group" aria-label="Basic example">
+                                <span class="input-group-text" id="basic-addon1">Select</span>
                                 <button id="all" type="button" onclick="select_all()"
-                                    class="btn btn-info border-dark">Select all</button>
+                                    class="btn btn-info border-dark">All</button>
                                 <button id="none" type="button" onclick="select_none()"
-                                    class="btn btn-info border-dark">Select none</button>
+                                    class="btn btn-info border-dark">None</button>
                                 <button id="clear" type="button" onclick="depopulateSubList()"
                                     class="btn btn-info border-dark">Clear</button>
+                                <!--<button id="orphan" type="button" onclick="getSubList('None')" class="btn btn-info border-dark"></button>-->
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-3">
                             <button id="dnld" type="button" onclick="download()"
-                                class="btn btn-info border-dark">Download</button>
+                                class="btn btn-primary border-dark">Download</button>
                         </div>
                     </div>
                 </div>
