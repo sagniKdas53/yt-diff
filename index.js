@@ -320,6 +320,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
     // SELECT * FROM "vid_lists" WHERE "reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz' ORDER BY "createdAt" LIMIT 50
     // This query shows that vidoes aren't being added to the db in order thus suggesting that this function isn't 
     // working as expected or intended, it should  divide the the massive list into chunks and then save them in order.
+    // see vid_lists.csv for snapshot of the data and how the function messed it up.
     var response = 'None';
     var i = 0;
     console.log('\nlisting in background\n');

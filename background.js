@@ -1,21 +1,70 @@
+const { Sequelize, DataTypes } = require('sequelize');
+const { spawn } = require("child_process");
+
+const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
+    //host: 'yt-db',
+    host: 'localhost',
+    dialect: 'postgres'
+    , logging: false
+});
+
+try {
+    sequelize.authenticate().then(() => {
+        console.log('Connection has been established successfully.');
+    })
+} catch (error) {
+    console.error('Unable to connect to the database:', error);
+}
+
+const vid_list = sequelize.define('vid_list', {
+    // Model attributes are defined here
+    url: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
+    id: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        primaryKey: true
+    },
+    title: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    downloaded: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false
+    },
+    available: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false
+    },
+    reference: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
+});
+
+sequelize.sync().then(() => {
+    console.log('vid_list and play_lists tables exist or are created successfully!');
+}).catch((error) => {
+    console.error('Unable to create table : ', error);
+});
+
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    var response = 'None';
-    var i = 0;
-    console.log('\nlisting in background\n');
-    console.log("body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
-    // use a for loop instead of do loop
-    while (response != 'done') {
-        console.log('response', response);
-        console.log("resposne != 'done': ", response != 'done');
-        response = '';
-        if (i == 3) {
-            console.log('breaking to not crash and burn');
-            break;
-        }
-        i++;
+    // sleep just to make it possible to catch
+    await sleep(2 * 1000);
+    console.log('\nlisting in background');
+    // put this in a loop where start_num and stop_num will be updated every iteration
+    {
+        // prepare an empty string to append all the data to
+        var response = '';
+        // make the start and stop numbers
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
-        console.log('start_num:', start_num, 'stop_num:', stop_num, 'chunk_size:', chunk_size);
+
+        console.log("\nsupplied data:\nbody_url:", body_url, "\nstart_num:", start_num, "\nstop_num:", stop_num, "\nchunk_size", chunk_size);
+        // actually spawn the thing
         const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
             "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
         yt_list.stdout.on("data", async data => {
@@ -32,7 +81,8 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
             response_list = response.split("\n");
             // remove the "" from the end of the list
             response_list.pop();
-            console.log(start_num, stop_num, response, response_list, response_list.length);
+            // get the status at the end
+            console.log("\ndata after processing\nresponse:", response, "\nresponse_list:", response_list, "\nresponse_list.length:", response_list.length, "\n");
             if (response_list == '') {
                 // basically when the resonse is empty it means that all 
                 // the items have been listed and the function can just return 
@@ -40,9 +90,10 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
                 console.log("done");
             } else {
                 // adding the items to db
+                console.log("adding items to db");
                 await Promise.all(response_list.map(async element => {
                     var items = element.split("\t");
-                    // console.log(items, items.length);
+                    console.log(items, items.length);
                     // update the vidoes too here by looking for any changes that could have been made
                     // use find or create here to update the entries
                     try {
@@ -57,24 +108,24 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
                             console.log(items[0], "saved");
                         });
                     } catch (error) {
-                        // remember to uncomment this later
-                        console.error(error);
-                        // do better here, later
+                        // remember to uncomment this later, the sequelize erros are not relevant here now
+                        // console.error(error);
                     }
                 }));
             }
         });
     }
-    console.log('================================\nOutside loop');
-    console.log('response', response);
-    console.log("resposne != 'done': ", response != 'done');
-    console.log('done listing');
+}
+
+async function yt_dlp_spawner(body_url, start_num, stop_num, chunk_size) {
+    // can be a viable idea 
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 
-async function test(){
-    
-}
-
-
-//list_background("https://www.youtube.com/playlist?list=PL4Oo6H2hGqj2hsdtwqtESAdABg_TDAA-v",1,10,10);
+const eleven_vidoes = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWtJ86g4ucr";
+const seventy6 = "https://www.youtube.com/playlist?list=PLOO4NsmB3T4eli11PYPyaGYGV0JLveI18";
+list_background(seventy6, 1, 10, 10);
