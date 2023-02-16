@@ -57,7 +57,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
     console.log('\nlisting in background');
     // put this in a loop where start_num and stop_num will be updated every iteration
     var i = 0;
-    while (i < 2) {
+    while (i < 10) {
         // prepare an empty string to append all the data to
         var response = '';
         // make the start and stop numbers
@@ -154,11 +154,10 @@ const eleven = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWt
 const twenty5 = "https://www.youtube.com/playlist?list=PLNWGkqCSwkOHznnLAMzwpy-pO0pR7Wr6r"
 const seventy6_grass_angle = "https://www.youtube.com/playlist?list=PLOO4NsmB3T4eli11PYPyaGYGV0JLveI18";
 const thirty = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj22U9EzJEdlIwNbsUAikFN9";
-
+const fin_talk = "https://www.youtube.com/playlist?list=PLsRkc9JvTV2EacmW7CrV8HBSgEc8Jq5yp"
 
 const contains_private = "https://www.youtube.com/playlist?list=PL4j9sdcFKwqkNj4WRREQ9sEB9AYmzQBdH";
 const contains_deleted = "https://www.youtube.com/playlist?list=PLpHbno9djTOSaBHKTrtbsKkn6MDUujQxX";
-list_background(contains_private, 1, 10, 10);
 
-list_background(contains_deleted, 1, 10, 10);
+list_background(seventy6_grass_angle, 1, 10, 10);
 
