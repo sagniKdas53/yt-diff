@@ -184,14 +184,13 @@ async function list(req, res) {
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
     // sleep just to make it possible to catch
-    await sleep(2 * 1000);
+    // await sleep(2 * 1000);
     console.log('\nlisting in background');
-    // put this in a loop where start_num and stop_num will be updated every iteration
     var i = 0;
-    var stop_plz = true;
-    // need to find a way to make the loop work only until the time we get a 
-    // it will be something like this:
-    // while (stop_plz) {
+    var dont_stop = true;
+    // need to find a way to make the loop work only until the time we get a response
+    // empty response means we should stop
+    //  while (dont_stop) { // this is disastrous as the variable never gets updated
     while (i < 10) {
         // prepare an empty string to append all the data to
         var response = '';
@@ -214,8 +213,8 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
         });
         // apparently await has no effect on this expression
         // but then how are we supposed to know when to stop?
-        // the listing only ends when stop_plz is false
-        stop_plz = yt_list.on("close", async (code) => {
+        // the listing only ends when dont_stop is false
+        yt_list.on("close", async (code) => {
             end = `child process exited with code ${code}`;
             response_list = response.split("\n");
             // remove the "" from the end of the list
@@ -228,15 +227,15 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
                 // this should then break the outer listing loop
                 console.log("no vidoes found", "\ni:", i, "\n");
                 // break wont work as `Jump target cannot cross function boundary.ts(1107)`
-                // so I am returning false to stop_plz and if stop_plz is is true then the loop 
+                // so I am returning false to dont_stop and if dont_stop is is true then the loop 
                 // should stop in the next iteration
-                return false;
+                dont_stop = false;
             } else {
                 // adding the items to db
                 console.log("adding items to db", "\ni:", i, "\n");
                 await Promise.all(response_list.map(async (element) => {
                     var items = element.split("\t");
-                    console.log(items, items.length, "\ni:", i, "\n");
+                    // console.log(items, items.length, "\ni:", i, "\n");
                     // update the vidoes too here by looking for any changes that could have been made
                     // use find or create here to update the entries
                     if (items.length == 3) {
@@ -256,15 +255,21 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
                                     available: item_available
                                 }
                             })
-                            if (created)
-                                console.log("\nsaved", items[0], "\ni:", i, "\n");
-                            else if (found) {
+                            //if (created)
+                            //console.log("\nsaved", items[0], "\ni:", i, "\n");
+                            //else 
+                            if (found) {
                                 if (!item_available) {
                                     found.available = false;
-                                    console.log("\nfound", items[0], "updated", "\ni:", i, "\n");
+                                    //console.log("\nfound", items[0], "updated", "\ni:", i, "\n");
                                 }
                                 else {
-                                    console.log("\nfound", items[0], "no changes", "\ni:", i, "\n");
+                                    //console.log("\nfound", items[0], "no changes", "\ni:", i, "\n");
+                                }
+                                // if video intially added with a null reference but now it's in a list it should be referenced to
+                                // add provison for multiple references since a single vidoe can occure in multiple lists
+                                if (found.reference == 'None') {
+                                    found.reference = body_url;
                                 }
                                 found.changed('updatedAt', true);
                             }
@@ -274,11 +279,10 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
                         }
                     }
                 }));
-                return true;
+                dont_stop = true;
             }
         });
-        // this return a <ref *1> thing I don't know how to do it anymore
-        console.log('\n\n\nwill stop', stop_plz, "\ni:", i, "\n");
+        console.log('\n\ndont_stop', dont_stop, "\ni:", i, "\n");
         i++;
     }
     console.log('\noutside the loop, and persumably done', "\ni:", i, "\n");
@@ -304,6 +308,7 @@ const contains_deleted = "https://www.youtube.com/playlist?list=PLpHbno9djTOSaBH
 
 const hunderd_n_2 = "https://www.youtube.com/playlist?list=PLlPDaLsfKPbK9BAbmG7s4b4ClUHDYNW3B"
 
+const daft_punk_essentials = { url: "https://www.youtube.com/playlist?list=PLSdoVPM5WnneERBKycA1lhN_vPM6IGiAg", size: 22 }
 // first 10 will be listed by the main method so the number of vidoes that we should get here is total-10
-list_background(seventy6, 1, 10, 10);
+list_background(daft_punk_essentials['url'], 1, 10, 10);
 

@@ -29,7 +29,7 @@ RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
 
-COPY index.js index.html package-lock.json package.json favicon.ico show.html /
+COPY index.js index.html package-lock.json package.json favicon.ico show.html nav.png /
 
 EXPOSE 8888
 
