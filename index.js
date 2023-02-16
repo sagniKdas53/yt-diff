@@ -530,7 +530,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-const io = new Server(server, { /* options */ });
+const io = new Server(server, { path: url_base + "/socket.io/" });
 const sock = io.on("connection", (socket) => {
     ////console.log('connection', socket);
     socket.emit('init', { message: "Connected", id: socket.id });

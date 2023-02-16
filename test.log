@@ -1,0 +1,1263 @@
+Connection has been established successfully.
+vid_list and play_lists tables exist or are created successfully!
+
+listing in background
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PLNWGkqCSwkOHznnLAMzwpy-pO0pR7Wr6r 
+start_num: 11 
+stop_num: 20 
+chunk_size 10
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PLNWGkqCSwkOHznnLAMzwpy-pO0pR7Wr6r 
+start_num: 21 
+stop_num: 30 
+chunk_size 10
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PLNWGkqCSwkOHznnLAMzwpy-pO0pR7Wr6r 
+start_num: 31 
+stop_num: 40 
+chunk_size 10
+
+outside the loop, and persumably done
+
+data after processing
+response:
+  
+response_list: [] 
+response_list.length: 0 
+
+no vidoes found
+
+data after processing
+response:
+ Loot Competition Begins! | Rimworld: RPG Adventure #11	IeW89a0TJKo	https://www.youtube.com/watch?v=IeW89a0TJKo
+Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12	ggnh1CF-eJo	https://www.youtube.com/watch?v=ggnh1CF-eJo
+Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13	wYLb0z7vhsI	https://www.youtube.com/watch?v=wYLb0z7vhsI
+Petting Zoo from Hell | Rimworld: RPG Adventure #14	mkllA1yi1ZI	https://www.youtube.com/watch?v=mkllA1yi1ZI
+Cashing Out the Loot Vault | Rimworld: RPG Adventure #15	4SRRYA0gPs0	https://www.youtube.com/watch?v=4SRRYA0gPs0
+Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16	cVhgj2l-cN4	https://www.youtube.com/watch?v=cVhgj2l-cN4
+Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17	JBWXWwA6KBk	https://www.youtube.com/watch?v=JBWXWwA6KBk
+The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18	5RZ9kKb4AoE	https://www.youtube.com/watch?v=5RZ9kKb4AoE
+An Onion Incident | Rimworld: RPG Adventure #19	9gFla64Jz8Y	https://www.youtube.com/watch?v=9gFla64Jz8Y
+Thinking with Portals | Rimworld: RPG Adventure #20	kk6sUnAbVX8	https://www.youtube.com/watch?v=kk6sUnAbVX8
+ 
+response_list: [
+  'Loot Competition Begins! | Rimworld: RPG Adventure #11\tIeW89a0TJKo\thttps://www.youtube.com/watch?v=IeW89a0TJKo',
+  'Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12\tggnh1CF-eJo\thttps://www.youtube.com/watch?v=ggnh1CF-eJo',
+  'Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13\twYLb0z7vhsI\thttps://www.youtube.com/watch?v=wYLb0z7vhsI',
+  'Petting Zoo from Hell | Rimworld: RPG Adventure #14\tmkllA1yi1ZI\thttps://www.youtube.com/watch?v=mkllA1yi1ZI',
+  'Cashing Out the Loot Vault | Rimworld: RPG Adventure #15\t4SRRYA0gPs0\thttps://www.youtube.com/watch?v=4SRRYA0gPs0',
+  'Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16\tcVhgj2l-cN4\thttps://www.youtube.com/watch?v=cVhgj2l-cN4',
+  'Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17\tJBWXWwA6KBk\thttps://www.youtube.com/watch?v=JBWXWwA6KBk',
+  'The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18\t5RZ9kKb4AoE\thttps://www.youtube.com/watch?v=5RZ9kKb4AoE',
+  'An Onion Incident | Rimworld: RPG Adventure #19\t9gFla64Jz8Y\thttps://www.youtube.com/watch?v=9gFla64Jz8Y',
+  'Thinking with Portals | Rimworld: RPG Adventure #20\tkk6sUnAbVX8\thttps://www.youtube.com/watch?v=kk6sUnAbVX8'
+] 
+response_list.length: 10 
+
+adding items to db
+[
+  'Loot Competition Begins! | Rimworld: RPG Adventure #11',
+  'IeW89a0TJKo',
+  'https://www.youtube.com/watch?v=IeW89a0TJKo'
+] 3
+Loot Competition Begins! | Rimworld: RPG Adventure #11 saved
+[
+  'Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12',
+  'ggnh1CF-eJo',
+  'https://www.youtube.com/watch?v=ggnh1CF-eJo'
+] 3
+Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12 saved
+[
+  'Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13',
+  'wYLb0z7vhsI',
+  'https://www.youtube.com/watch?v=wYLb0z7vhsI'
+] 3
+Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13 saved
+[
+  'Petting Zoo from Hell | Rimworld: RPG Adventure #14',
+  'mkllA1yi1ZI',
+  'https://www.youtube.com/watch?v=mkllA1yi1ZI'
+] 3
+Petting Zoo from Hell | Rimworld: RPG Adventure #14 saved
+[
+  'Cashing Out the Loot Vault | Rimworld: RPG Adventure #15',
+  '4SRRYA0gPs0',
+  'https://www.youtube.com/watch?v=4SRRYA0gPs0'
+] 3
+Cashing Out the Loot Vault | Rimworld: RPG Adventure #15 saved
+[
+  'Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16',
+  'cVhgj2l-cN4',
+  'https://www.youtube.com/watch?v=cVhgj2l-cN4'
+] 3
+Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16 saved
+[
+  'Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17',
+  'JBWXWwA6KBk',
+  'https://www.youtube.com/watch?v=JBWXWwA6KBk'
+] 3
+Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17 saved
+[
+  'The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18',
+  '5RZ9kKb4AoE',
+  'https://www.youtube.com/watch?v=5RZ9kKb4AoE'
+] 3
+The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18 saved
+[
+  'An Onion Incident | Rimworld: RPG Adventure #19',
+  '9gFla64Jz8Y',
+  'https://www.youtube.com/watch?v=9gFla64Jz8Y'
+] 3
+An Onion Incident | Rimworld: RPG Adventure #19 saved
+[
+  'Thinking with Portals | Rimworld: RPG Adventure #20',
+  'kk6sUnAbVX8',
+  'https://www.youtube.com/watch?v=kk6sUnAbVX8'
+] 3
+Thinking with Portals | Rimworld: RPG Adventure #20 saved
+
+data after processing
+response:
+ Loot Competition Begins! | Rimworld: RPG Adventure #11	IeW89a0TJKo	https://www.youtube.com/watch?v=IeW89a0TJKo
+Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12	ggnh1CF-eJo	https://www.youtube.com/watch?v=ggnh1CF-eJo
+Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13	wYLb0z7vhsI	https://www.youtube.com/watch?v=wYLb0z7vhsI
+Petting Zoo from Hell | Rimworld: RPG Adventure #14	mkllA1yi1ZI	https://www.youtube.com/watch?v=mkllA1yi1ZI
+Cashing Out the Loot Vault | Rimworld: RPG Adventure #15	4SRRYA0gPs0	https://www.youtube.com/watch?v=4SRRYA0gPs0
+Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16	cVhgj2l-cN4	https://www.youtube.com/watch?v=cVhgj2l-cN4
+Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17	JBWXWwA6KBk	https://www.youtube.com/watch?v=JBWXWwA6KBk
+The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18	5RZ9kKb4AoE	https://www.youtube.com/watch?v=5RZ9kKb4AoE
+An Onion Incident | Rimworld: RPG Adventure #19	9gFla64Jz8Y	https://www.youtube.com/watch?v=9gFla64Jz8Y
+Thinking with Portals | Rimworld: RPG Adventure #20	kk6sUnAbVX8	https://www.youtube.com/watch?v=kk6sUnAbVX8
+Absolute, True, Chaos | Rimworld: RPG Adventure #21	8qYbKSQpcmI	https://www.youtube.com/watch?v=8qYbKSQpcmI
+Abandon the Inn for a Dragon Kingdom | Rimworld: RPG Adventure #22	zv95uXpWWuY	https://www.youtube.com/watch?v=zv95uXpWWuY
+Borrowing New Citizens for Grignr Kingdom | Rimworld: RPG Adventure #23	HAMIFSAkwVY	https://www.youtube.com/watch?v=HAMIFSAkwVY
+Final Preparations Before the War | Rimworld: RPG Adventure #24	sETYUrTrZ2U	https://www.youtube.com/watch?v=sETYUrTrZ2U
+Clash of the Titan | Rimworld: RPG Adventure #25	7dpm-fD0OcU	https://www.youtube.com/watch?v=7dpm-fD0OcU
+ 
+response_list: [
+  'Loot Competition Begins! | Rimworld: RPG Adventure #11\tIeW89a0TJKo\thttps://www.youtube.com/watch?v=IeW89a0TJKo',
+  'Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12\tggnh1CF-eJo\thttps://www.youtube.com/watch?v=ggnh1CF-eJo',
+  'Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13\twYLb0z7vhsI\thttps://www.youtube.com/watch?v=wYLb0z7vhsI',
+  'Petting Zoo from Hell | Rimworld: RPG Adventure #14\tmkllA1yi1ZI\thttps://www.youtube.com/watch?v=mkllA1yi1ZI',
+  'Cashing Out the Loot Vault | Rimworld: RPG Adventure #15\t4SRRYA0gPs0\thttps://www.youtube.com/watch?v=4SRRYA0gPs0',
+  'Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16\tcVhgj2l-cN4\thttps://www.youtube.com/watch?v=cVhgj2l-cN4',
+  'Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17\tJBWXWwA6KBk\thttps://www.youtube.com/watch?v=JBWXWwA6KBk',
+  'The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18\t5RZ9kKb4AoE\thttps://www.youtube.com/watch?v=5RZ9kKb4AoE',
+  'An Onion Incident | Rimworld: RPG Adventure #19\t9gFla64Jz8Y\thttps://www.youtube.com/watch?v=9gFla64Jz8Y',
+  'Thinking with Portals | Rimworld: RPG Adventure #20\tkk6sUnAbVX8\thttps://www.youtube.com/watch?v=kk6sUnAbVX8',
+  'Absolute, True, Chaos | Rimworld: RPG Adventure #21\t8qYbKSQpcmI\thttps://www.youtube.com/watch?v=8qYbKSQpcmI',
+  'Abandon the Inn for a Dragon Kingdom | Rimworld: RPG Adventure #22\tzv95uXpWWuY\thttps://www.youtube.com/watch?v=zv95uXpWWuY',
+  'Borrowing New Citizens for Grignr Kingdom | Rimworld: RPG Adventure #23\tHAMIFSAkwVY\thttps://www.youtube.com/watch?v=HAMIFSAkwVY',
+  'Final Preparations Before the War | Rimworld: RPG Adventure #24\tsETYUrTrZ2U\thttps://www.youtube.com/watch?v=sETYUrTrZ2U',
+  'Clash of the Titan | Rimworld: RPG Adventure #25\t7dpm-fD0OcU\thttps://www.youtube.com/watch?v=7dpm-fD0OcU'
+] 
+response_list.length: 15 
+
+adding items to db
+[
+  'Loot Competition Begins! | Rimworld: RPG Adventure #11',
+  'IeW89a0TJKo',
+  'https://www.youtube.com/watch?v=IeW89a0TJKo'
+] 3
+Loot Competition Begins! | Rimworld: RPG Adventure #11 saved
+[
+  'Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12',
+  'ggnh1CF-eJo',
+  'https://www.youtube.com/watch?v=ggnh1CF-eJo'
+] 3
+Stealing Your Entire Castle Brick by Brick | Rimworld: RPG Adventure #12 saved
+[
+  'Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13',
+  'wYLb0z7vhsI',
+  'https://www.youtube.com/watch?v=wYLb0z7vhsI'
+] 3
+Character Sheets for Easy Stat Tracking | Rimworld: RPG Adventure #13 saved
+[
+  'Petting Zoo from Hell | Rimworld: RPG Adventure #14',
+  'mkllA1yi1ZI',
+  'https://www.youtube.com/watch?v=mkllA1yi1ZI'
+] 3
+Petting Zoo from Hell | Rimworld: RPG Adventure #14 saved
+[
+  'Cashing Out the Loot Vault | Rimworld: RPG Adventure #15',
+  '4SRRYA0gPs0',
+  'https://www.youtube.com/watch?v=4SRRYA0gPs0'
+] 3
+Cashing Out the Loot Vault | Rimworld: RPG Adventure #15 saved
+[
+  'Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16',
+  'cVhgj2l-cN4',
+  'https://www.youtube.com/watch?v=cVhgj2l-cN4'
+] 3
+Crunching Quests with a Flood of Bugs | Rimworld: RPG Adventure #16 saved
+[
+  'Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17',
+  'JBWXWwA6KBk',
+  'https://www.youtube.com/watch?v=JBWXWwA6KBk'
+] 3
+Rolling the Dice of Chaos and Paying the Price | Rimworld: RPG Adventure #17 saved
+[
+  'The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18',
+  '5RZ9kKb4AoE',
+  'https://www.youtube.com/watch?v=5RZ9kKb4AoE'
+] 3
+The Rise of Grognr Grognrson | Rimworld: RPG Adventure #18 saved
+[
+  'An Onion Incident | Rimworld: RPG Adventure #19',
+  '9gFla64Jz8Y',
+  'https://www.youtube.com/watch?v=9gFla64Jz8Y'
+] 3
+An Onion Incident | Rimworld: RPG Adventure #19 saved
+[
+  'Thinking with Portals | Rimworld: RPG Adventure #20',
+  'kk6sUnAbVX8',
+  'https://www.youtube.com/watch?v=kk6sUnAbVX8'
+] 3
+Thinking with Portals | Rimworld: RPG Adventure #20 saved
+[
+  'Absolute, True, Chaos | Rimworld: RPG Adventure #21',
+  '8qYbKSQpcmI',
+  'https://www.youtube.com/watch?v=8qYbKSQpcmI'
+] 3
+Absolute, True, Chaos | Rimworld: RPG Adventure #21 saved
+[
+  'Abandon the Inn for a Dragon Kingdom | Rimworld: RPG Adventure #22',
+  'zv95uXpWWuY',
+  'https://www.youtube.com/watch?v=zv95uXpWWuY'
+] 3
+Abandon the Inn for a Dragon Kingdom | Rimworld: RPG Adventure #22 saved
+[
+  'Borrowing New Citizens for Grignr Kingdom | Rimworld: RPG Adventure #23',
+  'HAMIFSAkwVY',
+  'https://www.youtube.com/watch?v=HAMIFSAkwVY'
+] 3
+Borrowing New Citizens for Grignr Kingdom | Rimworld: RPG Adventure #23 saved
+[
+  'Final Preparations Before the War | Rimworld: RPG Adventure #24',
+  'sETYUrTrZ2U',
+  'https://www.youtube.com/watch?v=sETYUrTrZ2U'
+] 3
+Final Preparations Before the War | Rimworld: RPG Adventure #24 saved
+[
+  'Clash of the Titan | Rimworld: RPG Adventure #25',
+  '7dpm-fD0OcU',
+  'https://www.youtube.com/watch?v=7dpm-fD0OcU'
+] 3
+Clash of the Titan | Rimworld: RPG Adventure #25 saved
+Connection has been established successfully.
+vid_list and play_lists tables exist or are created successfully!
+
+listing in background
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWtJ86g4ucr 
+start_num: 11 
+stop_num: 20 
+chunk_size 10
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWtJ86g4ucr 
+start_num: 21 
+stop_num: 30 
+chunk_size 10
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWtJ86g4ucr 
+start_num: 31 
+stop_num: 40 
+chunk_size 10
+
+outside the loop, and persumably done
+
+data after processing
+response:
+ [MV] IVE(아이브) - ELEVEN	--FmExEAsM8	https://www.youtube.com/watch?v=--FmExEAsM8
+ 
+response_list: [
+  '[MV] IVE(아이브) - ELEVEN\t--FmExEAsM8\thttps://www.youtube.com/watch?v=--FmExEAsM8'
+] 
+response_list.length: 1 
+
+adding items to db
+[
+  '[MV] IVE(아이브) - ELEVEN',
+  '--FmExEAsM8',
+  'https://www.youtube.com/watch?v=--FmExEAsM8'
+] 3
+
+data after processing
+response:
+ [MV] IVE(아이브) - ELEVEN	--FmExEAsM8	https://www.youtube.com/watch?v=--FmExEAsM8
+ 
+response_list: [
+  '[MV] IVE(아이브) - ELEVEN\t--FmExEAsM8\thttps://www.youtube.com/watch?v=--FmExEAsM8'
+] 
+response_list.length: 1 
+
+adding items to db
+[
+  '[MV] IVE(아이브) - ELEVEN',
+  '--FmExEAsM8',
+  'https://www.youtube.com/watch?v=--FmExEAsM8'
+] 3
+
+data after processing
+response:
+ [MV] IVE(아이브) - ELEVEN	--FmExEAsM8	https://www.youtube.com/watch?v=--FmExEAsM8
+ 
+response_list: [
+  '[MV] IVE(아이브) - ELEVEN\t--FmExEAsM8\thttps://www.youtube.com/watch?v=--FmExEAsM8'
+] 
+response_list.length: 1 
+
+adding items to db
+[
+  '[MV] IVE(아이브) - ELEVEN',
+  '--FmExEAsM8',
+  'https://www.youtube.com/watch?v=--FmExEAsM8'
+] 3
+Connection has been established successfully.
+vid_list and play_lists tables exist or are created successfully!
+
+listing in background
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PL4j9sdcFKwqkNj4WRREQ9sEB9AYmzQBdH 
+start_num: 11 
+stop_num: 20 
+chunk_size 10
+
+outside the loop, and persumably done
+
+listing in background
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PLpHbno9djTOSaBHKTrtbsKkn6MDUujQxX 
+start_num: 11 
+stop_num: 20 
+chunk_size 10
+
+outside the loop, and persumably done
+
+data after processing
+response:
+ stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden
+[Private video]	4Qr0RbutheA	https://www.youtube.com/watch?v=4Qr0RbutheA
+[Private video]	SZkIWkGdp3o	https://www.youtube.com/watch?v=SZkIWkGdp3o
+[Private video]	Ff6as9hwHqM	https://www.youtube.com/watch?v=Ff6as9hwHqM
+[Private video]	TxX2Qgneo3U	https://www.youtube.com/watch?v=TxX2Qgneo3U
+[Private video]	qPvZdUbGQx4	https://www.youtube.com/watch?v=qPvZdUbGQx4
+[Private video]	I5bjAC-hvnA	https://www.youtube.com/watch?v=I5bjAC-hvnA
+[Private video]	AVkyFy7zvIw	https://www.youtube.com/watch?v=AVkyFy7zvIw
+[Private video]	yWOzs8wP5yA	https://www.youtube.com/watch?v=yWOzs8wP5yA
+[Private video]	meH88en2fIk	https://www.youtube.com/watch?v=meH88en2fIk
+[Private video]	M43IPdPF9Es	https://www.youtube.com/watch?v=M43IPdPF9Es
+ 
+response_list: [
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden',
+  '[Private video]\t4Qr0RbutheA\thttps://www.youtube.com/watch?v=4Qr0RbutheA',
+  '[Private video]\tSZkIWkGdp3o\thttps://www.youtube.com/watch?v=SZkIWkGdp3o',
+  '[Private video]\tFf6as9hwHqM\thttps://www.youtube.com/watch?v=Ff6as9hwHqM',
+  '[Private video]\tTxX2Qgneo3U\thttps://www.youtube.com/watch?v=TxX2Qgneo3U',
+  '[Private video]\tqPvZdUbGQx4\thttps://www.youtube.com/watch?v=qPvZdUbGQx4',
+  '[Private video]\tI5bjAC-hvnA\thttps://www.youtube.com/watch?v=I5bjAC-hvnA',
+  '[Private video]\tAVkyFy7zvIw\thttps://www.youtube.com/watch?v=AVkyFy7zvIw',
+  '[Private video]\tyWOzs8wP5yA\thttps://www.youtube.com/watch?v=yWOzs8wP5yA',
+  '[Private video]\tmeH88en2fIk\thttps://www.youtube.com/watch?v=meH88en2fIk',
+  '[Private video]\tM43IPdPF9Es\thttps://www.youtube.com/watch?v=M43IPdPF9Es'
+] 
+response_list.length: 11 
+
+adding items to db
+[
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden'
+] 1
+[
+  '[Private video]',
+  '4Qr0RbutheA',
+  'https://www.youtube.com/watch?v=4Qr0RbutheA'
+] 3
+[
+  '[Private video]',
+  'SZkIWkGdp3o',
+  'https://www.youtube.com/watch?v=SZkIWkGdp3o'
+] 3
+[
+  '[Private video]',
+  'Ff6as9hwHqM',
+  'https://www.youtube.com/watch?v=Ff6as9hwHqM'
+] 3
+[
+  '[Private video]',
+  'TxX2Qgneo3U',
+  'https://www.youtube.com/watch?v=TxX2Qgneo3U'
+] 3
+[
+  '[Private video]',
+  'qPvZdUbGQx4',
+  'https://www.youtube.com/watch?v=qPvZdUbGQx4'
+] 3
+[
+  '[Private video]',
+  'I5bjAC-hvnA',
+  'https://www.youtube.com/watch?v=I5bjAC-hvnA'
+] 3
+[
+  '[Private video]',
+  'AVkyFy7zvIw',
+  'https://www.youtube.com/watch?v=AVkyFy7zvIw'
+] 3
+[
+  '[Private video]',
+  'yWOzs8wP5yA',
+  'https://www.youtube.com/watch?v=yWOzs8wP5yA'
+] 3
+[
+  '[Private video]',
+  'meH88en2fIk',
+  'https://www.youtube.com/watch?v=meH88en2fIk'
+] 3
+[
+  '[Private video]',
+  'M43IPdPF9Es',
+  'https://www.youtube.com/watch?v=M43IPdPF9Es'
+] 3
+
+data after processing
+response:
+ stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden
+Do Indians trust Doordarshan more than private channels? Watch what a new survey says!	0e67YSyGyek	https://www.youtube.com/watch?v=0e67YSyGyek
+When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198	wEk1f1yIcf8	https://www.youtube.com/watch?v=wEk1f1yIcf8
+Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197	noP9Lk-7Q6Y	https://www.youtube.com/watch?v=noP9Lk-7Q6Y
+Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism	jijLQoM40xo	https://www.youtube.com/watch?v=jijLQoM40xo
+[Deleted video]	7pol7393z4A	https://www.youtube.com/watch?v=7pol7393z4A
+India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194	opkXIb9xILs	https://www.youtube.com/watch?v=opkXIb9xILs
+How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193	PxhcCdXQveQ	https://www.youtube.com/watch?v=PxhcCdXQveQ
+Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192	dOGBqffntsg	https://www.youtube.com/watch?v=dOGBqffntsg
+TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal	E0JdSqlA5yM	https://www.youtube.com/watch?v=E0JdSqlA5yM
+Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191	IEYz-ralVMc	https://www.youtube.com/watch?v=IEYz-ralVMc
+ 
+response_list: [
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden',
+  'Do Indians trust Doordarshan more than private channels? Watch what a new survey says!\t0e67YSyGyek\thttps://www.youtube.com/watch?v=0e67YSyGyek',
+  'When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198\twEk1f1yIcf8\thttps://www.youtube.com/watch?v=wEk1f1yIcf8',
+  'Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197\tnoP9Lk-7Q6Y\thttps://www.youtube.com/watch?v=noP9Lk-7Q6Y',
+  'Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism\tjijLQoM40xo\thttps://www.youtube.com/watch?v=jijLQoM40xo',
+  '[Deleted video]\t7pol7393z4A\thttps://www.youtube.com/watch?v=7pol7393z4A',
+  'India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194\topkXIb9xILs\thttps://www.youtube.com/watch?v=opkXIb9xILs',
+  "How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193\tPxhcCdXQveQ\thttps://www.youtube.com/watch?v=PxhcCdXQveQ",
+  'Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192\tdOGBqffntsg\thttps://www.youtube.com/watch?v=dOGBqffntsg',
+  'TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal\tE0JdSqlA5yM\thttps://www.youtube.com/watch?v=E0JdSqlA5yM',
+  'Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191\tIEYz-ralVMc\thttps://www.youtube.com/watch?v=IEYz-ralVMc'
+] 
+response_list.length: 11 
+
+adding items to db
+[
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden'
+] 1
+[
+  'Do Indians trust Doordarshan more than private channels? Watch what a new survey says!',
+  '0e67YSyGyek',
+  'https://www.youtube.com/watch?v=0e67YSyGyek'
+] 3
+[
+  'When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198',
+  'wEk1f1yIcf8',
+  'https://www.youtube.com/watch?v=wEk1f1yIcf8'
+] 3
+[
+  'Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197',
+  'noP9Lk-7Q6Y',
+  'https://www.youtube.com/watch?v=noP9Lk-7Q6Y'
+] 3
+[
+  'Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism',
+  'jijLQoM40xo',
+  'https://www.youtube.com/watch?v=jijLQoM40xo'
+] 3
+[
+  '[Deleted video]',
+  '7pol7393z4A',
+  'https://www.youtube.com/watch?v=7pol7393z4A'
+] 3
+[
+  'India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194',
+  'opkXIb9xILs',
+  'https://www.youtube.com/watch?v=opkXIb9xILs'
+] 3
+[
+  "How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193",
+  'PxhcCdXQveQ',
+  'https://www.youtube.com/watch?v=PxhcCdXQveQ'
+] 3
+[
+  'Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192',
+  'dOGBqffntsg',
+  'https://www.youtube.com/watch?v=dOGBqffntsg'
+] 3
+[
+  'TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal',
+  'E0JdSqlA5yM',
+  'https://www.youtube.com/watch?v=E0JdSqlA5yM'
+] 3
+[
+  'Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191',
+  'IEYz-ralVMc',
+  'https://www.youtube.com/watch?v=IEYz-ralVMc'
+] 3
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+found [Private video] updated
+
+saved Do Indians trust Doordarshan more than private channels? Watch what a new survey says!
+
+saved When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198
+
+saved Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism
+
+saved Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197
+
+saved [Deleted video]
+
+saved How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193
+
+saved India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194
+
+saved Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192
+
+saved TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal
+
+saved Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191
+Connection has been established successfully.
+vid_list and play_lists tables exist or are created successfully!
+
+listing in background
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PL4j9sdcFKwqkNj4WRREQ9sEB9AYmzQBdH 
+start_num: 11 
+stop_num: 20 
+chunk_size 10
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PL4j9sdcFKwqkNj4WRREQ9sEB9AYmzQBdH 
+start_num: 21 
+stop_num: 30 
+chunk_size 10
+
+outside the loop, and persumably done
+
+listing in background
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PLpHbno9djTOSaBHKTrtbsKkn6MDUujQxX 
+start_num: 11 
+stop_num: 20 
+chunk_size 10
+
+supplied data:
+body_url: https://www.youtube.com/playlist?list=PLpHbno9djTOSaBHKTrtbsKkn6MDUujQxX 
+start_num: 21 
+stop_num: 30 
+chunk_size 10
+
+outside the loop, and persumably done
+
+data after processing
+response:
+ stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden
+[Private video]	4Qr0RbutheA	https://www.youtube.com/watch?v=4Qr0RbutheA
+[Private video]	SZkIWkGdp3o	https://www.youtube.com/watch?v=SZkIWkGdp3o
+[Private video]	Ff6as9hwHqM	https://www.youtube.com/watch?v=Ff6as9hwHqM
+[Private video]	TxX2Qgneo3U	https://www.youtube.com/watch?v=TxX2Qgneo3U
+[Private video]	qPvZdUbGQx4	https://www.youtube.com/watch?v=qPvZdUbGQx4
+[Private video]	I5bjAC-hvnA	https://www.youtube.com/watch?v=I5bjAC-hvnA
+[Private video]	AVkyFy7zvIw	https://www.youtube.com/watch?v=AVkyFy7zvIw
+[Private video]	yWOzs8wP5yA	https://www.youtube.com/watch?v=yWOzs8wP5yA
+[Private video]	meH88en2fIk	https://www.youtube.com/watch?v=meH88en2fIk
+[Private video]	M43IPdPF9Es	https://www.youtube.com/watch?v=M43IPdPF9Es
+ 
+response_list: [
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden',
+  '[Private video]\t4Qr0RbutheA\thttps://www.youtube.com/watch?v=4Qr0RbutheA',
+  '[Private video]\tSZkIWkGdp3o\thttps://www.youtube.com/watch?v=SZkIWkGdp3o',
+  '[Private video]\tFf6as9hwHqM\thttps://www.youtube.com/watch?v=Ff6as9hwHqM',
+  '[Private video]\tTxX2Qgneo3U\thttps://www.youtube.com/watch?v=TxX2Qgneo3U',
+  '[Private video]\tqPvZdUbGQx4\thttps://www.youtube.com/watch?v=qPvZdUbGQx4',
+  '[Private video]\tI5bjAC-hvnA\thttps://www.youtube.com/watch?v=I5bjAC-hvnA',
+  '[Private video]\tAVkyFy7zvIw\thttps://www.youtube.com/watch?v=AVkyFy7zvIw',
+  '[Private video]\tyWOzs8wP5yA\thttps://www.youtube.com/watch?v=yWOzs8wP5yA',
+  '[Private video]\tmeH88en2fIk\thttps://www.youtube.com/watch?v=meH88en2fIk',
+  '[Private video]\tM43IPdPF9Es\thttps://www.youtube.com/watch?v=M43IPdPF9Es'
+] 
+response_list.length: 11 
+
+adding items to db
+[
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden'
+] 1
+[
+  '[Private video]',
+  '4Qr0RbutheA',
+  'https://www.youtube.com/watch?v=4Qr0RbutheA'
+] 3
+[
+  '[Private video]',
+  'SZkIWkGdp3o',
+  'https://www.youtube.com/watch?v=SZkIWkGdp3o'
+] 3
+[
+  '[Private video]',
+  'Ff6as9hwHqM',
+  'https://www.youtube.com/watch?v=Ff6as9hwHqM'
+] 3
+[
+  '[Private video]',
+  'TxX2Qgneo3U',
+  'https://www.youtube.com/watch?v=TxX2Qgneo3U'
+] 3
+[
+  '[Private video]',
+  'qPvZdUbGQx4',
+  'https://www.youtube.com/watch?v=qPvZdUbGQx4'
+] 3
+[
+  '[Private video]',
+  'I5bjAC-hvnA',
+  'https://www.youtube.com/watch?v=I5bjAC-hvnA'
+] 3
+[
+  '[Private video]',
+  'AVkyFy7zvIw',
+  'https://www.youtube.com/watch?v=AVkyFy7zvIw'
+] 3
+[
+  '[Private video]',
+  'yWOzs8wP5yA',
+  'https://www.youtube.com/watch?v=yWOzs8wP5yA'
+] 3
+[
+  '[Private video]',
+  'meH88en2fIk',
+  'https://www.youtube.com/watch?v=meH88en2fIk'
+] 3
+[
+  '[Private video]',
+  'M43IPdPF9Es',
+  'https://www.youtube.com/watch?v=M43IPdPF9Es'
+] 3
+
+saved [Private video]
+
+data after processing
+response:
+ stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden
+[Private video]	4Qr0RbutheA	https://www.youtube.com/watch?v=4Qr0RbutheA
+[Private video]	SZkIWkGdp3o	https://www.youtube.com/watch?v=SZkIWkGdp3o
+[Private video]	Ff6as9hwHqM	https://www.youtube.com/watch?v=Ff6as9hwHqM
+[Private video]	TxX2Qgneo3U	https://www.youtube.com/watch?v=TxX2Qgneo3U
+[Private video]	qPvZdUbGQx4	https://www.youtube.com/watch?v=qPvZdUbGQx4
+[Private video]	I5bjAC-hvnA	https://www.youtube.com/watch?v=I5bjAC-hvnA
+[Private video]	AVkyFy7zvIw	https://www.youtube.com/watch?v=AVkyFy7zvIw
+[Private video]	yWOzs8wP5yA	https://www.youtube.com/watch?v=yWOzs8wP5yA
+[Private video]	meH88en2fIk	https://www.youtube.com/watch?v=meH88en2fIk
+[Private video]	M43IPdPF9Es	https://www.youtube.com/watch?v=M43IPdPF9Es
+[Private video]	f3b0EFfFH0I	https://www.youtube.com/watch?v=f3b0EFfFH0I
+[Private video]	jeCUWQh85uo	https://www.youtube.com/watch?v=jeCUWQh85uo
+[Private video]	g6DbCRnyc60	https://www.youtube.com/watch?v=g6DbCRnyc60
+[Private video]	osuQEHmS7hw	https://www.youtube.com/watch?v=osuQEHmS7hw
+[Private video]	wdA6DaDUQiM	https://www.youtube.com/watch?v=wdA6DaDUQiM
+[Private video]	1NtFx-Z9ErA	https://www.youtube.com/watch?v=1NtFx-Z9ErA
+[Private video]	gvv-PeqV2oc	https://www.youtube.com/watch?v=gvv-PeqV2oc
+[Private video]	MqILlPPC2N4	https://www.youtube.com/watch?v=MqILlPPC2N4
+[Private video]	orvSiVWtuig	https://www.youtube.com/watch?v=orvSiVWtuig
+ 
+response_list: [
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden',
+  '[Private video]\t4Qr0RbutheA\thttps://www.youtube.com/watch?v=4Qr0RbutheA',
+  '[Private video]\tSZkIWkGdp3o\thttps://www.youtube.com/watch?v=SZkIWkGdp3o',
+  '[Private video]\tFf6as9hwHqM\thttps://www.youtube.com/watch?v=Ff6as9hwHqM',
+  '[Private video]\tTxX2Qgneo3U\thttps://www.youtube.com/watch?v=TxX2Qgneo3U',
+  '[Private video]\tqPvZdUbGQx4\thttps://www.youtube.com/watch?v=qPvZdUbGQx4',
+  '[Private video]\tI5bjAC-hvnA\thttps://www.youtube.com/watch?v=I5bjAC-hvnA',
+  '[Private video]\tAVkyFy7zvIw\thttps://www.youtube.com/watch?v=AVkyFy7zvIw',
+  '[Private video]\tyWOzs8wP5yA\thttps://www.youtube.com/watch?v=yWOzs8wP5yA',
+  '[Private video]\tmeH88en2fIk\thttps://www.youtube.com/watch?v=meH88en2fIk',
+  '[Private video]\tM43IPdPF9Es\thttps://www.youtube.com/watch?v=M43IPdPF9Es',
+  '[Private video]\tf3b0EFfFH0I\thttps://www.youtube.com/watch?v=f3b0EFfFH0I',
+  '[Private video]\tjeCUWQh85uo\thttps://www.youtube.com/watch?v=jeCUWQh85uo',
+  '[Private video]\tg6DbCRnyc60\thttps://www.youtube.com/watch?v=g6DbCRnyc60',
+  '[Private video]\tosuQEHmS7hw\thttps://www.youtube.com/watch?v=osuQEHmS7hw',
+  '[Private video]\twdA6DaDUQiM\thttps://www.youtube.com/watch?v=wdA6DaDUQiM',
+  '[Private video]\t1NtFx-Z9ErA\thttps://www.youtube.com/watch?v=1NtFx-Z9ErA',
+  '[Private video]\tgvv-PeqV2oc\thttps://www.youtube.com/watch?v=gvv-PeqV2oc',
+  '[Private video]\tMqILlPPC2N4\thttps://www.youtube.com/watch?v=MqILlPPC2N4',
+  '[Private video]\torvSiVWtuig\thttps://www.youtube.com/watch?v=orvSiVWtuig'
+] 
+response_list.length: 20 
+
+adding items to db
+[
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - 24 unavailable videos are hidden'
+] 1
+[
+  '[Private video]',
+  '4Qr0RbutheA',
+  'https://www.youtube.com/watch?v=4Qr0RbutheA'
+] 3
+[
+  '[Private video]',
+  'SZkIWkGdp3o',
+  'https://www.youtube.com/watch?v=SZkIWkGdp3o'
+] 3
+[
+  '[Private video]',
+  'Ff6as9hwHqM',
+  'https://www.youtube.com/watch?v=Ff6as9hwHqM'
+] 3
+[
+  '[Private video]',
+  'TxX2Qgneo3U',
+  'https://www.youtube.com/watch?v=TxX2Qgneo3U'
+] 3
+[
+  '[Private video]',
+  'qPvZdUbGQx4',
+  'https://www.youtube.com/watch?v=qPvZdUbGQx4'
+] 3
+[
+  '[Private video]',
+  'I5bjAC-hvnA',
+  'https://www.youtube.com/watch?v=I5bjAC-hvnA'
+] 3
+[
+  '[Private video]',
+  'AVkyFy7zvIw',
+  'https://www.youtube.com/watch?v=AVkyFy7zvIw'
+] 3
+[
+  '[Private video]',
+  'yWOzs8wP5yA',
+  'https://www.youtube.com/watch?v=yWOzs8wP5yA'
+] 3
+[
+  '[Private video]',
+  'meH88en2fIk',
+  'https://www.youtube.com/watch?v=meH88en2fIk'
+] 3
+[
+  '[Private video]',
+  'M43IPdPF9Es',
+  'https://www.youtube.com/watch?v=M43IPdPF9Es'
+] 3
+[
+  '[Private video]',
+  'f3b0EFfFH0I',
+  'https://www.youtube.com/watch?v=f3b0EFfFH0I'
+] 3
+[
+  '[Private video]',
+  'jeCUWQh85uo',
+  'https://www.youtube.com/watch?v=jeCUWQh85uo'
+] 3
+[
+  '[Private video]',
+  'g6DbCRnyc60',
+  'https://www.youtube.com/watch?v=g6DbCRnyc60'
+] 3
+[
+  '[Private video]',
+  'osuQEHmS7hw',
+  'https://www.youtube.com/watch?v=osuQEHmS7hw'
+] 3
+[
+  '[Private video]',
+  'wdA6DaDUQiM',
+  'https://www.youtube.com/watch?v=wdA6DaDUQiM'
+] 3
+[
+  '[Private video]',
+  '1NtFx-Z9ErA',
+  'https://www.youtube.com/watch?v=1NtFx-Z9ErA'
+] 3
+[
+  '[Private video]',
+  'gvv-PeqV2oc',
+  'https://www.youtube.com/watch?v=gvv-PeqV2oc'
+] 3
+[
+  '[Private video]',
+  'MqILlPPC2N4',
+  'https://www.youtube.com/watch?v=MqILlPPC2N4'
+] 3
+[
+  '[Private video]',
+  'orvSiVWtuig',
+  'https://www.youtube.com/watch?v=orvSiVWtuig'
+] 3
+
+saved [Private video]
+
+data after processing
+response:
+ stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden
+Republic vs Times Now. Who won? | TV Newsance 190	WY9EbeKeJyM	https://www.youtube.com/watch?v=WY9EbeKeJyM
+Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189	CvYA1EcgaIo	https://www.youtube.com/watch?v=CvYA1EcgaIo
+#PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188	rzVagLVb-vs	https://www.youtube.com/watch?v=rzVagLVb-vs
+EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187	k2XHHyaiNds	https://www.youtube.com/watch?v=k2XHHyaiNds
+The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186	qfArc6Yz1EQ	https://www.youtube.com/watch?v=qfArc6Yz1EQ
+Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185	uia8JOFnbpo	https://www.youtube.com/watch?v=uia8JOFnbpo
+Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184	JcEIllwi9QY	https://www.youtube.com/watch?v=JcEIllwi9QY
+Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183	UZsVT11qOzk	https://www.youtube.com/watch?v=UZsVT11qOzk
+Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi	OrSUrEhVmCs	https://www.youtube.com/watch?v=OrSUrEhVmCs
+How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182	MfvxJoTsTbA	https://www.youtube.com/watch?v=MfvxJoTsTbA
+Do Indians trust Doordarshan more than private channels? Watch what a new survey says!	0e67YSyGyek	https://www.youtube.com/watch?v=0e67YSyGyek
+When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198	wEk1f1yIcf8	https://www.youtube.com/watch?v=wEk1f1yIcf8
+Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197	noP9Lk-7Q6Y	https://www.youtube.com/watch?v=noP9Lk-7Q6Y
+Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism	jijLQoM40xo	https://www.youtube.com/watch?v=jijLQoM40xo
+[Deleted video]	7pol7393z4A	https://www.youtube.com/watch?v=7pol7393z4A
+India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194	opkXIb9xILs	https://www.youtube.com/watch?v=opkXIb9xILs
+How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193	PxhcCdXQveQ	https://www.youtube.com/watch?v=PxhcCdXQveQ
+Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192	dOGBqffntsg	https://www.youtube.com/watch?v=dOGBqffntsg
+TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal	E0JdSqlA5yM	https://www.youtube.com/watch?v=E0JdSqlA5yM
+Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191	IEYz-ralVMc	https://www.youtube.com/watch?v=IEYz-ralVMc
+ 
+response_list: [
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden',
+  'Republic vs Times Now. Who won? | TV Newsance 190\tWY9EbeKeJyM\thttps://www.youtube.com/watch?v=WY9EbeKeJyM',
+  'Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189\tCvYA1EcgaIo\thttps://www.youtube.com/watch?v=CvYA1EcgaIo',
+  '#PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188\trzVagLVb-vs\thttps://www.youtube.com/watch?v=rzVagLVb-vs',
+  'EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187\tk2XHHyaiNds\thttps://www.youtube.com/watch?v=k2XHHyaiNds',
+  'The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186\tqfArc6Yz1EQ\thttps://www.youtube.com/watch?v=qfArc6Yz1EQ',
+  'Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185\tuia8JOFnbpo\thttps://www.youtube.com/watch?v=uia8JOFnbpo',
+  "Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184\tJcEIllwi9QY\thttps://www.youtube.com/watch?v=JcEIllwi9QY",
+  'Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183\tUZsVT11qOzk\thttps://www.youtube.com/watch?v=UZsVT11qOzk',
+  'Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi\tOrSUrEhVmCs\thttps://www.youtube.com/watch?v=OrSUrEhVmCs',
+  'How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182\tMfvxJoTsTbA\thttps://www.youtube.com/watch?v=MfvxJoTsTbA',
+  'Do Indians trust Doordarshan more than private channels? Watch what a new survey says!\t0e67YSyGyek\thttps://www.youtube.com/watch?v=0e67YSyGyek',
+  'When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198\twEk1f1yIcf8\thttps://www.youtube.com/watch?v=wEk1f1yIcf8',
+  'Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197\tnoP9Lk-7Q6Y\thttps://www.youtube.com/watch?v=noP9Lk-7Q6Y',
+  'Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism\tjijLQoM40xo\thttps://www.youtube.com/watch?v=jijLQoM40xo',
+  '[Deleted video]\t7pol7393z4A\thttps://www.youtube.com/watch?v=7pol7393z4A',
+  'India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194\topkXIb9xILs\thttps://www.youtube.com/watch?v=opkXIb9xILs',
+  "How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193\tPxhcCdXQveQ\thttps://www.youtube.com/watch?v=PxhcCdXQveQ",
+  'Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192\tdOGBqffntsg\thttps://www.youtube.com/watch?v=dOGBqffntsg',
+  'TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal\tE0JdSqlA5yM\thttps://www.youtube.com/watch?v=E0JdSqlA5yM',
+  'Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191\tIEYz-ralVMc\thttps://www.youtube.com/watch?v=IEYz-ralVMc'
+] 
+response_list.length: 21 
+
+adding items to db
+[
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden'
+] 1
+[
+  'Republic vs Times Now. Who won? | TV Newsance 190',
+  'WY9EbeKeJyM',
+  'https://www.youtube.com/watch?v=WY9EbeKeJyM'
+] 3
+[
+  'Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189',
+  'CvYA1EcgaIo',
+  'https://www.youtube.com/watch?v=CvYA1EcgaIo'
+] 3
+[
+  '#PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188',
+  'rzVagLVb-vs',
+  'https://www.youtube.com/watch?v=rzVagLVb-vs'
+] 3
+[
+  'EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187',
+  'k2XHHyaiNds',
+  'https://www.youtube.com/watch?v=k2XHHyaiNds'
+] 3
+[
+  'The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186',
+  'qfArc6Yz1EQ',
+  'https://www.youtube.com/watch?v=qfArc6Yz1EQ'
+] 3
+[
+  'Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185',
+  'uia8JOFnbpo',
+  'https://www.youtube.com/watch?v=uia8JOFnbpo'
+] 3
+[
+  "Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184",
+  'JcEIllwi9QY',
+  'https://www.youtube.com/watch?v=JcEIllwi9QY'
+] 3
+[
+  'Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183',
+  'UZsVT11qOzk',
+  'https://www.youtube.com/watch?v=UZsVT11qOzk'
+] 3
+[
+  'Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi',
+  'OrSUrEhVmCs',
+  'https://www.youtube.com/watch?v=OrSUrEhVmCs'
+] 3
+[
+  'How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182',
+  'MfvxJoTsTbA',
+  'https://www.youtube.com/watch?v=MfvxJoTsTbA'
+] 3
+[
+  'Do Indians trust Doordarshan more than private channels? Watch what a new survey says!',
+  '0e67YSyGyek',
+  'https://www.youtube.com/watch?v=0e67YSyGyek'
+] 3
+[
+  'When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198',
+  'wEk1f1yIcf8',
+  'https://www.youtube.com/watch?v=wEk1f1yIcf8'
+] 3
+[
+  'Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197',
+  'noP9Lk-7Q6Y',
+  'https://www.youtube.com/watch?v=noP9Lk-7Q6Y'
+] 3
+[
+  'Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism',
+  'jijLQoM40xo',
+  'https://www.youtube.com/watch?v=jijLQoM40xo'
+] 3
+[
+  '[Deleted video]',
+  '7pol7393z4A',
+  'https://www.youtube.com/watch?v=7pol7393z4A'
+] 3
+[
+  'India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194',
+  'opkXIb9xILs',
+  'https://www.youtube.com/watch?v=opkXIb9xILs'
+] 3
+[
+  "How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193",
+  'PxhcCdXQveQ',
+  'https://www.youtube.com/watch?v=PxhcCdXQveQ'
+] 3
+[
+  'Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192',
+  'dOGBqffntsg',
+  'https://www.youtube.com/watch?v=dOGBqffntsg'
+] 3
+[
+  'TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal',
+  'E0JdSqlA5yM',
+  'https://www.youtube.com/watch?v=E0JdSqlA5yM'
+] 3
+[
+  'Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191',
+  'IEYz-ralVMc',
+  'https://www.youtube.com/watch?v=IEYz-ralVMc'
+] 3
+
+data after processing
+response:
+ stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden
+Republic vs Times Now. Who won? | TV Newsance 190	WY9EbeKeJyM	https://www.youtube.com/watch?v=WY9EbeKeJyM
+Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189	CvYA1EcgaIo	https://www.youtube.com/watch?v=CvYA1EcgaIo
+#PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188	rzVagLVb-vs	https://www.youtube.com/watch?v=rzVagLVb-vs
+EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187	k2XHHyaiNds	https://www.youtube.com/watch?v=k2XHHyaiNds
+The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186	qfArc6Yz1EQ	https://www.youtube.com/watch?v=qfArc6Yz1EQ
+Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185	uia8JOFnbpo	https://www.youtube.com/watch?v=uia8JOFnbpo
+Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184	JcEIllwi9QY	https://www.youtube.com/watch?v=JcEIllwi9QY
+Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183	UZsVT11qOzk	https://www.youtube.com/watch?v=UZsVT11qOzk
+Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi	OrSUrEhVmCs	https://www.youtube.com/watch?v=OrSUrEhVmCs
+How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182	MfvxJoTsTbA	https://www.youtube.com/watch?v=MfvxJoTsTbA
+Do Indians trust Doordarshan more than private channels? Watch what a new survey says!	0e67YSyGyek	https://www.youtube.com/watch?v=0e67YSyGyek
+When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198	wEk1f1yIcf8	https://www.youtube.com/watch?v=wEk1f1yIcf8
+Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197	noP9Lk-7Q6Y	https://www.youtube.com/watch?v=noP9Lk-7Q6Y
+Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism	jijLQoM40xo	https://www.youtube.com/watch?v=jijLQoM40xo
+[Deleted video]	7pol7393z4A	https://www.youtube.com/watch?v=7pol7393z4A
+India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194	opkXIb9xILs	https://www.youtube.com/watch?v=opkXIb9xILs
+How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193	PxhcCdXQveQ	https://www.youtube.com/watch?v=PxhcCdXQveQ
+Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192	dOGBqffntsg	https://www.youtube.com/watch?v=dOGBqffntsg
+TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal	E0JdSqlA5yM	https://www.youtube.com/watch?v=E0JdSqlA5yM
+Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191	IEYz-ralVMc	https://www.youtube.com/watch?v=IEYz-ralVMc
+ 
+response_list: [
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden',
+  'Republic vs Times Now. Who won? | TV Newsance 190\tWY9EbeKeJyM\thttps://www.youtube.com/watch?v=WY9EbeKeJyM',
+  'Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189\tCvYA1EcgaIo\thttps://www.youtube.com/watch?v=CvYA1EcgaIo',
+  '#PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188\trzVagLVb-vs\thttps://www.youtube.com/watch?v=rzVagLVb-vs',
+  'EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187\tk2XHHyaiNds\thttps://www.youtube.com/watch?v=k2XHHyaiNds',
+  'The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186\tqfArc6Yz1EQ\thttps://www.youtube.com/watch?v=qfArc6Yz1EQ',
+  'Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185\tuia8JOFnbpo\thttps://www.youtube.com/watch?v=uia8JOFnbpo',
+  "Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184\tJcEIllwi9QY\thttps://www.youtube.com/watch?v=JcEIllwi9QY",
+  'Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183\tUZsVT11qOzk\thttps://www.youtube.com/watch?v=UZsVT11qOzk',
+  'Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi\tOrSUrEhVmCs\thttps://www.youtube.com/watch?v=OrSUrEhVmCs',
+  'How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182\tMfvxJoTsTbA\thttps://www.youtube.com/watch?v=MfvxJoTsTbA',
+  'Do Indians trust Doordarshan more than private channels? Watch what a new survey says!\t0e67YSyGyek\thttps://www.youtube.com/watch?v=0e67YSyGyek',
+  'When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198\twEk1f1yIcf8\thttps://www.youtube.com/watch?v=wEk1f1yIcf8',
+  'Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197\tnoP9Lk-7Q6Y\thttps://www.youtube.com/watch?v=noP9Lk-7Q6Y',
+  'Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism\tjijLQoM40xo\thttps://www.youtube.com/watch?v=jijLQoM40xo',
+  '[Deleted video]\t7pol7393z4A\thttps://www.youtube.com/watch?v=7pol7393z4A',
+  'India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194\topkXIb9xILs\thttps://www.youtube.com/watch?v=opkXIb9xILs',
+  "How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193\tPxhcCdXQveQ\thttps://www.youtube.com/watch?v=PxhcCdXQveQ",
+  'Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192\tdOGBqffntsg\thttps://www.youtube.com/watch?v=dOGBqffntsg',
+  'TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal\tE0JdSqlA5yM\thttps://www.youtube.com/watch?v=E0JdSqlA5yM',
+  'Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191\tIEYz-ralVMc\thttps://www.youtube.com/watch?v=IEYz-ralVMc'
+] 
+response_list.length: 21 
+
+adding items to db
+[
+  'stderr: WARNING: [youtube:tab] YouTube said: INFO - Unavailable videos are hidden'
+] 1
+[
+  'Republic vs Times Now. Who won? | TV Newsance 190',
+  'WY9EbeKeJyM',
+  'https://www.youtube.com/watch?v=WY9EbeKeJyM'
+] 3
+[
+  'Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189',
+  'CvYA1EcgaIo',
+  'https://www.youtube.com/watch?v=CvYA1EcgaIo'
+] 3
+[
+  '#PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188',
+  'rzVagLVb-vs',
+  'https://www.youtube.com/watch?v=rzVagLVb-vs'
+] 3
+[
+  'EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187',
+  'k2XHHyaiNds',
+  'https://www.youtube.com/watch?v=k2XHHyaiNds'
+] 3
+[
+  'The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186',
+  'qfArc6Yz1EQ',
+  'https://www.youtube.com/watch?v=qfArc6Yz1EQ'
+] 3
+[
+  'Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185',
+  'uia8JOFnbpo',
+  'https://www.youtube.com/watch?v=uia8JOFnbpo'
+] 3
+[
+  "Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184",
+  'JcEIllwi9QY',
+  'https://www.youtube.com/watch?v=JcEIllwi9QY'
+] 3
+[
+  'Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183',
+  'UZsVT11qOzk',
+  'https://www.youtube.com/watch?v=UZsVT11qOzk'
+] 3
+[
+  'Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi',
+  'OrSUrEhVmCs',
+  'https://www.youtube.com/watch?v=OrSUrEhVmCs'
+] 3
+[
+  'How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182',
+  'MfvxJoTsTbA',
+  'https://www.youtube.com/watch?v=MfvxJoTsTbA'
+] 3
+[
+  'Do Indians trust Doordarshan more than private channels? Watch what a new survey says!',
+  '0e67YSyGyek',
+  'https://www.youtube.com/watch?v=0e67YSyGyek'
+] 3
+[
+  'When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198',
+  'wEk1f1yIcf8',
+  'https://www.youtube.com/watch?v=wEk1f1yIcf8'
+] 3
+[
+  'Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197',
+  'noP9Lk-7Q6Y',
+  'https://www.youtube.com/watch?v=noP9Lk-7Q6Y'
+] 3
+[
+  'Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism',
+  'jijLQoM40xo',
+  'https://www.youtube.com/watch?v=jijLQoM40xo'
+] 3
+[
+  '[Deleted video]',
+  '7pol7393z4A',
+  'https://www.youtube.com/watch?v=7pol7393z4A'
+] 3
+[
+  'India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194',
+  'opkXIb9xILs',
+  'https://www.youtube.com/watch?v=opkXIb9xILs'
+] 3
+[
+  "How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193",
+  'PxhcCdXQveQ',
+  'https://www.youtube.com/watch?v=PxhcCdXQveQ'
+] 3
+[
+  'Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192',
+  'dOGBqffntsg',
+  'https://www.youtube.com/watch?v=dOGBqffntsg'
+] 3
+[
+  'TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal',
+  'E0JdSqlA5yM',
+  'https://www.youtube.com/watch?v=E0JdSqlA5yM'
+] 3
+[
+  'Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191',
+  'IEYz-ralVMc',
+  'https://www.youtube.com/watch?v=IEYz-ralVMc'
+] 3
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+saved [Private video]
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+found [Private video] no changes
+
+saved [Private video]
+
+found [Private video] no changes
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved [Private video]
+
+saved Republic vs Times Now. Who won? | TV Newsance 190
+
+saved Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189
+
+saved #PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188
+
+saved Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185
+
+saved EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187
+
+saved The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186
+
+saved Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184
+
+saved Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi
+
+saved Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183
+
+saved How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182
+
+saved Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197
+
+saved When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198
+
+saved Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism
+
+saved Do Indians trust Doordarshan more than private channels? Watch what a new survey says!
+
+saved [Deleted video]
+
+saved India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194
+
+saved How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193
+
+saved Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192
+
+found Republic vs Times Now. Who won? | TV Newsance 190 no changes
+
+found Adipurush controversy and ‘Garba Jihad’ | TV Newsance 189 no changes
+
+saved TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal
+
+found #PFI ban & Arnab Goswami, the Stalinist | TV Newsance 188 no changes
+
+found EXPOSED: The Hindu-Muslim TRP game | TV Newsance 187 no changes
+
+found The Beef with #Brahmastra: News channels feed the #boycottbollywood trend | TV Newsance 186 no changes
+
+found Jharkhand case & Supertech twin towers dhamaka on TV news | TV Newsance 185 no changes
+
+saved Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191
+
+found Anupam Kher’s Nehru bashing on News18, injustice to Bilkis Bano | TV Newsance 183 no changes
+
+found Masterchef SuSudhir Chaudhary ki Rashtravad Rasoi no changes
+
+found Adani takes control of NDTV and Prannoy Roy's exit | TV Newsance 184 no changes
+
+found How to make a DeshBhakti-walla show feat SuSudhir | AmritMahotsav Special! | TV Newsance 182 no changes
+
+found Do Indians trust Doordarshan more than private channels? Watch what a new survey says! no changes
+
+found When Gautam Adani met Rajat Sharma and Kashmir Files Oscar drama | TV Newsance 198 no changes
+
+found Aman & Amish’s silence on Delhi #Kanjhawala case & TN Navbharat’s #Haldwani ‘jihad’ | TVNewsance 197 no changes
+
+found [Deleted video] no changes
+
+found Ramnath Roenka Awards 2022: @thedeshbhakt & Manisha recognise the worst of TV journalism no changes
+
+found How TV news covered the 'sensational' Shraddha Murder Case | TV Newsance 193 no changes
+
+found Finding nuclear war in a lunar eclipse as Himachal prepares for polls | TV Newsance 192 no changes
+
+found TV Newsance : Manisha and team on the Himachal Pradesh and Gujarat election trail | NL Sena Appeal no changes
+
+found India-China clash: TV news ka PM Modi Bachao Abhiyaan | TV Newsance 194 no changes
+
+found Arvind Kejriwal’s ‘Ganesh-Lakshmi’ idea presents a Dharam Sankat for anchors | TV Newsance 191 no changes

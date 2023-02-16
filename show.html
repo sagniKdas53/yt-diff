@@ -148,7 +148,7 @@
         }
         function sockSetup() {
             console.log("Sock setup started");
-            var socket = io();
+            var socket = io({ path: "/ytdiff/socket.io/" });
             socket.on('init', function (data) {
                 console.log(data.message);
                 // Respond with a message including this clients' id sent from the server
