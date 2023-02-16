@@ -76,6 +76,7 @@ sequelize.sync().then(() => {
     console.error('Unable to create table : ', error);
 });
 
+// livestreams can be downloaded but no progress is shown
 async function download_stuff(req, res, next) {
     var body = '', response = '';
     req.on('data', function (data) {
@@ -145,10 +146,12 @@ async function download_background_sequential(url_list) {
     //console.log('Downloading in background');
     var i = 0;
     var save_loc = 'yt-dlp';
+    // make a way to append this if needed
+    const subs = ["--write-subs","--sleep-subtitles", 1];
     for (const url_str of url_list) {
         //console.log(`Downloading video ${++i}`);
         try {
-            const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
+            const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str, "--embed-metadata"]);
             yt_dlp.stdout.on("data", async data => {
                 //console.log(`${data}`);
                 try {

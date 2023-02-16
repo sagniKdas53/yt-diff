@@ -199,7 +199,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
 
-        console.log("\nsupplied data:\nbody_url:", body_url, "\nstart_num:", start_num, "\nstop_num:", stop_num, "\nchunk_size", chunk_size);
+        console.log("\nsupplied data:", "\ni:", i, "\nbody_url:", body_url, "\nstart_num:", start_num, "\nstop_num:", stop_num, "\nchunk_size", chunk_size);
         // actually spawn the thing
         const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
             "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
@@ -221,22 +221,22 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
             // remove the "" from the end of the list
             response_list.pop();
             // get the status at the end
-            console.log("\ndata after processing\nresponse:\n", response, "\nresponse_list:", response_list, "\nresponse_list.length:", response_list.length, "\n");
+            console.log("\ndata after processing\ni:", i, "response:\n", response, "\nresponse_list:", response_list, "\nresponse_list.length:", response_list.length, "\n");
             if (response_list == '') {
                 // basically when the resonse is empty it means that all 
                 // the items have been listed and the function can just return 
                 // this should then break the outer listing loop
-                console.log("no vidoes found");
+                console.log("no vidoes found", "\ni:", i, "\n");
                 // break wont work as `Jump target cannot cross function boundary.ts(1107)`
                 // so I am returning false to stop_plz and if stop_plz is is true then the loop 
                 // should stop in the next iteration
                 return false;
             } else {
                 // adding the items to db
-                console.log("adding items to db");
+                console.log("adding items to db", "\ni:", i, "\n");
                 await Promise.all(response_list.map(async (element) => {
                     var items = element.split("\t");
-                    console.log(items, items.length);
+                    console.log(items, items.length, "\ni:", i, "\n");
                     // update the vidoes too here by looking for any changes that could have been made
                     // use find or create here to update the entries
                     if (items.length == 3) {
@@ -257,14 +257,14 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
                                 }
                             })
                             if (created)
-                                console.log("\nsaved", items[0]);
+                                console.log("\nsaved", items[0], "\ni:", i, "\n");
                             else if (found) {
                                 if (!item_available) {
                                     found.available = false;
-                                    console.log("\nfound", items[0], "updated");
+                                    console.log("\nfound", items[0], "updated", "\ni:", i, "\n");
                                 }
                                 else {
-                                    console.log("\nfound", items[0], "no changes");
+                                    console.log("\nfound", items[0], "no changes", "\ni:", i, "\n");
                                 }
                                 found.changed('updatedAt', true);
                             }
@@ -278,10 +278,10 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
             }
         });
         // this return a <ref *1> thing I don't know how to do it anymore
-        console.log('\n\n\nwill stop', stop_plz);
+        console.log('\n\n\nwill stop', stop_plz, "\ni:", i, "\n");
         i++;
     }
-    console.log('\noutside the loop, and persumably done');
+    console.log('\noutside the loop, and persumably done', "\ni:", i, "\n");
 }
 
 async function yt_dlp_spawner(body_url, start_num, stop_num, chunk_size) {
@@ -295,12 +295,15 @@ function sleep(ms) {
 const nine = "https://www.youtube.com/playlist?list=PLcfzFNUhrNS0HMtlayzQfOSJVaaAta7U6";
 const eleven = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWtJ86g4ucr";
 const twenty5 = "https://www.youtube.com/playlist?list=PLNWGkqCSwkOHznnLAMzwpy-pO0pR7Wr6r"
-const seventy6_grass_angle = "https://www.youtube.com/playlist?list=PLOO4NsmB3T4eli11PYPyaGYGV0JLveI18";
+const seventy6 = "https://www.youtube.com/playlist?list=PLOO4NsmB3T4eli11PYPyaGYGV0JLveI18";
 const thirty = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj22U9EzJEdlIwNbsUAikFN9";
-const fin_talk = "https://www.youtube.com/playlist?list=PLsRkc9JvTV2EacmW7CrV8HBSgEc8Jq5yp"
+//const fin_talk = "https://www.youtube.com/playlist?list=PLsRkc9JvTV2EacmW7CrV8HBSgEc8Jq5yp"
 
 const contains_private = "https://www.youtube.com/playlist?list=PL4j9sdcFKwqkNj4WRREQ9sEB9AYmzQBdH";
 const contains_deleted = "https://www.youtube.com/playlist?list=PLpHbno9djTOSaBHKTrtbsKkn6MDUujQxX";
 
-list_background(seventy6_grass_angle, 1, 10, 10);
+const hunderd_n_2 = "https://www.youtube.com/playlist?list=PLlPDaLsfKPbK9BAbmG7s4b4ClUHDYNW3B"
+
+// first 10 will be listed by the main method so the number of vidoes that we should get here is total-10
+list_background(seventy6, 1, 10, 10);
 
