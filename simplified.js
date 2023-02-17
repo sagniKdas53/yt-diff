@@ -53,10 +53,12 @@ sequelize.sync().then(() => {
 });
 
 async function yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size) {
+    var i = 0;
     while (true) {
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
         const response = await spawnYtDlp(body_url, start_num, stop_num);
+        console.log("i: " + i++, "\nresponse:", response)
         if (response.length === 0) {
             break;
         }
@@ -68,7 +70,7 @@ const bangers = { url: "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj22U9Ez
 const daft_punk_essentials = { url: "https://www.youtube.com/playlist?list=PLSdoVPM5WnneERBKycA1lhN_vPM6IGiAg", size: 22 }
 yt_dlp_spawner_promised(bangers['url'], -9, 0, 10).then(() => { console.log('done fr'); });
 
-function spawnYtDlp(body_url, start_num, stop_num) {
+async function spawnYtDlp(body_url, start_num, stop_num) {
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
             "--playlist-start",

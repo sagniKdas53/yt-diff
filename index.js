@@ -105,6 +105,8 @@ async function download_stuff(req, res, next) {
     });
 }
 
+// update this to downlaod parallely with a limit
+// this may or may not be a good idea
 async function download_background_parallel(url_list) {
     //console.log('Downloading in background')
     var i = 0;
@@ -195,6 +197,7 @@ async function download_background_sequential(url_list) {
     }
 }
 
+// divide this function using the functions below
 async function list(req, res) {
     var body = '', response = '', end = '', resp_json = { count: 0, rows: [] };
     req.on('data', function (data) {
@@ -360,6 +363,9 @@ function spawnYtDlp(body_url, start_num, stop_num) {
 }
 
 async function processResponse(response, body_url) {
+    // maybe adding an index to the database column could be viable so that due to the
+    // ingerent asynchronousity of the database opertions do not mess up the order in which
+    // data is presented to the frontend
     await Promise.all(response.map(async element => {
         const [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
