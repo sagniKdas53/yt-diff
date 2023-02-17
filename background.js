@@ -1,5 +1,6 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const { spawn } = require("child_process");
+const { once } = require('events');
 
 const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
     //host: 'yt-db',
@@ -183,113 +184,150 @@ async function list(req, res) {
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    // sleep just to make it possible to catch
-    // await sleep(2 * 1000);
     console.log('\nlisting in background');
-    var i = 0;
     var dont_stop = true;
     // need to find a way to make the loop work only until the time we get a response
     // empty response means we should stop
     //  while (dont_stop) { // this is disastrous as the variable never gets updated
-    while (i < 10) {
+    var i = 0;
+    while (i < 5) {
         // prepare an empty string to append all the data to
-        var response = '';
-        // make the start and stop numbers
-        start_num = parseInt(start_num) + chunk_size;
-        stop_num = parseInt(stop_num) + chunk_size;
-
-        console.log("\nsupplied data:", "\ni:", i, "\nbody_url:", body_url, "\nstart_num:", start_num, "\nstop_num:", stop_num, "\nchunk_size", chunk_size);
-        // actually spawn the thing
-        const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
-            "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
-        yt_list.stdout.on("data", async data => {
-            response += data;
-        });
-        yt_list.stderr.on("data", data => {
-            response = `stderr: ${data}`;
-        });
-        yt_list.on('error', (error) => {
-            response = `error: ${error.message}`;
-        });
-        // apparently await has no effect on this expression
-        // but then how are we supposed to know when to stop?
-        // the listing only ends when dont_stop is false
-        yt_list.on("close", async (code) => {
-            end = `child process exited with code ${code}`;
-            response_list = response.split("\n");
-            // remove the "" from the end of the list
-            response_list.pop();
-            // get the status at the end
-            console.log("\ndata after processing\ni:", i, "response:\n", response, "\nresponse_list:", response_list, "\nresponse_list.length:", response_list.length, "\n");
-            if (response_list == '') {
-                // basically when the resonse is empty it means that all 
-                // the items have been listed and the function can just return 
-                // this should then break the outer listing loop
-                console.log("no vidoes found", "\ni:", i, "\n");
-                // break wont work as `Jump target cannot cross function boundary.ts(1107)`
-                // so I am returning false to dont_stop and if dont_stop is is true then the loop 
-                // should stop in the next iteration
-                dont_stop = false;
-            } else {
-                // adding the items to db
-                console.log("adding items to db", "\ni:", i, "\n");
-                await Promise.all(response_list.map(async (element) => {
-                    var items = element.split("\t");
-                    // console.log(items, items.length, "\ni:", i, "\n");
-                    // update the vidoes too here by looking for any changes that could have been made
-                    // use find or create here to update the entries
-                    if (items.length == 3) {
-                        try {
-                            if (items[0] == "[Deleted video]" || items[0] == "[Private video]") {
-                                item_available = false;
-                            } else {
-                                item_available = true;
-                            }
-                            const [found, created] = await vid_list.findOrCreate({
-                                where: { url: items[2] },
-                                defaults: {
-                                    id: items[1],
-                                    reference: body_url,
-                                    title: items[0],
-                                    downloaded: false,
-                                    available: item_available
-                                }
-                            })
-                            //if (created)
-                            //console.log("\nsaved", items[0], "\ni:", i, "\n");
-                            //else 
-                            if (found) {
-                                if (!item_available) {
-                                    found.available = false;
-                                    //console.log("\nfound", items[0], "updated", "\ni:", i, "\n");
-                                }
-                                else {
-                                    //console.log("\nfound", items[0], "no changes", "\ni:", i, "\n");
-                                }
-                                // if video intially added with a null reference but now it's in a list it should be referenced to
-                                // add provison for multiple references since a single vidoe can occure in multiple lists
-                                if (found.reference == 'None') {
-                                    found.reference = body_url;
-                                }
-                                found.changed('updatedAt', true);
-                            }
-                        } catch (error) {
-                            // remember to uncomment this later, the sequelize erros are not relevant here now
-                            // console.error(error);
-                        }
-                    }
-                }));
-                dont_stop = true;
-            }
-        });
-        console.log('\n\ndont_stop', dont_stop, "\ni:", i, "\n");
-        i++;
+        console.log('i', i);
+        const c = new Promise(async function (resolve, reject) {
+            await sleep(5 * 1000);
+            resolve(i++);
+        }).then((v) => {
+            i = v;
+        })
+        //await once(c, 'close')
+        console.log('i', i);
     }
     console.log('\noutside the loop, and persumably done', "\ni:", i, "\n");
 }
 
-async function yt_dlp_spawner(body_url, start_num, stop_num, chunk_size) {
-    // can be a viable idea 
+async function yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size) {
+    // sleep just to make it possible to catch
+    await sleep(2 * 1000);
+    var cont = true;
+    while (cont) {
+        start_num = parseInt(start_num) + chunk_size;
+        stop_num = parseInt(stop_num) + chunk_size;
+        cont = await new Promise(function (resolve, reject) {
+            var response = '';
+            var response_list = '';
+            console.log("\nsupplied data:", "\nbody_url:", body_url, "\nstart_num:", start_num, "\nstop_num:", stop_num);
+            // actually spawn the thing
+            const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
+                "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
+            yt_list.stdout.on("data", async data => {
+                response += data;
+            });
+            yt_list.stderr.on("data", data => {
+                response = `stderr: ${data}`;
+                reject(response);
+            });
+            yt_list.on('error', (error) => {
+                response = `error: ${error.message}`;
+                reject(response);
+            });
+            yt_list.on("close", async (code) => {
+                end = `child process exited with code ${code}`;
+                response_list = response.split("\n");
+                // remove the "" from the end of the list
+                response_list.pop();
+                // console.log("\ndata after processing\ni:", i, "response:\n" + response, "\nresponse_list:", response_list, "\nresponse_list.length:", response_list.length, "\n");
+                // resolve(response_list);
+                if (response_list == '') {
+                    resolve(false)
+                } else {
+                    await Promise.all(response_list.map(async (element) => {
+                        var items = element.split("\t");
+                        // console.log(items, items.length, "\ni:", i, "\n");
+                        // update the vidoes too here by looking for any changes that could have been made
+                        // use find or create here to update the entries
+                        if (items.length == 3) {
+                            try {
+                                if (items[0] == "[Deleted video]" || items[0] == "[Private video]") {
+                                    item_available = false;
+                                } else {
+                                    item_available = true;
+                                }
+                                const [found, _] = await vid_list.findOrCreate({
+                                    where: { url: items[2] },
+                                    defaults: {
+                                        id: items[1],
+                                        reference: body_url,
+                                        title: items[0],
+                                        downloaded: false,
+                                        available: item_available
+                                    }
+                                })
+                                //if (created)
+                                //console.log("\nsaved", items[0], "\ni:", i, "\n");
+                                //else 
+                                if (found) {
+                                    if (!item_available) {
+                                        found.available = false;
+                                        //console.log("\nfound", items[0], "updated", "\ni:", i, "\n");
+                                    }
+                                    else {
+                                        //console.log("\nfound", items[0], "no changes", "\ni:", i, "\n");
+                                    }
+                                    // if video intially added with a null reference but now it's in a list it should be referenced to
+                                    // add provison for multiple references since a single vidoe can occure in multiple lists
+                                    if (found.reference == 'None') {
+                                        found.reference = body_url;
+                                    }
+                                    found.changed('updatedAt', true);
+                                }
+                            } catch (error) {
+                                // remember to uncomment this later, the sequelize erros are not relevant here now
+                                // console.error(error);
+                                reject(error);
+                            }
+                        }
+                    })).then(() => { resolve(true); });
+                }
+            });
+        });
+        console.log('Continue: ' + cont);
+    }
+}
+
+async function yt_dlp_spawner(body_url, start_num, stop_num) {
+    // sleep just to make it possible to catch
+    await sleep(2 * 1000);
+    var response = '';
+    var response_list = '';
+    console.log("\nsupplied data:", "\nbody_url:", body_url, "\nstart_num:", start_num, "\nstop_num:", stop_num);
+    // actually spawn the thing
+    const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
+        "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
+    yt_list.stdout.on("data", async data => {
+        response += data;
+    });
+    yt_list.stderr.on("data", data => {
+        response = `stderr: ${data}`;
+    });
+    yt_list.on('error', (error) => {
+        response = `error: ${error.message}`;
+    });
+    yt_list.on("close", async (code) => {
+        end = `child process exited with code ${code}`;
+        response_list = response.split("\n");
+        // remove the "" from the end of the list
+        response_list.pop();
+        // console.log("\ndata after processing\ni:", i, "response:\n" + response, "\nresponse_list:", response_list, "\nresponse_list.length:", response_list.length, "\n");
+        if (response_list == '') {
+            // basically when the resonse is empty it means that all 
+            console.log("no vidoes found");
+        } else {
+            // adding the items to db
+            console.log("adding items to return response_list");
+        }
+    });
+    await once(yt_list, 'close')
+    return response_list;
 }
 
 function sleep(ms) {
@@ -298,6 +336,7 @@ function sleep(ms) {
 
 const nine = "https://www.youtube.com/playlist?list=PLcfzFNUhrNS0HMtlayzQfOSJVaaAta7U6";
 const eleven = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj1wSTOvmygaZyWtJ86g4ucr";
+const seventeen = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj15C50-NC3m3Tl8X2N8Gyg9"
 const twenty5 = "https://www.youtube.com/playlist?list=PLNWGkqCSwkOHznnLAMzwpy-pO0pR7Wr6r"
 const seventy6 = "https://www.youtube.com/playlist?list=PLOO4NsmB3T4eli11PYPyaGYGV0JLveI18";
 const thirty = "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj22U9EzJEdlIwNbsUAikFN9";
@@ -309,6 +348,11 @@ const contains_deleted = "https://www.youtube.com/playlist?list=PLpHbno9djTOSaBH
 const hunderd_n_2 = "https://www.youtube.com/playlist?list=PLlPDaLsfKPbK9BAbmG7s4b4ClUHDYNW3B"
 
 const daft_punk_essentials = { url: "https://www.youtube.com/playlist?list=PLSdoVPM5WnneERBKycA1lhN_vPM6IGiAg", size: 22 }
-// first 10 will be listed by the main method so the number of vidoes that we should get here is total-10
-list_background(daft_punk_essentials['url'], 1, 10, 10);
 
+
+// first 10 will be listed by the main method so the number of vidoes that we should get here is total-10
+yt_dlp_spawner_promised(daft_punk_essentials['url'], 1, 10, 10).then(
+    (resp_list) => {
+        console.log('here after promise is resolved', resp_list);
+    }
+)

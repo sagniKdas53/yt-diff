@@ -147,7 +147,7 @@ async function download_background_sequential(url_list) {
     var i = 0;
     var save_loc = 'yt-dlp';
     // make a way to append this if needed
-    const subs = ["--write-subs","--sleep-subtitles", 1];
+    const subs = ["--write-subs", "--sleep-subtitles", 1];
     for (const url_str of url_list) {
         //console.log(`Downloading video ${++i}`);
         try {
@@ -314,86 +314,73 @@ async function list(req, res) {
                 res.end(JSON.stringify(resp_json, null, 2));
             });
             // sending it to the background to do the rest
-            list_background(body_url, start_num, stop_num, chunk_size);
+            yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size).then(() => { console.log('done fr'); });
         });
     });
 }
 
-async function list_background(body_url, start_num, stop_num, chunk_size) {
-    // SELECT * FROM "vid_lists" WHERE "reference" = 'https://www.youtube.com/playlist?list=PLNWGkqCSwkOH1ebNLeyqD9Avviliymkkz' ORDER BY "createdAt" LIMIT 50
-    // This query shows that vidoes aren't being added to the db in order thus suggesting that this function isn't 
-    // working as expected or intended, it should  divide the the massive list into chunks and then save them in order.
-    // see vid_lists.csv for snapshot of the data and how the function messed it up.
-    var response = 'None';
-    var i = 0;
-    console.log('\nlisting in background\n');
-    console.log("body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
-    // use a for loop instead of do loop
-    listing: while (response != 'done') {
-        console.log('response', response);
-        console.log("resposne != 'done': ", response != 'done');
-        response = '';
-        if (i == 3) {
-            console.log('breaking to not crash and burn');
-            break;
-        }
-        i++;
+async function yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size) {
+    while (true) {
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
-        console.log('start_num:', start_num, 'stop_num:', stop_num, 'chunk_size:', chunk_size);
-        const yt_list = spawn("yt-dlp", ["--playlist-start", start_num, "--playlist-end", stop_num, "--flat-playlist",
-            "--print", '%(title)s\t%(id)s\t%(webpage_url)s', body_url]);
-        yt_list.stdout.on("data", async data => {
+        const response = await spawnYtDlp(body_url, start_num, stop_num);
+        if (response.length === 0) {
+            break;
+        }
+        await processResponse(response, body_url);
+    }
+}
+
+function spawnYtDlp(body_url, start_num, stop_num) {
+    return new Promise((resolve, reject) => {
+        const yt_list = spawn("yt-dlp", [
+            "--playlist-start",
+            start_num,
+            "--playlist-end",
+            stop_num,
+            "--flat-playlist",
+            "--print",
+            '%(title)s\t%(id)s\t%(webpage_url)s',
+            body_url
+        ]);
+        let response = '';
+        yt_list.stdout.on("data", data => {
             response += data;
         });
         yt_list.stderr.on("data", data => {
-            response = `stderr: ${data}`;
+            reject(`stderr: ${data}`);
         });
         yt_list.on('error', (error) => {
-            response = `error: ${error.message}`;
+            reject(`error: ${error.message}`);
         });
-        yt_list.on("close", async code => {
-            end = `child process exited with code ${code}`;
-            response_list = response.split("\n");
-            // remove the "" from the end of the list
-            response_list.pop();
-            console.log(start_num, stop_num, response, response_list, response_list.length);
-            if (response_list == '') {
-                // basically when the resonse is empty it means that all 
-                // the items have been listed and the function can just return 
-                // this should then break the outer listing loop
-                console.log("done");
-            } else {
-                // adding the items to db
-                await Promise.all(response_list.map(async element => {
-                    var items = element.split("\t");
-                    // console.log(items, items.length);
-                    // update the vidoes too here by looking for any changes that could have been made
-                    // use find or create here to update the entries
-                    try {
-                        const video = await vid_list.create({
-                            url: items[2],
-                            id: items[1],
-                            reference: body_url,
-                            title: items[0],
-                            downloaded: false,
-                            available: true
-                        }).then(function () {
-                            console.log(items[0], "saved");
-                        });
-                    } catch (error) {
-                        // remember to uncomment this later
-                        console.error(error);
-                        // do better here, later
-                    }
-                }));
+        yt_list.on("close", (code) => {
+            resolve(response.split("\n").filter(line => line.length > 0));
+        });
+    });
+}
+
+async function processResponse(response, body_url) {
+    await Promise.all(response.map(async element => {
+        const [title, id, url] = element.split("\t");
+        if (title === "[Deleted video]" || title === "[Private video]") {
+            return;
+        }
+        const item_available = title !== "[Unavailable video]";
+        const [found, _] = await vid_list.findOrCreate({
+            where: { url: url },
+            defaults: {
+                id: id,
+                reference: body_url,
+                title: title,
+                downloaded: false,
+                available: item_available
             }
         });
-    }
-    console.log('================================\nOutside loop');
-    console.log('response', response);
-    console.log("resposne != 'done': ", response != 'done');
-    console.log('done listing');
+        if (found && found.reference === 'None') {
+            found.reference = body_url;
+            found.changed('updatedAt', true);
+        }
+    }));
 }
 
 async function db_to_table(req, res) {
