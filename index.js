@@ -108,40 +108,7 @@ async function download_stuff(req, res, next) {
 // update this to downlaod parallely with a limit
 // this may or may not be a good idea
 async function download_background_parallel(url_list) {
-    //console.log('Downloading in background')
-    var i = 0;
-    var save_loc = 'yt-dlp';
-    for (const url_str of url_list) {
-        //console.log(`Downloading video ${++i}`);
-        try {
-            const yt_dlp = spawn("yt-dlp", ["-P", save_loc, url_str]);
-            yt_dlp.stdout.on("data", async data => {
-                //console.log(`${data}`);
-            });
-            yt_dlp.stderr.on("data", data => {
-                //console.log(`stderr: ${data}`);
-            });
-            yt_dlp.on('error', (error) => {
-                //console.error(`error: ${error.message}`);
-                throw 'Error Skipping';
-            });
-            yt_dlp.on("close", async (code) => {
-                //console.log(`child process exited with code ${code}`);
-                if (code == 0) {
-                    //console.log("Updating");
-                    var entity = await vid_list.findOne({ where: { url: url_str } });
-                    //console.log(entity.downloaded);
-                    entity.set({
-                        downloaded: true
-                    });
-                    await entity.save();
-                    //console.log(entity.downloaded);
-                }
-            });
-        } catch (error) {
-            //console.error(error);
-        }
-    }
+    // TODO
 }
 
 async function download_background_sequential(url_list) {
@@ -168,7 +135,7 @@ async function download_background_sequential(url_list) {
                 }
             });
             yt_dlp.stderr.on("data", data => {
-                //console.log(`stderr: ${data}`);
+                console.log(`stderr: ${data}`);
             });
             yt_dlp.on("error", error => {
                 //console.error(`error: ${error.message}`);
@@ -337,7 +304,8 @@ function spawnYtDlp(body_url, start_num, stop_num) {
             response += data;
         });
         yt_list.stderr.on("data", data => {
-            reject(`stderr: ${data}`);
+            // maybe use sockets to send the stderr to the 
+            console.log(`stderr: ${data}`);
         });
         yt_list.on('error', (error) => {
             reject(`error: ${error.message}`);
@@ -349,7 +317,7 @@ function spawnYtDlp(body_url, start_num, stop_num) {
 }
 
 async function processResponse(response, body_url) {
-    // maybe adding an index to the database column could be viable so that due to the
+    // adding an index to the database column could be viable so that due to the
     // ingerent asynchronousity of the database opertions do not mess up the order in which
     // data is presented to the frontend
     await Promise.all(response.map(async element => {
