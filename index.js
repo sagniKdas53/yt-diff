@@ -11,7 +11,7 @@ const sequelize = new Sequelize('vidlist', 'ytdiff', 'ytd1ff', {
     //host: 'yt-db',
     host: 'localhost',
     dialect: 'postgres'
-    //,logging: false
+    , logging: false
 });
 
 try {
@@ -167,7 +167,7 @@ async function download_background_sequential(url_list) {
 // divide this function using the functions below
 async function list(req, res) {
     var body = "",
-        resp_json = { count: 0, rows: [] };
+        init_resp = { count: 0, rows: [] };
     req.on("data", function (data) {
         body += data;
 
@@ -249,14 +249,10 @@ async function list(req, res) {
                     });
 
                     if (found) {
-                        console.log("Updating entry");
-                        resp_json["count"] += 1;
-                        resp_json["rows"].push(found);
-
+                        // console.log("Updating entry");
+                        init_resp["count"] += 1;
+                        init_resp["rows"].push(found);
                         found.changed("updatedAt", true);
-                    } else if (made) {
-                        resp_json["count"] += 1;
-                        resp_json["rows"].push(made, null, 2);
                     }
                 } catch (error) {
                     console.error(error);
@@ -264,21 +260,29 @@ async function list(req, res) {
             })
         ).then(function () {
             res.writeHead(200, { "Content-Type": "text/json" });
-            res.end(JSON.stringify(resp_json, null, 2));
+            res.end(JSON.stringify(init_resp, null, 2));
         }).then(function () {
             yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size).then(
                 () => {
-                    console.log("done fr");
+                    console.log("done processing playlist");
                 }
             );
         });
     });
 }
 
+function sleep(s) {
+    return new Promise(resolve => setTimeout(resolve, s * 1000));
+}
+
 async function yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size) {
     while (true) {
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
+        // ideally we can set it to zero but that would get us rate limited by the services
+        // getting this form docker compose isn't a bad idea either
+        // I plan on using sockets to communicate that this is still working
+        await sleep(3);
         const response = await spawnYtDlp(body_url, start_num, stop_num);
         if (response.length === 0) {
             break;
@@ -308,7 +312,7 @@ function spawnYtDlp(body_url, start_num, stop_num) {
             console.log(`stderr: ${data}`);
         });
         yt_list.on('error', (error) => {
-            reject(`error: ${error.message}`);
+            console.log(`error: ${error.message}`);
         });
         yt_list.on("close", (code) => {
             resolve(response.split("\n").filter(line => line.length > 0));
@@ -326,7 +330,7 @@ async function processResponse(response, body_url) {
             return;
         }
         const item_available = title !== "[Unavailable video]";
-        const [found, _] = await vid_list.findOrCreate({
+        const [found, made] = await vid_list.findOrCreate({
             where: { url: url },
             defaults: {
                 id: id,
@@ -339,6 +343,7 @@ async function processResponse(response, body_url) {
         if (found && found.reference === 'None') {
             found.reference = body_url;
             found.changed('updatedAt', true);
+            //console.log("Updating entry");
         }
     }));
 }
@@ -471,6 +476,18 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js.map'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/client.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/client.js'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/nav.png' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/nav.png'));
         res.end();
     }
     else {
