@@ -23,7 +23,7 @@ services:
       - ./yt-data:/var/lib/postgresql/data
 
   yt-diff:
-    image: purevert/yt-diff:latest
+    image: purevert/yt-diff:stable
     container_name: yt-diff
     # network_mode: service:vpn-proton
     build:

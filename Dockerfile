@@ -8,7 +8,7 @@ RUN echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/00-docker
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update \
-    && apt install ca-certificates xz-utils wget -y 
+    && apt install ca-certificates xz-utils bzip2 wget -y 
 #&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
@@ -28,6 +28,16 @@ RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && mv ffmpeg ffplay ffprobe ../../bin \
     && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
+
+#RUN wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs-2.1.1-linux-x86_64.tar.bz2"
+
+COPY /ffmpeg/phantomjs-2.1.1-linux-x86_64.tar.bz2 /
+
+RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
+    && cd phantomjs-2.1.1-linux-x86_64/bin \
+    && mv phantomjs ../../bin \
+    && cd ../.. \
+    && rm -rf phantomjs-2.1.1-linux-x86_64.tar.bz2 phantomjs-2.1.1-linux-x86_64
 
 COPY index.js index.html package-lock.json package.json favicon.ico show.html nav.png /
 

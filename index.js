@@ -47,8 +47,12 @@ const vid_list = sequelize.define('vid_list', {
     },
     reference: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: false
     },
+    list_order: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+    }
 });
 
 
@@ -167,7 +171,7 @@ async function download_background_sequential(url_list) {
 // divide this function using the functions below
 async function list(req, res) {
     var body = "",
-        init_resp = { count: 0, rows: [] };
+        init_resp = { count: 0, rows: [] }, i = 0;
     req.on("data", function (data) {
         body += data;
 
@@ -186,6 +190,7 @@ async function list(req, res) {
         var stop_num = body["stop"] || 10;
         var chunk_size = body["chunk_size"] || 10;
         const response_list = await spawnYtDlp(body_url, start_num, stop_num);
+        console.log(response_list);
         if (response_list.length > 1 && body_url.includes("playlist")) {
             let title_str = "";
             var is_alredy_indexed = await play_lists.findOne({
@@ -218,9 +223,6 @@ async function list(req, res) {
                     });
                 });
             }
-        } else if (response_list == "") {
-            res.writeHead(200, { "Content-Type": "text/json" });
-            res.end(JSON.stringify({ count: 0, rows: "" }, null, 2));
         } else {
             body_url = "None";
         }
@@ -237,7 +239,7 @@ async function list(req, res) {
                     ) {
                         available_var = false;
                     }
-                    const [found, made] = await vid_list.findOrCreate({
+                    const [found, _] = await vid_list.findOrCreate({
                         where: { url: items[2] },
                         defaults: {
                             id: items[1],
@@ -245,6 +247,7 @@ async function list(req, res) {
                             title: items[0],
                             downloaded: false,
                             available: available_var,
+                            list_order: ++i
                         },
                     });
 
@@ -259,8 +262,12 @@ async function list(req, res) {
                 }
             })
         ).then(function () {
-            res.writeHead(200, { "Content-Type": "text/json" });
-            res.end(JSON.stringify(init_resp, null, 2));
+            try {
+                res.writeHead(200, { "Content-Type": "text/json" });
+                res.end(JSON.stringify(init_resp, null, 2));
+            } catch (error) {
+                console.error(error);
+            }
         }).then(function () {
             yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size).then(
                 () => {
@@ -287,7 +294,7 @@ async function yt_dlp_spawner_promised(body_url, start_num, stop_num, chunk_size
         if (response.length === 0) {
             break;
         }
-        await processResponse(response, body_url);
+        await processResponse(response, body_url, start_num);
     }
 }
 
@@ -320,24 +327,26 @@ function spawnYtDlp(body_url, start_num, stop_num) {
     });
 }
 
-async function processResponse(response, body_url) {
+async function processResponse(response, body_url, start_num) {
     // adding an index to the database column could be viable so that due to the
     // ingerent asynchronousity of the database opertions do not mess up the order in which
     // data is presented to the frontend
+    var i = start_num
     await Promise.all(response.map(async element => {
         const [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
             return;
         }
         const item_available = title !== "[Unavailable video]";
-        const [found, made] = await vid_list.findOrCreate({
+        const [found, _] = await vid_list.findOrCreate({
             where: { url: url },
             defaults: {
                 id: id,
                 reference: body_url,
                 title: title,
                 downloaded: false,
-                available: item_available
+                available: item_available,
+                list_order: i++
             }
         });
         if (found && found.reference === 'None') {
@@ -396,7 +405,8 @@ async function sub_list(req, res) {
                 reference: body_url
             },
             limit: stop_num - start_num,
-            offset: start_num
+            offset: start_num,
+            order: [['list_order']]
         }).then(result => {
             res.writeHead(200, { "Content-Type": "text/json" });
             res.end(JSON.stringify(result, null, 2));
