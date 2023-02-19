@@ -4,7 +4,7 @@ function sockSetup() {
     socket.on('init', function (data) {
         console.log(data.message);
         // Respond with a message including this clients' id sent from the server
-        socket.emit('acknowledge', { data: 'Socket Connected', id: data.id });
+        socket.emit('acknowledge', { data: 'Connected', id: data.id });
     });
     socket.on('progress', function (data) {
         console.log(data);

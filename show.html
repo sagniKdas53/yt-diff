@@ -10,6 +10,7 @@
     <link href="/ytdiff/assets/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
     <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
+    <script src="/ytdiff/assets/client.js" crossorigin="anonymous"></script>
     <style>
         .container-table {
             height: 80vh;
@@ -22,6 +23,21 @@
             position: sticky;
             top: 0;
         }
+
+        .container-counters {
+            height: 10vh;
+            max-height: 10vh;
+        }
+
+        .side-nav {
+            height: 90vh;
+            max-height: 90vh;
+        }
+
+        .side-nav button {
+            border-radius: 0;
+            width: 10vw;
+        }
     </style>
 </head>
 
@@ -32,14 +48,13 @@
                 <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30"
                     class="d-inline-block align-text-top"><span>-diff</span>
             </a>
-            <a href="http://localhost:8888/ytdiff" class="link-warning">Back</a>
+            <a href="../ytdiff" class="link-warning">Back</a>
         </div>
     </nav>
-    <div class="container">
+    <div class="container-fluid">
         <div class="row">
-            <div class="col">
-                <!--<h3>List of Playlists:</h3>-->
-                <div class="container-table">
+            <div class="col-5 ms-4 m-0 p-0">
+                <div class="container m-0 p-0 container-table">
                     <table class="table table-responsive">
                         <thead>
                             <tr>
@@ -55,23 +70,32 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="container">
+                <div class="container m-0 p-0 container-counters">
                     <div class="row">
-                        <div class="input-group mb-3 mt-3">
+                        <div class="input-group mb-1 mt-3">
                             <input type="number" class="form-control" placeholder="0" name="start_input" id="start" />
                             <span class="input-group-text">-</span>
                             <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop" />
-                            <button id="next" type="button" onclick="next()"
-                                class="btn btn-primary border-dark">Next</button>
-                            <button id="back" type="button" onclick="back()"
-                                class="btn btn-primary border-dark">Back</button>
+                            <button id="next" type="button" onclick="next()" class="btn btn-dark">Next</button>
+                            <button id="back" type="button" onclick="back()" class="btn btn-dark">Back</button>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="col">
-                <!--<h3>List:</h3>-->
-                <div class="container-table">
+            <div class="col m-0 p-0 size">
+                <div class="btn-group-vertical float-end side-nav" role="group" aria-label="controls">
+                    <button type="button" class="btn btn btn-dark disabled" disabled></button>
+                    <button id="all" type="button" onclick="select_all()" class="btn btn btn-dark">A</button>
+                    <button id="none" type="button" onclick="select_none()" class="btn btn btn-dark">N</button>
+                    <button id="clear" type="button" onclick="depopulateSubList()" class="btn btn btn-dark">C</button>
+                    <button id="orphan" type="button" onclick="getSubList('None')" class="btn btn btn-dark">O</button>
+                    <button id="next-sub" type="button" onclick="next_sub()" class="btn btn btn-dark">Nx</button>
+                    <button id="back-sub" type="button" onclick="back_sub()" class="btn btn btn-dark">Bc</button>
+                    <button id="dnld" type="button" onclick="download()" class="btn btn btn-dark">D</button>
+                </div>
+            </div>
+            <div class="col-6 me-4 m-0 p-0">
+                <div class="container m-0 p-0 container-table">
                     <table class="table table-responsive">
                         <thead>
                             <tr>
@@ -86,7 +110,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="container">
+                <div class="container m-0 p-0 container-counters">
                     <div class="row">
                         <div class="input-group mb-3 mt-3">
                             <input type="number" class="form-control" placeholder="0" name="start_input"
@@ -94,35 +118,16 @@
                             <span class="input-group-text">-</span>
                             <input type="number" class="form-control" placeholder="10" name="stop_input"
                                 id="stop_sub" />
-                            <button id="next-sub" type="button" onclick="next_sub()"
-                                class="btn btn-info border-dark">Next</button>
-                            <button id="back-sub" type="button" onclick="back_sub()"
-                                class="btn btn-info border-dark">Back</button>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-9">
-                            <div class="btn-group" role="group" aria-label="Basic example">
-                                <span class="input-group-text" id="basic-addon1">Select</span>
-                                <button id="all" type="button" onclick="select_all()"
-                                    class="btn btn-info border-dark">All</button>
-                                <button id="none" type="button" onclick="select_none()"
-                                    class="btn btn-info border-dark">None</button>
-                                <button id="clear" type="button" onclick="depopulateSubList()"
-                                    class="btn btn-info border-dark">Clear</button>
-                                <button id="orphan" type="button" onclick="getSubList('None')"
-                                    class="btn btn-info border-dark">Orphaned</button>
-                            </div>
-                        </div>
-                        <div class="col-3">
-                            <button id="dnld" type="button" onclick="download()"
-                                class="btn btn-primary border-dark">Download</button>
+                            <span class="input-group-text">Chunk</span>
+                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="chunk" />
                         </div>
                     </div>
                 </div>
             </div>
+
         </div>
     </div>
+    <!--Toast-->
     <div style="position: absolute; top: 10px; right: 10px;">
         <div class="toast align-items-bottom" role="alert" aria-live="assertive" aria-atomic="true" id="notify">
             <div class="d-flex">
@@ -134,7 +139,16 @@
         </div>
     </div>
     <script defer>
-        
+        window.onload = init();
+        var url_global = "None";
+        function init() {
+            document.getElementById("start").value = 0;
+            document.getElementById("stop").value = 10;
+            document.getElementById("start_sub").value = 0;
+            document.getElementById("stop_sub").value = 10;
+            document.getElementById("chunk").value = 10;
+            sockSetup();
+        }
     </script>
 
 </body>
