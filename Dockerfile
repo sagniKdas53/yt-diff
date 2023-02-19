@@ -19,7 +19,7 @@ COPY /ffmpeg/yt-dlp_linux /
 
 RUN chmod +x yt-dlp_linux && mv yt-dlp_linux bin/yt-dlp
 
-#RUN wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz"
+#RUN wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg-master-latest-linux64-gpl.tar.xz"
 
 COPY /ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz /
 
