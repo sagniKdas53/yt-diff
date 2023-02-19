@@ -5,6 +5,8 @@ const { Sequelize, DataTypes } = require("sequelize");
 const { Server } = require("socket.io");
 
 const regex = /(\d{1,3}\.\d)%/;
+const protocol = 'http';
+const host = 'localhost';
 const url_base = "/ytdiff"; // get this form env in docker config
 const save_loc = "yt-dlp"; // get this form env in docker config
 const sleep_time = 3;
@@ -90,12 +92,10 @@ async function download_init(req, res) {
     req.on("end", async function () {
         body = JSON.parse(body);
         var urls = [];
-        console.log("Recieved: " + body["ids"]);
         for (const id_str of body["ids"]) {
             const entry = await vid_list.findOne({ where: { id: id_str } });
             urls.push(entry.url);
         }
-        console.log(urls);
         download_background_sequential(urls);
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("[" + urls.join(" , ") + "]");
@@ -108,8 +108,6 @@ async function download_background_parallel(url_list) {
 }
 
 async function download_background_sequential(url_list) {
-    console.log("Downloading in background");
-    // make a way to append this if needed
     for (const url_str of url_list) {
         try {
             const yt_dlp = spawn("yt-dlp", [
@@ -128,7 +126,7 @@ async function download_background_sequential(url_list) {
                 }
             });
             yt_dlp.stderr.on("data", (data) => {
-                console.log(`stderr: ${data}`);
+                console.error(`stderr: ${data}`);
             });
             yt_dlp.on("error", (error) => {
                 console.error(`error: ${error.message}`);
@@ -183,10 +181,9 @@ async function list_init(req, res) {
             try {
                 is_alredy_indexed.changed("updatedAt", true);
                 await is_alredy_indexed.save();
-                console.log("playlist updated");
                 title_str = is_alredy_indexed.title;
             } catch (error) {
-                console.log("playlist not encountered");
+                console.error("playlist not encountered");
             }
             if (title_str == "") {
                 const get_title = spawn("yt-dlp", [
@@ -236,7 +233,6 @@ async function list_init(req, res) {
                     });
 
                     if (found) {
-                        // console.log("Updating entry");
                         init_resp["count"] += 1;
                         init_resp["rows"].push(found);
                         found.changed("updatedAt", true);
@@ -303,7 +299,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
             console.log(`stderr: ${data}`);
         });
         yt_list.on("error", (error) => {
-            console.log(`error: ${error.message}`);
+            console.error(`error: ${error.message}`);
         });
         yt_list.on("close", (code) => {
             resolve(response.split("\n").filter((line) => line.length > 0));
@@ -404,8 +400,9 @@ const staticAssets = {
 const server = http.createServer((req, res) => {
     if (req.url.startsWith(url_base) && req.method === "GET") {
         try {
-            res.writeHead(200, { "Content-Type": staticAssets[req.url.replace(url_base, '')].type });
-            res.write(staticAssets[req.url.replace(url_base, '')].obj);
+            var get = req.url.replace(url_base, '')
+            res.writeHead(200, { "Content-Type": staticAssets[get].type });
+            res.write(staticAssets[get].obj);
         } catch (error) {
             res.writeHead(404, { "Content-Type": html });
             res.write("Not Found");
@@ -434,5 +431,5 @@ const sock = io.on("connection", (socket) => {
 });
 
 server.listen(port, () => {
-    console.log("Server listening on http://localhost:" + port);
+    console.log(`Server listening on ${protocol}://${host}:${port}${url_base}`);
 });
