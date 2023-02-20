@@ -10,10 +10,10 @@ jobs:
 
   build:
 
-    runs-on: debian:stable-slim
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: docker build . --file Dockerfile.debian --tag purevert/yt-diff:slim
+      run: docker build . --file Dockerfile --tag purevert/yt-diff:stable
     
