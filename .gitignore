@@ -2,7 +2,7 @@ yt-dlp/
 yt-data/
 node_modules/
 gluetun/
-ffmpeg/
-ffmpeg_aarch64/
+amd64/
+aarch64/
 nvm/
 logs/
