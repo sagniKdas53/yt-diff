@@ -28,7 +28,7 @@ services:
     # network_mode: service:vpn-proton
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.debian
     volumes:
       - ./yt-dlp:/yt-dlp
     depends_on:
