@@ -9,7 +9,7 @@ const protocol = 'http';
 const host = 'localhost';
 const url_base = "/ytdiff"; // get this form env in docker config
 const save_loc = "yt-dlp"; // get this form env in docker config
-const sleep_time = 3;
+const sleep_time = 3; // get this form env in docker config
 const subs = ["--write-subs", "--sleep-subtitles", sleep_time];
 const port = process.argv[2] || 8888; // get this form env in docker config
 
@@ -94,7 +94,7 @@ async function download_init(req, res) {
         var urls = [];
         for (const id_str of body["ids"]) {
             const entry = await vid_list.findOne({ where: { id: id_str } });
-            urls.push(entry.url);
+            urls.push([entry.url,entry.title]);
         }
         download_background_sequential(urls);
         res.writeHead(200, { "Content-Type": "text/plain" });
@@ -108,8 +108,9 @@ async function download_background_parallel(url_list) {
 }
 
 async function download_background_sequential(url_list) {
-    for (const url_str of url_list) {
+    for (const [url_str,title] of url_list) {
         try {
+            sock.emit('download-start', { message: title });
             const yt_dlp = spawn("yt-dlp", [
                 "-P",
                 save_loc,
