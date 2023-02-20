@@ -422,22 +422,22 @@ const server = http.createServer((req, res) => {
         res.write(fs.readFileSync(__dirname + '/index.html'));
         res.end();
     }
-    else if (req.url === url_base + '/showdb' && req.method === 'GET') {
+    else if (req.url === url_base + '/dbi' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         // don't forget to remove this sync method
-        res.write(fs.readFileSync(__dirname + '/show.html'));
+        res.write(fs.readFileSync(__dirname + '/dbi.html'));
         res.end();
     }
     else if (req.url === url_base + '/list' && req.method === 'POST') {
         list(req, res);
     }
-    else if (req.url === url_base + '/showdb' && req.method === 'GET') {
+    else if (req.url === url_base + '/dbi' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/show.html'));
         res.end();
     }
-    else if (req.url === url_base + '/showdb' && req.method === 'POST') {
+    else if (req.url === url_base + '/dbi' && req.method === 'POST') {
         db_to_table(req, res);
     }
     else if (req.url === url_base + '/getsub' && req.method === 'POST') {
@@ -492,6 +492,12 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
         // don't forget to remove this sync method
         res.write(fs.readFileSync(__dirname + '/client.js'));
+        res.end();
+    }
+    else if (req.url === url_base + '/assets/dbi.client.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        // don't forget to remove this sync method
+        res.write(fs.readFileSync(__dirname + '/dbi.client.js'));
         res.end();
     }
     else if (req.url === url_base + '/assets/nav.png' && req.method === 'GET') {

@@ -385,7 +385,7 @@ const js = "text/javascript; charset=utf-8";
 const staticAssets = {
     '': { obj: fs.readFileSync(__dirname + '/index.html'), type: html },
     '/': { obj: fs.readFileSync(__dirname + '/index.html'), type: html },
-    '/showdb': { obj: fs.readFileSync(__dirname + '/show.html'), type: html },
+    '/dbi': { obj: fs.readFileSync(__dirname + '/dbi.html'), type: html },
     '/assets/bootstrap.min.css': { obj: fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css'), type: css },
     '/assets/bootstrap.min.css.map': { obj: fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/css/bootstrap.min.css.map'), type: css },
     '/assets/bootstrap.bundle.min.js': { obj: fs.readFileSync(__dirname + '/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js'), type: js },
@@ -394,7 +394,8 @@ const staticAssets = {
     '/assets/socket.io.min.js': { obj: fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js'), type: js },
     '/assets/socket.io.min.js.map': { obj: fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js.map'), type: js },
     '/assets/nav.png': { obj: fs.readFileSync(__dirname + '/nav.png'), type: "image/png" },
-    '/assets/client.js': { obj: fs.readFileSync(__dirname + '/client.js'), type: js }
+    '/assets/client.js': { obj: fs.readFileSync(__dirname + '/client.js'), type: js },
+    '/assets/dbi.client.js': { obj: fs.readFileSync(__dirname + '/dbi.client.js'), type: js }
 };
 
 const server = http.createServer((req, res) => {
@@ -410,7 +411,7 @@ const server = http.createServer((req, res) => {
         res.end();
     } else if (req.url === url_base + "/list" && req.method === "POST") {
         list_init(req, res);
-    } else if (req.url === url_base + "/showdb" && req.method === "POST") {
+    } else if (req.url === url_base + "/dbi" && req.method === "POST") {
         playlists_to_table(req, res);
     } else if (req.url === url_base + "/getsub" && req.method === "POST") {
         sublist_to_table(req, res);
