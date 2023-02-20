@@ -7,7 +7,7 @@ function init() {
     if (document.getElementById("stop").value === "") {
         document.getElementById("stop").value = 10;
     }
-    populateList();
+    get_list_list();
     sockSetup();
 }
 
@@ -23,7 +23,7 @@ function next() {
     } else {
         document.getElementById("stop").value = parseInt(document.getElementById("stop").value, 10) + 10;
     }
-    populateList();
+    get_list_list();
 }
 function back() {
     depopulateList();
@@ -44,9 +44,9 @@ function back() {
         document.getElementById("stop").value = parseInt(document.getElementById("stop").value, 10) - 10;
     }
 
-    populateList();
+    get_list_list();
 }
-function populateList() {
+function get_list_list() {
     const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
     var start_val = document.getElementById("start").value;
     var stop_val = document.getElementById("stop").value;
@@ -86,10 +86,6 @@ function populateList() {
             createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
             updatedAt.innerHTML = new Date(element.updatedAt).toLocaleDateString("en-US", options);
             show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
-            /*
-            Add the more button that loads the list of vidoes associted with the playlist 
-            and add the download buttons here too also make sure to add the web sockets
-            */
         });
     });
 };
