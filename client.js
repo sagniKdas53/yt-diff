@@ -240,3 +240,49 @@ function getSubList(url, start, stop) {
     // redundant init?
     // url_global = url;
 };
+
+// Show db page functions
+
+function get_list_list() {
+    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
+    var start_val = document.getElementById("start").value;
+    var stop_val = document.getElementById("stop").value;
+    console.log("Start: " + start_val + " stop: " + stop_val);
+    fetch("/ytdiff/showdb", {
+        method: "post",
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+
+        //make sure to serialize your JSON body
+        body: JSON.stringify({
+            start: start_val, // get these later from the document
+            stop: stop_val
+        })
+    }).then((response) => response.text()).then((text) => {
+        text = JSON.parse(text)
+        const table = document.getElementById("placeholder");
+        text['rows'].forEach(element => {
+            console.log(element);
+            /*
+            id 	url 	createdAt 	updatedAt 	more
+            */
+            const row = table.insertRow();
+            const id = row.insertCell(0);
+            const url = row.insertCell(1);
+            const createdAt = row.insertCell(2);
+            const updatedAt = row.insertCell(3);
+            const show = row.insertCell(4);
+
+            id.innerHTML = element.order_added;
+            url.innerHTML = `<a href='${element.url}'">${element.title}</a>`;
+            //overflow-wrap: break-word;width;word-wrap: anywhere;width: 17vw;
+            //url.style.wordWrap = "anywhere";
+            //url.style.width = "17vw";
+            createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
+            updatedAt.innerHTML = new Date(element.updatedAt).toLocaleDateString("en-US", options);
+            show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
+        });
+    });
+};
