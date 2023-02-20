@@ -6,12 +6,16 @@ function sockSetup() {
         // Respond with a message including this clients' id sent from the server
         socket.emit('acknowledge', { data: 'Connected', id: data.id });
     });
+    socket.on('download-start', function (data) {
+        console.groupCollapsed(`Downloading: ${data.message}`);
+    });
     socket.on('progress', function (data) {
-        console.log(data);
+        console.log(data.message);
     });
     socket.on('error', console.error.bind(console));
     socket.on('done', function (data) {
-        console.log(data.message);
+        console.log(`Downloaded: ${data.message} ✅`);
+        console.groupEnd();
         var myToastEl = document.getElementById('notify');
         myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
         var myToast = new bootstrap.Toast(myToastEl, {
@@ -107,7 +111,7 @@ function download_selected() {
     document.querySelectorAll('input[type=checkbox]:checked').forEach(element => {
         id.push(element.id);
     })
-    console.log(id);
+    // console.log(id);
     fetch("/ytdiff/download", {
         method: "post",
         headers: {
@@ -117,8 +121,6 @@ function download_selected() {
         body: JSON.stringify({
             ids: id,
         })
-    }).then((response) => response.text()).then((text) => {
-        console.log(text);
     });
 };
 
