@@ -94,7 +94,7 @@ async function download_init(req, res) {
         var urls = [];
         for (const id_str of body["ids"]) {
             const entry = await vid_list.findOne({ where: { id: id_str } });
-            urls.push([entry.url,entry.title]);
+            urls.push([entry.url, entry.title]);
         }
         download_background_sequential(urls);
         res.writeHead(200, { "Content-Type": "text/plain" });
@@ -108,7 +108,7 @@ async function download_background_parallel(url_list) {
 }
 
 async function download_background_sequential(url_list) {
-    for (const [url_str,title] of url_list) {
+    for (const [url_str, title] of url_list) {
         try {
             sock.emit('download-start', { message: title });
             const yt_dlp = spawn("yt-dlp", [
@@ -154,8 +154,7 @@ async function download_background_sequential(url_list) {
 // divide this function using the functions below
 async function list_init(req, res) {
     var body = "",
-        init_resp = { count: 0, rows: [] },
-        i = 0;
+        init_resp = { count: 0, rows: [] };
     req.on("data", function (data) {
         body += data;
         if (body.length > 1e6) req.connection.destroy();
@@ -171,6 +170,7 @@ async function list_init(req, res) {
         var body_url = body["url"];
         var start_num = body["start"] || 1;
         var stop_num = body["stop"] || 10;
+        var i = start_num - 1;
         var chunk_size = body["chunk_size"] || 10;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
         console.log(response_list, response_list.length);

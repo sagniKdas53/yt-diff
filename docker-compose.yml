@@ -23,7 +23,7 @@ services:
       - ./yt-data:/var/lib/postgresql/data
 
   yt-diff:
-    image: purevert/yt-diff:stable
+    image: purevert/yt-diff:amd64
     container_name: yt-diff
     # network_mode: service:vpn-proton
     build:
@@ -88,8 +88,7 @@ services:
       - "traefik.http.routers.adminer.tls=true"
       - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
       - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
-  #http://localhost:8080/?pgsql=yt-db&username=ytdiff&db=vidlist&ns=public
-
+      
   #vpn-proton:
   #  image: qmcgaw/gluetun
   #  container_name: vpn-proton
