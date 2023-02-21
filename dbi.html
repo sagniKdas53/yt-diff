@@ -25,7 +25,7 @@
         }
 
         .container-counters {
-            height: 10vh;
+            height: auto;
             max-height: 10vh;
         }
 
@@ -33,17 +33,7 @@
             max-height: 10vh;
         }
 
-        /*This is the one that's been causing problems
         @media (min-width: 992px) {
-            .margins {
-                margin-top: 0px;
-                margin-right: 0px;
-                margin-bottom: 0px;
-                margin-left: 15px !important;
-            }
-        }*/
-
-        @media (min-width: 1280px) {
             .margins {
                 margin-top: 0px;
                 margin-right: 0px;
@@ -61,12 +51,15 @@
                 <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30"
                     class="d-inline-block align-text-top" /><span>-diff</span>
             </a>
-            <a href="../ytdiff" class="link-warning">Back</a>
+            <div>
+                <label for="" class="link-warning" onclick="getOrphans()">Unlisted</label>
+                <a href="../ytdiff" class="link-warning" style="text-decoration: none;">Back</a>
+            </div>
         </div>
     </nav>
     <div class="container-fluid">
         <div class="row">
-            <div class="col-sm-12 col-md-12 col-lg-5 p-0 m-0 margins">
+            <div class="col-sm-12 col-md-12 col-lg-6 col-xl-5 px-1 m-0">
                 <div class="container-fluid m-0 p-0 container-table">
                     <table class="table table-responsive">
                         <thead>
@@ -83,7 +76,7 @@
                 </div>
                 <div class="container-fluid m-0 p-0 container-counters">
                     <div class="row">
-                        <div class="input-group mb-1 mt-3">
+                        <div class="input-group my-3">
                             <input type="number" class="form-control" placeholder="0" name="start_input" id="start_main"
                                 data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
                             <span class="input-group-text">-</span>
@@ -99,12 +92,13 @@
                     </div>
                 </div>
             </div>
-            <div class="col-sm-12 col-md-12 col-lg-6 p-0 m-0 margins">
+            <div class="col-sm-12 col-md-12 col-lg-6 col-xl-7 px-1 m-0">
                 <div class="container-fluid m-0 p-0 container-table">
                     <table class="table table-responsive">
                         <thead>
                             <tr>
-                                <th scope="col" class="table-dark">#</th>
+                                <th scope="col" class="table-dark"><input class="form-check-input" type="checkbox"
+                                        value="" id="selector" aria-label="..."></th>
                                 <th scope="col" class="table-dark">Video Title</th>
                                 <th scope="col" class="table-dark">Downloaded</th>
                                 <th scope="col" class="table-dark">Available</th>
@@ -115,7 +109,7 @@
                 </div>
                 <div class="container-fluid m-0 p-0 container-counters">
                     <div class="row">
-                        <div class="input-group mb-3 mt-3">
+                        <div class="input-group my-3">
                             <input type="number" class="form-control" placeholder="0" name="start_input" id="start_sub"
                                 data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
                             <span class="input-group-text">-</span>
@@ -133,10 +127,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="container-fluid m-0 p-0 d-lg-none">
+                <div class="container-fluid m-0 p-0 d-xl-none">
+                    <!--This will be show on all smaller screens-->
                     <div class="row">
-                        <div class="col">
-                            <div class="btn-group " role="group" aria-label="controls">
+                        <div class="col mb-3">
+                            <div class="btn-group position-relative start-50 translate-middle-x" role="group"
+                                aria-label="controls">
                                 <button id="all" type="button" onclick="select_all()" class="btn btn-primary">
                                     All
                                 </button>
@@ -148,37 +144,13 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="col">
-                            <button id="dnld" type="button" onclick="download_selected()" class="btn btn-primary ">
+                        <div class="col mb-3">
+                            <button id="dnld" type="button" onclick="download_selected()"
+                                class="btn btn-primary position-relative start-50 translate-middle-x">
                                 Download
                             </button>
                         </div>
-                        <div class="col">
-                            <button id="orphan" type="button" onclick="getOrphans()" class="btn btn-primary">
-                                Unlisted
-                            </button>
-                        </div>
                     </div>
-                </div>
-            </div>
-            <!--This will be shown only on big screens lg and bigger-->
-            <div class="col-lg m-0 p-0 d-none d-lg-block d-xl-block d-xxl-block">
-                <div class="btn-group-vertical top-50 start-50 translate-middle" role="group" aria-label="controls">
-                    <button id="all" type="button" onclick="select_all()" class="btn btn-primary">
-                        All
-                    </button>
-                    <button id="none" type="button" onclick="select_none()" class="btn btn-primary">
-                        None
-                    </button>
-                    <button id="clear" type="button" onclick="depopulateList(true)" class="btn btn-primary">
-                        Clear
-                    </button>
-                    <button id="orphan" type="button" onclick="getOrphans()" class="btn btn-primary">
-                        Unls
-                    </button>
-                    <button id="dnld" type="button" onclick="download_selected()" class="btn btn-primary">
-                        Dnld
-                    </button>
                 </div>
             </div>
         </div>
@@ -204,20 +176,25 @@
             sockSetup();
             getMainlist(0, 10);
         }
-        document
-            .getElementById("chunk")
-            .addEventListener("input", function (evt) {
-                var value = parseInt(this.value, 10);
-                if (value >= 1) {
-                    var start = parseInt(
-                        document.getElementById("start_sub").value,
-                        10
-                    );
-                    document.getElementById("stop_sub").value = start + value;
-                } else {
-                    this.value = 1;
-                }
-            });
+        document.getElementById("chunk").addEventListener("input", function (evt) {
+            var value = parseInt(this.value, 10);
+            if (value >= 1) {
+                var start = parseInt(
+                    document.getElementById("start_sub").value,
+                    10
+                );
+                document.getElementById("stop_sub").value = start + value;
+            } else {
+                this.value = 1;
+            }
+        });
+        document.getElementById("selector").addEventListener("input", function (evt) {
+            if (this.checked) {
+                select_all();
+            } else {
+                select_none();
+            }
+        });
     </script>
 </body>
 
