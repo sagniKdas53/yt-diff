@@ -63,9 +63,11 @@
                 <div class="container m-0 p-0 container-counters">
                     <div class="row">
                         <div class="input-group mb-1 mt-3">
-                            <input type="number" class="form-control" placeholder="0" name="start_input" id="start_main" />
+                            <input type="number" class="form-control" placeholder="0" name="start_input"
+                                id="start_main" />
                             <span class="input-group-text">-</span>
-                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop_main" />
+                            <input type="number" class="form-control" placeholder="10" name="stop_input"
+                                id="stop_main" />
                             <button id="next" type="button" onclick="nextMain()" class="btn btn-primary">Next</button>
                             <button id="back" type="button" onclick="backMain()" class="btn btn-primary">Back</button>
                         </div>
@@ -119,7 +121,8 @@
                 <div class="btn-group-vertical top-50 start-50 translate-middle" role="group" aria-label="controls">
                     <button id="all" type="button" onclick="select_all()" class="btn btn-primary">All</button>
                     <button id="none" type="button" onclick="select_none()" class="btn btn-primary">None</button>
-                    <button id="clear" type="button" onclick="depopulateList(true)"class="btn btn-primary">Clear</button>
+                    <button id="clear" type="button" onclick="depopulateList(true)"
+                        class="btn btn-primary">Clear</button>
                     <button id="orphan" type="button" onclick="getOrphans()" class="btn btn-primary">Unls</button>
                     <button id="next-sub" type="button" onclick="nextSub()" class="btn btn-primary">Next</button>
                     <button id="back-sub" type="button" onclick="backSub()" class="btn btn-primary">Back</button>
@@ -138,8 +141,18 @@
             document.getElementById("stop_sub").value = 10;
             document.getElementById("chunk").value = 10;
             sockSetup();
-            getMainlist(0,10);
+            getMainlist(0, 10);
         }
+        document.getElementById("chunk").addEventListener('input', function (evt) {
+            var value = parseInt(this.value, 10);
+            if (value >= 1) {
+                var start = parseInt(document.getElementById("start_sub").value, 10);
+                document.getElementById("stop_sub").value = start + value;
+            }
+            else {
+                this.value = 1;
+            }
+        });
     </script>
 
 </body>

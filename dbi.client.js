@@ -219,10 +219,28 @@ function backSub() {
 };
 
 function getSubList(url, start, stop) {
-    console.log("Querying url: ", url);
+    if (start == undefined && stop == undefined) {
+        var chunk = parseInt(document.getElementById("chunk").value, 10);
+        start = parseInt(document.getElementById("start_sub").value, 10);
+        stop = parseInt(document.getElementById("stop_sub").value, 10);
+        // Setting start value
+        if (isNaN(start)) {
+            document.getElementById("start_sub").value = 0;
+            start = 0;
+        }
+        // Setting stop value
+        if (isNaN(stop)) {
+            document.getElementById("stop_sub").value = chunk;
+            stop = chunk;
+        } else {
+            stop = start + chunk;
+            document.getElementById("stop_sub").value = stop;
+        }
+    }
     if (url_global != url) {
         url_global = url;
     }
+    console.log("Querying url: ", url_global, " start: ", start, " stop: ", stop);
     depopulateList();
     const table = document.getElementById("listing");
     fetch("/ytdiff/getsub", {

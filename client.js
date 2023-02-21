@@ -164,6 +164,7 @@ function nextSub() {
     if ((url_global == "None") && (document.getElementById("url").value != "")) {
         url_global = document.getElementById("url").value;
     }
+    console.log("In nextSub :", start, stop, chunk);
     getSubList(url_global, start, stop);
 };
 function backSub() {
@@ -195,7 +196,7 @@ function backSub() {
 };
 
 function getSubList(url, start, stop) {
-    console.log("Querying url: ", url);
+    console.log("Querying url: ", url, " start: ", start, " stop: ", stop);
     depopulateList();
     const table = document.getElementById("listing");
     fetch("/ytdiff/getsub", {
