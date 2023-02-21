@@ -28,6 +28,22 @@
             height: 10vh;
             max-height: 10vh;
         }
+
+        .margins {
+            margin-top: 0px;
+            margin-right: 0px;
+            margin-bottom: 0px;
+            margin-left: 0px;
+        }
+
+        @media (min-width: 1280px) {
+            .margins {
+                margin-top: 0px;
+                margin-right: 0px;
+                margin-bottom: 0px;
+                margin-left: 19px !important;
+            }
+        }
     </style>
 </head>
 
@@ -43,7 +59,7 @@
     </nav>
     <div class="container-fluid">
         <div class="row">
-            <div class="col-5 ms-4 m-0 p-0">
+            <div class="col-sm-12 col-md-12 col-xl-5 p-0 margins">
                 <div class="container m-0 p-0 container-table">
                     <table class="table table-responsive">
                         <thead>
@@ -63,18 +79,18 @@
                 <div class="container m-0 p-0 container-counters">
                     <div class="row">
                         <div class="input-group mb-1 mt-3">
-                            <input type="number" class="form-control" placeholder="0" name="start_input"
-                                id="start_main" />
+                            <input type="number" class="form-control" placeholder="0" name="start_input" id="start_main"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
                             <span class="input-group-text">-</span>
-                            <input type="number" class="form-control" placeholder="10" name="stop_input"
-                                id="stop_main" />
+                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop_main"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Stop" />
                             <button id="next" type="button" onclick="nextMain()" class="btn btn-primary">Next</button>
                             <button id="back" type="button" onclick="backMain()" class="btn btn-primary">Back</button>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="col-6 ms-2 m-0 p-0">
+            <div class="col-sm-11 col-md-11 col-xl-6 p-0 margins">
                 <div class="container m-0 p-0 container-table">
                     <table class="table table-responsive">
                         <thead>
@@ -93,18 +109,23 @@
                 <div class="container m-0 p-0 container-counters">
                     <div class="row">
                         <div class="input-group mb-3 mt-3">
-                            <input type="number" class="form-control" placeholder="0" name="start_input"
-                                id="start_sub" />
+                            <input type="number" class="form-control" placeholder="0" name="start_input" id="start_sub"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
                             <span class="input-group-text">-</span>
-                            <input type="number" class="form-control" placeholder="10" name="stop_input"
-                                id="stop_sub" />
-                            <span class="input-group-text">Chunk</span>
-                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="chunk" />
+                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="stop_sub"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Stop" />
+                            <span class="input-group-text">-</span>
+                            <input type="number" class="form-control" placeholder="10" name="stop_input" id="chunk"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Chunk" />
+                            <button id="next-sub" type="button" onclick="nextSub()"
+                                class="btn btn-primary">Next</button>
+                            <button id="back-sub" type="button" onclick="backSub()"
+                                class="btn btn-primary">Back</button>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="col m-0 p-0">
+            <div class="col-sm-1 col-md col-xl m-0 p-0">
                 <!--Toast-->
                 <div style="position: absolute; top: 10px; right: 10px;">
                     <div class="toast align-items-bottom" role="alert" aria-live="assertive" aria-atomic="true"
@@ -124,8 +145,6 @@
                     <button id="clear" type="button" onclick="depopulateList(true)"
                         class="btn btn-primary">Clear</button>
                     <button id="orphan" type="button" onclick="getOrphans()" class="btn btn-primary">Unls</button>
-                    <button id="next-sub" type="button" onclick="nextSub()" class="btn btn-primary">Next</button>
-                    <button id="back-sub" type="button" onclick="backSub()" class="btn btn-primary">Back</button>
                     <button id="dnld" type="button" onclick="download_selected()" class="btn btn-primary">Dnld</button>
                 </div>
             </div>
