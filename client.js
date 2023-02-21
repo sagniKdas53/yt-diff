@@ -235,6 +235,7 @@ function getSubList(url, start, stop) {
             link.appendChild(document.createTextNode(element.title));
             select.appendChild(checkbox);
             title.appendChild(link);
+            title.className = "large-title";
             download.innerHTML = element.downloaded;
             status.innerHTML = element.available;
         });
