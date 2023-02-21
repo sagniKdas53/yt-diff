@@ -4,5 +4,4 @@ node_modules/
 gluetun/
 amd64/
 aarch64/
-nvm/
 logs/

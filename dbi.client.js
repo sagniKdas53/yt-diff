@@ -260,13 +260,13 @@ function getSubList(url, start, stop) {
         console.log(data);
         data["rows"].forEach(element => {
             /*
-                # 	Title 	Downloaded 	Available
+                # 	Title 	Downloaded 	Available ✅ ❌
             */
             const row = table.insertRow();
             const select = row.insertCell(0);
             const title = row.insertCell(1);
             const download = row.insertCell(2);
-            const status = row.insertCell(3);
+            //const status = row.insertCell(3);
 
             let checkbox = document.createElement("input");
             checkbox.type = "checkbox";
@@ -279,8 +279,24 @@ function getSubList(url, start, stop) {
             link.appendChild(document.createTextNode(element.title));
             select.appendChild(checkbox);
             title.appendChild(link);
-            download.innerHTML = element.downloaded;
-            status.innerHTML = element.available;
+            download.className = "emoji";
+            if (element.downloaded) {
+                download.innerHTML = "✅";
+            } else {
+                download.innerHTML = "❌";
+            }
+            //status.innerHTML = element.available;
+            if (element.downloaded) {
+                row.className = "table-info";
+            }
+            if (!element.available) {
+                if (element.title == "[Deleted video]")
+                    row.className = "table-danger";
+                else if (element.title == "[Private video]")
+                    row.className = "table-warning"
+                else
+                    row.className = "table-secondary"
+            }
         });
     });
 };

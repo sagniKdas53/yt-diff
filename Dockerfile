@@ -39,7 +39,7 @@ RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
 
 COPY index.js index.html client.js package-lock.json package.json favicon.ico dbi.html dbi.client.js nav.png /
 
-# COPY /nvm/node-v18.12.1-linux-x64.tar.xz /
+# COPY /amd64/node-v18.12.1-linux-x64.tar.xz /
 
 RUN wget "https://nodejs.org/dist/v18.12.1/node-v18.12.1-linux-x64.tar.xz" -O "node-v18.12.1-linux-x64.tar.xz"
 
