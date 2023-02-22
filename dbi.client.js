@@ -48,7 +48,7 @@ function nextMain() {
         document.getElementById("stop_main").value = stop + chunk;
         stop = stop + chunk;
     }
-    getMainlist(start, stop,sort,order);
+    getMainlist(start, stop, sort, order);
 };
 function backMain() {
     depopulateMainList();
@@ -74,7 +74,7 @@ function backMain() {
         document.getElementById("stop_main").value = stop - chunk;
         stop = stop - chunk;
     }
-    getMainlist(start, stop,sort,order);
+    getMainlist(start, stop, sort, order);
 };
 
 function sortLoaded() {
@@ -83,7 +83,7 @@ function sortLoaded() {
     var order = document.getElementById("order").value;
     var start = parseInt(document.getElementById("start_main").value, 10);
     var stop = parseInt(document.getElementById("stop_main").value, 10);
-    getMainlist(start, stop,sort,order);
+    getMainlist(start, stop, sort, order);
 }
 function getMainlist(start_val, stop_val, sort_val, order_val) {
     const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
@@ -162,12 +162,12 @@ function getOrphans() {
 
 //Sub list stuff
 function select_all() {
-    document.querySelectorAll('input[type=checkbox]').forEach(element => {
+    document.querySelectorAll('input[type=checkbox].video-item').forEach(element => {
         element.checked = true;
     });
 };
 function select_none() {
-    document.querySelectorAll('input[type=checkbox]').forEach(element => {
+    document.querySelectorAll('input[type=checkbox].video-item').forEach(element => {
         element.checked = false;
     });
 };
@@ -285,7 +285,7 @@ function getSubList(url, start, stop) {
 
             let checkbox = document.createElement("input");
             checkbox.type = "checkbox";
-            checkbox.className = "form-check-input me-1";
+            checkbox.className = "form-check-input me-1 video-item";
             checkbox.value = "";
             checkbox.id = element.id;
 
@@ -318,7 +318,7 @@ function getSubList(url, start, stop) {
 
 function download_selected() {
     var id = []
-    document.querySelectorAll('input[type=checkbox]:checked').forEach(element => {
+    document.querySelectorAll('input[type=checkbox].video-item:checked').forEach(element => {
         id.push(element.id);
     })
     // console.log(id);

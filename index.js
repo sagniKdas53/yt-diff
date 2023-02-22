@@ -5,16 +5,23 @@ const { Sequelize, DataTypes } = require("sequelize");
 const { Server } = require("socket.io");
 
 const regex = /(\d{1,3}\.\d)%/;
-const protocol = 'http';
-const host = 'localhost';
-const url_base = "/ytdiff"; // get this form env in docker config
-const save_loc = "yt-dlp"; // get this form env in docker config
-const sleep_time = 3; // get this form env in docker config
-const subs = ["--write-subs", "--sleep-subtitles", sleep_time];
-const port = process.argv[2] || 8888; // get this form env in docker config
+
+const protocol = process.env.protocol || 'http';
+const host = process.env.host || 'localhost';
+const port = process.env.port || 8888;
+const url_base = process.env.base_url || "/ytdiff";
+
+const db_host = process.env.db_host || 'localhost';
+const save_loc = process.env.save_loc || "yt-dlp";
+const sleep_time = process.env.sleep || 3;
+var options = ["--embed-metadata", "-P", save_loc]
+
+if (process.env.subs) {
+    options = ["--write-subs", "--sleep-subtitles", sleep_time, "--embed-metadata", "-P", save_loc];
+}
 
 const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
-    host: "localhost",
+    host: db_host,
     dialect: "postgres",
     logging: false,
 });
@@ -111,12 +118,7 @@ async function download_background_sequential(url_list) {
     for (const [url_str, title] of url_list) {
         try {
             sock.emit('download-start', { message: title });
-            const yt_dlp = spawn("yt-dlp", [
-                "-P",
-                save_loc,
-                url_str,
-                "--embed-metadata",
-            ]);
+            const yt_dlp = spawn("yt-dlp", options.concat(url_str));
             yt_dlp.stdout.on("data", async (data) => {
                 try {
                     if ((percentage = regex.exec(`${data}`)) !== null) {
@@ -264,7 +266,7 @@ function sleep(s) {
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    while (true) {
+    while (true && (body_url != 'None')) {
         start_num = parseInt(start_num) + chunk_size;
         stop_num = parseInt(stop_num) + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services

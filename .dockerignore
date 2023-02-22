@@ -1,7 +1,5 @@
 yt-dlp/
 node_modules/
 gluetun/
-amd64/
-aarch64/
 ytdata/
 *.ipynb

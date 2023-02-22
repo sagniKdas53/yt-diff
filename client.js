@@ -72,7 +72,7 @@ function list_it() {
 
                 let checkbox = document.createElement("input");
                 checkbox.type = "checkbox";
-                checkbox.className = "form-check-input me-1";
+                checkbox.className = "form-check-input me-1 video-item";
                 checkbox.value = "";
                 checkbox.id = element.id;
 
@@ -111,22 +111,22 @@ function list_it() {
 };
 
 function select_all() {
-    document.querySelectorAll('input[type=checkbox]').forEach(element => {
+    document.querySelectorAll('input[type=checkbox].video-item').forEach(element => {
         element.checked = true;
     });
 };
 function select_none() {
-    document.querySelectorAll('input[type=checkbox]').forEach(element => {
+    document.querySelectorAll('input[type=checkbox].video-item').forEach(element => {
         element.checked = false;
     });
 };
 
 function download_selected() {
     var id = []
-    document.querySelectorAll('input[type=checkbox]:checked').forEach(element => {
+    document.querySelectorAll('input[type=checkbox].video-item:checked').forEach(element => {
         id.push(element.id);
     })
-    // console.log(id);
+    console.log(id);
     fetch("/ytdiff/download", {
         method: "post",
         headers: {
@@ -241,7 +241,7 @@ function getSubList(url, start, stop) {
 
             let checkbox = document.createElement("input");
             checkbox.type = "checkbox";
-            checkbox.className = "form-check-input me-1";
+            checkbox.className = "form-check-input me-1 video-item";
             checkbox.value = "";
             checkbox.id = element.id;
 
