@@ -48,7 +48,6 @@ RUN tar -xf node-v18.12.1-linux-arm64.tar.xz  \
     && mv node ../../bin \
     && cd ../.. \
     && node node-v18.12.1-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install \
-    && rm -rf node-v18.12.1-linux-arm64 node-v18.12.1-linux-arm64.tar.xz \
-    && sed -i 's/localhost/yt-db/g' index.js
+    && rm -rf node-v18.12.1-linux-arm64 node-v18.12.1-linux-arm64.tar.xz 
 
 CMD [ "node", "index.js" ]
