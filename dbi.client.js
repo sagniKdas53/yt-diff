@@ -30,6 +30,8 @@ function nextMain() {
     //parseInt(document.getElementById("chunk-main").value, 10);
     var start = parseInt(document.getElementById("start_main").value, 10);
     var stop = parseInt(document.getElementById("stop_main").value, 10);
+    var sort = document.getElementById("sort-by").value;
+    var order = document.getElementById("order").value;
     // Setting start value
     if (isNaN(start)) {
         document.getElementById("start_main").value = 0;
@@ -46,7 +48,7 @@ function nextMain() {
         document.getElementById("stop_main").value = stop + chunk;
         stop = stop + chunk;
     }
-    getMainlist(start, stop);
+    getMainlist(start, stop,sort,order);
 };
 function backMain() {
     depopulateMainList();
@@ -54,6 +56,8 @@ function backMain() {
     //parseInt(document.getElementById("chunk-main").value, 10);
     var start = parseInt(document.getElementById("start_main").value, 10);
     var stop = parseInt(document.getElementById("stop_main").value, 10);
+    var sort = document.getElementById("sort-by").value;
+    var order = document.getElementById("order").value;
     // Setting start value
     if (isNaN(start) || ((start - chunk) <= 0)) {
         document.getElementById("start_main").value = 0;
@@ -70,9 +74,18 @@ function backMain() {
         document.getElementById("stop_main").value = stop - chunk;
         stop = stop - chunk;
     }
-    getMainlist(start, stop);
+    getMainlist(start, stop,sort,order);
 };
-function getMainlist(start_val, stop_val) {
+
+function sortLoaded() {
+    depopulateMainList();
+    var sort = document.getElementById("sort-by").value;
+    var order = document.getElementById("order").value;
+    var start = parseInt(document.getElementById("start_main").value, 10);
+    var stop = parseInt(document.getElementById("stop_main").value, 10);
+    getMainlist(start, stop,sort,order);
+}
+function getMainlist(start_val, stop_val, sort_val, order_val) {
     const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
     console.log("Start: " + start_val + " stop: " + stop_val);
     fetch("/ytdiff/dbi", {
@@ -85,7 +98,9 @@ function getMainlist(start_val, stop_val) {
         //make sure to serialize your JSON body
         body: JSON.stringify({
             start: start_val, // get these later from the document
-            stop: stop_val
+            stop: stop_val,
+            sort: sort_val,
+            order: order_val
         })
     }).then((response) => response.text()).then((text) => {
         text = JSON.parse(text)

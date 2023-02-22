@@ -28,6 +28,7 @@ function sockSetup() {
 function list_it() {
     // depopulateList(); // It actually isn't necessary
     var url = document.getElementById("url").value;
+    // var url_list = document.getElementById("url_list").value.split("\n");
     if (document.getElementById("start").value === "") {
         document.getElementById("start").value = 0;
     }
@@ -42,57 +43,71 @@ function list_it() {
     var chunk = document.getElementById("chunk").value;
     const table = document.getElementById("listing");
     console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
-    fetch("/ytdiff/list", {
-        method: "post",
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        //make sure to serialize your JSON body
-        body: JSON.stringify({
-            url: url,
-            start: start,
-            stop: stop,
-            chunk: chunk
-        })
-    }).then((response) => response.text()).then((text) => {
-        response_list = JSON.parse(text);
-        console.log(response_list['rows'], response_list['rows'].length)
-        response_list['rows'].forEach(async element => {
-            /*
-                # 	Title 	Saved 	Avail.
-            */
-            const row = table.insertRow();
-            const select = row.insertCell(0);
-            const title = row.insertCell(1);
-            const saved = row.insertCell(2);
-            const avail = row.insertCell(3);
+    if (url != '') {
+        fetch("/ytdiff/list", {
+            method: "post",
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            //make sure to serialize your JSON body
+            body: JSON.stringify({
+                url: url,
+                start: start,
+                stop: stop,
+                chunk: chunk
+            })
+        }).then((response) => response.text()).then((text) => {
+            response_list = JSON.parse(text);
+            console.log(response_list['rows'], response_list['rows'].length)
+            response_list['rows'].forEach(async element => {
+                /*
+                    # 	Title 	Saved 	Avail.
+                */
+                const row = table.insertRow();
+                const select = row.insertCell(0);
+                const title = row.insertCell(1);
+                const download = row.insertCell(2);
+                //const status = row.insertCell(3);
 
-            let label = document.createElement("label");
-            label.className = "list-group-item";
+                let checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.className = "form-check-input me-1";
+                checkbox.value = "";
+                checkbox.id = element.id;
 
-            let checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.className = "form-check-input me-1";
-            checkbox.value = "";
-            checkbox.id = element['id'];
-
-            let link = document.createElement('a');
-            link.href = element['url'];
-            link.appendChild(document.createTextNode(element['title']));
-            // make it so if the saved is true it should be green and if the available is false it should be red
-            select.appendChild(checkbox);
-            title.appendChild(link);
-            saved.innerHTML = element['downloaded'];
-            avail.innerHTML = element['available'];
+                let link = document.createElement('a');
+                link.href = element.url;
+                link.appendChild(document.createTextNode(element.title));
+                select.appendChild(checkbox);
+                title.appendChild(link);
+                download.className = "emoji";
+                if (element.downloaded) {
+                    download.innerHTML = "✅";
+                } else {
+                    download.innerHTML = "❌";
+                }
+                //status.innerHTML = element.available;
+                if (element.downloaded) {
+                    row.className = "table-info";
+                }
+                if (!element.available) {
+                    if (element.title == "[Deleted video]")
+                        row.className = "table-danger";
+                    else if (element.title == "[Private video]")
+                        row.className = "table-warning"
+                    else
+                        row.className = "table-secondary"
+                }
+            });
+            try {
+                // Setting up the global url
+                url_global = response_list['rows'][0]['reference'];
+            } catch (error) {
+                console.error(error);
+            }
         });
-        try {
-            // Setting up the global url
-            url_global = response_list['rows'][0]['reference'];
-        } catch (error) {
-            console.error(error);
-        }
-    });
+    }
 };
 
 function select_all() {
@@ -222,7 +237,7 @@ function getSubList(url, start, stop) {
             const select = row.insertCell(0);
             const title = row.insertCell(1);
             const download = row.insertCell(2);
-            const status = row.insertCell(3);
+            //const status = row.insertCell(3);
 
             let checkbox = document.createElement("input");
             checkbox.type = "checkbox";
@@ -235,11 +250,52 @@ function getSubList(url, start, stop) {
             link.appendChild(document.createTextNode(element.title));
             select.appendChild(checkbox);
             title.appendChild(link);
-            title.className = "large-title";
-            download.innerHTML = element.downloaded;
-            status.innerHTML = element.available;
+            download.className = "emoji";
+            if (element.downloaded) {
+                download.innerHTML = "✅";
+            } else {
+                download.innerHTML = "❌";
+            }
+            //status.innerHTML = element.available;
+            if (element.downloaded) {
+                row.className = "table-info";
+            }
+            if (!element.available) {
+                if (element.title == "[Deleted video]")
+                    row.className = "table-danger";
+                else if (element.title == "[Private video]")
+                    row.className = "table-warning"
+                else
+                    row.className = "table-secondary"
+            }
         });
     });
     // redundant init?
     // url_global = url;
+};
+
+function getOrphans() {
+    depopulateList();
+    var chunk = parseInt(document.getElementById("chunk").value, 10);
+    var start = parseInt(document.getElementById("start").value, 10);
+    var stop = parseInt(document.getElementById("stop").value, 10);
+    // Setting start value
+    if (isNaN(start) || ((start - chunk) <= 0)) {
+        document.getElementById("start").value = 0;
+        start = 0;
+    } else {
+        document.getElementById("start").value = start - chunk;
+        start = start - chunk
+    }
+    // Setting stop value
+    if (isNaN(stop) || ((stop - chunk) <= chunk)) {
+        document.getElementById("stop").value = chunk;
+        stop = chunk;
+    } else {
+        document.getElementById("stop").value = stop - chunk;
+        stop = stop - chunk;
+    }
+    // Setting url_global if it's not set already
+    url_global = 'None';
+    getSubList('None', start, stop);
 };

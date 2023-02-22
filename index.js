@@ -343,11 +343,24 @@ async function playlists_to_table(req, res) {
     });
     req.on("end", function () {
         body = JSON.parse(body);
+        var row = "order_added";
+        var type = "ASC";
         var start_num = body["start"] || 0;
         var stop_num = body["stop"] || 10;
+        var sort_with = body["sort"] || 1;
+        var order = body["order"] || 1;
+        if (order == 2) {
+            type = "DESC";
+        }
+        if (sort_with == 2) {
+            row = "createdAt";
+        } else if (sort_with == 3) {
+            row = "updatedAt";
+        }
         play_lists.findAndCountAll({
             limit: stop_num - start_num,
             offset: start_num,
+            order: [[row, type]],
         }).then((result) => {
             res.writeHead(200, { "Content-Type": "text/json" });
             res.end(JSON.stringify(result, null, 2));
