@@ -9,13 +9,12 @@ services:
     image: postgres:14
     container_name: yt-db
     ports:
-      - "5432:5432"
+      - 5432:5432
     restart: always
     env_file:
       - .env
     networks:
-      revProxy-net:
-        ipv4_address: ${DB_HOST}
+      - revProxy-net
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -26,23 +25,37 @@ services:
   yt-diff:
     image: purevert/yt-diff:amd64
     container_name: yt-diff
-    network_mode: service:vpn-proton
     build:
       context: .
       dockerfile: Dockerfile.amd64
     volumes:
-      - ./yt-dlp:/${SAVE_PATH_YTDIFF}
+      - ./yt-dlp:/${SAVE_PATH}
     depends_on:
       - yt-db
+    networks:
+      - revProxy-net
+    expose:
+      - ${PORT}
     environment:
-      - host=${HOSTNAME_YTDIFF}
-      - protocol=${PROTOCOL_YTDIFF}
-      - base_url=${BASE_URL_YTDIFF}
+      - host=${HOSTNAME}
+      - protocol=${PROTOCOL}
+      - base_url=${BASE_URL}
       - db_host=${DB_HOST}
-      - port=${PORT_YTDIFF}
-      - save_loc=${SAVE_PATH_YTDIFF}
-      - sleep=${SLEEP_YTDIFF}
-      - subs=${SAVE_SUBSTITLES_YTDIFF}
+      - port=${PORT}
+      - hide_ports=true
+      - save_loc=${SAVE_PATH}
+      - sleep=${SLEEP}
+      - subs=${SAVE_SUBSTITLES}
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.ytdiff.entryPoints=web,websecure'
+      - 'traefik.http.routers.ytdiff.rule=Host(`${HOSTNAME}`) && PathPrefix(`${BASE_URL}`)'
+      - "traefik.http.services.ytdiff.loadbalancer.server.port=${PORT}"
+      - 'traefik.http.services.ytdiff.loadBalancer.passHostHeader=true'
+      - "traefik.http.routers.ytdiff.middlewares=http-to-https@docker"
+      - "traefik.http.routers.ytdiff.tls=true"
+      - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
+      - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
 
   adminer:
     image: adminer:4.8.1-standalone
@@ -50,76 +63,18 @@ services:
     restart: always
     depends_on:
       - yt-db
-    expose:
-      - 8080
+    ports:
+      - 8080:8080
     networks:
       - revProxy-net
     labels:
       - 'traefik.enable=true'
-      ## HTTP Router
-      #### Entry point where adminer is accessible via
-      #### Change secure to https in the line below to have accessible without needing to specify a port and change the SSLHost option below
       - 'traefik.http.routers.adminer.entryPoints=web,websecure'
-      #### Host or Path where adminer is accessible
-      #### Remove (or change) this rule if you'd rather have adminer accessible at a PathPrefix URI
-      - 'traefik.http.routers.adminer.rule=Host(`${HOSTNAME_YTDIFF}`) && PathPrefix(`/adminer`)'
-      #### Set the correct port
+      - 'traefik.http.routers.adminer.rule=Host(`${HOSTNAME}`) && PathPrefix(`/adminer`)'
       - "traefik.http.services.adminer.loadbalancer.server.port=8080"
       - 'traefik.http.services.adminer.loadBalancer.passHostHeader=true'
-      #### Prefix stripper
       - "traefik.http.middlewares.strip-adminer.stripprefix.prefixes=/adminer"
       - "traefik.http.routers.adminer.middlewares=strip-adminer@docker,http-to-https@docker"
-      #### Using the tailscale ones
       - "traefik.http.routers.adminer.tls=true"
       - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
-      - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME_YTDIFF}"
-
-  vpn-proton:
-    image: qmcgaw/gluetun
-    container_name: vpn-proton
-    cap_add:
-      - NET_ADMIN
-    env_file:
-      - .env
-    environment:
-      - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
-      - OPENVPN_USER=${USERNAME_VPN}
-      - OPENVPN_PASSWORD=${PASSWORD_VPN}
-      - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
-      - FREE_ONLY=${FREE}
-      - Tz=${TZ_PREFERRED}
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    volumes:
-      - ./gluetun:/gluetun
-    ports:
-      - 8888:8888
-      - 51413:51413
-      - 51413:51413/udp
-    restart: "unless-stopped"
-    networks:
-      - revProxy-net
-    labels:
-      - 'traefik.enable=true'
-      ## HTTP Router
-      #### Entry point where ytdiff is accessible via
-      #### Change secure to https in the line below to have accessible without needing to specify a port and change the SSLHost option below
-      - 'traefik.http.routers.ytdiff.entryPoints=web,websecure'
-      #### Host or Path where ytdiff is accessible
-      #### Remove (or change) this rule if you'd rather have ytdiff accessible at a PathPrefix URI
-      # I don't like having the socket.io in another path but whatever
-      - 'traefik.http.routers.ytdiff.rule=Host(`${HOSTNAME_YTDIFF}`) && PathPrefix(`/ytdiff`)'
-      #### Set the correct port
-      - "traefik.http.services.ytdiff.loadbalancer.server.port=8888"
-      - 'traefik.http.services.ytdiff.loadBalancer.passHostHeader=true'
-      #### Prefix stripper
-      #- "traefik.http.middlewares.strip-ytdiff.stripprefix.prefixes=/ytdiff"
-      - "traefik.http.routers.ytdiff.middlewares=http-to-https@docker"
-      #### Using the tailscale ones
-      - "traefik.http.routers.ytdiff.tls=true"
-      - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
-      - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME_YTDIFF}"
-
-# will implement later
-#volumes:
-#  ytdata:
+      - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"

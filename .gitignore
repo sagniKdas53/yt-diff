@@ -1,7 +1,7 @@
 yt-dlp/
 yt-data/
 node_modules/
-gluetun/
+vpn-mode/gluetun/
 amd64/
 aarch64/
 logs/
