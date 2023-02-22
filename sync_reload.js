@@ -414,7 +414,7 @@ const staticAssets = {
     '/assets/dbi.client.js': { obj: (__dirname + '/dbi.client.js'), type: js }
 };
 
-const server_sync = http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
     if (req.url.startsWith(url_base) && req.method === "GET") {
         try {
             var get = req.url.replace(url_base, '')
@@ -440,13 +440,13 @@ const server_sync = http.createServer((req, res) => {
     }
 });
 
-const io = new Server(server_sync, { path: url_base + "/socket.io/" });
+const io = new Server(server, { path: url_base + "/socket.io/" });
 const sock = io.on("connection", (socket) => {
     socket.emit("init", { message: "Connected", id: socket.id });
     socket.on("acknowledge", console.log);
     return socket;
 });
 
-server_sync.listen(port, () => {
+server.listen(port, () => {
     console.log(`Server listening on ${protocol}://${host}:${port}${url_base}`);
 });
