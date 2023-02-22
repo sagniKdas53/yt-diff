@@ -450,5 +450,6 @@ const sock = io.on("connection", (socket) => {
 server.listen(port, () => {
     if (process.env.hide_ports)
         console.log(`Server listening on ${protocol}://${host}:${port}${url_base}`);
-    console.log(`Server listening on ${protocol}://${host}${url_base}`);
+    else
+        console.log(`Server listening on ${protocol}://${host}${url_base}`);
 });
