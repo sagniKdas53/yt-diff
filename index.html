@@ -167,12 +167,11 @@
             sockSetup();
         }
 
-        function sanity_checker(type, evt) {
+        function input_limiter(type, evt) {
             var value = parseInt(evt.data, 10);
-            //console.log(type, evt.data);
+            var start = parseInt(document.getElementById("start").value, 10);
             if (type == "chunk") {
                 if (value >= 1) {
-                    var start = parseInt(document.getElementById("start").value, 10);
                     document.getElementById("stop").value = start + value;
                 }
                 else {
@@ -189,7 +188,6 @@
             }
             else if (type == "stop") {
                 if (value >= 1) {
-                    var start = parseInt(document.getElementById("start").value, 10);
                     if (value - start >= 1)
                         document.getElementById("chunk").value = value - start;
                     else {
@@ -202,9 +200,9 @@
                 }
             }
         }
-        document.getElementById("chunk").addEventListener('input', function (evt) { sanity_checker("chunk", evt) });
-        document.getElementById("start").addEventListener('input', function (evt) { sanity_checker("start", evt) });
-        document.getElementById("stop").addEventListener('input', function (evt) { sanity_checker("stop", evt) });
+        document.getElementById("chunk").addEventListener('input', function (evt) { input_limiter("chunk", evt) });
+        document.getElementById("start").addEventListener('input', function (evt) { input_limiter("start", evt) });
+        document.getElementById("stop").addEventListener('input', function (evt) { input_limiter("stop", evt) });
         document.getElementById("selector").addEventListener("input", function (evt) {
             if (this.checked) {
                 select_all();

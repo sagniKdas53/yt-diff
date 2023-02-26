@@ -1,8 +1,10 @@
 function sockSetup() {
-    console.log("Sock setup started");
+    //console.log("Sock setup started");
     var socket = io({ path: "/ytdiff/socket.io/" });
+    var myToastEl = document.getElementById('notify'),
+        dnld_btn = document.getElementById("dnld");
     socket.on('init', function (data) {
-        console.log(data.message);
+        //console.log(data.message);
         // Respond with a message including this clients' id sent from the server
         socket.emit('acknowledge', { data: 'Connected', id: data.id });
     });
@@ -10,13 +12,15 @@ function sockSetup() {
         console.groupCollapsed(`Downloading: ${data.message}`);
     });
     socket.on('progress', function (data) {
+        if (dnld_btn.disabled != true)
+            dnld_btn.disabled = true;
         console.log(data.message);
     });
     socket.on('error', console.error.bind(console));
-    socket.on('done', function (data) {
+    socket.on('download', function (data) {
         console.log(`Downloaded: ${data.message} ✅`);
         console.groupEnd();
-        var myToastEl = document.getElementById('notify');
+        document.getElementById("dnld").disabled = false;
         myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
         var myToast = new bootstrap.Toast(myToastEl, {
             delay: 5000
@@ -87,7 +91,7 @@ function sortLoaded() {
 }
 function getMainlist(start_val, stop_val, sort_val, order_val) {
     const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
-    console.log("Start: " + start_val + " stop: " + stop_val);
+    //console.log("Start: " + start_val + " stop: " + stop_val);
     fetch("/ytdiff/dbi", {
         method: "post",
         headers: {
@@ -255,7 +259,7 @@ function getSubList(url, start, stop) {
     if (url_global != url) {
         url_global = url;
     }
-    console.log("Querying url: ", url_global, " start: ", start, " stop: ", stop);
+    //console.log("Querying url: ", url_global, " start: ", start, " stop: ", stop);
     depopulateList();
     const table = document.getElementById("listing");
     fetch("/ytdiff/getsub", {
@@ -272,7 +276,7 @@ function getSubList(url, start, stop) {
     }).then((response) => response.text()).then((text) => {
         //console.log(text);
         data = JSON.parse(text);
-        console.log(data);
+        //console.log(data);
         data["rows"].forEach(element => {
             /*
                 # 	Title 	Downloaded 	Available ✅ ❌
@@ -317,6 +321,7 @@ function getSubList(url, start, stop) {
 };
 
 function download_selected() {
+    document.getElementById("dnld").disabled = true;
     var id = []
     document.querySelectorAll('input[type=checkbox].video-item:checked').forEach(element => {
         id.push(element.id);
