@@ -153,7 +153,6 @@ async function download_background_sequential(url_list) {
     }
 }
 
-// divide this function using the functions below
 async function list_init(req, res) {
     var body = "",
         init_resp = { count: 0, rows: [] };
@@ -163,19 +162,14 @@ async function list_init(req, res) {
     });
     req.on("end", async function () {
         body = JSON.parse(body);
-        console.log(
-            "body_url: " + body["url"],
-            "start_num: " + body["start"],
-            "stop_num:",
-            body["stop"]
-        );
+        // console.log("body_url: " + body["url"],"start_num: " + body["start"],"stop_num:",body["stop"]);
         var body_url = body["url"];
         var start_num = body["start"] || 1;
         var stop_num = body["stop"] || 10;
         var index = start_num - 1;
         var chunk_size = body["chunk_size"] || 10;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
-        console.log(response_list, response_list.length);
+        // console.log(response_list, response_list.length);
         if (response_list.length > 1 && body_url.includes("playlist")) {
             let title_str = "";
             var is_alredy_indexed = await play_lists.findOne({
@@ -254,7 +248,8 @@ async function list_init(req, res) {
         }).then(function () {
             list_background(body_url, start_num, stop_num, chunk_size).then(
                 () => {
-                    console.log("done processing playlist");
+                    // console.log("done processing playlist");
+                    // use websocket to notify users
                 }
             );
         });
@@ -299,7 +294,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
         });
         yt_list.stderr.on("data", (data) => {
             // maybe use sockets to send the stderr to the
-            console.log(`stderr: ${data}`);
+            console.error(`stderr: ${data}`);
         });
         yt_list.on("error", (error) => {
             console.error(`error: ${error.message}`);
