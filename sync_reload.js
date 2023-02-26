@@ -172,7 +172,7 @@ async function list_init(req, res) {
         var body_url = body["url"];
         var start_num = body["start"] || 1;
         var stop_num = body["stop"] || 10;
-        var i = start_num - 1;
+        var index = start_num - 1;
         var chunk_size = body["chunk_size"] || 10;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
         console.log(response_list, response_list.length);
@@ -231,7 +231,7 @@ async function list_init(req, res) {
                             title: items[0],
                             downloaded: false,
                             available: available_var,
-                            list_order: ++i,
+                            list_order: ++index,
                         },
                     });
 
@@ -311,7 +311,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
 }
 
 async function processResponse(response, body_url, start_num) {
-    var i = start_num;
+    var index = start_num;
     await Promise.all(response.map(async (element) => {
         const [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
@@ -326,7 +326,7 @@ async function processResponse(response, body_url, start_num) {
                 title: title,
                 downloaded: false,
                 available: item_available,
-                list_order: i++,
+                list_order: index++,
             },
         });
         if (found && found.reference === "None") {
