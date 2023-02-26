@@ -142,7 +142,7 @@ async function download_background_sequential(url_list) {
                         downloaded: true,
                     });
                     await entity.save();
-                    sock.emit("done", { message: `${entity.title}` });
+                    sock.emit("download", { message: `${entity.title}` });
                 }
             });
             // this holds the for loop, preventing the next iteration from happening
@@ -249,7 +249,7 @@ async function list_init(req, res) {
             list_background(body_url, start_num, stop_num, chunk_size).then(
                 () => {
                     // console.log("done processing playlist");
-                    // use websocket to notify users
+                    sock.emit("playlist", { message: "done processing" });
                 }
             );
         });
@@ -307,6 +307,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
 
 async function processResponse(response, body_url, start_num) {
     var index = start_num;
+    sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
         const [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
