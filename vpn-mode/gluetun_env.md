@@ -40,15 +40,3 @@
 
     # CONTAINER OPTIONS
     TZ_PREFERRED=Asia/Kolkata
-
-## Database Configuration
-
-    # DB CONFIGURATION
-    DB_PASSWORD='REDACTED'
-    DB_USERNAME=yt-diff
-    DB_NAME=vid-list
-
-## Traefik configuration
-
-    # HOSTNAME
-    HOSTNAME=something

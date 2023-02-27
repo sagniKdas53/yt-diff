@@ -1,11 +1,11 @@
 # Todo
 
-1. Fit the clear and download buttons somewhere
-2. Make sure that any function that loads new data unchecks the `<input class="form-check-input" type="checkbox" value="" id="selector" aria-label="...">`
-3. Add a way to render the table such that it has appropriate tints
-   1. green background if the video is downloaded
-   2. Red if it's unavailable (ie deleted)
-   3. Yellow background if it's privated
-   4. Grey if the error is not recognized
-4. Add these to the main page and also make the main page responsive using `container-fluid`
-5. Maybe add the table sorting feature using bootstrap-table js
+1. [ ] Fix the issue with unlisted vidoes being so hard to find, they need proper indexing to not be a mess
+   1. The idea is simple either make the indexing increase every time or
+   2. Make a separate table for the unlisted videos there they can have autoincrementing indexes and if they are infact added to any playlist they can just be removed leaving a blank index
+   3. Which during manintaincance can be fixed
+2. [ ] The nav-icon and text are not propeerly aligned (I believe)
+3. [x] Handle youtube channels
+4. [ ] Test if chunking is working properly
+5. [ ] Add a way to add videos to multiple playlists
+6. [ ] Maybe add the table sorting feature using bootstrap-table js

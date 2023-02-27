@@ -162,16 +162,22 @@ async function list_init(req, res) {
     });
     req.on("end", async function () {
         body = JSON.parse(body);
-        // console.log("body_url: " + body["url"],"start_num: " + body["start"],"stop_num:",body["stop"]);
+        //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         var body_url = body["url"];
         var start_num = body["start"] || 1;
         var stop_num = body["stop"] || 10;
         var index = start_num - 1;
         var chunk_size = body["chunk_size"] || 10;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
-        // console.log(response_list, response_list.length);
-        if (response_list.length > 1 && body_url.includes("playlist")) {
+        //console.log(response_list, response_list.length);
+        if (response_list.length > 1 || body_url.includes("playlist")) {
             let title_str = "";
+            if (body_url.includes('youtube') && body_url.includes('/@')) {
+                body_url = body_url.endsWith('/') ? body_url + 'videos' : body_url + '/videos';
+            }
+            if (body_url.includes('pornhub') && body_url.includes('/model/')) {
+                body_url = body_url.endsWith('/') ? body_url + 'videos' : body_url + '/videos';
+            }
             var is_alredy_indexed = await play_lists.findOne({
                 where: { url: body_url },
             });
@@ -180,7 +186,7 @@ async function list_init(req, res) {
                 await is_alredy_indexed.save();
                 title_str = is_alredy_indexed.title;
             } catch (error) {
-                console.error("playlist not encountered");
+                console.error("playlist or channel not encountered earlier");
             }
             if (title_str == "") {
                 const get_title = spawn("yt-dlp", [
@@ -195,6 +201,10 @@ async function list_init(req, res) {
                     title_str += data;
                 });
                 get_title.on("close", (code) => {
+                    //console.log(title_str, title_str == "NA\n", title_str.trimEnd() == "NA");
+                    if (title_str == "NA\n") {
+                        title_str = body_url;
+                    }
                     play_lists.findOrCreate({
                         where: { url: body_url },
                         defaults: { title: title_str },
@@ -248,8 +258,8 @@ async function list_init(req, res) {
         }).then(function () {
             list_background(body_url, start_num, stop_num, chunk_size).then(
                 () => {
-                    // console.log("done processing playlist");
-                    sock.emit("playlist", { message: "done processing playlist" });
+                    //console.log("done processing playlist");
+                    sock.emit("playlist", { message: "done processing playlist or channel" });
                 }
             );
         });
@@ -444,7 +454,7 @@ const sock = io.on("connection", (socket) => {
 });
 
 server.listen(port, () => {
-    if (process.env.hide_ports)
+    if (process.env.hide_ports || process.env.hide_ports == undefined)
         console.log(`Server listening on ${protocol}://${host}:${port}${url_base}`);
     else
         console.log(`Server listening on ${protocol}://${host}${url_base}`);
