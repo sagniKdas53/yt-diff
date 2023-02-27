@@ -173,10 +173,22 @@ async function list_init(req, res) {
         if (response_list.length > 1 || body_url.includes("playlist")) {
             let title_str = "";
             if (body_url.includes('youtube') && body_url.includes('/@')) {
-                body_url = body_url.endsWith('/') ? body_url + 'videos' : body_url + '/videos';
+                if (body_url.endsWith('/')) {
+                    body_url = body_url.slice(0, -1);
+                }
+                if (!body_url.endsWith('/videos')) {
+                    body_url = body_url + '/videos'
+                }
+                //console.log(`${body_url} is a youtube channel`);
             }
             if (body_url.includes('pornhub') && body_url.includes('/model/')) {
-                body_url = body_url.endsWith('/') ? body_url + 'videos' : body_url + '/videos';
+                if (body_url.endsWith('/')) {
+                    body_url = body_url.slice(0, -1);
+                }
+                if (!body_url.endsWith('/videos')) {
+                    body_url = body_url + '/videos'
+                }
+                //console.log('Pornhub channel url: ' + body_url);
             }
             var is_alredy_indexed = await play_lists.findOne({
                 where: { url: body_url },
@@ -227,7 +239,10 @@ async function list_init(req, res) {
                     ) {
                         available_var = false;
                     }
-                    const [found, _] = await vid_list.findOrCreate({
+                    else if (items[0] === "NA") {
+                        items[0] = items[1];
+                    }
+                    const [found, created] = await vid_list.findOrCreate({
                         where: { url: items[2] },
                         defaults: {
                             id: items[1],
@@ -238,12 +253,30 @@ async function list_init(req, res) {
                             list_order: ++index,
                         },
                     });
-
-                    if (found) {
-                        init_resp["count"] += 1;
-                        init_resp["rows"].push(found);
-                        found.changed("updatedAt", true);
+                    if (!created) {
+                        // The object was found and not created
+                        //console.log("Found object: ", found);
+                        if (found.id !== items[1] ||
+                            found.reference !== body_url ||
+                            found.title !== items[0] ||
+                            found.available !== available_var ||
+                            found.list_order !== index - 1) {
+                            // At least one property is different, update the object
+                            found.id = items[1];
+                            found.reference = body_url;
+                            found.title = items[0];
+                            found.available = available_var;
+                            found.list_order = index - 1;
+                            //console.log("Found object updated: ", found);
+                        } else {
+                            found.changed("updatedAt", true);
+                        }
+                        await found.save();
                     }
+                    // finally updating the object to send to frontend
+                    init_resp["count"] += 1;
+                    init_resp["rows"].push(found);
+
                 } catch (error) {
                     console.error(error);
                 }
@@ -319,25 +352,47 @@ async function processResponse(response, body_url, start_num) {
     var index = start_num;
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
-        const [title, id, url] = element.split("\t");
+        var [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
             return;
+        } else if (title === "NA") {
+            title = id;
         }
         const item_available = title !== "[Unavailable video]";
-        const [found, _] = await vid_list.findOrCreate({
-            where: { url: url },
-            defaults: {
-                id: id,
-                reference: body_url,
-                title: title,
-                downloaded: false,
-                available: item_available,
-                list_order: index++,
-            },
-        });
-        if (found && found.reference === "None") {
-            found.reference = body_url;
-            found.changed("updatedAt", true);
+        try {
+            const [found, created] = await vid_list.findOrCreate({
+                where: { url: url },
+                defaults: {
+                    id: id,
+                    reference: body_url,
+                    title: title,
+                    downloaded: false,
+                    available: item_available,
+                    list_order: index++,
+                },
+            });
+            if (!created) {
+                // The object was found and not created
+                //console.log("Found object: ", found);
+                if (found.id !== id ||
+                    found.reference !== body_url ||
+                    found.title !== title ||
+                    found.available !== item_available ||
+                    found.list_order !== index - 1) {
+                    // At least one property is different, update the object
+                    found.id = id;
+                    found.reference = body_url;
+                    found.title = title;
+                    found.available = item_available;
+                    found.list_order = index - 1;
+                    //console.log("Found object updated: ", found);
+                } else {
+                    found.changed("updatedAt", true);
+                }
+                await found.save();
+            }
+        } catch (error) {
+            console.error(error);
         }
     })
     );
@@ -386,19 +441,26 @@ async function sublist_to_table(req, res) {
         body = JSON.parse(body);
         var body_url = body["url"];
         var start_num = body["start"] || 0;
-        var stop_num = body["stop"] || 10; // add a way to send -1 to list it all in one go
+        var stop_num = body["stop"] || 10;
+        var order = "list_order", type = "ASC";
+        // This is a rough solution to a bigger problem, need more looking into
+        if (body_url == "None") { order = "updatedAt", type = "DESC"; }
         vid_list.findAndCountAll({
             where: {
                 reference: body_url,
             },
             limit: stop_num - start_num,
             offset: start_num,
-            order: [["list_order"]],
+            order: [[order, type]],
         }).then((result) => {
             res.writeHead(200, { "Content-Type": "text/json" });
             res.end(JSON.stringify(result, null, 2));
         });
     });
+}
+
+async function find_from_keywords(req, res) {
+    // Will implement soon
 }
 
 const css = "text/css; charset=utf-8";
