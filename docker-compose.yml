@@ -28,6 +28,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.amd64
+      args:
+        - base_url=${BASE_URL}
+      # Use this to modify the files during building
     volumes:
       - ./yt-dlp:/${SAVE_PATH}
     depends_on:

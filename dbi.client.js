@@ -9,18 +9,30 @@ function sockSetup() {
         socket.emit('acknowledge', { data: 'Connected', id: data.id });
     });
     socket.on('download-start', function (data) {
-        console.groupCollapsed(`Downloading: ${data.message}`);
+        //console.groupCollapsed(`Downloading: ${data.message}`);
     });
     socket.on('progress', function (data) {
         if (dnld_btn.disabled != true)
             dnld_btn.disabled = true;
-        console.log(data.message);
+        //console.log(data.message);
     });
     socket.on('error', console.error.bind(console));
     socket.on('download', function (data) {
-        console.log(`Downloaded: ${data.message} ✅`);
-        console.groupEnd();
-        document.getElementById("dnld").disabled = false;
+        //console.log(`Downloaded: ${data.message} ✅`);
+        //console.groupEnd();
+        dnld_btn.disabled = false;
+        myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
+        var myToast = new bootstrap.Toast(myToastEl, {
+            delay: 5000
+        }); // Returns a Bootstrap toast instance
+        myToast.show();
+    });
+    socket.on('playlist', function (data) {
+        //console.log(`Playlist: ${data.message} ✅`);
+        //console.groupEnd();
+        // Re-enable the buttons
+        // list_btn.disabled = false;
+        dnld_btn.disabled = false;
         myToastEl.children[0].children[0].innerHTML = `${data.message} ✅`;
         var myToast = new bootstrap.Toast(myToastEl, {
             delay: 5000

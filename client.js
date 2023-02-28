@@ -10,14 +10,14 @@ function sockSetup() {
         socket.emit('acknowledge', { data: 'Connected', id: data.id });
     });
     socket.on('download-start', function (data) {
-        console.groupCollapsed(`Downloading: ${data.message}`);
+        //console.groupCollapsed(`Downloading: ${data.message}`);
     });
     socket.on('progress', function (data) {
         if (list_btn.disabled != true && dnld_btn.disabled != true) {
             list_btn.disabled = true;
             dnld_btn.disabled = true;
         }
-        console.log(data.message);
+        //console.log(data.message);
     });
     socket.on('error', console.error.bind(console));
     socket.on('download', function (data) {
@@ -33,8 +33,8 @@ function sockSetup() {
         myToast.show();
     });
     socket.on('playlist', function (data) {
-        console.log(`Downloaded: ${data.message} ✅`);
-        console.groupEnd();
+        //console.log(`Playlist: ${data.message} ✅`);
+        //console.groupEnd();
         // Re-enable the buttons
         list_btn.disabled = false;
         dnld_btn.disabled = false;
@@ -65,7 +65,7 @@ function list_it() {
     var stop = document.getElementById("stop").value;
     var chunk = document.getElementById("chunk").value;
     const table = document.getElementById("listing");
-    //console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
+    console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
     if (url != '') {
         fetch("/ytdiff/list", {
             method: "post",
@@ -82,7 +82,7 @@ function list_it() {
             })
         }).then((response) => response.text()).then((text) => {
             response_list = JSON.parse(text);
-            //console.log(response_list['rows'], response_list['rows'].length)
+            console.log(response_list['rows'], response_list['rows'].length)
             response_list['rows'].forEach(async element => {
                 /*
                     # 	Title 	Saved 	Avail.
