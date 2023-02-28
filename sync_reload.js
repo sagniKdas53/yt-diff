@@ -193,29 +193,31 @@ async function list_init(req, res) {
                 title_str = is_alredy_indexed.title;
             } catch (error) {
                 console.error("playlist or channel not encountered earlier");
-            }
-            if (title_str == "") {
-                const get_title = spawn("yt-dlp", [
-                    "--playlist-end",
-                    1,
-                    "--flat-playlist",
-                    "--print",
-                    "%(playlist_title)s",
-                    body_url,
-                ]);
-                get_title.stdout.on("data", async (data) => {
-                    title_str += data;
-                });
-                get_title.on("close", (code) => {
-                    //console.log(title_str, title_str == "NA\n", title_str.trimEnd() == "NA");
-                    if (title_str == "NA\n") {
-                        title_str = body_url;
-                    }
-                    play_lists.findOrCreate({
-                        where: { url: body_url },
-                        defaults: { title: title_str },
+                // It's not an error, TBH but the title getting spawn will only be done once 
+                // the error is raised
+                if (title_str == "") {
+                    const get_title = spawn("yt-dlp", [
+                        "--playlist-end",
+                        1,
+                        "--flat-playlist",
+                        "--print",
+                        "%(playlist_title)s",
+                        body_url,
+                    ]);
+                    get_title.stdout.on("data", async (data) => {
+                        title_str += data;
                     });
-                });
+                    get_title.on("close", (code) => {
+                        //console.log(title_str, title_str == "NA\n", title_str.trimEnd() == "NA");
+                        if (title_str == "NA\n") {
+                            title_str = body_url;
+                        }
+                        play_lists.findOrCreate({
+                            where: { url: body_url },
+                            defaults: { title: title_str },
+                        });
+                    });
+                }
             }
         } else {
             body_url = "None";
@@ -298,14 +300,14 @@ function sleep(s) {
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    console.log('In list_background', "body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
+    //console.log('In list_background', "body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
     while (true && (body_url != 'None')) {
         start_num = start_num + chunk_size;
         stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
         // getting this form docker compose isn't a bad idea either
         // I plan on using sockets to communicate that this is still working
-        console.log("In background lister", "Chunk:", chunk_size, "Start:", start_num, "Stop:", stop_num);
+        //console.log("In background lister", "Chunk:", chunk_size, "Start:", start_num, "Stop:", stop_num);
         await sleep(sleep_time);
         const response = await ytdlp_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
@@ -316,7 +318,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
 }
 
 function ytdlp_spawner(body_url, start_num, stop_num) {
-    console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
+    //console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
             "--playlist-start",
@@ -347,7 +349,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
 
 async function processResponse(response, body_url, start_num) {
     var index = start_num;
-    console.log("In processResponse", "Start:", start_num);
+    //console.log("In processResponse", "Start:", start_num);
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
         var [title, id, url] = element.split("\t");
@@ -390,7 +392,7 @@ async function processResponse(response, body_url, start_num) {
                 await found.save();
             }
         } catch (error) {
-            //console.error(error);
+            console.error(error);
         }
     })
     );

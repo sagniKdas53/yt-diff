@@ -27,7 +27,7 @@ services:
     container_name: yt-diff
     build:
       context: .
-      dockerfile: Dockerfile.amd64
+      dockerfile: Dockerfile.local
       args:
         - base_url=${BASE_URL}
       # Use this to modify the files during building

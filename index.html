@@ -53,11 +53,12 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
                 <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30"
-                    class="d-inline-block align-text-top"><span class="align-top">-diff</span>
+                    class="d-inline-block"><span class="align-middle">-diff</span>
             </a>
             <div>
-                <label for="" class="link-warning" onclick="getOrphans()">Unlisted</label>
-                <a href="ytdiff/dbi" class="link-warning" style="text-decoration: none;">See DB</a>
+                <button type="button" style="text-decoration: none;" class="btn btn-link link-warning m-0 p-0"
+                    onclick="getOrphans()">Unlisted</button>
+                <a href="ytdiff/dbi" class="link-warning align-middle" style="text-decoration: none;">DBI</a>
             </div>
         </div>
     </nav>
@@ -168,7 +169,9 @@
         }
 
         function input_limiter(type, evt) {
-            var value = parseInt(evt.data, 10);
+            evt.preventDefault()
+            //console.log("event", evt, evt.target.value);
+            var value = parseInt(evt.target.value, 10);
             var start = parseInt(document.getElementById("start").value, 10);
             if (type == "chunk") {
                 if (value >= 1) {
