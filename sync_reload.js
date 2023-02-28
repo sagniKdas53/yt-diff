@@ -164,29 +164,23 @@ async function list_init(req, res) {
         body = JSON.parse(body);
         //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         var body_url = body["url"];
-        var start_num = body["start"] || 1;
-        var stop_num = body["stop"] || 10;
+        var start_num = parseInt(body["start"]) || 1;
+        var stop_num = parseInt(body["stop"]) || 10;
         var index = start_num - 1;
-        var chunk_size = body["chunk_size"] || 10;
+        var chunk_size = parseInt(body["chunk"]) || 10;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
         //console.log(response_list, response_list.length);
         if (response_list.length > 1 || body_url.includes("playlist")) {
             let title_str = "";
             if (body_url.includes('youtube') && body_url.includes('/@')) {
-                if (body_url.endsWith('/')) {
-                    body_url = body_url.slice(0, -1);
-                }
-                if (!body_url.endsWith('/videos')) {
-                    body_url = body_url + '/videos'
+                if (!/\/videos\/?$/.test(body_url)) {
+                    body_url = body_url.replace(/\/$/, '') + '/videos';
                 }
                 //console.log(`${body_url} is a youtube channel`);
             }
             if (body_url.includes('pornhub') && body_url.includes('/model/')) {
-                if (body_url.endsWith('/')) {
-                    body_url = body_url.slice(0, -1);
-                }
-                if (!body_url.endsWith('/videos')) {
-                    body_url = body_url + '/videos'
+                if (!/\/videos\/?$/.test(body_url)) {
+                    body_url = body_url.replace(/\/$/, '') + '/videos';
                 }
                 //console.log('Pornhub channel url: ' + body_url);
             }
@@ -304,12 +298,14 @@ function sleep(s) {
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
+    console.log('In list_background', "body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
     while (true && (body_url != 'None')) {
-        start_num = parseInt(start_num) + chunk_size;
-        stop_num = parseInt(stop_num) + chunk_size;
+        start_num = start_num + chunk_size;
+        stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
         // getting this form docker compose isn't a bad idea either
         // I plan on using sockets to communicate that this is still working
+        console.log("In background lister", "Chunk:", chunk_size, "Start:", start_num, "Stop:", stop_num);
         await sleep(sleep_time);
         const response = await ytdlp_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
@@ -320,6 +316,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
 }
 
 function ytdlp_spawner(body_url, start_num, stop_num) {
+    console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
             "--playlist-start",
@@ -350,6 +347,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
 
 async function processResponse(response, body_url, start_num) {
     var index = start_num;
+    console.log("In processResponse", "Start:", start_num);
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
         var [title, id, url] = element.split("\t");
@@ -392,7 +390,7 @@ async function processResponse(response, body_url, start_num) {
                 await found.save();
             }
         } catch (error) {
-            console.error(error);
+            //console.error(error);
         }
     })
     );
@@ -440,8 +438,8 @@ async function sublist_to_table(req, res) {
     req.on("end", function () {
         body = JSON.parse(body);
         var body_url = body["url"];
-        var start_num = body["start"] || 0;
-        var stop_num = body["stop"] || 10;
+        var start_num = parseInt(body["start"]) || 0;
+        var stop_num = parseInt(body["stop"]) || 10;
         var order = "list_order", type = "ASC";
         // This is a rough solution to a bigger problem, need more looking into
         if (body_url == "None") { order = "updatedAt", type = "DESC"; }

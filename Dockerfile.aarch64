@@ -50,4 +50,6 @@ RUN tar -xf node-v18.12.1-linux-arm64.tar.xz  \
     && node node-v18.12.1-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install \
     && rm -rf node-v18.12.1-linux-arm64 node-v18.12.1-linux-arm64.tar.xz 
 
+#sed -i 's@__BASE_URL__@'"$base_url"'@' test.html
+
 CMD [ "node", "index.js" ]
