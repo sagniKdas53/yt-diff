@@ -1,4 +1,4 @@
-FROM debian:stable-slim
+FROM --platform=arm64 ubuntu:22.04
 # This for x86_64 will make one for AArch64
 # This one is made using binaries from github python one would have become too large too fast
 
