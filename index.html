@@ -45,6 +45,10 @@
         .nav-size {
             max-height: 10vh;
         }
+
+        .search {
+            width: 100%;
+        }
     </style>
 </head>
 
@@ -52,8 +56,8 @@
     <nav class="mt-0 pt-0 mb-0 pb-0 navbar navbar-dark bg-dark nav-size">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
-                <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30"
-                    class="d-inline-block"><span class="align-middle">-diff</span>
+                <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30" class="d-inline-block"><span
+                    class="align-middle">-diff</span>
             </a>
             <div>
                 <button type="button" style="text-decoration: none;" class="btn btn-link link-warning m-0 p-0"
@@ -134,7 +138,9 @@
                             <tr>
                                 <th scope="col" class="table-dark"><input class="form-check-input" type="checkbox"
                                         value="" id="selector" aria-label="..."></th>
-                                <th scope="col" class="table-dark large-title">Title</th>
+                                <th scope="col" class="table-dark large-title"><input type="text"
+                                        class="search align-bottom" id="query" placeholder="Title"
+                                        onkeyup="onFinishTyping()" /></th>
                                 <th scope="col" class="table-dark">Saved</th>
                             </tr>
                         </thead>
@@ -165,6 +171,7 @@
             document.getElementById("stop").value = 10;
             document.getElementById("chunk").value = 10;
             document.getElementById("selector").checked = false;
+            document.getElementById("query").value = "";
             sockSetup();
         }
 
@@ -213,6 +220,18 @@
                 select_none();
             }
         });
+
+        const debounce = function (fn, d) {
+            let timer;
+            return function () {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    fn.apply();
+                }, d);
+            }
+        }
+
+        const onFinishTyping = debounce(searchSub, 500);
     </script>
 </body>
 

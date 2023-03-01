@@ -174,13 +174,37 @@ function depopulateList(force = false) {
         document.getElementById("stop").value = 10;
         document.getElementById("chunk").value = 10;
         document.getElementById("url").value = "";
+        document.getElementById("selector").checked = false;
+        document.getElementById("query").value = "";
         url_global = "None";
     }
 
 };
 
+function searchSub() {
+    var query = document.getElementById("query").value.trim();
+    var start = parseInt(document.getElementById("start").value, 10);
+    var stop = parseInt(document.getElementById("stop").value, 10);
+    // Setting start value
+    if (isNaN(start)) {
+        document.getElementById("start").value = 0;
+        start = 0;
+    }
+    // Setting stop value
+    if (isNaN(stop)) {
+        document.getElementById("stop").value = chunk;
+        stop = chunk;
+    }
+    // Setting url_global if it's not set already
+    if ((url_global == "None") && (document.getElementById("url").value != "")) {
+        url_global = document.getElementById("url").value;
+    }
+    //console.log("start: " + start + " stop: " + stop, "query: " + query);
+    getSubList(url_global, start, stop, query);
+};
+
 function nextSub() {
-    depopulateList();
+    var query = document.getElementById("query").value.trim();
     var chunk = parseInt(document.getElementById("chunk").value, 10);
     var start = parseInt(document.getElementById("start").value, 10);
     var stop = parseInt(document.getElementById("stop").value, 10);
@@ -204,11 +228,11 @@ function nextSub() {
     if ((url_global == "None") && (document.getElementById("url").value != "")) {
         url_global = document.getElementById("url").value;
     }
-    //console.log("In nextSub :", start, stop, chunk);
-    getSubList(url_global, start, stop);
+    //console.log("start: " + start + " stop: " + stop, "query: " + query);
+    getSubList(url_global, start, stop, query);
 };
 function backSub() {
-    depopulateList();
+    var query = document.getElementById("query").value.trim();
     var chunk = parseInt(document.getElementById("chunk").value, 10);
     var start = parseInt(document.getElementById("start").value, 10);
     var stop = parseInt(document.getElementById("stop").value, 10);
@@ -232,13 +256,12 @@ function backSub() {
     if ((url_global == "None") && (document.getElementById("url").value != "")) {
         url_global = document.getElementById("url").value;
     }
-    getSubList(url_global, start, stop);
+    //console.log("start: " + start + " stop: " + stop, "query: " + query);
+    getSubList(url_global, start, stop, query);
 };
 
-function getSubList(url, start, stop) {
+function getSubList(url, start, stop, query_str) {
     //console.log("Querying url: ", url, " start: ", start, " stop: ", stop);
-    depopulateList();
-    const table = document.getElementById("listing");
     fetch("/ytdiff/getsub", {
         method: "post",
         headers: {
@@ -248,56 +271,57 @@ function getSubList(url, start, stop) {
         body: JSON.stringify({
             url: url,
             start: start,
-            stop: stop
+            stop: stop,
+            query: query_str
         })
-    }).then((response) => response.text()).then((text) => {
-        //console.log(text);
-        data = JSON.parse(text);
-        //console.log(data);
-        data["rows"].forEach(element => {
-            /*
-                # 	Title 	Downloaded 	Available
-            */
-            const row = table.insertRow();
-            const select = row.insertCell(0);
-            const title = row.insertCell(1);
-            const download = row.insertCell(2);
-            //const status = row.insertCell(3);
-
-            let checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.className = "form-check-input me-1 video-item";
-            checkbox.value = "";
-            checkbox.id = element.id;
-
-            let link = document.createElement('a');
-            link.href = element.url;
-            link.appendChild(document.createTextNode(element.title));
-            select.appendChild(checkbox);
-            title.appendChild(link);
-            download.className = "emoji";
-            if (element.downloaded) {
-                download.innerHTML = "✅";
-            } else {
-                download.innerHTML = "❌";
-            }
-            //status.innerHTML = element.available;
-            if (element.downloaded) {
-                row.className = "table-info";
-            }
-            if (!element.available) {
-                if (element.title == "[Deleted video]")
-                    row.className = "table-danger";
-                else if (element.title == "[Private video]")
-                    row.className = "table-warning"
-                else
-                    row.className = "table-secondary"
-            }
-        });
-    });
-    // redundant init?
-    // url_global = url;
+    }).then((response) => response.text()).then((text) => makeTable(text));
 };
+
+function makeTable(text) {
+    depopulateList();
+    const table = document.getElementById("listing");
+    //console.log(text);
+    data = JSON.parse(text);
+    //console.log(data);
+    data["rows"].forEach(element => {
+        /*
+            # 	Title 	Downloaded 	Available
+        */
+        const row = table.insertRow();
+        const select = row.insertCell(0);
+        const title = row.insertCell(1);
+        const download = row.insertCell(2);
+
+        let checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "form-check-input me-1 video-item";
+        checkbox.value = "";
+        checkbox.id = element.id;
+
+        let link = document.createElement('a');
+        link.href = element.url;
+        link.appendChild(document.createTextNode(element.title));
+        select.appendChild(checkbox);
+        title.appendChild(link);
+        download.className = "emoji";
+        if (element.downloaded) {
+            download.innerHTML = "✅";
+        } else {
+            download.innerHTML = "❌";
+        }
+        if (element.downloaded) {
+            row.className = "table-info";
+        }
+        if (!element.available) {
+            if (element.title == "[Deleted video]")
+                row.className = "table-danger";
+            else if (element.title == "[Private video]")
+                row.className = "table-warning"
+            else
+                row.className = "table-secondary"
+        }
+    });
+}
 
 function getOrphans() {
     depopulateList();

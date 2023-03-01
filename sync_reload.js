@@ -1,10 +1,8 @@
 const { spawn } = require("child_process");
 const http = require("http");
 const fs = require("fs");
-const { Sequelize, DataTypes } = require("sequelize");
+const { Sequelize, DataTypes, Op } = require("sequelize");
 const { Server } = require("socket.io");
-
-const regex = /(\d{1,3}\.\d)%/;
 
 const protocol = process.env.protocol || 'http';
 const host = process.env.host || 'localhost';
@@ -16,7 +14,7 @@ const save_loc = process.env.save_loc || "yt-dlp";
 const sleep_time = process.env.sleep || 3;
 var options = ["--embed-metadata", "-P", save_loc]
 
-if (process.env.subs) {
+if (process.env.subs || process.env.subs == undefined) {
     options = ["--write-subs", "--sleep-subtitles", sleep_time, "--embed-metadata", "-P", save_loc];
 }
 
@@ -121,7 +119,7 @@ async function download_background_sequential(url_list) {
             const yt_dlp = spawn("yt-dlp", options.concat(url_str));
             yt_dlp.stdout.on("data", async (data) => {
                 try {
-                    if ((percentage = regex.exec(`${data}`)) !== null) {
+                    if ((percentage = /(\d{1,3}\.\d)%/.exec(`${data}`)) !== null) {
                         sock.emit("progress", { message: percentage[0] });
                     }
                 } catch (error) {
@@ -442,25 +440,44 @@ async function sublist_to_table(req, res) {
         var body_url = body["url"];
         var start_num = parseInt(body["start"]) || 0;
         var stop_num = parseInt(body["stop"]) || 10;
+        var query_string = body["query"] || "";
         var order = "list_order", type = "ASC";
         // This is a rough solution to a bigger problem, need more looking into
         if (body_url == "None") { order = "updatedAt", type = "DESC"; }
-        vid_list.findAndCountAll({
-            where: {
-                reference: body_url,
-            },
-            limit: stop_num - start_num,
-            offset: start_num,
-            order: [[order, type]],
-        }).then((result) => {
-            res.writeHead(200, { "Content-Type": "text/json" });
-            res.end(JSON.stringify(result, null, 2));
-        });
+        try {
+            if (query_string == "") {
+                vid_list.findAndCountAll({
+                    where: {
+                        reference: body_url,
+                    },
+                    limit: stop_num - start_num,
+                    offset: start_num,
+                    order: [[order, type]],
+                }).then((result) => {
+                    res.writeHead(200, { "Content-Type": "text/json" });
+                    res.end(JSON.stringify(result, null, 2));
+                });
+            } else {
+                //console.log("body_url", body_url, `query_string ${query_string}`);
+                vid_list.findAndCountAll({
+                    where: {
+                        reference: body_url,
+                        title: {
+                            [Op.iLike]: `%${query_string}%`
+                        }
+                    },
+                    limit: stop_num - start_num,
+                    offset: start_num,
+                    order: [[order, type]],
+                }).then((result) => {
+                    res.writeHead(200, { "Content-Type": "text/json" });
+                    res.end(JSON.stringify(result, null, 2));
+                });
+            }
+        } catch (error) {
+            console.error(error);
+        }
     });
-}
-
-async function find_from_keywords(req, res) {
-    // Will implement soon
 }
 
 const css = "text/css; charset=utf-8";

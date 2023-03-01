@@ -27,7 +27,7 @@
         }
 
         .large-title {
-            width: 75%;
+            width: 80%;
         }
 
         .container-table {
@@ -60,6 +60,10 @@
                 padding-left: 0.25rem !important;
             }
         }
+
+        .search {
+            width: 100%;
+        }
     </style>
 </head>
 
@@ -67,8 +71,8 @@
     <nav class="mt-0 pt-0 mb-0 pb-0 navbar navbar-dark bg-dark nav-size">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
-                <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30"
-                    class="d-inline-block"><span class="align-middle">-diff</span>
+                <img src="/ytdiff/assets/nav.png" alt="" width="30" height="30" class="d-inline-block"><span
+                    class="align-middle">-diff</span>
             </a>
             <div>
                 <button type="button" style="text-decoration: none;" class="btn btn-link link-warning m-0 p-0"
@@ -135,7 +139,9 @@
                             <tr>
                                 <th scope="col" class="table-dark"><input class="form-check-input" type="checkbox"
                                         value="" id="selector" aria-label="..."></th>
-                                <th scope="col" class="table-dark large-title">Video Title</th>
+                                <th scope="col" class="table-dark large-title"><input type="text"
+                                        class="search align-bottom m-0 p-0" id="query" placeholder="Title"
+                                        onkeyup="onFinishTyping()" /></th>
                                 <th scope="col" class="table-dark">Downloaded</th>
                                 <!--<th scope="col" class="table-dark">Available</th>-->
                             </tr>
@@ -206,6 +212,7 @@
             document.getElementById("selector").checked = false;
             document.getElementById("sort-by").value = 1;
             document.getElementById("order").value = 1;
+            document.getElementById("query").value = "";
             sockSetup();
             getMainlist(0, 10);
         }
@@ -266,6 +273,18 @@
                 select_none();
             }
         });
+
+        const debounce = function (fn, d) {
+            let timer;
+            return function () {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    fn.apply();
+                }, d);
+            }
+        }
+
+        const onFinishTyping = debounce(searchSub, 500);
     </script>
 </body>
 
