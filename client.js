@@ -47,89 +47,54 @@ function sockSetup() {
 };
 
 function list_it() {
-    document.getElementById("listit").disabled = true;
-    document.getElementById("dnld").disabled = true;
-    // depopulateList(); // It actually isn't necessary
-    var url = document.getElementById("url").value;
-    // var url_list = document.getElementById("url_list").value.split("\n");
-    if (document.getElementById("start").value === "") {
-        document.getElementById("start").value = 0;
-    }
-    if (document.getElementById("stop").value === "") {
-        document.getElementById("stop").value = 10;
-    }
-    var start = document.getElementById("start").value;
-    if (start == "0") {
-        start = 1; // yt-dlp doesn't start counting form 0 but sequelize does
-    }
-    var stop = document.getElementById("stop").value;
-    var chunk = document.getElementById("chunk").value;
-    const table = document.getElementById("listing");
-    console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
-    if (url != '') {
-        fetch("/ytdiff/list", {
-            method: "post",
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            //make sure to serialize your JSON body
-            body: JSON.stringify({
-                url: url,
-                start: start,
-                stop: stop,
-                chunk: chunk
-            })
-        }).then((response) => response.text()).then((text) => {
-            response_list = JSON.parse(text);
-            console.log(response_list['rows'], response_list['rows'].length)
-            response_list['rows'].forEach(async element => {
-                /*
-                    # 	Title 	Saved 	Avail.
-                */
-                const row = table.insertRow();
-                const select = row.insertCell(0);
-                const title = row.insertCell(1);
-                const download = row.insertCell(2);
-                //const status = row.insertCell(3);
-
-                let checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.className = "form-check-input me-1 video-item";
-                checkbox.value = "";
-                checkbox.id = element.id;
-
-                let link = document.createElement('a');
-                link.href = element.url;
-                link.appendChild(document.createTextNode(element.title));
-                select.appendChild(checkbox);
-                title.appendChild(link);
-                download.className = "emoji";
-                if (element.downloaded) {
-                    download.innerHTML = "✅";
-                } else {
-                    download.innerHTML = "❌";
-                }
-                //status.innerHTML = element.available;
-                if (element.downloaded) {
-                    row.className = "table-info";
-                }
-                if (!element.available) {
-                    if (element.title == "[Deleted video]")
-                        row.className = "table-danger";
-                    else if (element.title == "[Private video]")
-                        row.className = "table-warning"
-                    else
-                        row.className = "table-secondary"
-                }
-            });
-            try {
-                // Setting up the global url
-                url_global = response_list['rows'][0]['reference'];
-            } catch (error) {
-                console.error(error);
-            }
-        });
+    try {
+        var url = new URL(document.getElementById("url").value);
+        if (url.protocol == "https:" || url.protocol == "http:") {
+            url = url.href;
+        } else {
+            throw new Error(`${url.href} is not a valid URL.`);
+        }
+        document.getElementById("listit").disabled = true;
+        document.getElementById("dnld").disabled = true;
+        // var url_list = document.getElementById("url_list").value.split("\n");
+        if (document.getElementById("start").value === "") {
+            document.getElementById("start").value = 0;
+        }
+        if (document.getElementById("stop").value === "") {
+            document.getElementById("stop").value = 10;
+        }
+        var start = document.getElementById("start").value;
+        if (start == "0") {
+            start = 1; // yt-dlp doesn't start counting form 0 but sequelize does
+        }
+        var stop = document.getElementById("stop").value;
+        var chunk = document.getElementById("chunk").value;
+        const table = document.getElementById("listing");
+        //console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
+        if (url != '') {
+            fetch("/ytdiff/list", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                //make sure to serialize your JSON body
+                body: JSON.stringify({
+                    url: url,
+                    start: start,
+                    stop: stop,
+                    chunk: chunk
+                })
+            }).then((response) => response.text()).then((text) => makeTable(text));
+        }
+    } catch (err) {
+        var myToastEl = document.getElementById('notify');
+        //console.error(err);
+        myToastEl.children[0].children[0].innerHTML = `${err.message.replace("URL constructor: ", '')} ❌`;
+        var myToast = new bootstrap.Toast(myToastEl, {
+            delay: 5000
+        }); // Returns a Bootstrap toast instance
+        myToast.show();
     }
 };
 
@@ -301,7 +266,9 @@ function makeTable(text) {
         let link = document.createElement('a');
         link.href = element.url;
         link.appendChild(document.createTextNode(element.title));
+        select.className = "text-center";
         select.appendChild(checkbox);
+        title.className = "large-title";
         title.appendChild(link);
         download.className = "emoji";
         if (element.downloaded) {
@@ -324,7 +291,6 @@ function makeTable(text) {
 }
 
 function getOrphans() {
-    depopulateList();
     var chunk = parseInt(document.getElementById("chunk").value, 10);
     var start = parseInt(document.getElementById("start").value, 10);
     var stop = parseInt(document.getElementById("stop").value, 10);
@@ -346,5 +312,7 @@ function getOrphans() {
     }
     // Setting url_global if it's not set already
     url_global = 'None';
-    getSubList('None', start, stop);
+    document.getElementById("query").value = "";
+    document.getElementById("url").value = "";
+    getSubList('None', start, stop, "");
 };

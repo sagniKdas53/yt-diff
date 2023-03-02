@@ -334,7 +334,9 @@ function makeTable(text) {
         let link = document.createElement('a');
         link.href = element.url;
         link.appendChild(document.createTextNode(element.title));
+        select.className = "text-center";
         select.appendChild(checkbox);
+        title.className = "large-title";
         title.appendChild(link);
         download.className = "emoji";
         if (element.downloaded) {

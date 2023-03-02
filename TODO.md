@@ -1,12 +1,12 @@
 # Todo
 
-1. [ ] Fix the issue with unlisted vidoes being so hard to find, they need proper indexing to not be a mess
+1. [x] Fix the issue with unlisted vidoes being so hard to find, they need proper indexing to not be a mess
    1. The idea is simple either make the indexing increase every time or
    2. Make a separate table for the unlisted videos there they can have autoincrementing indexes and if they are infact added to any playlist they can just be removed leaving a blank index
    3. Which during manintaincance can be fixed
    4. Alternatively just sort the table by updatedAt in DESC mode
 2. [x] Added search function to both the pages
-3. [ ] Make the table header text cenetered and the search bar better integarted
+3. [x] Make the table header text cenetered and the search bar better integarted
 4. [x] Make sure that listing on the main page which disable download on database interface is corrected when listing is done
 5. [ ] Figure out why some vidoes are being marked as duplicate despite being not the case.
 6. [ ] Add a rate limiter to the socket.io, docs [here](https://github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#websocket-single-connection-prevent-flooding)
