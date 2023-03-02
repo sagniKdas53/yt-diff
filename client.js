@@ -52,7 +52,7 @@ function list_it() {
         if (url.protocol == "https:" || url.protocol == "http:") {
             url = url.href;
         } else {
-            throw new Error(`${url.href} is not a valid URL.`);
+            throw new Error("Not a valid URL");
         }
         document.getElementById("listit").disabled = true;
         document.getElementById("dnld").disabled = true;
@@ -90,7 +90,7 @@ function list_it() {
     } catch (err) {
         var myToastEl = document.getElementById('notify');
         //console.error(err);
-        myToastEl.children[0].children[0].innerHTML = `${err.message.replace("URL constructor: ", '')} ❌`;
+        myToastEl.children[0].children[0].innerHTML = `Not a valid URL ❌`;
         var myToast = new bootstrap.Toast(myToastEl, {
             delay: 5000
         }); // Returns a Bootstrap toast instance
