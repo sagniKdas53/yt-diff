@@ -85,7 +85,7 @@ function list_it() {
                     stop: stop,
                     chunk: chunk
                 })
-            }).then((response) => response.text()).then((text) => makeTable(text));
+            }).then((response) => response.text()).then((text) => makeSubTable(text));
         }
     } catch (err) {
         var myToastEl = document.getElementById('notify');
@@ -129,7 +129,7 @@ function download_selected() {
     });
 };
 
-function depopulateList(force = false) {
+function clearSubList(force = false) {
     const table = document.getElementById("listing");
     for (var i = 0; i < table.rows.length;) {
         table.deleteRow(i);
@@ -239,11 +239,11 @@ function getSubList(url, start, stop, query_str) {
             stop: stop,
             query: query_str
         })
-    }).then((response) => response.text()).then((text) => makeTable(text));
+    }).then((response) => response.text()).then((text) => makeSubTable(text));
 };
 
-function makeTable(text) {
-    depopulateList();
+function makeSubTable(text) {
+    clearSubList();
     const table = document.getElementById("listing");
     //console.log(text);
     data = JSON.parse(text);

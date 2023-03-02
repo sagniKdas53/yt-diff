@@ -61,7 +61,7 @@
             </a>
             <div>
                 <button type="button" style="text-decoration: none;" class="btn btn-link link-warning m-0 p-0"
-                    onclick="getOrphans()">Unlisted</button>
+                    onclick="getSubList('None')">Unlisted</button>
                 <a href="ytdiff/dbi" class="link-warning align-middle" style="text-decoration: none;">DBI</a>
             </div>
         </div>
@@ -99,7 +99,7 @@
                             <div class="btn-group" role="group">
                                 <button id="listit" type="button" onclick="list_it()"
                                     class="btn btn-primary">List</button>
-                                <button id="clear" type="button" onclick="depopulateList(true)"
+                                <button id="clear" type="button" onclick="clearSubList(true)"
                                     class="btn btn-primary">Clear</button>
                             </div>
                         </div>
