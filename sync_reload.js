@@ -12,9 +12,10 @@ const url_base = process.env.base_url || "/ytdiff";
 const db_host = process.env.db_host || 'localhost';
 const save_loc = process.env.save_loc || "yt-dlp";
 const sleep_time = process.env.sleep || 3;
+const subs_enabled = process.env.subs || true;
 var options = ["--embed-metadata", "-P", save_loc]
 
-if (process.env.subs || process.env.subs == undefined) {
+if (subs_enabled) {
     options = ["--write-subs", "--sleep-subtitles", sleep_time, "--embed-metadata", "-P", save_loc];
 }
 
@@ -190,9 +191,9 @@ async function list_init(req, res) {
                 await is_alredy_indexed.save();
                 title_str = is_alredy_indexed.title;
             } catch (error) {
-                console.error("playlist or channel not encountered earlier");
-                // It's not an error, TBH but the title getting spawn will only be done once 
-                // the error is raised
+                // It's not an error, TBH but the spawn 
+                // will only be done once the error is raised
+                //console.error("playlist or channel not encountered earlier");
                 if (title_str == "") {
                     const get_title = spawn("yt-dlp", [
                         "--playlist-end",
@@ -235,6 +236,20 @@ async function list_init(req, res) {
                     }
                     else if (items[0] === "NA") {
                         items[0] = items[1];
+                    }
+                    if (body_url == "None") {
+                        const last_item = await vid_list.findOne({
+                            where: {
+                                reference: 'None',
+                            },
+                            order: [
+                                ['createdAt', 'DESC'],
+                            ],
+                            attributes: ['list_order'],
+                            limit: 1,
+                        });
+                        //console.log(last_item.list_order);
+                        index = last_item.list_order;
                     }
                     const [found, created] = await vid_list.findOrCreate({
                         where: { url: items[2] },
@@ -443,7 +458,8 @@ async function sublist_to_table(req, res) {
         var query_string = body["query"] || "";
         var order = "list_order", type = "ASC";
         // This is a rough solution to a bigger problem, need more looking into
-        if (body_url == "None") { order = "updatedAt", type = "DESC"; }
+        // if (body_url == "None") { order = "updatedAt", type = "DESC"; }
+        //console.log(`body_url: ${body_url}\nquery_string: "${query_string}"\nstart_num: ${start_num}\nstop_num: ${stop_num}\n`);
         try {
             if (query_string == "") {
                 vid_list.findAndCountAll({
@@ -458,7 +474,6 @@ async function sublist_to_table(req, res) {
                     res.end(JSON.stringify(result, null, 2));
                 });
             } else {
-                //console.log("body_url", body_url, `query_string ${query_string}`);
                 vid_list.findAndCountAll({
                     where: {
                         reference: body_url,
@@ -528,7 +543,7 @@ const server = http.createServer((req, res) => {
 const io = new Server(server, { path: url_base + "/socket.io/" });
 const sock = io.on("connection", (socket) => {
     socket.emit("init", { message: "Connected", id: socket.id });
-    socket.on("acknowledge", console.log);
+    //socket.on("acknowledge", console.log);
     return socket;
 });
 
