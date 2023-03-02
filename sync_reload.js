@@ -80,6 +80,14 @@ const play_lists = sequelize.define("play_lists", {
         allowNull: false,
         autoIncrement: true,
     },
+    watch: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+    },
+    schedule: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
 });
 
 sequelize.sync().then(() => {
@@ -213,7 +221,11 @@ async function list_init(req, res) {
                         }
                         play_lists.findOrCreate({
                             where: { url: body_url },
-                            defaults: { title: title_str },
+                            defaults: {
+                                title: title_str,
+                                watch: false,
+                                schedule: "None"
+                            },
                         });
                     });
                 }
