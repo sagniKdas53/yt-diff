@@ -84,8 +84,8 @@ const play_lists = sequelize.define("play_lists", {
         type: DataTypes.BOOLEAN,
         allowNull: false,
     },
-    schedule: {
-        type: DataTypes.STRING,
+    full_update: {
+        type: DataTypes.BOOLEAN,
         allowNull: false,
     },
 });
@@ -224,7 +224,7 @@ async function list_init(req, res) {
                             defaults: {
                                 title: title_str,
                                 watch: false,
-                                schedule: "None"
+                                full_update: false
                             },
                         });
                     });
