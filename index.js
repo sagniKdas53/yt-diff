@@ -1,10 +1,8 @@
 const { spawn } = require("child_process");
 const http = require("http");
 const fs = require("fs");
-const { Sequelize, DataTypes } = require("sequelize");
+const { Sequelize, DataTypes, Op } = require("sequelize");
 const { Server } = require("socket.io");
-
-const regex = /(\d{1,3}\.\d)%/;
 
 const protocol = process.env.protocol || 'http';
 const host = process.env.host || 'localhost';
@@ -14,9 +12,10 @@ const url_base = process.env.base_url || "/ytdiff";
 const db_host = process.env.db_host || 'localhost';
 const save_loc = process.env.save_loc || "yt-dlp";
 const sleep_time = process.env.sleep || 3;
+const subs_enabled = process.env.subs || true;
 var options = ["--embed-metadata", "-P", save_loc]
 
-if (process.env.subs) {
+if (subs_enabled) {
     options = ["--write-subs", "--sleep-subtitles", sleep_time, "--embed-metadata", "-P", save_loc];
 }
 
@@ -81,6 +80,14 @@ const play_lists = sequelize.define("play_lists", {
         allowNull: false,
         autoIncrement: true,
     },
+    watch: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+    },
+    full_update: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+    },
 });
 
 sequelize.sync().then(() => {
@@ -121,7 +128,7 @@ async function download_background_sequential(url_list) {
             const yt_dlp = spawn("yt-dlp", options.concat(url_str));
             yt_dlp.stdout.on("data", async (data) => {
                 try {
-                    if ((percentage = regex.exec(`${data}`)) !== null) {
+                    if ((percentage = /(\d{1,3}\.\d)%/.exec(`${data}`)) !== null) {
                         sock.emit("progress", { message: percentage[0] });
                     }
                 } catch (error) {
@@ -162,16 +169,28 @@ async function list_init(req, res) {
     });
     req.on("end", async function () {
         body = JSON.parse(body);
-        // console.log("body_url: " + body["url"],"start_num: " + body["start"],"stop_num:",body["stop"]);
+        //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         var body_url = body["url"];
-        var start_num = body["start"] || 1;
-        var stop_num = body["stop"] || 10;
+        var start_num = parseInt(body["start"]) || 1;
+        var stop_num = parseInt(body["stop"]) || 10;
         var index = start_num - 1;
-        var chunk_size = body["chunk_size"] || 10;
+        var chunk_size = parseInt(body["chunk"]) || 10;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
-        // console.log(response_list, response_list.length);
-        if (response_list.length > 1 && body_url.includes("playlist")) {
+        //console.log(response_list, response_list.length);
+        if (response_list.length > 1 || body_url.includes("playlist")) {
             let title_str = "";
+            if (body_url.includes('youtube') && body_url.includes('/@')) {
+                if (!/\/videos\/?$/.test(body_url)) {
+                    body_url = body_url.replace(/\/$/, '') + '/videos';
+                }
+                //console.log(`${body_url} is a youtube channel`);
+            }
+            if (body_url.includes('pornhub') && body_url.includes('/model/')) {
+                if (!/\/videos\/?$/.test(body_url)) {
+                    body_url = body_url.replace(/\/$/, '') + '/videos';
+                }
+                //console.log('Pornhub channel url: ' + body_url);
+            }
             var is_alredy_indexed = await play_lists.findOne({
                 where: { url: body_url },
             });
@@ -180,26 +199,36 @@ async function list_init(req, res) {
                 await is_alredy_indexed.save();
                 title_str = is_alredy_indexed.title;
             } catch (error) {
-                console.error("playlist not encountered");
-            }
-            if (title_str == "") {
-                const get_title = spawn("yt-dlp", [
-                    "--playlist-end",
-                    1,
-                    "--flat-playlist",
-                    "--print",
-                    "%(playlist_title)s",
-                    body_url,
-                ]);
-                get_title.stdout.on("data", async (data) => {
-                    title_str += data;
-                });
-                get_title.on("close", (code) => {
-                    play_lists.findOrCreate({
-                        where: { url: body_url },
-                        defaults: { title: title_str },
+                // It's not an error, TBH but the spawn 
+                // will only be done once the error is raised
+                //console.error("playlist or channel not encountered earlier");
+                if (title_str == "") {
+                    const get_title = spawn("yt-dlp", [
+                        "--playlist-end",
+                        1,
+                        "--flat-playlist",
+                        "--print",
+                        "%(playlist_title)s",
+                        body_url,
+                    ]);
+                    get_title.stdout.on("data", async (data) => {
+                        title_str += data;
                     });
-                });
+                    get_title.on("close", (code) => {
+                        //console.log(title_str, title_str == "NA\n", title_str.trimEnd() == "NA");
+                        if (title_str == "NA\n") {
+                            title_str = body_url;
+                        }
+                        play_lists.findOrCreate({
+                            where: { url: body_url },
+                            defaults: {
+                                title: title_str,
+                                watch: false,
+                                full_update: false
+                            },
+                        });
+                    });
+                }
             }
         } else {
             body_url = "None";
@@ -217,7 +246,24 @@ async function list_init(req, res) {
                     ) {
                         available_var = false;
                     }
-                    const [found, _] = await vid_list.findOrCreate({
+                    else if (items[0] === "NA") {
+                        items[0] = items[1];
+                    }
+                    if (body_url == "None") {
+                        const last_item = await vid_list.findOne({
+                            where: {
+                                reference: 'None',
+                            },
+                            order: [
+                                ['createdAt', 'DESC'],
+                            ],
+                            attributes: ['list_order'],
+                            limit: 1,
+                        });
+                        //console.log(last_item.list_order);
+                        index = last_item.list_order;
+                    }
+                    const [found, created] = await vid_list.findOrCreate({
                         where: { url: items[2] },
                         defaults: {
                             id: items[1],
@@ -228,12 +274,30 @@ async function list_init(req, res) {
                             list_order: ++index,
                         },
                     });
-
-                    if (found) {
-                        init_resp["count"] += 1;
-                        init_resp["rows"].push(found);
-                        found.changed("updatedAt", true);
+                    if (!created) {
+                        // The object was found and not created
+                        //console.log("Found object: ", found);
+                        if (found.id !== items[1] ||
+                            found.reference !== body_url ||
+                            found.title !== items[0] ||
+                            found.available !== available_var ||
+                            found.list_order !== index - 1) {
+                            // At least one property is different, update the object
+                            found.id = items[1];
+                            found.reference = body_url;
+                            found.title = items[0];
+                            found.available = available_var;
+                            found.list_order = index - 1;
+                            //console.log("Found object updated: ", found);
+                        } else {
+                            found.changed("updatedAt", true);
+                        }
+                        await found.save();
                     }
+                    // finally updating the object to send to frontend
+                    init_resp["count"] += 1;
+                    init_resp["rows"].push(found);
+
                 } catch (error) {
                     console.error(error);
                 }
@@ -248,8 +312,8 @@ async function list_init(req, res) {
         }).then(function () {
             list_background(body_url, start_num, stop_num, chunk_size).then(
                 () => {
-                    // console.log("done processing playlist");
-                    sock.emit("playlist", { message: "done processing" });
+                    //console.log("done processing playlist");
+                    sock.emit("playlist", { message: "done processing playlist or channel" });
                 }
             );
         });
@@ -261,12 +325,14 @@ function sleep(s) {
 }
 
 async function list_background(body_url, start_num, stop_num, chunk_size) {
+    //console.log('In list_background', "body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
     while (true && (body_url != 'None')) {
-        start_num = parseInt(start_num) + chunk_size;
-        stop_num = parseInt(stop_num) + chunk_size;
+        start_num = start_num + chunk_size;
+        stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
         // getting this form docker compose isn't a bad idea either
         // I plan on using sockets to communicate that this is still working
+        //console.log("In background lister", "Chunk:", chunk_size, "Start:", start_num, "Stop:", stop_num);
         await sleep(sleep_time);
         const response = await ytdlp_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
@@ -277,6 +343,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
 }
 
 function ytdlp_spawner(body_url, start_num, stop_num) {
+    //console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
             "--playlist-start",
@@ -307,27 +374,50 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
 
 async function processResponse(response, body_url, start_num) {
     var index = start_num;
+    //console.log("In processResponse", "Start:", start_num);
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
-        const [title, id, url] = element.split("\t");
+        var [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
             return;
+        } else if (title === "NA") {
+            title = id;
         }
         const item_available = title !== "[Unavailable video]";
-        const [found, _] = await vid_list.findOrCreate({
-            where: { url: url },
-            defaults: {
-                id: id,
-                reference: body_url,
-                title: title,
-                downloaded: false,
-                available: item_available,
-                list_order: index++,
-            },
-        });
-        if (found && found.reference === "None") {
-            found.reference = body_url;
-            found.changed("updatedAt", true);
+        try {
+            const [found, created] = await vid_list.findOrCreate({
+                where: { url: url },
+                defaults: {
+                    id: id,
+                    reference: body_url,
+                    title: title,
+                    downloaded: false,
+                    available: item_available,
+                    list_order: index++,
+                },
+            });
+            if (!created) {
+                // The object was found and not created
+                //console.log("Found object: ", found);
+                if (found.id !== id ||
+                    found.reference !== body_url ||
+                    found.title !== title ||
+                    found.available !== item_available ||
+                    found.list_order !== index - 1) {
+                    // At least one property is different, update the object
+                    found.id = id;
+                    found.reference = body_url;
+                    found.title = title;
+                    found.available = item_available;
+                    found.list_order = index - 1;
+                    //console.log("Found object updated: ", found);
+                } else {
+                    found.changed("updatedAt", true);
+                }
+                await found.save();
+            }
+        } catch (error) {
+            console.error(error);
         }
     })
     );
@@ -375,19 +465,45 @@ async function sublist_to_table(req, res) {
     req.on("end", function () {
         body = JSON.parse(body);
         var body_url = body["url"];
-        var start_num = body["start"] || 0;
-        var stop_num = body["stop"] || 10; // add a way to send -1 to list it all in one go
-        vid_list.findAndCountAll({
-            where: {
-                reference: body_url,
-            },
-            limit: stop_num - start_num,
-            offset: start_num,
-            order: [["list_order"]],
-        }).then((result) => {
-            res.writeHead(200, { "Content-Type": "text/json" });
-            res.end(JSON.stringify(result, null, 2));
-        });
+        var start_num = parseInt(body["start"]) || 0;
+        var stop_num = parseInt(body["stop"]) || 10;
+        var query_string = body["query"] || "";
+        var order = "list_order", type = "ASC";
+        // This is a rough solution to a bigger problem, need more looking into
+        // if (body_url == "None") { order = "updatedAt", type = "DESC"; }
+        //console.log(`body_url: ${body_url}\nquery_string: "${query_string}"\nstart_num: ${start_num}\nstop_num: ${stop_num}\n`);
+        try {
+            if (query_string == "") {
+                vid_list.findAndCountAll({
+                    where: {
+                        reference: body_url,
+                    },
+                    limit: stop_num - start_num,
+                    offset: start_num,
+                    order: [[order, type]],
+                }).then((result) => {
+                    res.writeHead(200, { "Content-Type": "text/json" });
+                    res.end(JSON.stringify(result, null, 2));
+                });
+            } else {
+                vid_list.findAndCountAll({
+                    where: {
+                        reference: body_url,
+                        title: {
+                            [Op.iLike]: `%${query_string}%`
+                        }
+                    },
+                    limit: stop_num - start_num,
+                    offset: start_num,
+                    order: [[order, type]],
+                }).then((result) => {
+                    res.writeHead(200, { "Content-Type": "text/json" });
+                    res.end(JSON.stringify(result, null, 2));
+                });
+            }
+        } catch (error) {
+            console.error(error);
+        }
     });
 }
 

@@ -1,25 +1,34 @@
 # Todo
 
-1. [x] Fix the issue with unlisted vidoes being so hard to find, they need proper indexing to not be a mess
-   1. The idea is simple either make the indexing increase every time or
-   2. Make a separate table for the unlisted videos there they can have autoincrementing indexes and if they are infact added to any playlist they can just be removed leaving a blank index
-   3. Which during manintaincance can be fixed
-   4. Alternatively just sort the table by updatedAt in DESC mode
-2. [x] Added search function to both the pages
-3. [x] Make the table header text cenetered and the search bar better integarted
-4. [x] Make sure that listing on the main page which disable download on database interface is corrected when listing is done
-5. [ ] Figure out why some vidoes are being marked as duplicate despite being not the case.
-6. [ ] Add a rate limiter to the socket.io, docs [here](https://github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#websocket-single-connection-prevent-flooding)
-7. [x] The nav-icon and text are not properly aligned.
-8. [x] Test to see if regex can be more effecient at identifying urls
-   1. Something like this /https:\/\/www\.youtube\.com\/@.\*\/videos/gm perhaps
-   2. Yes it is infact better but regex hard
-9. [x] Handle youtube channels
-10. [x] Test if chunking is working properly
-    1. It wasn't, i had made a stupid mistake as usual
-11. [ ] Add a way to add videos to multiple playlists
-12. [ ] Use webpack or glup to pack the project up
-13. [ ] I don't really like it as webpack more about form over function, too much coad for too little work
-14. [ ] Add a way to search for strings in the sub_lists in the database page and even the main page
-15. [ ] Lastly add the way to schedule the updates to the playlist by adding a watch property and it's schduling
-16. [ ] Maybe add the table sorting feature using bootstrap-table js
+1. [ ] Make the code more organized and easier to find and rewrite.
+2. [ ] Figure out why some vidoes are being marked as duplicate despite being not the case.
+3. [ ] Add a rate limiter to the socket.io, docs [here](https:github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#websocket-single-connection-prevent-flooding)
+4. [ ] Add a way to add videos to multiple playlists
+5. [ ] Use webpack or glup to pack the project up
+6. [ ] I don't really like it as webpack more about form over function, too much coad for too little work
+7. [ ] Lastly add the way to schedule the updates to the playlist by adding a watch property and it's schduling
+   1. [ ] To do this the playlist table will need to updated such that it can addcomodate the changes
+   2. [ ] The presentaion in DBI needs to be updated too
+   3. [ ] The cron npm package works fine and can be used as the main timer to periodicallly look for lists that are marked to be updated
+      1. [x] then based on the cron expression and updatedAt it can update them
+      2. [ ] Or it can update the lists every time it's triggered, it won't have the granular control but then again it's such a hassle to run a timer for very playlist
+   4. [ ] Need to make sure that the playlist that will be updated have two modes
+      1. [ ] Look for new
+      2. [ ] Update all
+   5. [ ] Implement download_background_parallel()
+
+## Watcher
+
+```javascript
+const CronJob = require("cron").CronJob;
+new CronJob(
+  "0 */12 * * *",
+  function () {
+    console.log(new Date().toLocaleTimeString());
+    /* This funtion could serve as the main watcher */
+  },
+  null,
+  true,
+  process.env.time_zone || "Asia/Kolkata"
+).start();
+```
