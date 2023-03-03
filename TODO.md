@@ -10,8 +10,10 @@
    4. [ ] Need to make sure that the playlist that will be updated have two modes
       1. [ ] Writing the code is easy, getting the input form front end is the hard part, I just can't figure out how to make a intuitive way to ask the user to select the choices for watching, among the choices of not watching for updates, only looking for updatesm or updating the full playlist
       2. [ ] TBH manually updating the full playlist seems better than haveing a full playlist update every scheduled update, the performance will suffer too, I will debate in my mind if removing the full_update seems like a better solution or not.
-      3. [ ] Look for new (ie: will start listing from the last index that's saved in DB) / quick_update
-      4. [ ] Update all / full_update
+      3. [ ] Maybe adding them to the main page wouldn't be such a bad idea
+      4. [ ] On that note the option to keep chunk empty and thus only list the url from the start to stop and no more could be a good addition
+      5. [ ] Look for new (ie: will start listing from the last index that's saved in DB) / quick_update
+      6. [ ] Update all / full_update
    5. [ ] The cron npm package works fine and can be used as the main timer to periodicallly look for lists that are marked to be updated
       1. [x] Based on the cron expression and updatedAt it can update them [Rejected]
       2. [ ] Or it can update the lists every time it's triggered, it won't have the granular control but then again it's such a hassle to run a timer for very playlist
