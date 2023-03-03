@@ -1,39 +1,30 @@
+"use strict";
 function sockSetup() {
     //console.log("Sock setup started");
     const socket = io({ path: "/ytdiff/socket.io/" });
-    const list_btn = document.getElementById("list_btn") || { disabled: false };
-    const dnld_btn = document.getElementById("download_btn");
     socket.on("init", function (data) {
         // Need to make it so that the "acknowledge" is used somehow.
         socket.emit("acknowledge", { data: "Connected", id: data.id });
     });
     socket.on("download-start", function (data) {
         //console.groupCollapsed(`Downloading: ${data.message}`);
-        if (list_btn.disabled != true && dnld_btn.disabled != true) {
-            list_btn.disabled = true;
-            dnld_btn.disabled = true;
-        }
+        toggleButton("off");
     });
     socket.on("progress", function (data) {
         //console.log(data.message);
-        if (list_btn.disabled != true && dnld_btn.disabled != true) {
-            list_btn.disabled = true;
-            dnld_btn.disabled = true;
-        }
+        toggleButton("off");
     });
     socket.on("error", console.error.bind(console));
-    socket.on("download", function (data) {
+    socket.on("download-done", function (data) {
         //console.log(`Downloaded: ${data.message} ✅`);
         //console.groupEnd();
-        list_btn.disabled = false;
-        dnld_btn.disabled = false;
+        toggleButton("on");
         showToast(`${data.message} ✅`);
     });
     socket.on("playlist", function (data) {
         //console.log(`Playlist: ${data.message} ✅`);
         //console.groupEnd();
-        list_btn.disabled = false;
-        dnld_btn.disabled = false;
+        toggleButton("on");
         showToast(`${data.message} ✅`);
     });
 };
@@ -44,6 +35,26 @@ function showToast(text) {
         delay: 5000
     }).show();
 }
+function toggleButton(state) {
+    const list_btn = document.getElementById("list_btn") || { disabled: false };
+    const dnld_btn = document.getElementById("download_btn");
+    switch (state) {
+        case "off":
+            // Check if on then turn off
+            if ((list_btn.disabled == false) && (dnld_btn.disabled == false)) {
+                list_btn.disabled = true;
+                dnld_btn.disabled = true;
+            }
+            break;
+        case "on":
+            // turn on the buttons
+            list_btn.disabled = false;
+            dnld_btn.disabled = false;
+            break;
+        default:
+            break;
+    }
+}
 
 // Listing method
 function listVideos() {
@@ -51,12 +62,14 @@ function listVideos() {
         var url = new URL(document.getElementById("url").value);
         if (url.protocol == "https:" || url.protocol == "http:") {
             url = url.href;
+            // Setting the global url
+            url_global = url;
         } else {
             throw new Error("Not a valid URL");
         }
         const [start_val, stop_val] = getLimits(0, "start_sublist", "stop_sublist", "chunk_sublist");
-        const chunk_sublist = parseInt(document.getElementById("chunk_sublist").value, 10);
-
+        const chunk_sublist = +document.getElementById("chunk_sublist").value;
+        toggleButton("off");
         //console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
         fetch("/ytdiff/list", {
             method: "post",
@@ -68,20 +81,22 @@ function listVideos() {
                 url: url,
                 start: start_val,
                 stop: stop_val,
-                chunk: chunk_sublist
+                chunk: chunk_sublist,
+                watch: false,
+                full_update: false,
             })
         }).then((response) => response.text()).then(makeSubTable);
     } catch (err) {
-        console.error(err);
+        //console.error(err);
         showToast(`Not a valid URL ❌`);
     }
 };
 
 // Limit setter
 function getLimits(mode, start_id, stop_id, chunk_id) {
-    start_val = parseInt(document.getElementById(start_id).value, 10);
-    stop_val = parseInt(document.getElementById(stop_id).value, 10);
-    const chunk = parseInt(document.getElementById(chunk_id).value, 10);
+    var start_val = +document.getElementById(start_id).value;
+    var stop_val = +document.getElementById(stop_id).value;
+    const chunk = +document.getElementById(chunk_id).value;
     // Setting start value if it's not set in DOM yet
     if (isNaN(start_val)) {
         start_val = 0;
@@ -288,7 +303,7 @@ function getSubList(url, mode = 0, query_str = "", clear_query = true) {
 function makeSubTable(text) {
     clearSubList();
     const table = document.getElementById("listing");
-    data = JSON.parse(text);
+    const data = JSON.parse(text);
     //console.log(data);
     data["rows"].forEach(element => {
         /*
@@ -373,20 +388,17 @@ function selectNone() {
     });
 };
 function downloadSelected() {
-    document.getElementById("download_btn").disabled = true;
-    var id = []
+    toggleButton("off");
+    const request_list = { id: [] };
     document.querySelectorAll("input[type=checkbox].video-item:checked").forEach(element => {
-        id.push(element.id);
+        request_list['id'].push(element.id);
     })
-    // console.log(id);
     fetch("/ytdiff/download", {
         method: "post",
         headers: {
             "Accept": "application/json",
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-            ids: id,
-        })
-    });
+        body: JSON.stringify(request_list)
+    });//.then((response) => response.text()).then(console.log);
 };

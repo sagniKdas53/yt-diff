@@ -1,3 +1,4 @@
+"use strict";
 const { spawn } = require("child_process");
 const http = require("http");
 const fs = require("fs");
@@ -96,39 +97,43 @@ sequelize.sync().then(() => {
     console.error('Unable to create table : ', error);
 });
 
-// livestreams can be downloaded but no progress is shown
-async function download_init(req, res) {
+async function download_lister(req, res) {
     var body = "";
-    req.on("data", function (data) {
+    req.on("data", async function (data) {
         body += data;
-        if (body.length > 1e6) req.connection.destroy();
+        if (body.length > 1e6) {
+            req.connection.destroy();
+            res.writeHead(413, { "Content-Type": html });
+            res.write("Content Too Large");
+            res.end();
+        }
     });
     req.on("end", async function () {
         body = JSON.parse(body);
-        var urls = [];
-        for (const id_str of body["ids"]) {
+        //console.log(body);
+        const response_list = { item: [] };
+        for (const id_str of body["id"]) {
             const entry = await vid_list.findOne({ where: { id: id_str } });
-            urls.push([entry.url, entry.title]);
+            response_list['item'].push([entry.url, entry.title]);
         }
-        download_background_sequential(urls);
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end("[" + urls.join(" , ") + "]");
+        download_sequential(response_list['item']);
+        res.writeHead(200, { "Content-Type": json_t });
+        res.end(JSON.stringify(response_list));
     });
 }
 
-// update this to downlaod parallelly with a limit, this may or may not be a good idea
-async function download_background_parallel(url_list) {
-    // TODO
-}
-
-async function download_background_sequential(url_list) {
-    for (const [url_str, title] of url_list) {
+async function download_sequential(items) {
+    //console.log(items);
+    for (const [url_str, title] of items) {
         try {
             sock.emit('download-start', { message: title });
             const yt_dlp = spawn("yt-dlp", options.concat(url_str));
             yt_dlp.stdout.on("data", async (data) => {
                 try {
-                    if ((percentage = /(\d{1,3}\.\d)%/.exec(`${data}`)) !== null) {
+                    // Keeing these just so it can be used 
+                    // to maybe add a progress bar
+                    const percentage = /(\d{1,3}\.\d)%/.exec(`${data}`);
+                    if (percentage !== null) {
                         sock.emit("progress", { message: percentage[0] });
                     }
                 } catch (error) {
@@ -144,12 +149,12 @@ async function download_background_sequential(url_list) {
             yt_dlp.on("close", async (code) => {
                 // add the db update here
                 if (code == 0) {
-                    var entity = await vid_list.findOne({ where: { url: url_str } });
+                    const entity = await vid_list.findOne({ where: { url: url_str } });
                     entity.set({
                         downloaded: true,
                     });
                     await entity.save();
-                    sock.emit("download", { message: `${entity.title}` });
+                    sock.emit("download-done", { message: `${entity.title}` });
                 }
             });
             // this holds the for loop, preventing the next iteration from happening
@@ -160,21 +165,30 @@ async function download_background_sequential(url_list) {
     }
 }
 
+// Add a parallel downloader someday
+
 async function list_init(req, res) {
     var body = "",
         init_resp = { count: 0, rows: [] };
     req.on("data", function (data) {
         body += data;
-        if (body.length > 1e6) req.connection.destroy();
+        if (body.length > 1e6) {
+            req.connection.destroy();
+            res.writeHead(413, { "Content-Type": html });
+            res.write("Content Too Large");
+            res.end();
+        }
     });
     req.on("end", async function () {
         body = JSON.parse(body);
         //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         var body_url = body["url"];
-        var start_num = parseInt(body["start"]) || 1;
-        var stop_num = parseInt(body["stop"]) || 10;
+        var start_num = +body["start"] || 1;
+        var stop_num = +body["stop"] || 10;
         var index = start_num - 1;
-        var chunk_size = parseInt(body["chunk"]) || 10;
+        var chunk_size = +body["chunk"] || 10;
+        var watch_var = body["watch"] || false;
+        var full_update = body["full_update"] || false;
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
         //console.log(response_list, response_list.length);
         if (response_list.length > 1 || body_url.includes("playlist")) {
@@ -223,8 +237,8 @@ async function list_init(req, res) {
                             where: { url: body_url },
                             defaults: {
                                 title: title_str,
-                                watch: false,
-                                full_update: false
+                                watch: watch_var,
+                                full_update: full_update
                             },
                         });
                     });
@@ -304,7 +318,7 @@ async function list_init(req, res) {
             })
         ).then(function () {
             try {
-                res.writeHead(200, { "Content-Type": "text/json" });
+                res.writeHead(200, { "Content-Type": json_t });
                 res.end(JSON.stringify(init_resp, null, 2));
             } catch (error) {
                 console.error(error);
@@ -427,7 +441,12 @@ async function playlists_to_table(req, res) {
     var body = "";
     req.on("data", function (data) {
         body += data;
-        if (body.length > 1e6) req.connection.destroy();
+        if (body.length > 1e6) {
+            req.connection.destroy();
+            res.writeHead(413, { "Content-Type": html });
+            res.write("Content Too Large");
+            res.end();
+        }
     });
     req.on("end", function () {
         body = JSON.parse(body);
@@ -450,7 +469,7 @@ async function playlists_to_table(req, res) {
             offset: start_num,
             order: [[row, type]],
         }).then((result) => {
-            res.writeHead(200, { "Content-Type": "text/json" });
+            res.writeHead(200, { "Content-Type": json_t });
             res.end(JSON.stringify(result, null, 2));
         });
     });
@@ -460,13 +479,18 @@ async function sublist_to_table(req, res) {
     var body = "";
     req.on("data", function (data) {
         body += data;
-        if (body.length > 1e6) req.connection.destroy();
+        if (body.length > 1e6) {
+            req.connection.destroy();
+            res.writeHead(413, { "Content-Type": html });
+            res.write("Content Too Large");
+            res.end();
+        }
     });
     req.on("end", function () {
         body = JSON.parse(body);
         var body_url = body["url"];
-        var start_num = parseInt(body["start"]) || 0;
-        var stop_num = parseInt(body["stop"]) || 10;
+        var start_num = +body["start"] || 0;
+        var stop_num = +body["stop"] || 10;
         var query_string = body["query"] || "";
         var order = "list_order", type = "ASC";
         // This is a rough solution to a bigger problem, need more looking into
@@ -482,7 +506,7 @@ async function sublist_to_table(req, res) {
                     offset: start_num,
                     order: [[order, type]],
                 }).then((result) => {
-                    res.writeHead(200, { "Content-Type": "text/json" });
+                    res.writeHead(200, { "Content-Type": json_t });
                     res.end(JSON.stringify(result, null, 2));
                 });
             } else {
@@ -497,7 +521,7 @@ async function sublist_to_table(req, res) {
                     offset: start_num,
                     order: [[order, type]],
                 }).then((result) => {
-                    res.writeHead(200, { "Content-Type": "text/json" });
+                    res.writeHead(200, { "Content-Type": json_t });
                     res.end(JSON.stringify(result, null, 2));
                 });
             }
@@ -510,6 +534,7 @@ async function sublist_to_table(req, res) {
 const css = "text/css; charset=utf-8";
 const html = "text/html; charset=utf-8";
 const js = "text/javascript; charset=utf-8";
+const json_t = "text/json; charset=utf-8";
 const staticAssets = {
     '': { obj: (__dirname + '/index.html'), type: html },
     '/': { obj: (__dirname + '/index.html'), type: html },
@@ -543,7 +568,7 @@ const server = http.createServer((req, res) => {
     } else if (req.url === url_base + "/getsub" && req.method === "POST") {
         sublist_to_table(req, res);
     } else if (req.url === url_base + "/download" && req.method === "POST") {
-        download_init(req, res);
+        download_lister(req, res);
     } else {
         res.writeHead(404, { "Content-Type": html });
         res.write("Not Found");
