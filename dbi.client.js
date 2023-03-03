@@ -44,11 +44,50 @@ function showToast(text) {
         delay: 5000
     }).show();
 }
+// Limit setter
+function getLimits(mode, start_id, stop_id, chunk_id) {
+    start_val = parseInt(document.getElementById(start_id).value, 10);
+    stop_val = parseInt(document.getElementById(stop_id).value, 10);
+    const chunk = parseInt(document.getElementById(chunk_id).value, 10);
+    // Setting start value if it's not set in DOM yet
+    if (isNaN(start_val)) {
+        start_val = 0;
+    }
+    // Setting stop value if it's not set in DOM yet
+    if (isNaN(stop_val)) {
+        stop_val = start_val + chunk;
+    }
+    switch (mode) {
+        case 1:
+            start_val = start_val + chunk;
+            stop_val = stop_val + chunk;
+            break;
+        case 2:
+            if ((start_val - chunk) <= 0) {
+                start_val = 0;
+            } else {
+                start_val = start_val - chunk;
+            }
+            // Setting stop value
+            if ((stop_val - chunk) <= chunk) {
+                stop_val = chunk;
+            } else {
+                stop_val = stop_val - chunk;
+            }
+            break;
+        default:
+            break;
+    }
+    document.getElementById(start_id).value = start_val;
+    document.getElementById(stop_id).value = stop_val;
+    return [start_val, stop_val];
+}
 
-// Mail list methods
-function getMainList(start_val, stop_val) {
+// Main list methods
+function getMainList(mode = 0) {
     const sort_val = document.getElementById("sort_by_playlist").value;
     const order_val = document.getElementById("order_by_playlist").value;
+    const [start_val, stop_val] = getLimits(mode, "start_playlist", "stop_playlist", "chunk_playlist");
     //console.log("Start: " + start_val + " stop: " + stop_val);
     fetch("/ytdiff/dbi", {
         method: "post",
@@ -92,74 +131,20 @@ function makeMainTable(text) {
     });
 }
 
+// Main list utilities
 function nextMain() {
-    var start = parseInt(document.getElementById("start_playlist").value, 10);
-    var stop = parseInt(document.getElementById("stop_playlist").value, 10);
-    const chunk = parseInt(document.getElementById("chunk_playlist").value, 10);
-    // Setting start value
-    if (isNaN(start)) {
-        document.getElementById("start_playlist").value = 0;
-        start = 0;
-    } else {
-        document.getElementById("start_playlist").value = start + chunk;
-        start = start + chunk;
-    }
-    // Setting stop value
-    if (isNaN(stop)) {
-        document.getElementById("stop_playlist").value = chunk;
-        stop = chunk;
-    } else {
-        document.getElementById("stop_playlist").value = stop + chunk;
-        stop = stop + chunk;
-    }
-    getMainList(start, stop);
+    getMainList(1);
 };
 function backMain() {
-    var start = parseInt(document.getElementById("start_playlist").value, 10);
-    var stop = parseInt(document.getElementById("stop_playlist").value, 10);
-    const chunk = parseInt(document.getElementById("chunk_playlist").value, 10);
-    // Setting start value
-    if (isNaN(start) || ((start - chunk) <= 0)) {
-        document.getElementById("start_playlist").value = 0;
-        start = 0;
-    } else {
-        document.getElementById("start_playlist").value = start - chunk;
-        start = start - chunk
-    }
-    // Setting stop value
-    if (isNaN(stop) || ((stop - chunk) <= chunk)) {
-        document.getElementById("stop_playlist").value = chunk;
-        stop = chunk;
-    } else {
-        document.getElementById("stop_playlist").value = stop - chunk;
-        stop = stop - chunk;
-    }
-    getMainList(start, stop);
+    getMainList(2);
 };
 function sortLoaded() {
-    const start = parseInt(document.getElementById("start_playlist").value, 10);
-    const stop = parseInt(document.getElementById("stop_playlist").value, 10);
-    getMainList(start, stop);
+    getMainList(0);
 }
 
-//Sub list methods
-function getSubList(url, start_val, stop_val, query_str = "", clear_query = true) {
-    // Getting the start and stop values
-    if (start_val == undefined || stop_val == undefined) {
-        start_val = parseInt(document.getElementById("start_sublist").value, 10);
-        stop_val = parseInt(document.getElementById("stop_sublist").value, 10);
-        const chunk = parseInt(document.getElementById("chunk_sublist").value, 10);
-        // Setting start value if it's not set in DOM yet
-        if (isNaN(start_val)) {
-            document.getElementById("start_sublist").value = 0;
-            start_val = 0;
-        }
-        // Setting stop value if it's not set in DOM yet
-        if (isNaN(stop_val)) {
-            stop_val = start_val + chunk;
-            document.getElementById("stop_sublist").value = stop_val;
-        }
-    }
+//Sub list making methods
+function getSubList(url, mode = 0, query_str = "", clear_query = true) {
+    const [start_val, stop_val] = getLimits(mode, "start_sublist", "stop_sublist", "chunk_sublist");
     // Setting the url_global variable so that next request can use it again
     if (url_global != url) {
         url_global = url;
@@ -230,6 +215,8 @@ function makeSubTable(text) {
         }
     });
 };
+
+//Sub list utilities
 function clearSubList(reset = false) {
     const table = document.getElementById("listing");
     for (var i = 0; i < table.rows.length;) {
@@ -242,84 +229,29 @@ function clearSubList(reset = false) {
         url_global = "None";
     }
 };
-function select_all() {
+function searchSub() {
+    var query = document.getElementById("query_sublist").value.trim();
+    getSubList(url_global, 0, query, false);
+};
+function nextSub() {
+    var query = document.getElementById("query_sublist").value.trim();
+    getSubList(url_global, 1, query, false);
+};
+function backSub() {
+    var query = document.getElementById("query_sublist").value.trim();
+    getSubList(url_global, 2, query, false);
+};
+function selectAll() {
     document.querySelectorAll("input[type=checkbox].video-item").forEach(element => {
         element.checked = true;
     });
 };
-function select_none() {
+function selectNone() {
     document.querySelectorAll("input[type=checkbox].video-item").forEach(element => {
         element.checked = false;
     });
 };
-
-// Do from here on out
-function searchSub() {
-    var query = document.getElementById("query_sublist").value.trim();
-    var start = parseInt(document.getElementById("start_sublist").value, 10);
-    var stop = parseInt(document.getElementById("stop_sublist").value, 10);
-    // Setting start value
-    if (isNaN(start)) {
-        document.getElementById("start").value = 0;
-        start = 0;
-    }
-    // Setting stop value
-    if (isNaN(stop)) {
-        document.getElementById("stop").value = chunk;
-        stop = chunk;
-    }
-    //console.log("start: " + start + " stop: " + stop, "query: " + query);
-    getSubList(url_global, start, stop, query, false);
-};
-
-function nextSub() {
-    var query = document.getElementById("query_sublist").value.trim();
-    var chunk = parseInt(document.getElementById("chunk_sublist").value, 10);
-    var start = parseInt(document.getElementById("start_sublist").value, 10);
-    var stop = parseInt(document.getElementById("stop_sublist").value, 10);
-    // Setting start value
-    if (isNaN(start)) {
-        document.getElementById("start_sublist").value = 0;
-        start = 0;
-    } else {
-        document.getElementById("start_sublist").value = start + chunk;
-        start = start + chunk;
-    }
-    // Setting stop value
-    if (isNaN(stop)) {
-        document.getElementById("stop_sublist").value = chunk;
-        stop = chunk;
-    } else {
-        document.getElementById("stop_sublist").value = stop + chunk;
-        stop = stop + chunk;
-    }
-    getSubList(url_global, start, stop, query, false);
-};
-function backSub() {
-    var query = document.getElementById("query_sublist").value.trim();
-    var chunk = parseInt(document.getElementById("chunk_sublist").value, 10);
-    var start = parseInt(document.getElementById("start_sublist").value, 10);
-    var stop = parseInt(document.getElementById("stop_sublist").value, 10);
-    // Setting start value
-    if (isNaN(start) || ((start - chunk) <= 0)) {
-        document.getElementById("start_sublist").value = 0;
-        start = 0;
-    } else {
-        document.getElementById("start_sublist").value = start - chunk;
-        start = start - chunk
-    }
-    // Setting stop value
-    if (isNaN(stop) || ((stop - chunk) <= chunk)) {
-        document.getElementById("stop_sublist").value = chunk;
-        stop = chunk;
-    } else {
-        document.getElementById("stop_sublist").value = stop - chunk;
-        stop = stop - chunk;
-    }
-    getSubList(url_global, start, stop, query, false);
-};
-
-function download_selected() {
+function downloadSelected() {
     document.getElementById("download_btn").disabled = true;
     var id = []
     document.querySelectorAll("input[type=checkbox].video-item:checked").forEach(element => {

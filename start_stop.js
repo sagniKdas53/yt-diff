@@ -1,3 +1,4 @@
+// this if from the orphaned method
 const chunk = parseInt(document.getElementById("chunk_sublist").value, 10);
 var start = parseInt(document.getElementById("start_sublist").value, 10);
 var stop = parseInt(document.getElementById("stop_sublist").value, 10);
@@ -19,8 +20,22 @@ if (isNaN(stop) || ((stop - chunk) <= chunk)) {
 }
 
 
-
-
+// this is form getSubList originally
+if (start_val == undefined || stop_val == undefined) {
+    start_val = parseInt(document.getElementById("start_sublist").value, 10);
+    stop_val = parseInt(document.getElementById("stop_sublist").value, 10);
+    const chunk = parseInt(document.getElementById("chunk_sublist").value, 10);
+    // Setting start value if it's not set in DOM yet
+    if (isNaN(start_val)) {
+        document.getElementById("start_sublist").value = 0;
+        start_val = 0;
+    }
+    // Setting stop value if it's not set in DOM yet
+    if (isNaN(stop_val)) {
+        stop_val = start_val + chunk;
+        document.getElementById("stop_sublist").value = stop_val;
+    }
+}
 
 
 
