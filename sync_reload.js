@@ -522,8 +522,7 @@ const staticAssets = {
     '/assets/socket.io.min.js': { obj: (__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js'), type: js },
     '/assets/socket.io.min.js.map': { obj: (__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js.map'), type: js },
     '/assets/nav.png': { obj: (__dirname + '/nav.png'), type: "image/png" },
-    '/assets/client.js': { obj: (__dirname + '/client.js'), type: js },
-    '/assets/dbi.client.js': { obj: (__dirname + '/dbi.client.js'), type: js }
+    '/assets/client.js': { obj: (__dirname + '/client.js'), type: js }
 };
 
 const server = http.createServer((req, res) => {

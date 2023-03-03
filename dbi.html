@@ -10,7 +10,7 @@
     <link href="/ytdiff/assets/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous" />
     <script src="/ytdiff/assets/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
     <script src="/ytdiff/assets/socket.io.min.js" crossorigin="anonymous"></script>
-    <script src="/ytdiff/assets/dbi.client.js" crossorigin="anonymous"></script>
+    <script src="/ytdiff/assets/client.js" crossorigin="anonymous"></script>
     <style>
         html,
         body {
@@ -224,83 +224,13 @@
 
             document.getElementById("selector").checked = false;
         }
-        
-        function input_limiter(evt) {
-            evt.preventDefault()
-            //console.log(evt.explicitOriginalTarget.id, evt.inputType, evt.target.value);
-            var value = +evt.target.value;
-            const start_sublist = +document.getElementById("start_sublist").value;
-            const start_playlist = +document.getElementById("start_playlist").value;
-            const chunk_sublist = +document.getElementById("chunk_sublist").value;
-            const chunk_playlist = +document.getElementById("chunk_playlist").value;
-            switch (evt.explicitOriginalTarget.id) {
-                case "chunk_sublist":
-                    if (value >= 1) {
-                        document.getElementById("stop_sublist").value = start_sublist + value;
-                    } else {
-                        evt.target.value = 1;
-                    }
-                    break;
-                case "chunk_playlist":
-                    if (value >= 1) {
-                        document.getElementById("stop_playlist").value = start_playlist + value;
-                    }
-                    else {
-                        evt.target.value = 1;
-                    }
-                    break;
-                case "start_sublist":
-                    if (value >= 0) {
-                        document.getElementById("stop_sublist").value = chunk_sublist + value;
-                    }
-                    else {
-                        evt.target.value = 0;
-                    }
-                    break;
-                case "start_playlist":
-                    if (value >= 0) {
-                        document.getElementById("stop_playlist").value = chunk_playlist + value;
-                    }
-                    else {
-                        evt.target.value = 0;
-                    }
-                    break;
-                case "stop_sublist":
-                    if (value >= 1) {
-                        if (value - start_sublist >= 1)
-                            document.getElementById("chunk_sublist").value = value - start_sublist;
-                        else {
-                            document.getElementById("stop_sublist").value = value + 1;
-                            document.getElementById("chunk_sublist").value = 1;
-                        }
-                    }
-                    else {
-                        evt.target.value = 1;
-                    }
-                    break;
-                case "stop_playlist":
-                    if (value >= 1) {
-                        if (value - start_playlist >= 1)
-                            document.getElementById("chunk_playlist").value = value - start_playlist;
-                        else {
-                            document.getElementById("stop_playlist").value = value + 1;
-                            document.getElementById("chunk_playlist").value = 1;
-                        }
-                    }
-                    else {
-                        evt.target.value = 1;
-                    }
-                    break;
-                default:
-                    break;
-            }
-        }
-        document.getElementById("chunk_sublist").addEventListener('input', function (evt) { input_limiter(evt) });
-        document.getElementById("start_sublist").addEventListener('input', function (evt) { input_limiter(evt) });
-        document.getElementById("stop_sublist").addEventListener('input', function (evt) { input_limiter(evt) });
-        document.getElementById("chunk_playlist").addEventListener('input', function (evt) { input_limiter(evt) });
-        document.getElementById("start_playlist").addEventListener('input', function (evt) { input_limiter(evt) });
-        document.getElementById("stop_playlist").addEventListener('input', function (evt) { input_limiter(evt) });
+
+        document.getElementById("chunk_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("start_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("stop_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("chunk_playlist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("start_playlist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("stop_playlist").addEventListener('input', function (evt) { inputLimiter(evt) });
 
         document.getElementById("selector").addEventListener("input", function (evt) {
             evt.preventDefault();
@@ -310,17 +240,6 @@
                 selectNone();
             }
         });
-
-        const debounce = function (fn, d) {
-            let timer;
-            return function () {
-                clearTimeout(timer);
-                timer = setTimeout(() => {
-                    fn.apply();
-                }, d);
-            }
-        }
-        const onFinishTyping = debounce(searchSub, 500);
     </script>
 </body>
 

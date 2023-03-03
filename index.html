@@ -83,21 +83,21 @@
 
                     <div class="row">
                         <div class="input-group mb-3 mt-3">
-                            <input type="number" class="form-control" placeholder="0" min="0" name="start_input"
-                                id="start" data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
+                            <input type="number" class="form-control" placeholder="0" min="0" name="start_sublist"
+                                id="start_sublist" data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
                             <span class="input-group-text">-</span>
-                            <input type="number" class="form-control" placeholder="10" min="1" name="stop_input"
-                                id="stop" data-bs-toggle="tooltip" data-bs-placement="top" title="Stop" />
+                            <input type="number" class="form-control" placeholder="10" min="1" name="stop_sublist"
+                                id="stop_sublist" data-bs-toggle="tooltip" data-bs-placement="top" title="Stop" />
                             <span class="input-group-text">Chunk</span>
-                            <input type="number" class="form-control" placeholder="10" min="1" name="stop_input"
-                                id="chunk" data-bs-toggle="tooltip" data-bs-placement="top" title="Chunk" />
+                            <input type="number" class="form-control" placeholder="10" min="1" name="chunk_sublist"
+                                id="chunk_sublist" data-bs-toggle="tooltip" data-bs-placement="top" title="Chunk" />
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-7">
                             <div class="btn-group" role="group">
-                                <button id="listit" type="button" onclick="list_it()"
+                                <button id="list_btn" type="button" onclick="listVideos()"
                                     class="btn btn-primary">List</button>
                                 <button id="clear" type="button" onclick="clearSubList(true)"
                                     class="btn btn-primary">Clear</button>
@@ -124,7 +124,7 @@
                         </div>
                         <div class="col">
                             <div class="btn-group" role="group">
-                                <button id="dnld" type="button" onclick="downloadSelected()"
+                                <button id="download_btn" type="button" onclick="downloadSelected()"
                                     class="btn btn-primary">Download</button>
                             </div>
                         </div>
@@ -136,11 +136,11 @@
                     <table class="table table-responsive">
                         <thead>
                             <tr>
-                                <th scope="col" class="table-dark text-center"><input class="form-check-input" type="checkbox"
-                                        value="" id="selector" aria-label="..."></th>
+                                <th scope="col" class="table-dark text-center"><input class="form-check-input"
+                                        type="checkbox" value="" id="selector" aria-label="..."></th>
                                 <th scope="col" class="table-dark large-title m-0 p-0 text-center align-middle">
-                                    <!--Title--><input type="text" class="search m-0 p-0" id="query" placeholder="Title"
-                                        onkeyup="onFinishTyping()" />
+                                    <!--Title--><input type="text" class="search m-0 p-0" id="query_sublist"
+                                        placeholder="Title" onkeyup="onFinishTyping()" />
                                 </th>
                                 <th scope="col" class="table-dark text-center">Saved</th>
                             </tr>
@@ -168,52 +168,18 @@
         window.onload = init();
         var url_global = "None";
         function init() {
-            document.getElementById("start").value = 0;
-            document.getElementById("stop").value = 10;
-            document.getElementById("chunk").value = 10;
+            document.getElementById("start_sublist").value = 0;
+            document.getElementById("stop_sublist").value = 10;
+            document.getElementById("chunk_sublist").value = 10;
             document.getElementById("selector").checked = false;
-            document.getElementById("query").value = "";
+            document.getElementById("query_sublist").value = "";
             sockSetup();
         }
 
-        function input_limiter(type, evt) {
-            evt.preventDefault()
-            //console.log("event", evt, evt.target.value);
-            var value = parseInt(evt.target.value, 10);
-            var start = parseInt(document.getElementById("start").value, 10);
-            if (type == "chunk") {
-                if (value >= 1) {
-                    document.getElementById("stop").value = start + value;
-                }
-                else {
-                    this.value = 1;
-                }
-            } else if (type == "start") {
-                if (value >= 0) {
-                    var chunk = parseInt(document.getElementById("chunk").value, 10);
-                    document.getElementById("stop").value = chunk + value;
-                }
-                else {
-                    this.value = 0;
-                }
-            }
-            else if (type == "stop") {
-                if (value >= 1) {
-                    if (value - start >= 1)
-                        document.getElementById("chunk").value = value - start;
-                    else {
-                        document.getElementById("stop").value = value + 1;
-                        document.getElementById("chunk").value = 1;
-                    }
-                }
-                else {
-                    this.value = 1;
-                }
-            }
-        }
-        document.getElementById("chunk").addEventListener('input', function (evt) { input_limiter("chunk", evt) });
-        document.getElementById("start").addEventListener('input', function (evt) { input_limiter("start", evt) });
-        document.getElementById("stop").addEventListener('input', function (evt) { input_limiter("stop", evt) });
+        document.getElementById("chunk_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("start_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("stop_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+
         document.getElementById("selector").addEventListener("input", function (evt) {
             if (this.checked) {
                 selectAll();
@@ -221,18 +187,6 @@
                 selectNone();
             }
         });
-
-        const debounce = function (fn, d) {
-            let timer;
-            return function () {
-                clearTimeout(timer);
-                timer = setTimeout(() => {
-                    fn.apply();
-                }, d);
-            }
-        }
-
-        const onFinishTyping = debounce(searchSub, 500);
     </script>
 </body>
 
