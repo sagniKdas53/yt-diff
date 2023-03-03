@@ -21,7 +21,7 @@ function sockSetup() {
         toggleButton("on");
         showToast(`${data.message} ✅`);
     });
-    socket.on("playlist", function (data) {
+    socket.on("playlist-done", function (data) {
         //console.log(`Playlist: ${data.message} ✅`);
         //console.groupEnd();
         toggleButton("on");
