@@ -212,7 +212,7 @@ async function list_init(req, res) {
                 await is_alredy_indexed.save();
                 title_str = is_alredy_indexed.title;
             } catch (error) {
-                // It's not an error, TBH but the spawn 
+                // Its not an error, TBH but the spawn 
                 // will only be done once the error is raised
                 //console.error("playlist or channel not encountered earlier");
                 if (title_str == "") {
@@ -368,8 +368,8 @@ async function processResponse(response, body_url, start_num) {
                 }
                 await found.save();
             }
-            init_resp['count']++;
-            init_resp['rows'].push(found)
+            init_resp["count"]++;
+            init_resp["rows"].push(found)
         } catch (error) {
             console.error(error);
         }
