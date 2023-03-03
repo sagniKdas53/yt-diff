@@ -204,7 +204,7 @@ function inputLimiter(evt) {
     }
 }
 const debounce = function (fn, d) {
-    let timer;
+    var timer;
     return function () {
         clearTimeout(timer);
         timer = setTimeout(() => {
@@ -246,16 +246,29 @@ function makeMainTable(text) {
         /*
         id 	url 	createdAt 	updatedAt 	more
         */
+        //console.log(element);
         const row = table.insertRow();
         const id = row.insertCell(0);
         const url = row.insertCell(1);
-        const createdAt = row.insertCell(2);
-        const updatedAt = row.insertCell(3);
+        //const createdAt = row.insertCell(2);
+        const updatedAt = row.insertCell(2);
+        const watch = row.insertCell(3);
         const show = row.insertCell(4);
 
         id.innerHTML = element.order_added;
         url.innerHTML = `<a href="${element.url}">${element.title}</a>`;
-        createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
+        //createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "form-check-input me-1 update-makers";
+        // Now I have an Idea that is to add an event listener to the class of update-makers
+        // whenever one of them is checked or uncheck the playlist url is sent as an xhr request
+        // that will be recieved and consequently mark the playlist to be updated whenever the
+        // next scheduled update is, but I still have no idea how to handle the full update thing
+        checkbox.value = element.watch;
+        checkbox.id = element.order_added;
+        watch.className = "text-center";
+        watch.appendChild(checkbox);
         updatedAt.innerHTML = new Date(element.updatedAt).toLocaleDateString("en-US", options);
         // single quotes are necessary here
         show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
@@ -314,13 +327,13 @@ function makeSubTable(text) {
         const title = row.insertCell(1);
         const download = row.insertCell(2);
 
-        let checkbox = document.createElement("input");
+        const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.className = "form-check-input me-1 video-item";
         checkbox.value = "";
         checkbox.id = element.id;
 
-        let link = document.createElement("a");
+        const link = document.createElement("a");
         link.href = element.url;
         link.appendChild(document.createTextNode(element.title));
         select.className = "text-center";
