@@ -187,7 +187,7 @@ async function list_init(req, res) {
             watch_it = body["watch"] || false,
             full_update = body["full_update"] || false;
         var body_url = body["url"],
-            index = start_num - 1;
+            index = start_num - 1; // index starts from 0 in this function
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
         //console.log(response_list, response_list.length);
         if (response_list.length > 1 || body_url.includes("playlist")) {
@@ -255,8 +255,13 @@ async function list_init(req, res) {
                 attributes: ["list_order"],
                 limit: 1,
             });
-            //console.log(last_item.list_order);
-            index = last_item.list_order;
+            try {
+                //console.log(last_item.list_order);
+                index = last_item.list_order;
+            } catch (error) {
+                // encountered an error if unlisted vidoes was not initialized
+                index = 0; // it will become 1 in the DB
+            }
         }
         processResponse(response_list, body_url, index)
             .then(function (init_resp) {
@@ -323,10 +328,9 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
     });
 }
 
-async function processResponse(response, body_url, start_num) {
-    var index = start_num;
+async function processResponse(response, body_url, index) {
     const init_resp = { count: 0, rows: [] }
-    //console.log("In processResponse", "Start:", start_num);
+    //console.log("In processResponse", "Start:", index);
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
         var [title, id, url] = element.split("\t");
@@ -337,6 +341,7 @@ async function processResponse(response, body_url, start_num) {
         }
         const item_available = title !== "[Unavailable video]";
         try {
+            // its pre-incrementing index here so in the listers it starts from 0
             const [found, created] = await vid_list.findOrCreate({
                 where: { url: url },
                 defaults: {
