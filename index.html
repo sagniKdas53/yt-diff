@@ -115,16 +115,16 @@
                     <div class="row mt-2">
                         <div class="col-7">
                             <div class="btn-group" role="group">
-                                <button id="all" type="button" onclick="select_all()"
+                                <button id="all" type="button" onclick="selectAll()"
                                     class="btn btn-primary">All</button>
-                                <button id="none" type="button" onclick="select_none()"
+                                <button id="none" type="button" onclick="selectNone()"
                                     class="btn btn-primary">None</button>
 
                             </div>
                         </div>
                         <div class="col">
                             <div class="btn-group" role="group">
-                                <button id="dnld" type="button" onclick="download_selected()"
+                                <button id="dnld" type="button" onclick="downloadSelected()"
                                     class="btn btn-primary">Download</button>
                             </div>
                         </div>
@@ -216,9 +216,9 @@
         document.getElementById("stop").addEventListener('input', function (evt) { input_limiter("stop", evt) });
         document.getElementById("selector").addEventListener("input", function (evt) {
             if (this.checked) {
-                select_all();
+                selectAll();
             } else {
-                select_none();
+                selectNone();
             }
         });
 

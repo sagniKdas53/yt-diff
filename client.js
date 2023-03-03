@@ -98,18 +98,18 @@ function list_it() {
     }
 };
 
-function select_all() {
+function selectAll() {
     document.querySelectorAll('input[type=checkbox].video-item').forEach(element => {
         element.checked = true;
     });
 };
-function select_none() {
+function selectNone() {
     document.querySelectorAll('input[type=checkbox].video-item').forEach(element => {
         element.checked = false;
     });
 };
 
-function download_selected() {
+function downloadSelected() {
     document.getElementById("listit").disabled = true;
     document.getElementById("dnld").disabled = true;
     var id = []
