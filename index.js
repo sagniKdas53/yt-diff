@@ -522,8 +522,7 @@ const staticAssets = {
     '/assets/socket.io.min.js': { obj: fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js'), type: js },
     '/assets/socket.io.min.js.map': { obj: fs.readFileSync(__dirname + '/node_modules/socket.io/client-dist/socket.io.min.js.map'), type: js },
     '/assets/nav.png': { obj: fs.readFileSync(__dirname + '/nav.png'), type: "image/png" },
-    '/assets/client.js': { obj: fs.readFileSync(__dirname + '/client.js'), type: js },
-    '/assets/dbi.client.js': { obj: fs.readFileSync(__dirname + '/dbi.client.js'), type: js }
+    '/assets/client.js': { obj: fs.readFileSync(__dirname + '/client.js'), type: js }
 };
 
 const server = http.createServer((req, res) => {

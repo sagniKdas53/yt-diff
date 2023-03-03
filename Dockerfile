@@ -37,7 +37,7 @@ RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
     && cd ../.. \
     && rm -rf phantomjs-2.1.1-linux-x86_64.tar.bz2 phantomjs-2.1.1-linux-x86_64
 
-COPY index.js index.html client.js package-lock.json package.json favicon.ico dbi.html dbi.client.js nav.png /
+COPY index.js index.html client.js package-lock.json package.json favicon.ico dbi.html nav.png /
 
 # COPY /amd64/node-v18.12.1-linux-x64.tar.xz /
 
