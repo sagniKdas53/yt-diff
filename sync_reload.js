@@ -84,11 +84,7 @@ const play_lists = sequelize.define("play_lists", {
     watch: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
-    },
-    full_update: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-    },
+    }
 });
 
 sequelize.sync().then(() => {
@@ -122,6 +118,7 @@ async function download_lister(req, res) {
     });
 }
 
+// Add a parallel downloader someday
 async function download_sequential(items) {
     //console.log(items);
     for (const [url_str, title] of items) {
@@ -165,8 +162,7 @@ async function download_sequential(items) {
     }
 }
 
-// Add a parallel downloader someday
-
+// List funtions
 async function list_init(req, res) {
     var body = "";
     req.on("data", function (data) {
@@ -184,8 +180,7 @@ async function list_init(req, res) {
         const start_num = +body["start"] || 1,
             stop_num = +body["stop"] || 10,
             chunk_size = +body["chunk"] || 10,
-            watch_it = body["watch"] || false,
-            full_update = body["full_update"] || false;
+            watch_it = body["watch"] || false;
         var body_url = body["url"],
             index = start_num - 1; // index starts from 0 in this function
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
@@ -235,9 +230,8 @@ async function list_init(req, res) {
                         play_lists.findOrCreate({
                             where: { url: body_url },
                             defaults: {
-                                title: title_str,
+                                title: title_str.trim(),
                                 watch: watch_it,
-                                full_update: full_update
                             },
                         });
                     });
@@ -499,6 +493,8 @@ const server = http.createServer((req, res) => {
         res.end();
     } else if (req.url === url_base + "/list" && req.method === "POST") {
         list_init(req, res);
+    } else if (req.url === url_base + "/watchlist" && req.method === "POST") {
+        watch_list(req, res);
     } else if (req.url === url_base + "/dbi" && req.method === "POST") {
         playlists_to_table(req, res);
     } else if (req.url === url_base + "/getsub" && req.method === "POST") {
