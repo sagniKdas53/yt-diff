@@ -1,7 +1,8 @@
 "use strict";
+const base_url = "/" + new URL(document.URL).pathname.split("/")[1];
 function sockSetup() {
     //console.log("Sock setup started");
-    const socket = io({ path: "/ytdiff/socket.io/" });
+    const socket = io({ path: base_url + "/socket.io/" });
     socket.on("init", function (data) {
         // Need to make it so that the "acknowledge" is used somehow.
         socket.emit("acknowledge", { data: "Connected", id: data.id });
@@ -55,6 +56,11 @@ function toggleButton(state) {
             break;
     }
 }
+function toggleUrlInput(value) {
+    bulk_listing = value;
+    document.getElementById("url").hidden = value;
+    document.getElementById("url_list").hidden = !value;
+}
 
 // Listing method
 function listVideos() {
@@ -76,7 +82,7 @@ async function processUrls(urlList, clear) {
             continue;
         }
         toggleButton("off");
-        const response = await fetch("/ytdiff/list", {
+        const response = await fetch(base_url + "/list", {
             method: "post",
             headers: {
                 'Accept': 'application/json',
@@ -225,7 +231,7 @@ function getMainList(mode = 0, query_val = "") {
     const order_val = document.getElementById("order_by_playlist").value;
     const [start_val, stop_val] = getLimits(mode, "start_playlist", "stop_playlist", "chunk_playlist");
     //console.log("Start: " + start_val + " stop: " + stop_val, " query: " + query_val);
-    fetch("/ytdiff/dbi", {
+    fetch(base_url + "/dbi", {
         method: "post",
         headers: {
             "Accept": "application/json",
@@ -282,7 +288,7 @@ function makeMainTable(text) {
         //checkbox.id = element.order_added;
         //checkbox.oninput = function (event) {
         //    event.preventDefault();
-        //    fetch("/ytdiff/watchlist", {
+        //    fetch(base_url+"/watchlist", {
         //        method: "post",
         //        headers: {
         //            "Accept": "application/json",
@@ -324,7 +330,7 @@ function getSubList(url, mode = 0, query_str = "", clear_query = true) {
         query_str = "";
     }
     //console.log("Getting url: ", url_global, " start: ", start, " stop: ", stop, "query: ", query_str);
-    fetch("/ytdiff/getsub", {
+    fetch(base_url + "/getsub", {
         method: "post",
         headers: {
             "Accept": "application/json",
@@ -432,7 +438,7 @@ function downloadSelected() {
     document.querySelectorAll("input[type=checkbox].video-item:checked").forEach(element => {
         request_list['id'].push(element.id);
     })
-    fetch("/ytdiff/download", {
+    fetch(base_url + "/download", {
         method: "post",
         headers: {
             "Accept": "application/json",

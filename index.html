@@ -186,7 +186,7 @@
             document.getElementById("bulk-listing").checked = false;
             document.getElementById("query_sublist").value = "";
             sockSetup();
-            toggleInput(false);
+            toggleUrlInput(false);
         }
 
         document.getElementById("chunk_sublist").addEventListener("input", function (evt) { inputLimiter(evt) });
@@ -202,13 +202,8 @@
         });
         document.getElementById("bulk-listing").addEventListener("input", function (evt) {
             evt.preventDefault();
-            toggleInput(evt.target.checked);
+            toggleUrlInput(evt.target.checked);
         });
-        function toggleInput(value) {
-            bulk_listing = value;
-            document.getElementById("url").hidden = value;
-            document.getElementById("url_list").hidden = !value;
-        }
     </script>
 </body>
 
