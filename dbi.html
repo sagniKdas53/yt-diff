@@ -30,6 +30,10 @@
             width: 80%;
         }
 
+        .large-play-title {
+            width: 60%;
+        }
+
         .container-table {
             height: 80vh;
             max-height: 80vh;
@@ -58,6 +62,10 @@
             th.extra,
             td.extra {
                 display: none;
+            }
+
+            .large-play-title {
+                width: 80%;
             }
         }
 
@@ -97,11 +105,14 @@
                     <table class="table table-responsive">
                         <thead>
                             <tr>
-                                <th scope="col" class="table-dark">ID</th>
-                                <th scope="col" class="table-dark">List Title</th>
-                                <th scope="col" class="table-dark extra">Updated</th>
+                                <th scope="col" class="table-dark text-center">ID</th>
+                                <th scope="col" class="table-dark large-play-title m-0 p-0 text-center align-middle">
+                                    <input type="text" class="search m-0 p-0" id="query_mainlist"
+                                        placeholder="List Title" onkeyup="onFinishTypingMain()" />
+                                </th>
+                                <th scope="col" class="table-dark extra text-center">Updated</th>
                                 <!--<th scope="col" class="table-dark">Watch</th>-->
-                                <th scope="col" class="table-dark">Expand</th>
+                                <th scope="col" class="table-dark text-center">Expand</th>
                             </tr>
                         </thead>
                         <tbody id="placeholder"></tbody>
@@ -218,7 +229,8 @@
         // This needs to outside of any functions
         var url_global = "None";
         function init() {
-            getMainList(0, 10);
+            document.getElementById("query_mainlist").value = "";
+            getMainList(0);
             sockSetup();
             document.getElementById("start_playlist").value = 0;
             document.getElementById("stop_playlist").value = 10;

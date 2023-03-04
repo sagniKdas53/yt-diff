@@ -172,10 +172,23 @@ async function list_init(req, res) {
     });
     req.on("end", async function () {
         body = JSON.parse(body);
-        //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         const start_num = +body["start"] || 1,
             stop_num = +body["stop"] || 10,
-            chunk_size = +body["chunk"] || 10;
+            chunk_size = +body["chunk"] || 10,
+            continuous = body["continuous"] || false;
+        /*This is to prevent spamming of the spawn process, 
+        since each spwan will only return 10 to the frontend but
+        it will continue in the background, this can cause issues
+        like list_order getting messed uo or listing not completing,
+        it's best to not use bulk listing for playlists, channels but 
+        say you have 50 tabs open and you just copy the urls then 
+        you can just set them to be processed*/
+        if (continuous) { await new Promise((resolve) => setTimeout(resolve, sleep_time * 1000)); }
+        console.log("body_url: " + body["url"],
+            "\nstart_num: " + body["start"],
+            "\nstop_num:", body["stop"],
+            "\nchunk_size:", body["chunk"],
+            "\ncontinuous:", body["continuous"]);
         var body_url = body["url"],
             index = start_num - 1; // index starts from 0 in this function
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
@@ -388,16 +401,34 @@ async function playlists_to_table(req, res) {
             stop_num = body["stop"] || 10,
             sort_with = body["sort"] || 1,
             order = body["order"] || 1,
+            query_string = body["query"] || "",
             type = (order == 2) ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
             row = (sort_with == 2) ? "createdAt" : (sort_with == 3) ? "updatedAt" : "order_added";
-        play_lists.findAndCountAll({
-            limit: stop_num - start_num,
-            offset: start_num,
-            order: [[row, type]],
-        }).then((result) => {
-            res.writeHead(200, { "Content-Type": json_t });
-            res.end(JSON.stringify(result, null, 2));
-        });
+        //console.log("Start: ", start_num, " Stop: ", stop_num, " Order: ", order, " Type: ", type, " Query: ", query_string);
+        if (query_string == "") {
+            play_lists.findAndCountAll({
+                limit: stop_num - start_num,
+                offset: start_num,
+                order: [[row, type]],
+            }).then((result) => {
+                res.writeHead(200, { "Content-Type": json_t });
+                res.end(JSON.stringify(result, null, 2));
+            });
+        } else {
+            play_lists.findAndCountAll({
+                where: {
+                    title: {
+                        [Op.iLike]: `%${query_string}%`
+                    }
+                },
+                limit: stop_num - start_num,
+                offset: start_num,
+                order: [[row, type]],
+            }).then((result) => {
+                res.writeHead(200, { "Content-Type": json_t });
+                res.end(JSON.stringify(result, null, 2));
+            });
+        }
     });
 }
 
