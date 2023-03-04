@@ -59,38 +59,42 @@ function toggleButton(state) {
 // Listing method
 function listVideos() {
     try {
-        var url = new URL(document.getElementById("url").value);
-        if (url.protocol == "https:" || url.protocol == "http:") {
-            url = url.href;
-            // Setting the global url
-            url_global = url;
-        } else {
-            throw new Error("Not a valid URL");
+        const id = bulk_listing ? "url_list" : "url";
+        processUrls(document.getElementById(id).value.split('\n'), bulk_listing);
+    } catch (err) {
+        showToast(`Not a valid URL ❌`);
+    }
+};
+async function processUrls(urlList, clear) {
+    const [start_val, stop_val] = getLimits(0, "start_sublist", "stop_sublist", "chunk_sublist");
+    const chunk_sublist = +document.getElementById("chunk_sublist").value;
+    for (const element of urlList) {
+        const url = new URL(element);
+        //console.log(element, url);
+        if (url.protocol !== "https:" && url.protocol !== "http:") {
+            showToast(`Not a valid URL ❌`);
+            continue;
         }
-        const [start_val, stop_val] = getLimits(0, "start_sublist", "stop_sublist", "chunk_sublist");
-        const chunk_sublist = +document.getElementById("chunk_sublist").value;
         toggleButton("off");
-        //console.log("URL: " + url, "Start: " + start, "Stop: " + stop, "Chunk size: " + chunk);
-        fetch("/ytdiff/list", {
+        const response = await fetch("/ytdiff/list", {
             method: "post",
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                url: url,
+                url: url.href,
                 start: start_val,
                 stop: stop_val,
                 chunk: chunk_sublist,
                 watch: false,
-                full_update: false,
+                continuous: clear
             })
-        }).then((response) => response.text()).then(makeSubTable);
-    } catch (err) {
-        //console.error(err);
-        showToast(`Not a valid URL ❌`);
+        });
+        const text = await response.text();
+        makeSubTable(text, clear);
     }
-};
+}
 
 // Limit setter
 function getLimits(mode, start_id, stop_id, chunk_id) {
@@ -213,13 +217,14 @@ const debounce = function (fn, d) {
     }
 }
 const onFinishTyping = debounce(searchSub, 500);
+const onFinishTypingMain = debounce(searchMain, 500);
 
 // Main list methods
-function getMainList(mode = 0) {
+function getMainList(mode = 0, query_val = "") {
     const sort_val = document.getElementById("sort_by_playlist").value;
     const order_val = document.getElementById("order_by_playlist").value;
     const [start_val, stop_val] = getLimits(mode, "start_playlist", "stop_playlist", "chunk_playlist");
-    //console.log("Start: " + start_val + " stop: " + stop_val);
+    //console.log("Start: " + start_val + " stop: " + stop_val, " query: " + query_val);
     fetch("/ytdiff/dbi", {
         method: "post",
         headers: {
@@ -230,7 +235,8 @@ function getMainList(mode = 0) {
             start: start_val,
             stop: stop_val,
             sort: sort_val,
-            order: order_val
+            order: order_val,
+            query: query_val
         })
     }).then((response) => response.text()).then(makeMainTable);
 };
@@ -256,11 +262,13 @@ function makeMainTable(text) {
         const show = row.insertCell(3);
 
         id.innerHTML = element.order_added;
+        id.className = "text-center"
         url.innerHTML = `<a href="${element.url}">${element.title}</a>`;
         //console.log(element.updatedAt);
-        updated_days_ago.className = "extra";
+        updated_days_ago.className = "extra text-center";
         updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime()) / (1000 * 3600 * 24)) + " days ago";
         // single quotes are necessary here / or i can make a dynamic button
+        show.className = "text-center";
         show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
         //createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
         //const checkbox = document.createElement("input");
@@ -298,6 +306,10 @@ function backMain() {
 function sortLoaded() {
     getMainList(0);
 }
+function searchMain() {
+    var query = document.getElementById("query_mainlist").value.trim();
+    getMainList(0, query);
+};
 
 //Sub list making methods
 function getSubList(url, mode = 0, query_str = "", clear_query = true) {
@@ -326,8 +338,8 @@ function getSubList(url, mode = 0, query_str = "", clear_query = true) {
         })
     }).then((response) => response.text()).then(makeSubTable);
 };
-function makeSubTable(text) {
-    clearSubList();
+function makeSubTable(text, clear = false) {
+    if (!clear) clearSubList();
     const table = document.getElementById("listing");
     const data = JSON.parse(text);
     //console.log(data);
@@ -385,6 +397,7 @@ function clearSubList(reset = false) {
         document.getElementById("chunk_sublist").value = 10;
         try {
             document.getElementById("url").value = "";
+            document.getElementById("url_list").value = "";
         } catch (error) {
             //Nothing
         }

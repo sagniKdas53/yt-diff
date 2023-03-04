@@ -80,15 +80,7 @@ const play_lists = sequelize.define("play_lists", {
         type: DataTypes.INTEGER,
         allowNull: false,
         autoIncrement: true,
-    },
-    watch: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-    },
-    full_update: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-    },
+    }
 });
 
 sequelize.sync().then(() => {
@@ -122,6 +114,7 @@ async function download_lister(req, res) {
     });
 }
 
+// Add a parallel downloader someday
 async function download_sequential(items) {
     //console.log(items);
     for (const [url_str, title] of items) {
@@ -165,8 +158,7 @@ async function download_sequential(items) {
     }
 }
 
-// Add a parallel downloader someday
-
+// List funtions
 async function list_init(req, res) {
     var body = "";
     req.on("data", function (data) {
@@ -183,9 +175,7 @@ async function list_init(req, res) {
         //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         const start_num = +body["start"] || 1,
             stop_num = +body["stop"] || 10,
-            chunk_size = +body["chunk"] || 10,
-            watch_it = body["watch"] || false,
-            full_update = body["full_update"] || false;
+            chunk_size = +body["chunk"] || 10;
         var body_url = body["url"],
             index = start_num - 1; // index starts from 0 in this function
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
@@ -235,9 +225,7 @@ async function list_init(req, res) {
                         play_lists.findOrCreate({
                             where: { url: body_url },
                             defaults: {
-                                title: title_str,
-                                watch: watch_it,
-                                full_update: full_update
+                                title: title_str.trim(),
                             },
                         });
                     });
@@ -400,16 +388,34 @@ async function playlists_to_table(req, res) {
             stop_num = body["stop"] || 10,
             sort_with = body["sort"] || 1,
             order = body["order"] || 1,
+            query_string = body["query"] || "",
             type = (order == 2) ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
             row = (sort_with == 2) ? "createdAt" : (sort_with == 3) ? "updatedAt" : "order_added";
-        play_lists.findAndCountAll({
-            limit: stop_num - start_num,
-            offset: start_num,
-            order: [[row, type]],
-        }).then((result) => {
-            res.writeHead(200, { "Content-Type": json_t });
-            res.end(JSON.stringify(result, null, 2));
-        });
+        //console.log("Start: ", start_num, " Stop: ", stop_num, " Order: ", order, " Type: ", type, " Query: ", query_string);
+        if (query_string == "") {
+            play_lists.findAndCountAll({
+                limit: stop_num - start_num,
+                offset: start_num,
+                order: [[row, type]],
+            }).then((result) => {
+                res.writeHead(200, { "Content-Type": json_t });
+                res.end(JSON.stringify(result, null, 2));
+            });
+        } else {
+            play_lists.findAndCountAll({
+                where: {
+                    title: {
+                        [Op.iLike]: `%${query_string}%`
+                    }
+                },
+                limit: stop_num - start_num,
+                offset: start_num,
+                order: [[row, type]],
+            }).then((result) => {
+                res.writeHead(200, { "Content-Type": json_t });
+                res.end(JSON.stringify(result, null, 2));
+            });
+        }
     });
 }
 

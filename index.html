@@ -77,7 +77,8 @@
                             <label for="url" class="form-label">URL: </label>
                             <input type="text" class="form-control" placeholder="url" name="url_input" id="url"
                                 data-bs-toggle="tooltip" data-bs-placement="top" title="Url" />
-                            <!--<textarea class="form-control" id="url_list" rows="3"></textarea>-->
+                            <textarea class="form-control" placeholder="url list" id="url_list" rows="5"
+                                title="Url List"></textarea>
                         </form>
                     </div>
 
@@ -95,12 +96,20 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-7">
+                        <div class="col">
                             <div class="btn-group" role="group">
                                 <button id="list_btn" type="button" onclick="listVideos()"
                                     class="btn btn-primary">List</button>
                                 <button id="clear" type="button" onclick="clearSubList(true)"
                                     class="btn btn-primary">Clear</button>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="m-0 p-0">
+                                <label class="form-check-label" for="bulk-listing">Bulk Listing: </label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="bulk-listing" />
+                                </div>
                             </div>
                         </div>
                         <div class="col">
@@ -113,7 +122,7 @@
                         </div>
                     </div>
                     <div class="row mt-2">
-                        <div class="col-7">
+                        <div class="col">
                             <div class="btn-group" role="group">
                                 <button id="all" type="button" onclick="selectAll()"
                                     class="btn btn-primary">All</button>
@@ -122,6 +131,7 @@
 
                             </div>
                         </div>
+                        <div class="col"></div>
                         <div class="col">
                             <div class="btn-group" role="group">
                                 <button id="download_btn" type="button" onclick="downloadSelected()"
@@ -167,18 +177,21 @@
     <script defer>
         window.onload = init();
         var url_global = "None";
+        var bulk_listing = false;
         function init() {
             document.getElementById("start_sublist").value = 0;
             document.getElementById("stop_sublist").value = 10;
             document.getElementById("chunk_sublist").value = 10;
             document.getElementById("selector").checked = false;
+            document.getElementById("bulk-listing").checked = false;
             document.getElementById("query_sublist").value = "";
             sockSetup();
+            toggleInput(false);
         }
 
-        document.getElementById("chunk_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
-        document.getElementById("start_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
-        document.getElementById("stop_sublist").addEventListener('input', function (evt) { inputLimiter(evt) });
+        document.getElementById("chunk_sublist").addEventListener("input", function (evt) { inputLimiter(evt) });
+        document.getElementById("start_sublist").addEventListener("input", function (evt) { inputLimiter(evt) });
+        document.getElementById("stop_sublist").addEventListener("input", function (evt) { inputLimiter(evt) });
 
         document.getElementById("selector").addEventListener("input", function (evt) {
             if (this.checked) {
@@ -187,6 +200,15 @@
                 selectNone();
             }
         });
+        document.getElementById("bulk-listing").addEventListener("input", function (evt) {
+            evt.preventDefault();
+            toggleInput(evt.target.checked);
+        });
+        function toggleInput(value) {
+            bulk_listing = value;
+            document.getElementById("url").hidden = value;
+            document.getElementById("url_list").hidden = !value;
+        }
     </script>
 </body>
 
