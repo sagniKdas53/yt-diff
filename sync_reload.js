@@ -80,10 +80,6 @@ const play_lists = sequelize.define("play_lists", {
         type: DataTypes.INTEGER,
         allowNull: false,
         autoIncrement: true,
-    },
-    watch: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
     }
 });
 
@@ -179,8 +175,7 @@ async function list_init(req, res) {
         //console.log("body_url: " + body["url"], "start_num: " + body["start"], "stop_num:", body["stop"]);
         const start_num = +body["start"] || 1,
             stop_num = +body["stop"] || 10,
-            chunk_size = +body["chunk"] || 10,
-            watch_it = body["watch"] || false;
+            chunk_size = +body["chunk"] || 10;
         var body_url = body["url"],
             index = start_num - 1; // index starts from 0 in this function
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
@@ -231,7 +226,6 @@ async function list_init(req, res) {
                             where: { url: body_url },
                             defaults: {
                                 title: title_str.trim(),
-                                watch: watch_it,
                             },
                         });
                     });
@@ -493,8 +487,6 @@ const server = http.createServer((req, res) => {
         res.end();
     } else if (req.url === url_base + "/list" && req.method === "POST") {
         list_init(req, res);
-    } else if (req.url === url_base + "/watchlist" && req.method === "POST") {
-        watch_list(req, res);
     } else if (req.url === url_base + "/dbi" && req.method === "POST") {
         playlists_to_table(req, res);
     } else if (req.url === url_base + "/getsub" && req.method === "POST") {
