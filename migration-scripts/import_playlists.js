@@ -33,10 +33,10 @@ const play_lists = sequelize.define("play_lists", {
         allowNull: false,
         autoIncrement: true,
     },
-    watch: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-    },
+    //watch: {
+    //    type: DataTypes.BOOLEAN,
+    //    allowNull: false,
+    //},
     // haven't thought of how to implement this yet
     //subdir: {
     //    type: DataTypes.STRING,
@@ -53,13 +53,13 @@ sequelize.sync().then(() => {
         .pipe(csv())
         .on("data", async (row) => {
             try {
-                const watch = row.watch === "t",
-                    title = JSON.stringify(row).split(",")[0].slice(11, -1);
+                //const watch = row.watch === "t";
+                const title = JSON.stringify(row).split(",")[0].slice(11, -1);
                 const [found, created] = await play_lists.findOrCreate({
                     where: { url: row.url },
                     defaults: {
                         title: title,
-                        watch: watch,
+                        //watch: watch,
                         //subdir: row.subdir,
                     }
                     //createdAt: Date(row.createdAt), // can't be set manually as far as I can tell
@@ -68,11 +68,12 @@ sequelize.sync().then(() => {
                 if (!created) {
                     // The object was found and not created
                     //console.log("Found object: ", found);
-                    if (found.title !== title ||
-                        found.watch !== watch) {
+                    if (found.title !== title) {
+                        //||found.watch !== watch) {
                         // At least one property is different, update the object
                         found.title = title;
-                        found.watch = watch;
+                        // need to bother with order_added as it's auto increment
+                        //found.watch = watch;
                         //console.log("Found object updated: ", found);
                     }
                     await found.save();
