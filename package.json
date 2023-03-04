@@ -27,5 +27,8 @@
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.28.0",
     "socket.io": "^4.6.0"
+  },
+  "devDependencies": {
+    "csv-parser": "^3.0.0"
   }
 }

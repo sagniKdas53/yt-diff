@@ -5,4 +5,5 @@ vpn-mode/gluetun/
 vpn-mode/secrets.txt
 amd64/
 aarch64/
+migration-scripts/*.csv
 logs/

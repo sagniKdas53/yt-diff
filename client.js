@@ -241,7 +241,7 @@ function makeMainTable(text) {
         table.deleteRow(i);
     }
     text = JSON.parse(text)
-    const options = { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "numeric" };
+    //const options = { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "numeric" };
     text["rows"].forEach(element => {
         /*
         id 	url 	createdAt 	updatedAt 	more
@@ -251,7 +251,7 @@ function makeMainTable(text) {
         const id = row.insertCell(0);
         const url = row.insertCell(1);
         //const createdAt = row.insertCell(2);
-        const updatedAt = row.insertCell(2);
+        const updated_days_ago = row.insertCell(2);
         const watch = row.insertCell(3);
         const show = row.insertCell(4);
 
@@ -260,20 +260,37 @@ function makeMainTable(text) {
         //createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
-        checkbox.className = "form-check-input me-1 update-makers";
+        checkbox.className = "form-check-input me-1 update-markers";
         // Now I have an Idea that is to add an event listener to the class of update-makers
         // whenever one of them is checked or uncheck the playlist url is sent as an xhr request
         // that will be recieved and consequently mark the playlist to be updated whenever the
         // next scheduled update is, but I still have no idea how to handle the full update thing
-        checkbox.value = element.watch;
+        checkbox.checked = element.watch;
         checkbox.id = element.order_added;
+        checkbox.oninput = checkboxUpdater;
         watch.className = "text-center";
         watch.appendChild(checkbox);
-        updatedAt.innerHTML = new Date(element.updatedAt).toLocaleDateString("en-US", options);
-        // single quotes are necessary here
+        //console.log(element.updatedAt);
+        updated_days_ago.className = "extra";
+        updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime())/ (1000 * 3600 * 24)) + " days ago";
+        // single quotes are necessary here / or i can make a dynamic button
         show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
     });
 }
+function checkboxUpdater(event) {
+    event.preventDefault();
+    fetch("/ytdiff/watchlist", {
+        method: "post",
+        headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            url: event.target.parentElement.parentElement.children[1].children[0].href.valueOf(),
+            watch: event.target.checked,
+        })
+    });
+};
 
 // Main list utilities
 function nextMain() {
