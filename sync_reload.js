@@ -4,6 +4,7 @@ const http = require("http");
 const fs = require("fs");
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const { Server } = require("socket.io");
+const CronJob = require("cron").CronJob;
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
@@ -14,6 +15,8 @@ const db_host = process.env.db_host || "localhost";
 const save_loc = process.env.save_loc || "yt-dlp";
 const sleep_time = process.env.sleep || 3;
 const subs_enabled = process.env.subs || true;
+const scheduled_update = process.env.scheduledUpdate || "0 */12 * * *"; // Default: Every 12 hours
+const time_zone = process.env.time_zone || "Asia/Kolkata";
 var options = ["--embed-metadata", "-P", save_loc]
 
 if (subs_enabled) {
@@ -92,6 +95,9 @@ sequelize.sync().then(() => {
 }).catch((error) => {
     console.error("Unable to create table : ", error);
 });
+
+// sequelize need to start befor this can start
+new CronJob(scheduled_update, scheduledUpdate, null, true,).start();
 
 async function download_lister(req, res) {
     var body = "";
@@ -189,7 +195,7 @@ async function list_init(req, res) {
         it's best to not use bulk listing for playlists, channels but 
         say you have 50 tabs open and you just copy the urls then 
         you can just set them to be processed*/
-        if (continuous) { await new Promise((resolve) => setTimeout(resolve, sleep_time * 1000)); }
+        if (continuous) await sleep();
         //console.log("body_url: " + body["url"],"\nstart_num: " + body["start"],"\nstop_num:", 
         //    body["stop"],"\nchunk_size:", body["chunk"],"\ncontinuous:", body["continuous"]);
         var body_url = body["url"],
@@ -323,7 +329,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
         start_num = start_num + chunk_size;
         stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
-        await new Promise((resolve) => setTimeout(resolve, sleep_time * 1000));
+        await sleep();
         //console.log("In background lister", "Chunk:", chunk_size, "Start:", start_num, "Stop:", stop_num);
         const response = await ytdlp_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
@@ -520,6 +526,47 @@ async function sublist_to_table(req, res) {
     });
 }
 
+// The scheduled updater
+async function sleep() {
+    return new Promise((resolve) => setTimeout(resolve, sleep_time * 1000));
+}
+async function scheduledUpdate() {
+    const start = new Date();
+    console.log("Scheduled update started at:", start.toISOString());
+    const playlists = await play_lists.findAndCountAll({
+        where: {
+            watch: true
+        }
+    });
+    //console.log(playlists['rows']);
+    for (const playlist of playlists['rows']) {
+        //console.log("playlist:", playlist);
+        var index = 0;
+        const last_item = await vid_list.findOne({
+            where: {
+                reference: "None",
+            },
+            order: [
+                ["createdAt", "DESC"],
+            ],
+            attributes: ["list_order"],
+            limit: 1,
+        });
+        try {
+            //console.log(last_item.list_order);
+            index = last_item.list_order;
+        } catch (error) {
+            // do nothing
+        }
+        //console.log(playlist.url, index, index + 10, 10);
+        await sleep();
+        console.log(new Date() - start);
+        await list_background(playlist.url, index, index + 10, 10);
+        //console.log(`Done processing playlist ${playlist.url}`);
+        console.log(new Date() - start);
+    }
+}
+//scheduledUpdate();
 const css = "text/css; charset=utf-8";
 const html = "text/html; charset=utf-8";
 const js = "text/javascript; charset=utf-8";
