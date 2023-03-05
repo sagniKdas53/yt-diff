@@ -33,15 +33,10 @@ const play_lists = sequelize.define("play_lists", {
         allowNull: false,
         autoIncrement: true,
     },
-    //watch: {
-    //    type: DataTypes.BOOLEAN,
-    //    allowNull: false,
-    //},
-    // haven't thought of how to implement this yet
-    //subdir: {
-    //    type: DataTypes.STRING,
-    //    allowNull: false,
-    //},
+    watch: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+    }
 });
 
 sequelize.sync().then(() => {
@@ -53,14 +48,13 @@ sequelize.sync().then(() => {
         .pipe(csv())
         .on("data", async (row) => {
             try {
-                //const watch = row.watch === "t";
+                const watch = row.watch === "t";
                 const title = JSON.stringify(row).split(",")[0].slice(11, -1);
                 const [found, created] = await play_lists.findOrCreate({
                     where: { url: row.url },
                     defaults: {
                         title: title,
-                        //watch: watch,
-                        //subdir: row.subdir,
+                        watch: watch,
                     }
                     //createdAt: Date(row.createdAt), // can't be set manually as far as I can tell
                     //updatedAt: Date(row.updatedAt)
