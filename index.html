@@ -83,7 +83,7 @@
                     </div>
 
                     <div class="row">
-                        <div class="input-group mb-3 mt-3">
+                        <div class="input-group my-2">
                             <input type="number" class="form-control" placeholder="0" min="0" name="start_sublist"
                                 id="start_sublist" data-bs-toggle="tooltip" data-bs-placement="top" title="Start" />
                             <span class="input-group-text">-</span>
@@ -94,22 +94,31 @@
                                 id="chunk_sublist" data-bs-toggle="tooltip" data-bs-placement="top" title="Chunk" />
                         </div>
                     </div>
-
                     <div class="row">
+                        <div class="col">
+                            <div class="m-0 p-0 d-flex">
+                                <label class="form-check-label" for="bulk-listing">Bulk Listing: </label>
+                                <div class="form-check form-switch mx-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="bulk-listing" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="m-0 p-0 d-flex">
+                                <label class="form-check-label" for="watch-list">Watch for changes: </label>
+                                <div class="form-check form-switch mx-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="watch-list" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
                         <div class="col">
                             <div class="btn-group" role="group">
                                 <button id="list_btn" type="button" onclick="listVideos()"
                                     class="btn btn-primary">List</button>
                                 <button id="clear" type="button" onclick="clearSubList(true)"
                                     class="btn btn-primary">Clear</button>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="m-0 p-0">
-                                <label class="form-check-label" for="bulk-listing">Bulk Listing: </label>
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="bulk-listing" />
-                                </div>
                             </div>
                         </div>
                         <div class="col">
@@ -131,7 +140,6 @@
 
                             </div>
                         </div>
-                        <div class="col"></div>
                         <div class="col">
                             <div class="btn-group" role="group">
                                 <button id="download_btn" type="button" onclick="downloadSelected()"
@@ -184,6 +192,7 @@
             document.getElementById("chunk_sublist").value = 10;
             document.getElementById("selector").checked = false;
             document.getElementById("bulk-listing").checked = false;
+            document.getElementById("watch-list").checked = false;
             document.getElementById("query_sublist").value = "";
             sockSetup();
             toggleUrlInput(false);

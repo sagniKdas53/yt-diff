@@ -64,6 +64,7 @@ function toggleUrlInput(value) {
 
 // Listing method
 function listVideos() {
+    // global url isn't being set correctly
     try {
         const id = bulk_listing ? "url_list" : "url";
         processUrls(document.getElementById(id).value.split('\n'), bulk_listing);
@@ -74,6 +75,8 @@ function listVideos() {
 async function processUrls(urlList, clear) {
     const [start_val, stop_val] = getLimits(0, "start_sublist", "stop_sublist", "chunk_sublist");
     const chunk_sublist = +document.getElementById("chunk_sublist").value;
+    // if clear is true it means in contineous listing mode, so watching shouldn't be necessary
+    const watch_sublist = clear ? false : document.getElementById("watch-list").checked;
     for (const element of urlList) {
         const url = new URL(element);
         //console.log(element, url);
@@ -81,6 +84,7 @@ async function processUrls(urlList, clear) {
             showToast(`Not a valid URL ❌`);
             continue;
         }
+        global_url = bulk_listing ? "None" : url.href;
         toggleButton("off");
         const response = await fetch(base_url + "/list", {
             method: "post",
@@ -93,7 +97,7 @@ async function processUrls(urlList, clear) {
                 start: start_val,
                 stop: stop_val,
                 chunk: chunk_sublist,
-                watch: false,
+                watch: watch_sublist,
                 continuous: clear
             })
         });
@@ -264,43 +268,37 @@ function makeMainTable(text) {
         const url = row.insertCell(1);
         //const createdAt = row.insertCell(2);
         const updated_days_ago = row.insertCell(2);
-        //const watch = row.insertCell(3);
-        const show = row.insertCell(3);
+        const watch = row.insertCell(3);
+        const show = row.insertCell(4);
 
         id.innerHTML = element.order_added;
         id.className = "text-center"
         url.innerHTML = `<a href="${element.url}">${element.title}</a>`;
         //console.log(element.updatedAt);
         updated_days_ago.className = "extra text-center";
-        updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime()) / (1000 * 3600 * 24)) + " days ago";
+        updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime()) / (1000 * 3600 * 24)) + " days";
         // single quotes are necessary here / or i can make a dynamic button
         show.className = "text-center";
         show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
-        //createdAt.innerHTML = new Date(element.createdAt).toLocaleDateString("en-US", options);
-        //const checkbox = document.createElement("input");
-        //checkbox.type = "checkbox";
-        //checkbox.className = "form-check-input me-1 update-markers";
-        // Now I have an Idea that is to add an event listener to the class of update-makers
-        // whenever one of them is checked or uncheck the playlist url is sent as an xhr request
-        // that will be recieved and consequently mark the playlist to be updated whenever the
-        // next scheduled update is, but I still have no idea how to handle the full update thing
-        //checkbox.checked = element.watch;
-        //checkbox.id = element.order_added;
-        //checkbox.oninput = function (event) {
-        //    event.preventDefault();
-        //    fetch(base_url+"/watchlist", {
-        //        method: "post",
-        //        headers: {
-        //            "Accept": "application/json",
-        //            "Content-Type": "application/json"
-        //        },
-        //        body: JSON.stringify({
-        //            url: event.target.parentElement.parentElement.children[1].children[0].href.valueOf(),
-        //            watch: event.target.checked,})});};
-        //watch.className = "text-center";
-        //watch.appendChild(checkbox);
+        const checked = element.watch ? "checked" : "";
+        watch.className = "text-center";
+        watch.innerHTML = `<input type="checkbox" oninput="watchToggler(this)" class="form-check-input me-1 update-markers" id="${element.order_added}" ${checked}>`
     });
 }
+function watchToggler(element) {
+    fetch(base_url + "/watchlist", {
+        method: "post",
+        headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            url: element.parentElement.parentElement.children[1].children[0].href.valueOf(),
+            watch: element.checked,
+        })
+    }
+    );
+};
 
 // Main list utilities
 function nextMain() {
@@ -404,6 +402,8 @@ function clearSubList(reset = false) {
         try {
             document.getElementById("url").value = "";
             document.getElementById("url_list").value = "";
+            document.getElementById("bulk-listing").checked = false;
+            document.getElementById("watch-list").checked = false;
         } catch (error) {
             //Nothing
         }

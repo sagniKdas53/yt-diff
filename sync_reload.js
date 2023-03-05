@@ -80,6 +80,10 @@ const play_lists = sequelize.define("play_lists", {
         type: DataTypes.INTEGER,
         allowNull: false,
         autoIncrement: true,
+    },
+    watch: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
     }
 });
 
@@ -175,7 +179,9 @@ async function list_init(req, res) {
         const start_num = +body["start"] || 1,
             stop_num = +body["stop"] || 10,
             chunk_size = +body["chunk"] || 10,
-            continuous = body["continuous"] || false;
+            continuous = body["continuous"] || false,
+            watch = body["watch"] || false;
+        console.log("watch: " + watch);
         /*This is to prevent spamming of the spawn process, 
         since each spwan will only return 10 to the frontend but
         it will continue in the background, this can cause issues
@@ -184,11 +190,8 @@ async function list_init(req, res) {
         say you have 50 tabs open and you just copy the urls then 
         you can just set them to be processed*/
         if (continuous) { await new Promise((resolve) => setTimeout(resolve, sleep_time * 1000)); }
-        console.log("body_url: " + body["url"],
-            "\nstart_num: " + body["start"],
-            "\nstop_num:", body["stop"],
-            "\nchunk_size:", body["chunk"],
-            "\ncontinuous:", body["continuous"]);
+        //console.log("body_url: " + body["url"],"\nstart_num: " + body["start"],"\nstop_num:", 
+        //    body["stop"],"\nchunk_size:", body["chunk"],"\ncontinuous:", body["continuous"]);
         var body_url = body["url"],
             index = start_num - 1; // index starts from 0 in this function
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
@@ -235,10 +238,12 @@ async function list_init(req, res) {
                         if (title_str == "NA\n") {
                             title_str = body_url;
                         }
+                        // no need to use found or create syntax here as this is only run the first time
                         play_lists.findOrCreate({
                             where: { url: body_url },
                             defaults: {
                                 title: title_str.trim(),
+                                watch: watch
                             },
                         });
                     });
@@ -280,6 +285,35 @@ async function list_init(req, res) {
                     }
                 );
             });
+    });
+}
+async function watch_list(req, res) {
+    var body = "";
+    req.on("data", async function (data) {
+        body += data;
+        if (body.length > 1e6) {
+            req.connection.destroy();
+            res.writeHead(413, { "Content-Type": json_t });
+            res.write({ "error": "Request Too Large" });
+            res.end();
+        }
+    });
+    req.on("end", async function () {
+        try {
+            body = JSON.parse(body);
+            const body_url = body["url"],
+                watch = body["watch"];
+            const playlist = await play_lists.findOne({ where: { url: body_url } });
+            playlist.watch = watch;
+            await playlist.save().then(() => {
+                res.writeHead(200, { "Content-Type": json_t });
+                res.end(JSON.stringify({ "Outcome": "Success" }));
+            })
+        } catch (error) {
+            console.error(error);
+            res.writeHead(500, { "Content-Type": json_t });
+            res.end(JSON.stringify({ "Outcome": "Failure" }));
+        }
     });
 }
 
@@ -518,6 +552,8 @@ const server = http.createServer((req, res) => {
         res.end();
     } else if (req.url === url_base + "/list" && req.method === "POST") {
         list_init(req, res);
+    } else if (req.url === url_base + "/watchlist" && req.method === "POST") {
+        watch_list(req, res);
     } else if (req.url === url_base + "/dbi" && req.method === "POST") {
         playlists_to_table(req, res);
     } else if (req.url === url_base + "/getsub" && req.method === "POST") {
