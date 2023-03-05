@@ -84,7 +84,7 @@ async function processUrls(urlList, clear) {
             showToast(`Not a valid URL ❌`);
             continue;
         }
-        global_url = bulk_listing ? "None" : url.href;
+        url_global = bulk_listing ? "None" : url.href;
         toggleButton("off");
         const response = await fetch(base_url + "/list", {
             method: "post",
@@ -149,13 +149,14 @@ function getLimits(mode, start_id, stop_id, chunk_id) {
 // Ui limit setter
 function inputLimiter(evt) {
     evt.preventDefault()
-    //console.log(evt.explicitOriginalTarget.id, evt.inputType, evt.target.value);
+    //console.log(target, evt.inputType, evt.target.value);
     var value = +evt.target.value;
-    const start_sublist = +document.getElementById("start_sublist").value;
-    const start_playlist = +document.getElementById("start_playlist").value;
-    const chunk_sublist = +document.getElementById("chunk_sublist").value;
-    const chunk_playlist = +document.getElementById("chunk_playlist").value;
-    switch (evt.explicitOriginalTarget.id) {
+    const target = evt.explicitOriginalTarget.id,
+        start_sublist = +document.getElementById("start_sublist").value,
+        chunk_sublist = +document.getElementById("chunk_sublist").value,
+        start_playlist = target.includes("play") ? +document.getElementById("start_playlist").value : "",
+        chunk_playlist = target.includes("play") ? +document.getElementById("chunk_playlist").value : "";
+    switch (target) {
         case "chunk_sublist":
             if (value >= 1) {
                 document.getElementById("stop_sublist").value = start_sublist + value;
@@ -402,7 +403,8 @@ function clearSubList(reset = false) {
         try {
             document.getElementById("url").value = "";
             document.getElementById("url_list").value = "";
-            document.getElementById("bulk-listing").checked = false;
+            // Yeah, clearing this won't work out
+            //document.getElementById("bulk-listing").checked = false;
             document.getElementById("watch-list").checked = false;
         } catch (error) {
             //Nothing
