@@ -12,15 +12,31 @@ const port = process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
-const save_loc = process.env.save_loc || "yt-dlp";
-const sleep_time = process.env.sleep || 3;
-const subs_enabled = process.env.subs || true;
-const scheduled_update = process.env.scheduledUpdate || "0 */12 * * *"; // Default: Every 12 hours
+const save_loc = process.env.save_loc || "yt-dlp-2";
+const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended tho.
+const get_subs = process.env.subtitles || true;
+const get_description = process.env.description || true;
+const get_comments = process.env.comments || true;
+const get_thumbnail = process.env.thumbnail || true;
+const scheduled_update = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
-var options = ["--embed-metadata", "-P", save_loc]
+// not sure if this will work
+const make_sub_dirs = process.env.make_dirs || true;
 
-if (subs_enabled) {
-    options = ["--write-subs", "--sleep-subtitles", sleep_time, "--embed-metadata", "-P", save_loc];
+const options = [
+    "--embed-metadata",
+    "--paths",
+    `${save_loc}`,
+    get_subs ? "--write-subs" : "",
+    get_subs ? "--write-auto-subs" : "",
+    get_description ? "--write-description" : "",
+    get_comments ? "--write-comments" : "",
+    get_thumbnail ? "--write-thumbnail" : ""
+].filter(Boolean);
+console.log(options);
+
+if (!fs.existsSync(save_loc)){
+    fs.mkdirSync(save_loc);
 }
 
 const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
@@ -243,7 +259,7 @@ async function scheduledUpdate() {
         //console.log(`Done processing playlist ${playlist.url}`);
         //console.log(new Date() - start);
     }
-    console.log("Scheduled update finished at:", new Date.toISOString());
+    console.log("Scheduled update finished at:", new Date().toISOString());
 }
 
 // Download funtions
