@@ -2,6 +2,7 @@
 const { spawn } = require("child_process");
 const http = require("http");
 const fs = require("fs");
+const path_fs = require("path");
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const { Server } = require("socket.io");
 const CronJob = require("cron").CronJob;
@@ -12,17 +13,17 @@ const port = process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
-const save_loc = process.env.save_loc || "yt-dlp-2";
-const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended tho.
+const save_loc = process.env.save_loc || "yt-dlp";
+const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
 const get_subs = process.env.subtitles || true;
 const get_description = process.env.description || true;
 const get_comments = process.env.comments || true;
 const get_thumbnail = process.env.thumbnail || true;
 const scheduled_update = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
-// not sure if this will work
-const MAX_LENGTH = 255;
-const not_needed = ['', 'pornstar', 'model', 'videos'];
+
+const MAX_LENGTH = 255; // this is what sequelize used for postgres
+const not_needed = ["", "pornstar", "model", "videos"];
 const options = [
     "--embed-metadata",
     get_subs ? "--write-subs" : "",
@@ -252,8 +253,8 @@ async function scheduledUpdate() {
             watch: true
         }
     });
-    //console.log(playlists['rows']);
-    for (const playlist of playlists['rows']) {
+    //console.log(playlists["rows"]);
+    for (const playlist of playlists["rows"]) {
         //console.log("playlist:", playlist);
         var index = 0;
         const last_item = await vid_list.findOne({
@@ -294,8 +295,9 @@ async function download_lister(req, res) {
                 const play_list = await play_lists.findOne({ where: { url: entry.reference } });
                 save_dir_var = play_list.save_dir;
             } catch (error) {
-                console.error(error);
-                // do nothing
+                //console.error(error);
+                // do nothing, as this is just to make sure 
+                // that unlisted vidoes are put in save_loc
             }
             response_list["item"].push([entry.url, entry.title, save_dir_var]);
         }
@@ -314,11 +316,12 @@ async function download_sequential(items) {
     //console.log(items);
     for (const [url_str, title, save_dir] of items) {
         try {
-            const save_path = save_loc + '/' + save_dir;
-            if (save_path != save_loc + '/' && !fs.existsSync(save_path)) {
+            const save_path = path_fs.join(save_loc, save_dir);
+            // if save_dir == "",  then save_path == save_loc
+            if (save_path != save_loc && !fs.existsSync(save_path)) {
                 fs.mkdirSync(save_path, { recursive: true });
             }
-            console.log("save_path", save_path);
+            //console.log("save_path", save_path);
             sock.emit("download-start", { message: title });
             const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
             //console.log(options.concat([save_path, url_str]));
@@ -371,7 +374,7 @@ async function list_init(req, res) {
         /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
         to the frontend but will continue in the background, this can cause issues like list_order getting 
         messed uo or listing not completing.
-        It's best to not use bulk listing for playlists, channels but say you have 50 tabs open and you just 
+        It"s best to not use bulk listing for playlists, channels but say you have 50 tabs open and you just 
         copy the urls then you can just set them to be processed in this mode.*/
         if (continuous) await sleep();
         var body_url = body["url"],
@@ -423,6 +426,7 @@ async function list_init(req, res) {
                                 title_str = await url_to_title(body_url);
                             } catch (error) {
                                 title_str = body_url;
+                                console.error(error);
                             }
                         }
                         title_str = await string_slicer(title_str, MAX_LENGTH)

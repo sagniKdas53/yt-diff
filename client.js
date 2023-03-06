@@ -67,6 +67,7 @@ function listVideos() {
     // global url isn't being set correctly
     try {
         const id = bulk_listing ? "url_list" : "url";
+        //console.log(document.getElementById(id).value.split('\n'));
         processUrls(document.getElementById(id).value.split('\n'), bulk_listing);
     } catch (err) {
         showToast(`Not a valid URL ❌`);
@@ -77,33 +78,38 @@ async function processUrls(urlList, clear) {
     const chunk_sublist = +document.getElementById("chunk_sublist").value;
     // if clear is true it means in contineous listing mode, so watching shouldn't be necessary
     const watch_sublist = clear ? false : document.getElementById("watch-list").checked;
-    for (const element of urlList) {
-        const url = new URL(element);
-        //console.log(element, url);
-        if (url.protocol !== "https:" && url.protocol !== "http:") {
-            showToast(`Not a valid URL ❌`);
-            continue;
+    try {
+        for (const element of urlList) {
+            const url = new URL(element);
+            //console.log(element, url);
+            if (url.protocol !== "https:" && url.protocol !== "http:") {
+                showToast(`Not a valid URL ❌`);
+                continue;
+            }
+            url_global = bulk_listing ? "None" : url.href;
+            toggleButton("off");
+            const response = await fetch(base_url + "/list", {
+                method: "post",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url.href,
+                    start: start_val,
+                    stop: stop_val,
+                    chunk: chunk_sublist,
+                    watch: watch_sublist,
+                    continuous: clear
+                })
+            });
+            const text = await response.text();
+            makeSubTable(text, clear);
         }
-        url_global = bulk_listing ? "None" : url.href;
-        toggleButton("off");
-        const response = await fetch(base_url + "/list", {
-            method: "post",
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                url: url.href,
-                start: start_val,
-                stop: stop_val,
-                chunk: chunk_sublist,
-                watch: watch_sublist,
-                continuous: clear
-            })
-        });
-        const text = await response.text();
-        makeSubTable(text, clear);
+    } catch (error) {
+        showToast(`Some URLs are not valid ❌`);
     }
+
 }
 
 // Limit setter
