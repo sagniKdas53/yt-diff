@@ -286,10 +286,12 @@ function makeMainTable(text) {
         updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime()) / (1000 * 3600 * 24)) + " days";
         // single quotes are necessary here / or i can make a dynamic button
         show.className = "text-center";
+        //  btn-sm makes it hard to click on mobile devices
         show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
         const checked = element.watch ? "checked" : "";
         watch.className = "text-center";
         watch.innerHTML = `<input type="checkbox" oninput="watchToggler(this)" class="form-check-input me-1 update-markers" id="${element.order_added}" ${checked}>`
+        // the selector_update can be used here, just will need to change the backend, DB and frontend, crying emoji.
     });
 }
 function watchToggler(element) {

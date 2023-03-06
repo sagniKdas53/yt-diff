@@ -430,7 +430,7 @@ async function list_init(req, res) {
                             }
                         }
                         title_str = await string_slicer(title_str, MAX_LENGTH)
-                        console.log(title_str);
+                        //console.log(title_str);
                         // no need to use found or create syntax here as this is only run the first time
                         play_lists.findOrCreate({
                             where: { url: body_url },
@@ -618,18 +618,18 @@ const html = "text/html; charset=utf-8";
 const js = "text/javascript; charset=utf-8";
 const json_t = "text/json; charset=utf-8";
 const staticAssets = {
-    "": { obj: (__dirname + "/index.html"), type: html },
-    "/": { obj: (__dirname + "/index.html"), type: html },
-    "/dbi": { obj: (__dirname + "/dbi.html"), type: html },
-    "/assets/bootstrap.min.css": { obj: (__dirname + "/node_modules/bootstrap/dist/css/bootstrap.min.css"), type: css },
-    "/assets/bootstrap.min.css.map": { obj: (__dirname + "/node_modules/bootstrap/dist/css/bootstrap.min.css.map"), type: css },
-    "/assets/bootstrap.bundle.min.js": { obj: (__dirname + "/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"), type: js },
-    "/assets/bootstrap.bundle.min.js.map": { obj: (__dirname + "/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js.map"), type: js },
-    "/assets/favicon.ico": { obj: (__dirname + "/favicon.ico"), type: "image/x-icon" },
-    "/assets/socket.io.min.js": { obj: (__dirname + "/node_modules/socket.io/client-dist/socket.io.min.js"), type: js },
-    "/assets/socket.io.min.js.map": { obj: (__dirname + "/node_modules/socket.io/client-dist/socket.io.min.js.map"), type: js },
-    "/assets/nav.png": { obj: (__dirname + "/nav.png"), type: "image/png" },
-    "/assets/client.js": { obj: (__dirname + "/client.js"), type: js }
+    "": { file: path_fs.join(__dirname, "/index.html"), type: html },
+    "/": { file: path_fs.join(__dirname, "/index.html"), type: html },
+    "/dbi": { file: path_fs.join(__dirname, "/dbi.html"), type: html },
+    "/assets/bootstrap.min.css": { file: path_fs.join(__dirname, "/node_modules/bootstrap/dist/css/bootstrap.min.css"), type: css },
+    "/assets/bootstrap.min.css.map": { file: path_fs.join(__dirname, "/node_modules/bootstrap/dist/css/bootstrap.min.css.map"), type: css },
+    "/assets/bootstrap.bundle.min.js": { file: path_fs.join(__dirname, "/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"), type: js },
+    "/assets/bootstrap.bundle.min.js.map": { file: path_fs.join(__dirname, "/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js.map"), type: js },
+    "/assets/favicon.ico": { file: path_fs.join(__dirname, "/favicon.ico"), type: "image/x-icon" },
+    "/assets/socket.io.min.js": { file: path_fs.join(__dirname, "/node_modules/socket.io/client-dist/socket.io.min.js"), type: js },
+    "/assets/socket.io.min.js.map": { file: path_fs.join(__dirname, "/node_modules/socket.io/client-dist/socket.io.min.js.map"), type: js },
+    "/assets/nav.png": { file: path_fs.join(__dirname, "/nav.png"), type: "image/png" },
+    "/assets/client.js": { file: path_fs.join(__dirname, "/client.js"), type: js }
 };
 
 const server = http.createServer((req, res) => {
@@ -637,7 +637,7 @@ const server = http.createServer((req, res) => {
         try {
             const get = req.url.replace(url_base, "")
             res.writeHead(200, { "Content-Type": staticAssets[get].type });
-            res.write(fs.readFileSync(staticAssets[get].obj));
+            res.write(fs.readFileSync(staticAssets[get].file));
         } catch (error) {
             res.writeHead(404, { "Content-Type": html });
             res.write("Not Found");
