@@ -33,9 +33,9 @@ const options = [
     get_comments ? "--write-comments" : "",
     get_thumbnail ? "--write-thumbnail" : ""
 ].filter(Boolean);
-console.log(options);
+//console.log(options);
 
-if (!fs.existsSync(save_loc)){
+if (!fs.existsSync(save_loc)) {
     fs.mkdirSync(save_loc);
 }
 
@@ -118,7 +118,7 @@ new CronJob(scheduled_update, scheduledUpdate, null, true, time_zone).start();
 // Utility functions
 async function extract_json(req) {
     return new Promise((resolve, reject) => {
-        let body = "";
+        var body = "";
         req.on("data", function (data) {
             body += data;
             if (body.length > 1e6) {
@@ -149,7 +149,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
             "%(title)s\t%(id)s\t%(webpage_url)s",
             body_url,
         ]);
-        let response = "";
+        var response = "";
         yt_list.stdout.on("data", (data) => {
             response += data;
         });
@@ -170,7 +170,8 @@ async function processResponse(response, body_url, index) {
     //console.log("In processResponse", "Start:", index);
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
-        var [title, id, url] = element.split("\t");
+        const [id, url] = element.split("\t").slice(1);
+        var title = element.split("\t")[0];
         if (title === "[Deleted video]" || title === "[Private video]") {
             return;
         } else if (title === "NA") {
