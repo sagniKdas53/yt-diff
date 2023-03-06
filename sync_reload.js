@@ -21,22 +21,21 @@ const get_thumbnail = process.env.thumbnail || true;
 const scheduled_update = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 // not sure if this will work
-const make_sub_dirs = process.env.make_dirs || true;
-
+const MAX_LENGTH = 255;
+const not_needed = ['', 'pornstar', 'model', 'videos'];
 const options = [
     "--embed-metadata",
-    "--paths",
-    `${save_loc}`,
     get_subs ? "--write-subs" : "",
     get_subs ? "--write-auto-subs" : "",
     get_description ? "--write-description" : "",
     get_comments ? "--write-comments" : "",
-    get_thumbnail ? "--write-thumbnail" : ""
+    get_thumbnail ? "--write-thumbnail" : "",
+    "--paths",
 ].filter(Boolean);
-console.log(options);
+//console.log(options);
 
-if (!fs.existsSync(save_loc)){
-    fs.mkdirSync(save_loc);
+if (!fs.existsSync(save_loc)) {
+    fs.mkdirSync(save_loc, { recursive: true });
 }
 
 const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
@@ -103,6 +102,10 @@ const play_lists = sequelize.define("play_lists", {
     watch: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
+    },
+    save_dir: {
+        type: DataTypes.STRING,
+        allowNull: false,
     }
 });
 
@@ -118,7 +121,7 @@ new CronJob(scheduled_update, scheduledUpdate, null, true, time_zone).start();
 // Utility functions
 async function extract_json(req) {
     return new Promise((resolve, reject) => {
-        let body = "";
+        var body = "";
         req.on("data", function (data) {
             body += data;
             if (body.length > 1e6) {
@@ -136,6 +139,22 @@ async function extract_json(req) {
         });
     });
 }
+async function string_slicer(str, len) {
+    if (str.length > len) {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        return (decoder.decode(encoder.encode(str.slice(0, len))));
+    }
+    return (str);
+}
+async function url_to_title(body_url) {
+    try {
+        return new URL(body_url).pathname.split("/").filter(item => !not_needed.includes(item)).join("");
+    } catch (error) {
+        console.error(error);
+        return body_url
+    }
+}
 function ytdlp_spawner(body_url, start_num, stop_num) {
     //console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
     return new Promise((resolve, reject) => {
@@ -149,7 +168,7 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
             "%(title)s\t%(id)s\t%(webpage_url)s",
             body_url,
         ]);
-        let response = "";
+        var response = "";
         yt_list.stdout.on("data", (data) => {
             response += data;
         });
@@ -177,6 +196,7 @@ async function processResponse(response, body_url, index) {
             title = id;
         }
         const item_available = title !== "[Unavailable video]";
+        const title_fixed = await string_slicer(title, MAX_LENGTH);
         try {
             // its pre-incrementing index here so in the listers it starts from 0
             const [found, created] = await vid_list.findOrCreate({
@@ -184,7 +204,7 @@ async function processResponse(response, body_url, index) {
                 defaults: {
                     id: id,
                     reference: body_url,
-                    title: title,
+                    title: title_fixed,
                     downloaded: false,
                     available: item_available,
                     list_order: ++index,
@@ -195,13 +215,13 @@ async function processResponse(response, body_url, index) {
                 //console.log("Found object: ", found);
                 if (found.id !== id ||
                     found.reference !== body_url ||
-                    found.title !== title ||
+                    found.title !== title_fixed ||
                     found.available !== item_available ||
                     found.list_order !== index - 1) {
                     // At least one property is different, update the object
                     found.id = id;
                     found.reference = body_url;
-                    found.title = title;
+                    found.title = title_fixed;
                     found.available = item_available;
                     found.list_order = index - 1;
                     //console.log("Found object updated: ", found);
@@ -269,7 +289,15 @@ async function download_lister(req, res) {
             response_list = { item: [] };
         for (const id_str of body["id"]) {
             const entry = await vid_list.findOne({ where: { id: id_str } });
-            response_list["item"].push([entry.url, entry.title]);
+            var save_dir_var = "";
+            try {
+                const play_list = await play_lists.findOne({ where: { url: entry.reference } });
+                save_dir_var = play_list.save_dir;
+            } catch (error) {
+                console.error(error);
+                // do nothing
+            }
+            response_list["item"].push([entry.url, entry.title, save_dir_var]);
         }
         download_sequential(response_list["item"]);
         res.writeHead(200, { "Content-Type": json_t });
@@ -284,10 +312,16 @@ async function download_lister(req, res) {
 // Add a parallel downloader someday
 async function download_sequential(items) {
     //console.log(items);
-    for (const [url_str, title] of items) {
+    for (const [url_str, title, save_dir] of items) {
         try {
+            const save_path = save_loc + '/' + save_dir;
+            if (save_path != save_loc + '/' && !fs.existsSync(save_path)) {
+                fs.mkdirSync(save_path, { recursive: true });
+            }
+            console.log("save_path", save_path);
             sock.emit("download-start", { message: title });
-            const yt_dlp = spawn("yt-dlp", options.concat(url_str));
+            const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
+            //console.log(options.concat([save_path, url_str]));
             yt_dlp.stdout.on("data", async (data) => {
                 sock.emit("progress", { message: "" });
                 /*try {
@@ -383,16 +417,23 @@ async function list_init(req, res) {
                     get_title.stdout.on("data", async (data) => {
                         title_str += data;
                     });
-                    get_title.on("close", (code) => {
+                    get_title.on("close", async (code) => {
                         if (title_str == "NA\n") {
-                            title_str = body_url;
+                            try {
+                                title_str = await url_to_title(body_url);
+                            } catch (error) {
+                                title_str = body_url;
+                            }
                         }
+                        title_str = await string_slicer(title_str, MAX_LENGTH)
+                        console.log(title_str);
                         // no need to use found or create syntax here as this is only run the first time
                         play_lists.findOrCreate({
                             where: { url: body_url },
                             defaults: {
-                                title: title_str.trim(),
-                                watch: watch
+                                title: title_str,
+                                watch: watch,
+                                save_dir: title_str
                             },
                         });
                     });
