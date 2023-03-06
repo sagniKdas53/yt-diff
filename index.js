@@ -2,6 +2,7 @@
 const { spawn } = require("child_process");
 const http = require("http");
 const fs = require("fs");
+const path_fs = require("path");
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const { Server } = require("socket.io");
 const CronJob = require("cron").CronJob;
@@ -12,31 +13,30 @@ const port = process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
-const save_loc = process.env.save_loc || "yt-dlp-2";
-const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended tho.
+const save_loc = process.env.save_loc || "yt-dlp";
+const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
 const get_subs = process.env.subtitles || true;
 const get_description = process.env.description || true;
 const get_comments = process.env.comments || true;
 const get_thumbnail = process.env.thumbnail || true;
 const scheduled_update = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
-// not sure if this will work
-const make_sub_dirs = process.env.make_dirs || true;
 
+const MAX_LENGTH = 255; // this is what sequelize used for postgres
+const not_needed = ["", "pornstar", "model", "videos"];
 const options = [
     "--embed-metadata",
-    "--paths",
-    `${save_loc}`,
     get_subs ? "--write-subs" : "",
     get_subs ? "--write-auto-subs" : "",
     get_description ? "--write-description" : "",
     get_comments ? "--write-comments" : "",
-    get_thumbnail ? "--write-thumbnail" : ""
+    get_thumbnail ? "--write-thumbnail" : "",
+    "--paths",
 ].filter(Boolean);
 //console.log(options);
 
 if (!fs.existsSync(save_loc)) {
-    fs.mkdirSync(save_loc);
+    fs.mkdirSync(save_loc, { recursive: true });
 }
 
 const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
@@ -103,6 +103,10 @@ const play_lists = sequelize.define("play_lists", {
     watch: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
+    },
+    save_dir: {
+        type: DataTypes.STRING,
+        allowNull: false,
     }
 });
 
@@ -135,6 +139,22 @@ async function extract_json(req) {
             }
         });
     });
+}
+async function string_slicer(str, len) {
+    if (str.length > len) {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        return (decoder.decode(encoder.encode(str.slice(0, len))));
+    }
+    return (str);
+}
+async function url_to_title(body_url) {
+    try {
+        return new URL(body_url).pathname.split("/").filter(item => !not_needed.includes(item)).join("");
+    } catch (error) {
+        console.error(error);
+        return body_url
+    }
 }
 function ytdlp_spawner(body_url, start_num, stop_num) {
     //console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
@@ -170,14 +190,14 @@ async function processResponse(response, body_url, index) {
     //console.log("In processResponse", "Start:", index);
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
-        const [id, url] = element.split("\t").slice(1);
-        var title = element.split("\t")[0];
+        var [title, id, url] = element.split("\t");
         if (title === "[Deleted video]" || title === "[Private video]") {
             return;
         } else if (title === "NA") {
             title = id;
         }
         const item_available = title !== "[Unavailable video]";
+        const title_fixed = await string_slicer(title, MAX_LENGTH);
         try {
             // its pre-incrementing index here so in the listers it starts from 0
             const [found, created] = await vid_list.findOrCreate({
@@ -185,7 +205,7 @@ async function processResponse(response, body_url, index) {
                 defaults: {
                     id: id,
                     reference: body_url,
-                    title: title,
+                    title: title_fixed,
                     downloaded: false,
                     available: item_available,
                     list_order: ++index,
@@ -196,13 +216,13 @@ async function processResponse(response, body_url, index) {
                 //console.log("Found object: ", found);
                 if (found.id !== id ||
                     found.reference !== body_url ||
-                    found.title !== title ||
+                    found.title !== title_fixed ||
                     found.available !== item_available ||
                     found.list_order !== index - 1) {
                     // At least one property is different, update the object
                     found.id = id;
                     found.reference = body_url;
-                    found.title = title;
+                    found.title = title_fixed;
                     found.available = item_available;
                     found.list_order = index - 1;
                     //console.log("Found object updated: ", found);
@@ -233,8 +253,8 @@ async function scheduledUpdate() {
             watch: true
         }
     });
-    //console.log(playlists['rows']);
-    for (const playlist of playlists['rows']) {
+    //console.log(playlists["rows"]);
+    for (const playlist of playlists["rows"]) {
         //console.log("playlist:", playlist);
         var index = 0;
         const last_item = await vid_list.findOne({
@@ -270,7 +290,16 @@ async function download_lister(req, res) {
             response_list = { item: [] };
         for (const id_str of body["id"]) {
             const entry = await vid_list.findOne({ where: { id: id_str } });
-            response_list["item"].push([entry.url, entry.title]);
+            var save_dir_var = "";
+            try {
+                const play_list = await play_lists.findOne({ where: { url: entry.reference } });
+                save_dir_var = play_list.save_dir;
+            } catch (error) {
+                //console.error(error);
+                // do nothing, as this is just to make sure 
+                // that unlisted vidoes are put in save_loc
+            }
+            response_list["item"].push([entry.url, entry.title, save_dir_var]);
         }
         download_sequential(response_list["item"]);
         res.writeHead(200, { "Content-Type": json_t });
@@ -285,10 +314,17 @@ async function download_lister(req, res) {
 // Add a parallel downloader someday
 async function download_sequential(items) {
     //console.log(items);
-    for (const [url_str, title] of items) {
+    for (const [url_str, title, save_dir] of items) {
         try {
+            const save_path = path_fs.join(save_loc, save_dir);
+            // if save_dir == "",  then save_path == save_loc
+            if (save_path != save_loc && !fs.existsSync(save_path)) {
+                fs.mkdirSync(save_path, { recursive: true });
+            }
+            //console.log("save_path", save_path);
             sock.emit("download-start", { message: title });
-            const yt_dlp = spawn("yt-dlp", options.concat(url_str));
+            const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
+            //console.log(options.concat([save_path, url_str]));
             yt_dlp.stdout.on("data", async (data) => {
                 sock.emit("progress", { message: "" });
                 /*try {
@@ -338,7 +374,7 @@ async function list_init(req, res) {
         /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
         to the frontend but will continue in the background, this can cause issues like list_order getting 
         messed uo or listing not completing.
-        It's best to not use bulk listing for playlists, channels but say you have 50 tabs open and you just 
+        It"s best to not use bulk listing for playlists, channels but say you have 50 tabs open and you just 
         copy the urls then you can just set them to be processed in this mode.*/
         if (continuous) await sleep();
         var body_url = body["url"],
@@ -384,16 +420,24 @@ async function list_init(req, res) {
                     get_title.stdout.on("data", async (data) => {
                         title_str += data;
                     });
-                    get_title.on("close", (code) => {
+                    get_title.on("close", async (code) => {
                         if (title_str == "NA\n") {
-                            title_str = body_url;
+                            try {
+                                title_str = await url_to_title(body_url);
+                            } catch (error) {
+                                title_str = body_url;
+                                console.error(error);
+                            }
                         }
+                        title_str = await string_slicer(title_str, MAX_LENGTH)
+                        console.log(title_str);
                         // no need to use found or create syntax here as this is only run the first time
                         play_lists.findOrCreate({
                             where: { url: body_url },
                             defaults: {
-                                title: title_str.trim(),
-                                watch: watch
+                                title: title_str,
+                                watch: watch,
+                                save_dir: title_str
                             },
                         });
                     });

@@ -37,8 +37,8 @@ services:
       - yt-db
     networks:
       - revProxy-net
-    expose:
-      - ${PORT}
+    port:
+      - ${PORT}:${PORT}
     environment:
       - host=${HOSTNAME}
       - protocol=${PROTOCOL}
@@ -48,7 +48,12 @@ services:
       - hide_ports=true
       - save_loc=${SAVE_PATH}
       - sleep=${SLEEP}
-      - subs=${SAVE_SUBSTITLES}
+      - subtitles=${SAVE_SUBSTITLES}
+      - description=${SAVE_DESCRIPTION}
+      - comments=${SAVE_COMMENTS}
+      - thumbnail=${SAVE_THUMBNAIL}
+      - time_zone=${TZ_PREFERRED}
+      - scheduled=${UPDATE_SCHEDULED}
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.ytdiff.entryPoints=web,websecure'
