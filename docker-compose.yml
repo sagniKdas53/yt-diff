@@ -37,7 +37,7 @@ services:
       - yt-db
     networks:
       - revProxy-net
-    port:
+    ports:
       - ${PORT}:${PORT}
     environment:
       - host=${HOSTNAME}
