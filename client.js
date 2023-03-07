@@ -38,19 +38,19 @@ function showToast(text) {
 }
 function toggleButton(state) {
     const list_btn = document.getElementById("list_btn") || { disabled: false };
-    const dnld_btn = document.getElementById("download_btn");
+    const download_btn = document.getElementById("download_btn");
     switch (state) {
         case "off":
             // Check if on then turn off
-            if ((list_btn.disabled == false) && (dnld_btn.disabled == false)) {
+            if ((list_btn.disabled == false) && (download_btn.disabled == false)) {
                 list_btn.disabled = true;
-                dnld_btn.disabled = true;
+                download_btn.disabled = true;
             }
             break;
         case "on":
             // turn on the buttons
             list_btn.disabled = false;
-            dnld_btn.disabled = false;
+            download_btn.disabled = false;
             break;
         default:
             break;
@@ -76,7 +76,7 @@ function listVideos() {
 async function processUrls(urlList, clear) {
     const [start_val, stop_val] = getLimits(0, "start_sublist", "stop_sublist", "chunk_sublist");
     const chunk_sublist = +document.getElementById("chunk_sublist").value;
-    // if clear is true it means in contineous listing mode, so watching shouldn't be necessary
+    // if clear is true it means in continuous listing mode, so watching shouldn't be necessary
     const watch_sublist = clear ? false : document.getElementById("watch-list").checked;
     try {
         for (const element of urlList) {
@@ -320,7 +320,7 @@ function sortLoaded() {
     getMainList(0);
 }
 function searchMain() {
-    var query = document.getElementById("query_mainlist").value.trim();
+    var query = document.getElementById("query_main_list").value.trim();
     getMainList(0, query);
 };
 

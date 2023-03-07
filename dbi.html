@@ -107,7 +107,7 @@
                             <tr class="bg-dark">
                                 <th scope="col" class="table-dark text-center">ID</th>
                                 <th scope="col" class="table-dark large-play-title m-0 p-0 text-center align-middle">
-                                    <input type="text" class="search m-0 p-0" id="query_mainlist"
+                                    <input type="text" class="search m-0 p-0" id="query_main_list"
                                         placeholder="List Title" onkeyup="onFinishTypingMain()" />
                                 </th>
                                 <th scope="col" class="table-dark extra text-center">Updated</th>
@@ -229,7 +229,7 @@
         // This needs to outside of any functions
         var url_global = "None";
         function init() {
-            document.getElementById("query_mainlist").value = "";
+            document.getElementById("query_main_list").value = "";
             getMainList(0);
             sockSetup();
             document.getElementById("start_playlist").value = 0;

@@ -1,10 +1,10 @@
 {
   "name": "yt-diff",
-  "version": "1.0.0",
-  "description": "downloads vidoes using yt-dlp and maintains a database",
+  "version": "1.3.0",
+  "description": "downloads videos and watches for changes using yt-dlp and maintains a database",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "serve": "node index.js"
   },
   "repository": {
     "type": "git",
@@ -12,7 +12,8 @@
   },
   "keywords": [
     "database",
-    "yt-dlp"
+    "yt-dlp",
+    "watchdog"
   ],
   "author": "Sagnik Das",
   "license": "ISC",
@@ -23,10 +24,10 @@
   "dependencies": {
     "bootstrap": "^5.2.3",
     "cron": "^2.2.0",
-    "pg": "^8.8.0",
+    "pg": "^8.10.0",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.28.0",
-    "socket.io": "^4.6.0"
+    "socket.io": "^4.6.1"
   },
   "devDependencies": {
     "csv-parser": "^3.0.0"

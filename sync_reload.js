@@ -33,7 +33,6 @@ const options = [
     get_thumbnail ? "--write-thumbnail" : "",
     "--paths",
 ].filter(Boolean);
-//console.log(options);
 
 if (!fs.existsSync(save_loc)) {
     fs.mkdirSync(save_loc, { recursive: true });
@@ -47,7 +46,7 @@ const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
 
 try {
     sequelize.authenticate().then(() => {
-        console.log("Connection has been established successfully.");
+        console.log("Connection to database has been established successfully.");
     });
 } catch (error) {
     console.error("Unable to connect to the database:", error);
@@ -116,8 +115,8 @@ sequelize.sync().then(() => {
     console.error("Unable to create table : ", error);
 });
 
-// sequelize need to start befor this can start
-new CronJob(scheduled_update, scheduledUpdate, null, true, time_zone).start();
+// sequelize need to start before this can start
+const job = new CronJob(scheduled_update, scheduledUpdate, null, true, time_zone);
 
 // Utility functions
 async function extract_json(req) {
@@ -157,7 +156,7 @@ async function url_to_title(body_url) {
     }
 }
 function ytdlp_spawner(body_url, start_num, stop_num) {
-    //console.log("In spawner", "Start:", start_num, "Stop:", stop_num);
+    console.log(`In spawner\nStart: ${start_num}\nStop: ${stop_num}\nUrl: ${body_url}`);
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
             "--playlist-start",
@@ -186,17 +185,20 @@ function ytdlp_spawner(body_url, start_num, stop_num) {
     });
 }
 async function processResponse(response, body_url, index) {
-    const init_resp = { count: 0, rows: [] }
-    //console.log("In processResponse", "Start:", index);
+    console.log(`In processResponse\nStart: ${index}\nUrl: ${body_url}`);
+    const init_resp = { count: 0, rows: [] };
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
-        var [title, id, url] = element.split("\t");
-        if (title === "[Deleted video]" || title === "[Private video]") {
-            return;
-        } else if (title === "NA") {
-            title = id;
+        var title = element.split("\t")[0].trim(),
+            item_available = true;
+        const [id, url] = element.split("\t").slice(1);
+        console.log(title, id, url);
+        if (title === "[Deleted video]" || title === "[Private video]" || title === "[Unavailable video]") {
+            item_available = false;
         }
-        const item_available = title !== "[Unavailable video]";
+        else if (title === "NA") {
+            title = id.trim();
+        }
         const title_fixed = await string_slicer(title, MAX_LENGTH);
         try {
             // its pre-incrementing index here so in the listers it starts from 0
@@ -213,7 +215,7 @@ async function processResponse(response, body_url, index) {
             });
             if (!created) {
                 // The object was found and not created
-                //console.log("Found object: ", found);
+                // Doesn't change the downloaded state
                 if (found.id !== id ||
                     found.reference !== body_url ||
                     found.title !== title_fixed ||
@@ -225,9 +227,6 @@ async function processResponse(response, body_url, index) {
                     found.title = title_fixed;
                     found.available = item_available;
                     found.list_order = index - 1;
-                    //console.log("Found object updated: ", found);
-                } else {
-                    found.changed("updatedAt", true);
                 }
                 await found.save();
             }
@@ -240,50 +239,46 @@ async function processResponse(response, body_url, index) {
     );
     return init_resp;
 }
-async function sleep() {
-    return new Promise((resolve) => setTimeout(resolve, sleep_time * 1000));
+async function sleep(sleep_seconds = sleep_time) {
+    return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
 }
 
 // The scheduled updater
 async function scheduledUpdate() {
-    const start = new Date();
-    console.log("Scheduled update started at:", start.toISOString());
+    console.log("Scheduled update started at:", new Date().toISOString());
     const playlists = await play_lists.findAndCountAll({
         where: {
             watch: true
         }
     });
-    //console.log(playlists["rows"]);
+    console.log("Updating", playlists["rows"].length, "playlists");
     for (const playlist of playlists["rows"]) {
-        //console.log("playlist:", playlist);
         var index = 0;
         const last_item = await vid_list.findOne({
             where: {
-                reference: "None",
+                reference: playlist.url,
             },
             order: [
-                ["createdAt", "DESC"],
+                ["list_order", "DESC"],
             ],
             attributes: ["list_order"],
             limit: 1,
         });
         try {
-            //console.log(last_item.list_order);
+            console.log(`Playlist: ${playlist.title.trim()} being updated from index ${last_item.list_order}`);
             index = last_item.list_order;
         } catch (error) {
             // do nothing
         }
-        //console.log(playlist.url, index, index + 10, 10);
         await sleep();
-        //console.log(new Date() - start);
         await list_background(playlist.url, index, index + 10, 10);
-        //console.log(`Done processing playlist ${playlist.url}`);
-        //console.log(new Date() - start);
+        console.log(`Done processing playlist ${playlist.url}`);
     }
     console.log("Scheduled update finished at:", new Date().toISOString());
+    console.log(`Next scheduled update on ${job.nextDates(1)}`);
 }
 
-// Download funtions
+// Download functions
 async function download_lister(req, res) {
     try {
         const body = await extract_json(req),
@@ -297,7 +292,7 @@ async function download_lister(req, res) {
             } catch (error) {
                 //console.error(error);
                 // do nothing, as this is just to make sure 
-                // that unlisted vidoes are put in save_loc
+                // that unlisted videos are put in save_loc
             }
             response_list["item"].push([entry.url, entry.title, save_dir_var]);
         }
@@ -313,7 +308,7 @@ async function download_lister(req, res) {
 }
 // Add a parallel downloader someday
 async function download_sequential(items) {
-    //console.log(items);
+    console.log(`Downloading ${items.length} videos sequential`);
     for (const [url_str, title, save_dir] of items) {
         try {
             const save_path = path_fs.join(save_loc, save_dir);
@@ -321,14 +316,12 @@ async function download_sequential(items) {
             if (save_path != save_loc && !fs.existsSync(save_path)) {
                 fs.mkdirSync(save_path, { recursive: true });
             }
-            //console.log("save_path", save_path);
             sock.emit("download-start", { message: title });
             const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
-            //console.log(options.concat([save_path, url_str]));
             yt_dlp.stdout.on("data", async (data) => {
                 sock.emit("progress", { message: "" });
                 /*try {
-                    // Keeing these just so it can be used to maybe add a progress bar
+                    // Keeping these just so it can be used to maybe add a progress bar
                     const percentage = /(\d{1,3}\.\d)%/.exec(`${data}`);
                     if (percentage !== null) {
                         sock.emit("progress", { message: percentage[0] });
@@ -355,13 +348,14 @@ async function download_sequential(items) {
             });
             // this holds the for loop, preventing the next iteration from happening
             await new Promise((resolve) => yt_dlp.on("close", resolve));
+            console.log(`Downloaded ${title} at location ${save_path}`)
         } catch (error) {
             console.error(error);
         }
     }
 }
 
-// List funtions
+// List functions
 async function list_init(req, res) {
     try {
         const body = await extract_json(req),
@@ -370,98 +364,64 @@ async function list_init(req, res) {
             chunk_size = +body["chunk"] || 10,
             continuous = body["continuous"] || false,
             watch = body["watch"] || false;
-        //console.log("watch: " + watch);
+        var body_url = body["url"],
+            index = (start_num > 0) ? start_num - 1 : 0; // index starts from 0 in this function
+        console.log("In list_init function:", "\nbody_url: " + body["url"], "\nstart_num: " + body["start"], "\nstop_num:",
+            body["stop"], "\nchunk_size:", body["chunk"], "\ncontinuous:", body["continuous"], "\nindex:", index);
         /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
         to the frontend but will continue in the background, this can cause issues like list_order getting 
-        messed uo or listing not completing.
-        It"s best to not use bulk listing for playlists, channels but say you have 50 tabs open and you just 
+        messed up or listing not completing.
+        It"s best to not use bulk listing for playlists and channels but say you have 50 tabs open and you just 
         copy the urls then you can just set them to be processed in this mode.*/
         if (continuous) await sleep();
-        var body_url = body["url"],
-            index = start_num - 1; // index starts from 0 in this function
-        //console.log("body_url: " + body["url"],"\nstart_num: " + body["start"],"\nstop_num:", 
-        //    body["stop"],"\nchunk_size:", body["chunk"],"\ncontinuous:", body["continuous"]);
         const response_list = await ytdlp_spawner(body_url, start_num, stop_num);
-        //console.log("response_list: "+response_list+"\nresponse_list.length: "+response_list.length);
+        console.log("response_list: " + response_list + "\nresponse_list.length: " + response_list.length);
         if (response_list.length > 1 || body_url.includes("playlist")) {
             var title_str = "";
             if (body_url.includes("youtube") && body_url.includes("/@")) {
                 if (!/\/videos\/?$/.test(body_url)) {
                     body_url = body_url.replace(/\/$/, "") + "/videos";
                 }
-                //console.log(`${body_url} is a youtube channel`);
+                console.log(`${body_url} is a youtube channel`);
             }
             if (body_url.includes("pornhub") && body_url.includes("/model/")) {
                 if (!/\/videos\/?$/.test(body_url)) {
                     body_url = body_url.replace(/\/$/, "") + "/videos";
                 }
-                //console.log("Pornhub channel url: " + body_url);
+                console.log("Pornhub channel url: " + body_url);
             }
-            const is_alredy_indexed = await play_lists.findOne({
+            const is_already_indexed = await play_lists.findOne({
                 where: { url: body_url },
             });
             try {
-                is_alredy_indexed.changed("updatedAt", true);
-                await is_alredy_indexed.save();
-                title_str = is_alredy_indexed.title;
+                is_already_indexed.changed("updatedAt", true);
+                await is_already_indexed.save();
+                title_str = is_already_indexed.title;
             } catch (error) {
-                //console.error("playlist or channel not encountered earlier");
-                // Its not an error, but the title extartion 
+                console.error("playlist or channel not encountered earlier, saving in playlist");
+                // Its not an error, but the title extraction, 
                 // will only be done once the error is raised
-                if (title_str == "") {
-                    const get_title = spawn("yt-dlp", [
-                        "--playlist-end",
-                        1,
-                        "--flat-playlist",
-                        "--print",
-                        "%(playlist_title)s",
-                        body_url,
-                    ]);
-                    get_title.stdout.on("data", async (data) => {
-                        title_str += data;
-                    });
-                    get_title.on("close", async (code) => {
-                        if (title_str == "NA\n") {
-                            try {
-                                title_str = await url_to_title(body_url);
-                            } catch (error) {
-                                title_str = body_url;
-                                console.error(error);
-                            }
-                        }
-                        title_str = await string_slicer(title_str, MAX_LENGTH)
-                        //console.log(title_str);
-                        // no need to use found or create syntax here as this is only run the first time
-                        play_lists.findOrCreate({
-                            where: { url: body_url },
-                            defaults: {
-                                title: title_str,
-                                watch: watch,
-                                save_dir: title_str
-                            },
-                        });
-                    });
-                }
+                await add_playlist(body_url, watch);
             }
         } else {
             body_url = "None";
-            // If the url is determined to be an unlisted (not belnging to a playlist) vidoe,
-            // then the last unlisted vidoe index is used to icrement over.
+            // If the url is determined to be an unlisted video 
+            // (i.e: not belonging to a playlist)
+            // then the last unlisted video index is used to increment over.
             const last_item = await vid_list.findOne({
                 where: {
                     reference: "None",
                 },
                 order: [
-                    ["createdAt", "DESC"],
+                    ["list_order", "DESC"],
                 ],
                 attributes: ["list_order"],
                 limit: 1,
             });
             try {
-                //console.log(last_item.list_order);
                 index = last_item.list_order;
             } catch (error) {
-                // encountered an error if unlisted vidoes was not initialized
+                // encountered an error if unlisted videos was not initialized
                 index = 0; // it will become 1 in the DB
             }
         }
@@ -476,7 +436,7 @@ async function list_init(req, res) {
             }).then(function () {
                 list_background(body_url, start_num, stop_num, chunk_size).then(
                     () => {
-                        //console.log("done processing playlist");
+                        console.log(`Done processing playlist: ${body_url}`);
                         sock.emit("playlist-done", { message: "done processing playlist or channel" });
                     }
                 );
@@ -506,19 +466,52 @@ async function watch_list(req, res) {
     }
 }
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    //console.log("In list_background", "body_url", body_url, "start_num", start_num, "stop_num", stop_num, "chunk_size", chunk_size);
+    console.log("In background lister", "\nURL:", body_url, "\nChunk:", chunk_size, "\nStart:", start_num, "\nStop:", stop_num);
     while (true && (body_url != "None")) {
         start_num = start_num + chunk_size;
         stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
         await sleep();
-        //console.log("In background lister", "Chunk:", chunk_size, "Start:", start_num, "Stop:", stop_num);
         const response = await ytdlp_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
             break;
         }
         await processResponse(response, body_url, start_num);
     }
+}
+async function add_playlist(url_var, watch_var) {
+    var title_str = "";
+    const get_title = spawn("yt-dlp", [
+        "--playlist-end",
+        1,
+        "--flat-playlist",
+        "--print",
+        "%(playlist_title)s",
+        url_var,
+    ]);
+    get_title.stdout.on("data", async (data) => {
+        title_str += data;
+    });
+    get_title.on("close", async (code) => {
+        if (title_str == "NA\n") {
+            try {
+                title_str = await url_to_title(url_var);
+            } catch (error) {
+                title_str = url_var;
+                console.error(error);
+            }
+        }
+        title_str = await string_slicer(title_str, MAX_LENGTH)
+        // no need to use found or create syntax here as this is only run the first time a playlist is made
+        play_lists.findOrCreate({
+            where: { url: url_var },
+            defaults: {
+                title: title_str,
+                watch: watch_var,
+                save_dir: title_str
+            },
+        });
+    });
 }
 
 // List function that send data to frontend
@@ -532,7 +525,8 @@ async function playlists_to_table(req, res) {
             query_string = body["query"] || "",
             type = (order == 2) ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
             row = (sort_with == 2) ? "createdAt" : (sort_with == 3) ? "updatedAt" : "order_added";
-        //console.log("Start: ", start_num, " Stop: ", stop_num, " Order: ", order, " Type: ", type, " Query: ", query_string);
+        console.log("In playlists_to_table", "\nStart: ", start_num, "\nStop: ", stop_num,
+            "\nOrder: ", order, "\nType: ", type, "\nQuery: ", query_string);
         if (query_string == "") {
             play_lists.findAndCountAll({
                 limit: stop_num - start_num,
@@ -572,6 +566,8 @@ async function sublist_to_table(req, res) {
             stop_num = +body["stop"] || 10,
             query_string = body["query"] || "",
             order = "list_order", type = "ASC";
+        console.log("In sublist_to_table", "\nStart: ", start_num, "\nStop: ", stop_num,
+            "\nOrder: ", order, "\nType: ", type, "\nQuery: ", query_string, "\nReference: ", body_url);
         // Sorting not implemented for sub-lists yet
         try {
             if (query_string == "") {
@@ -663,13 +659,18 @@ const server = http.createServer((req, res) => {
 const io = new Server(server, { path: url_base + "/socket.io/" });
 const sock = io.on("connection", (socket) => {
     socket.emit("init", { message: "Connected", id: socket.id });
-    //socket.on("acknowledge", console.log);
+    socket.on("acknowledge", console.log);
     return socket;
 });
 
-server.listen(port, () => {
+server.listen(port, async () => {
     if (process.env.hide_ports || process.env.hide_ports == undefined)
         console.log(`Server listening on ${protocol}://${host}:${port}${url_base}`);
     else
         console.log(`Server listening on ${protocol}://${host}${url_base}`);
+    // I don't really know if calling these here is a good idea, but how else can I even do it?
+    await sleep();
+    console.log(`Next scheduled update is on ${job.nextDates(1)}`);
+    console.log(`Download Options:\nyt-dlp ${options.join(" ")} "${save_loc}/{playlist_dir}" "{url}"`);
+    job.start();
 });
