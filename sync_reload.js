@@ -155,7 +155,7 @@ async function url_to_title(body_url) {
         return body_url
     }
 }
-function list_spawner(body_url, start_num, stop_num) {
+async function list_spawner(body_url, start_num, stop_num) {
     console.log(`\nlist_spawner:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\tUrl: ${body_url}`);
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
@@ -378,7 +378,7 @@ async function list_init(req, res) {
         copy the urls then you can just set them to be processed in this mode.*/
         if (continuous) await sleep();
         const response_list = await list_spawner(body_url, start_num, stop_num);
-        console.log(`\nresponse_list:\t${JSON.stringify(response_list,null,2)}\n\tresponse_list.length: ${response_list.length}`);
+        console.log(`\nresponse_list:\t${JSON.stringify(response_list, null, 2)}\n\tresponse_list.length: ${response_list.length}`);
         if (response_list.length > 1 || body_url.includes("playlist")) {
             if (body_url.includes("youtube") && body_url.includes("/@")) {
                 if (!/\/videos\/?$/.test(body_url)) {
@@ -617,7 +617,7 @@ const css = "text/css; charset=utf-8";
 const html = "text/html; charset=utf-8";
 const js = "text/javascript; charset=utf-8";
 const json_t = "text/json; charset=utf-8";
-const staticAssets = {
+const staticAssetsPaths = {
     "": { file: path_fs.join(__dirname, "/index.html"), type: html },
     "/": { file: path_fs.join(__dirname, "/index.html"), type: html },
     "/dbi": { file: path_fs.join(__dirname, "/dbi.html"), type: html },
@@ -631,28 +631,13 @@ const staticAssets = {
     "/assets/nav.png": { file: path_fs.join(__dirname, "/nav.png"), type: "image/png" },
     "/assets/client.js": { file: path_fs.join(__dirname, "/client.js"), type: js }
 };
-const staticAssetsSync = {
-    "": { file: fs.readFileSync(path_fs.join(__dirname, "/index.html")), type: html },
-    "/": { file: fs.readFileSync(path_fs.join(__dirname, "/index.html")), type: html },
-    "/dbi": { file: fs.readFileSync(path_fs.join(__dirname, "/dbi.html")), type: html },
-    "/assets/bootstrap.min.css": { file: fs.readFileSync(path_fs.join(__dirname, "/node_modules/bootstrap/dist/css/bootstrap.min.css")), type: css },
-    "/assets/bootstrap.min.css.map": { file: fs.readFileSync(path_fs.join(__dirname, "/node_modules/bootstrap/dist/css/bootstrap.min.css.map")), type: css },
-    "/assets/bootstrap.bundle.min.js": { file: fs.readFileSync(path_fs.join(__dirname, "/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js")), type: js },
-    "/assets/bootstrap.bundle.min.js.map": { file: fs.readFileSync(path_fs.join(__dirname, "/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js.map")), type: js },
-    "/assets/favicon.ico": { file: fs.readFileSync(path_fs.join(__dirname, "/favicon.ico")), type: "image/x-icon" },
-    "/assets/socket.io.min.js": { file: fs.readFileSync(path_fs.join(__dirname, "/node_modules/socket.io/client-dist/socket.io.min.js")), type: js },
-    "/assets/socket.io.min.js.map": { file: fs.readFileSync(path_fs.join(__dirname, "/node_modules/socket.io/client-dist/socket.io.min.js.map")), type: js },
-    "/assets/nav.png": { file: fs.readFileSync(path_fs.join(__dirname, "/nav.png")), type: "image/png" },
-    "/assets/client.js": { file: fs.readFileSync(path_fs.join(__dirname, "/client.js")), type: js }
-};
-const reloadAsset = (asset, reload = false) => { return reload ? fs.readFileSync(staticAssets[asset].file) : staticAssetsSync[asset].file; };
 
 const server = http.createServer((req, res) => {
     if (req.url.startsWith(url_base) && req.method === "GET") {
         try {
             const get = req.url.replace(url_base, "")
-            res.writeHead(200, { "Content-Type": staticAssets[get].type });
-            res.write(reloadAsset(get, true));
+            res.writeHead(200, { "Content-Type": staticAssetsPaths[get].type });
+            res.write(fs.readFileSync(staticAssetsPaths[get].file));
         } catch (error) {
             res.writeHead(404, { "Content-Type": html });
             res.write("Not Found");
