@@ -87,6 +87,7 @@ async function processUrls(urlList, clear) {
                 continue;
             }
             url_global = bulk_listing ? "None" : url.href;
+            //console.log(url_global);
             toggleButton("off");
             const response = await fetch(base_url + "/list", {
                 method: "post",
@@ -411,6 +412,7 @@ function clearSubList(reset = false) {
         try {
             document.getElementById("url").value = "";
             document.getElementById("url_list").value = "";
+            document.getElementById("query_sublist").value = "";
             // Yeah, clearing this won't work out
             //document.getElementById("bulk-listing").checked = false;
             document.getElementById("watch-list").checked = false;
