@@ -12,7 +12,7 @@ services:
       - 5432:5432
     restart: always
     env_file:
-      - .env
+      - .envpi
     networks:
       - revProxy-net
     environment:
@@ -23,11 +23,11 @@ services:
       - ${DB_LOCATION}:/var/lib/postgresql/data
 
   yt-diff:
-    image: purevert/yt-diff:amd64
+    image: purevert/yt-diff:aarch64
     container_name: yt-diff
     build:
       context: .
-      dockerfile: Dockerfile.local
+      dockerfile: Dockerfile.aarch64
       args:
         - base_url=${BASE_URL}
       # Use this to modify the files during building
