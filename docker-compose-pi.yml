@@ -4,6 +4,7 @@ networks:
   revProxy-net:
     external: true
 
+# docker-compose --env-file .envpi --file docker-compose-pi.yml up --detach
 services:
   yt-db:
     image: postgres:14
@@ -25,6 +26,8 @@ services:
   yt-diff:
     image: purevert/yt-diff:aarch64
     container_name: yt-diff
+    env_file:
+      - .envpi
     build:
       context: .
       dockerfile: Dockerfile.aarch64
@@ -69,6 +72,8 @@ services:
     image: adminer:4.8.1-standalone
     container_name: adminer
     restart: always
+    env_file:
+      - .envpi
     depends_on:
       - yt-db
     ports:
