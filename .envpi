@@ -10,13 +10,13 @@ DB_LOCATION=./yt-data
 
 # YT-DIFF options
 PROTOCOL=https
-HOSTNAME=lenovo-ideapad-320-15ikb.tail9ece4.ts.net
+HOSTNAME=raspberrypi.tail9ece4.ts.net
 PORT=8888
 BASE_URL=/ytdiff
 
 # Using a relative path is okey, but a absolute path works best
 SAVE_PATH=yt-dlp
-HOST_SAVE_PATH=./yt-dlp
+HOST_SAVE_PATH=/mnt/455TB/ytdiff
 SLEEP=3 # 0 works but don't use it, please
 SAVE_SUBSTITLES=true
 SAVE_DESCRIPTION=true
