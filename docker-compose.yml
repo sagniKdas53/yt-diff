@@ -25,6 +25,7 @@ services:
   yt-diff:
     image: purevert/yt-diff:amd64
     container_name: yt-diff
+    restart: always
     build:
       context: .
       dockerfile: Dockerfile.local
