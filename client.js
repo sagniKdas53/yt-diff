@@ -77,7 +77,7 @@ async function processUrls(urlList, clear) {
     const [start_val, stop_val] = getLimits(0, "start_sublist", "stop_sublist", "chunk_sublist");
     const chunk_sublist = +document.getElementById("chunk_sublist").value;
     // if clear is true it means in continuous listing mode, so watching shouldn't be necessary
-    const watch_sublist = clear ? false : document.getElementById("watch-list").checked;
+    const watch_sublist = clear ? false : (document.getElementById("watch-list").checked ? "3" : "1");
     try {
         for (const element of urlList) {
             const url = new URL(element);
@@ -275,27 +275,51 @@ function makeMainTable(text) {
         const id = row.insertCell(0);
         const url = row.insertCell(1);
         //const createdAt = row.insertCell(2);
-        const updated_days_ago = row.insertCell(2);
-        const watch = row.insertCell(3);
-        const show = row.insertCell(4);
+        //const updated_days_ago = row.insertCell(2);
+        const watch = row.insertCell(2);
+        const show = row.insertCell(3);
 
         id.innerHTML = element.order_added;
         id.className = "text-center"
         url.innerHTML = `<a href="${element.url}">${element.title}</a>`;
         //console.log(element.updatedAt);
-        updated_days_ago.className = "extra text-center";
-        updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime()) / (1000 * 3600 * 24)) + " days";
+        //updated_days_ago.className = "extra text-center";
+        //updated_days_ago.innerHTML = Math.floor((new Date().getTime() - new Date(element.updatedAt).getTime()) / (1000 * 3600 * 24)) + " days";
         // single quotes are necessary here / or i can make a dynamic button
         show.className = "text-center";
         //  btn-sm makes it hard to click on mobile devices
         show.innerHTML = '<button type="button" class="btn btn-secondary" onclick=getSubList("' + element.url + '")>Load</button>';
         const checked = element.watch ? "checked" : "";
         watch.className = "text-center";
-        watch.innerHTML = `<input type="checkbox" oninput="watchToggler(this)" class="form-check-input me-1 update-markers" id="${element.order_added}" ${checked}>`
+        var select = document.createElement("select");
+        select.className = "form-select";
+
+        // create an array of option values and texts
+        var options = [
+            { value: "1", text: "NA" },
+            { value: "2", text: "Full" },
+            { value: "3", text: "Quick" }
+        ];
+
+        // create options and add them to the select element
+        for (var i = 0; i < options.length; i++) {
+            var option = document.createElement("option");
+            option.value = options[i].value;
+            option.text = options[i].text;
+            if (options[i].value == element.watch) { // select an option based on a variable
+                option.selected = true;
+            }
+            select.appendChild(option);
+        }
+        select.onchange = (event) => watchToggler(event.target);
+        // add the select element to the HTML document
+        watch.appendChild(select);
+        //`<input type="checkbox" oninput="watchToggler(this)" class="form-check-input me-1 update-markers" id="${element.order_added}" ${checked}>`
         // the selector_update can be used here, just will need to change the backend, DB and frontend, crying emoji.
     });
 }
 function watchToggler(element) {
+    console.log(element);
     fetch(base_url + "/watchlist", {
         method: "post",
         headers: {
@@ -304,7 +328,7 @@ function watchToggler(element) {
         },
         body: JSON.stringify({
             url: element.parentElement.parentElement.children[1].children[0].href.valueOf(),
-            watch: element.checked,
+            watch: +element.value,
         })
     }
     );

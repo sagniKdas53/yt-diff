@@ -36,7 +36,7 @@ const play_lists = sequelize.define("play_lists", {
         autoIncrement: true,
     },
     watch: {
-        type: DataTypes.BOOLEAN,
+        type: DataTypes.SMALLINT,
         allowNull: false,
     },
     save_dir: {
@@ -62,7 +62,7 @@ sequelize.sync().then(() => {
                     where: { url: row.url },
                     defaults: {
                         title: title_checked,
-                        watch: watch,
+                        watch: 1,
                         save_dir: title_checked
                     }
                     //createdAt: Date(row.createdAt), // can't be set manually as far as I can tell
