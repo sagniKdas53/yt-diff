@@ -313,7 +313,8 @@ async function download_sequential(items) {
     console.log(`\nDownloading ${items.length} videos sequentially`);
     for (const [url_str, title, save_dir] of items) {
         try {
-            const save_path = path_fs.join(save_loc, save_dir);
+            // check if the trim is actually necessary
+            const save_path = path_fs.join(save_loc, save_dir.trim());
             // if save_dir == "",  then save_path == save_loc
             if (save_path != save_loc && !fs.existsSync(save_path)) {
                 fs.mkdirSync(save_path, { recursive: true });
@@ -365,7 +366,7 @@ async function list_init(req, res) {
             stop_num = +body["stop"] || 10,
             chunk_size = +body["chunk"] || 10,
             continuous = body["continuous"] || false,
-            watch = body["watch"] || 2;
+            watch = body["watch"] || 1;
         var body_url = body["url"],
             index = (start_num > 0) ? start_num - 1 : 0; // index starts from 0 in this function
         console.log(`\nlist_init:\n\tbody_url: ${body["url"]}\n\tstart_num: ${body["start"]}\n\t` +
@@ -453,6 +454,7 @@ async function watch_list(req, res) {
         const body = await extract_json(req),
             body_url = body["url"],
             watch = body["watch"];
+        console.log("In watch_list:", watch);
         const playlist = await play_lists.findOne({ where: { url: body_url } });
         playlist.watch = watch;
         await playlist.update({ watch }, { silent: true });
@@ -565,7 +567,7 @@ async function playlists_to_table(req, res) {
 async function sublist_to_table(req, res) {
     try {
         const body = await extract_json(req),
-            body_url = body["url"],
+            body_url = body["url"] || "None",
             start_num = +body["start"] || 0,
             stop_num = +body["stop"] || 10,
             query_string = body["query"] || "",

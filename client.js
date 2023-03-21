@@ -134,6 +134,7 @@ function getLimits(mode, start_id, stop_id, chunk_id) {
             break;
         // This for back
         case 2:
+            // Setting start value
             if ((start_val - chunk) <= 0) {
                 start_val = 0;
             } else {
@@ -474,6 +475,7 @@ function downloadSelected() {
     document.querySelectorAll("input[type=checkbox].video-item:checked").forEach(element => {
         request_list['id'].push(element.id);
     })
+    //console.log(request_list);
     fetch(base_url + "/download", {
         method: "post",
         headers: {
