@@ -468,11 +468,11 @@ async function watch_list(req, res) {
     }
 }
 async function list_background(body_url, start_num, stop_num, chunk_size) {
-    console.log(`\nlist_background:\n\tURL: ${body_url}\n\tChunk: ${chunk_size}\n\tStart: ${start_num}\n\tStop: ${stop_num}`);
     while (true && (body_url != "None")) {
         start_num = start_num + chunk_size;
         stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
+        console.log(`\nlist_background:\n\tURL: ${body_url}\n\tChunk: ${chunk_size}\n\tStart: ${start_num}\n\tStop: ${stop_num}`);
         await sleep();
         const response = await list_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
