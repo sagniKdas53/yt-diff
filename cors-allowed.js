@@ -188,6 +188,7 @@ async function list_spawner(body_url, start_num, stop_num) {
     });
 }
 async function processResponse(response, body_url, index) {
+    index--;
     console.log(`\nprocessResponse:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
     const init_resp = { count: 0, resp_url: body_url, start: index };
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
@@ -478,7 +479,8 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
         if (response.length === 0) {
             break;
         }
-        await processResponse(response, body_url, start_num);
+        // yt-dlp starts counting from 1 for some reason so 1 needs to be subtrated here.
+        await processResponse(response, body_url, start_num - 1);
     }
 }
 async function add_playlist(url_var, watch_var) {
