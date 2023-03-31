@@ -97,7 +97,9 @@ const play_lists = sequelize.define("play_lists", {
     order_added: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        autoIncrement: true,
+        //,autoIncrement: true,
+        // why? because I want it to start from 0
+        // whithout this defaultValue: 0,
     },
     watch: {
         type: DataTypes.SMALLINT,
@@ -485,6 +487,12 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
 }
 async function add_playlist(url_var, watch_var) {
     var title_str = "";
+    const lastItem = await play_lists.findOne({
+        order: [["order_added", "DESC"]],
+        attributes: ["order_added"],
+        limit: 1,
+    });
+    const order_this = lastItem?.order_added ?? 0;
     const get_title = spawn("yt-dlp", [
         "--playlist-end",
         1,
@@ -513,7 +521,9 @@ async function add_playlist(url_var, watch_var) {
                 defaults: {
                     title: title_str,
                     watch: watch_var,
-                    save_dir: title_str
+                    save_dir: title_str,
+                    // this is coming as 0 everytime this needs fixing but I needs sleep
+                    order_added: order_this === 0 ? 0 : order_this + 1
                 },
             });
         } else {
