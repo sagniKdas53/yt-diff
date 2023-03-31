@@ -13,7 +13,7 @@ const port = process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
-const save_loc = process.env.save_loc || "yt-dlp";
+const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
 const get_subs = process.env.subtitles || true;
 const get_description = process.env.description || true;
@@ -189,7 +189,7 @@ async function list_spawner(body_url, start_num, stop_num) {
 }
 async function processResponse(response, body_url, index) {
     console.log(`\nprocessResponse:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
-    const init_resp = { count: 0, rows: [] };
+    const init_resp = { count: 0, resp_url: body_url, start: index };
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
         var title = element.split("\t")[0].trim(),
@@ -233,7 +233,7 @@ async function processResponse(response, body_url, index) {
                 await found.save();
             }
             init_resp["count"]++;
-            init_resp["rows"].push(found)
+            //init_resp["rows"].push(found)
         } catch (error) {
             console.error(error);
         }
