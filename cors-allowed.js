@@ -19,7 +19,7 @@ const get_subs = process.env.subtitles || true;
 const get_description = process.env.description || true;
 const get_comments = process.env.comments || true;
 const get_thumbnail = process.env.thumbnail || true;
-const scheduled_update = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
+const scheduled_update_string = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
@@ -97,9 +97,7 @@ const play_lists = sequelize.define("play_lists", {
     order_added: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        //,autoIncrement: true,
-        // why? because I want it to start from 0
-        // whithout this defaultValue: 0,
+        defaultValue: 0
     },
     watch: {
         type: DataTypes.SMALLINT,
@@ -118,7 +116,7 @@ sequelize.sync().then(() => {
 });
 
 // sequelize need to start before this can start
-const job = new CronJob(scheduled_update, scheduledUpdate, null, true, time_zone);
+const job = new CronJob(scheduled_update_string, scheduled_update_func, null, true, time_zone);
 
 // Utility functions
 async function extract_json(req) {
@@ -189,9 +187,9 @@ async function list_spawner(body_url, start_num, stop_num) {
         });
     });
 }
-async function processResponse(response, body_url, index) {
+async function process_response(response, body_url, index) {
     index--;
-    console.log(`\nprocessResponse:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
+    console.log(`\nprocess_response:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
     const init_resp = { count: 0, resp_url: body_url, start: index };
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
@@ -249,11 +247,20 @@ async function sleep(sleep_seconds = sleep_time) {
 }
 
 // The scheduled updater
-async function scheduledUpdate() {
+async function scheduled_update_func() {
     console.log(`\nScheduled update started at: ${new Date().toISOString()}`);
+    console.log("Starting the quick update");
+    //quick update then full update
+    quick_updates().then(full_updates());
+    console.log(`\nScheduled update finished at: ${new Date().toISOString()}`);
+    console.log(`\nNext scheduled update on ${job.nextDates(1)}`);
+}
+//scheduled_update_func();
+
+async function quick_updates() {
     const playlists = await play_lists.findAndCountAll({
         where: {
-            watch: true
+            watch: 3
         }
     });
     console.log(`\nUpdating ${playlists["rows"].length} playlists`);
@@ -272,15 +279,34 @@ async function scheduledUpdate() {
         try {
             console.log(`\nPlaylist: ${playlist.title.trim()} being updated from index ${last_item.list_order}`);
             index = last_item.list_order;
+
+            await sleep();
+            await list_background(playlist.url, index, index + 10, 10);
+            console.log(`\nDone processing playlist ${playlist.url}`);
         } catch (error) {
-            // do nothing
+            console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}`);
         }
-        await sleep();
-        await list_background(playlist.url, index, index + 10, 10);
-        console.log(`\nDone processing playlist ${playlist.url}`);
     }
-    console.log(`\nScheduled update finished at: ${new Date().toISOString()}`);
-    console.log(`\nNext scheduled update on ${job.nextDates(1)}`);
+}
+
+async function full_updates() {
+    const playlists = await play_lists.findAndCountAll({
+        where: {
+            watch: 2
+        }
+    });
+    console.log(`\nUpdating ${playlists["rows"].length} playlists`);
+    for (const playlist of playlists["rows"]) {
+        try {
+            console.log(`\nPlaylist: ${playlist.title.trim()} being updated fully`);
+            index = last_item.list_order;
+            await sleep();
+            await list_background(playlist.url, 0, 10, 10);
+            console.log(`\nDone processing playlist ${playlist.url}`);
+        } catch (error) {
+            console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}`);
+        }
+    }
 }
 
 // Download functions
@@ -429,7 +455,7 @@ async function list_init(req, res) {
                 index = 0; // it will become 1 in the DB
             }
         }
-        processResponse(response_list, body_url, index)
+        process_response(response_list, body_url, index)
             .then(function (init_resp) {
                 try {
                     res.writeHead(200, corsHeaders(json_t));
@@ -457,7 +483,7 @@ async function watch_list(req, res) {
         const body = await extract_json(req),
             body_url = body["url"],
             watch = body["watch"];
-        console.log("In watch_list:", watch);
+        console.log(`watch_list:\n\turl: ${body_url}\n\twatch: ${watch}`);
         const playlist = await play_lists.findOne({ where: { url: body_url } });
         playlist.watch = watch;
         await playlist.update({ watch }, { silent: true });
@@ -482,17 +508,18 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
             break;
         }
         // yt-dlp starts counting from 1 for some reason so 1 needs to be subtrated here.
-        await processResponse(response, body_url, start_num - 1);
+        await process_response(response, body_url, start_num - 1);
     }
 }
 async function add_playlist(url_var, watch_var) {
-    var title_str = "";
+    var title_str = "", order_item = 0;
     const lastItem = await play_lists.findOne({
         order: [["order_added", "DESC"]],
         attributes: ["order_added"],
         limit: 1,
     });
-    const order_this = lastItem?.order_added ?? 0;
+    if (lastItem !== null)
+        order_item = lastItem.order_added + 1
     const get_title = spawn("yt-dlp", [
         "--playlist-end",
         1,
@@ -523,7 +550,7 @@ async function add_playlist(url_var, watch_var) {
                     watch: watch_var,
                     save_dir: title_str,
                     // this is coming as 0 everytime this needs fixing but I needs sleep
-                    order_added: order_this === 0 ? 0 : order_this + 1
+                    order_added: order_item
                 },
             });
         } else {
