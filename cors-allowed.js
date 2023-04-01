@@ -188,6 +188,7 @@ async function list_spawner(body_url, start_num, stop_num) {
     });
 }
 async function process_response(response, body_url, index) {
+    // I forgot why but this index--; makes the whole thing work okey
     index--;
     console.log(`\nprocess_response:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
     const init_resp = { count: 0, resp_url: body_url, start: index };
@@ -195,43 +196,30 @@ async function process_response(response, body_url, index) {
     await Promise.all(response.map(async (element) => {
         var title = element.split("\t")[0].trim(),
             item_available = true;
-        const [id, url] = element.split("\t").slice(1);
+        const [vid_id, vid_url] = element.split("\t").slice(1);
         if (title === "[Deleted video]" || title === "[Private video]" || title === "[Unavailable video]") {
             item_available = false;
         }
         else if (title === "NA") {
-            title = id.trim();
+            title = vid_id.trim();
         }
         const title_fixed = await string_slicer(title, MAX_LENGTH);
         try {
             // its pre-incrementing index here so in the listers it starts from 0
+            const data = {
+                id: vid_id,
+                reference: body_url,
+                title: title_fixed,
+                downloaded: false,
+                available: item_available,
+                list_order: ++index,
+            };
             const [found, created] = await vid_list.findOrCreate({
-                where: { url: url },
-                defaults: {
-                    id: id,
-                    reference: body_url,
-                    title: title_fixed,
-                    downloaded: false,
-                    available: item_available,
-                    list_order: ++index,
-                },
+                where: { url: vid_url },
+                defaults: data,
             });
             if (!created) {
-                // The object was found and not created
-                // Doesn't change the downloaded state
-                if (found.id !== id ||
-                    found.reference !== body_url ||
-                    found.title !== title_fixed ||
-                    found.available !== item_available ||
-                    found.list_order !== index - 1) {
-                    // At least one property is different, update the object
-                    found.id = id;
-                    found.reference = body_url;
-                    found.title = title_fixed;
-                    found.available = item_available;
-                    found.list_order = index - 1;
-                }
-                await found.save();
+                update_stuff(found, data)
             }
             init_resp["count"]++;
             //init_resp["rows"].push(found)
@@ -241,6 +229,31 @@ async function process_response(response, body_url, index) {
     })
     );
     return init_resp;
+}
+async function update_stuff(found, data) {
+    //console.log(JSON.stringify([found, data]));
+    // The object was found and not created
+    // Doesn't change the downloaded state
+    if (found.id !== data.id ||
+        found.reference !== data.reference ||
+        found.title !== data.title ||
+        found.available !== data.available ||
+        found.list_order !== data.list_order
+    ) {
+        console.log(`\nObject properties that are same:
+              id: ${found.id == data.id}, 
+              reference: ${found.reference == data.reference}, 
+              title: ${found.title == data.title}, 
+              available: ${found.available == data.available}, 
+              list_order: ${found.list_order == data.list_order}
+            `);
+        found.id = data.id;
+        found.reference = data.reference;
+        found.title = data.title;
+        found.available = data.available;
+        found.list_order = data.list_order;
+        await found.save();
+    }
 }
 async function sleep(sleep_seconds = sleep_time) {
     return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
