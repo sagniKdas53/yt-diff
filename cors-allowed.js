@@ -189,7 +189,9 @@ async function list_spawner(body_url, start_num, stop_num) {
 }
 async function process_response(response, body_url, index) {
     // I forgot why but this index--; makes the whole thing work okey
-    index--;
+    if (body_url !== "None") {
+        index--;
+    }
     console.log(`\nprocess_response:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
     const init_resp = { count: 0, resp_url: body_url, start: index };
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
@@ -231,9 +233,11 @@ async function process_response(response, body_url, index) {
     return init_resp;
 }
 async function update_stuff(found, data) {
-    //console.log(JSON.stringify([found, data]));
     // The object was found and not created
     // Doesn't change the downloaded state
+    // I have a sneaking suspecion that this 
+    // will fail when there is any real change 
+    // in the video, let's see when that happens
     if (found.id !== data.id ||
         found.reference !== data.reference ||
         found.title !== data.title ||
@@ -365,6 +369,7 @@ async function download_sequential(items) {
             const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
             yt_dlp.stdout.on("data", async (data) => {
                 sock.emit("progress", { message: "" });
+                console.log(`Download data: \n${data}`);
                 /*try {
                     // Keeping these just so it can be used to maybe add a progress bar
                     const percentage = /(\d{1,3}\.\d)%/.exec(`${data}`);
@@ -465,7 +470,7 @@ async function list_init(req, res) {
                 index = last_item.list_order;
             } catch (error) {
                 // encountered an error if unlisted videos was not initialized
-                index = 0; // it will become 1 in the DB
+                index = -1; // it will become 1 in the DB
             }
         }
         process_response(response_list, body_url, index)
