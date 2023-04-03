@@ -24,6 +24,7 @@ const time_zone = process.env.time_zone || "Asia/Kolkata";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const not_needed = ["", "pornstar", "model", "videos"];
+// spankbang lists playlits as playlist/1,2 so need to add a way to integarte it
 const options = [
     "--embed-metadata",
     get_subs ? "--write-subs" : "",
@@ -300,6 +301,9 @@ async function quick_updates() {
             await sleep();
             await list_background(playlist.url, index, index + 10, 10);
             console.log(`\nDone processing playlist ${playlist.url}`);
+
+            playlist.changed("updatedAt", true);
+            await playlist.save();
         } catch (error) {
             console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}`);
         }
@@ -316,10 +320,13 @@ async function full_updates() {
     for (const playlist of playlists["rows"]) {
         try {
             console.log(`\nPlaylist: ${playlist.title.trim()} being updated fully`);
-            index = last_item.list_order;
+
             await sleep();
             await list_background(playlist.url, 0, 10, 10);
             console.log(`\nDone processing playlist ${playlist.url}`);
+
+            playlist.changed("updatedAt", true);
+            await playlist.save();
         } catch (error) {
             console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}`);
         }
@@ -369,7 +376,7 @@ async function download_sequential(items) {
             const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
             yt_dlp.stdout.on("data", async (data) => {
                 sock.emit("progress", { message: "" });
-                console.log(`Download data: \n${data}`);
+                //console.log(`Download data: \n${data}`);
                 /*try {
                     // Keeping these just so it can be used to maybe add a progress bar
                     const percentage = /(\d{1,3}\.\d)%/.exec(`${data}`);
@@ -745,8 +752,11 @@ server.listen(port, async () => {
     else
         console.log(`Server listening on ${protocol}://${host}${url_base}`);
     // I don't really know if calling these here is a good idea, but how else can I even do it?
+    console.time("sleep time");
     await sleep();
+    console.timeEnd("sleep time");
     console.log(`Next scheduled update is on ${job.nextDates(1)}`);
     console.log(`Download Options:\nyt-dlp ${options.join(" ")} "${save_loc}/{playlist_dir}" "{url}"`);
+    console.log(`List Options:\n` + 'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}');
     job.start();
 });
