@@ -635,9 +635,12 @@ async function sublist_to_table(req, res) {
             start_num = +body["start"] || 0,
             stop_num = +body["stop"] || 10,
             query_string = body["query"] || "",
-            order = "list_order", type = "ASC";
+            sort_downloaded = body["sortDownloaded"],
+            list_order = sort_downloaded ? "downloaded" : "list_order",
+            list_order_type = sort_downloaded ? "DESC" : "ASC";
         console.log(`\nsublist_to_table:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\t` +
-            `Order: ${order}\n\tType: ${type}\n\tQuery: "${query_string}"\n\tReference: ${body_url}`);
+            `Order: ${list_order}\n\tType: ${list_order_type}\n\tQuery: "${query_string}"\n` +
+            `Reference: ${body_url}\n\tsort_downloaded: ${sort_downloaded}`);
         // Sorting not implemented for sub-lists yet
         try {
             if (query_string == "") {
@@ -647,7 +650,9 @@ async function sublist_to_table(req, res) {
                     },
                     limit: stop_num - start_num,
                     offset: start_num,
-                    order: [[order, type]],
+                    order: [[list_order, list_order_type]]
+                    // [["downloaded", "DESC"]] -- to show the download on top
+                    // [[list_order, list_order_type]] -- default
                 }).then((result) => {
                     res.writeHead(200, corsHeaders(json_t));
                     res.end(JSON.stringify(result, null, 2));
