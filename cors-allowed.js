@@ -47,10 +47,10 @@ const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
 
 try {
     sequelize.authenticate().then(() => {
-        console.log("Connection to database has been established successfully.");
+        console.log("Connection to database has been established successfully.\n");
     });
 } catch (error) {
-    console.error("Unable to connect to the database:", error);
+    console.error(`Unable to connect to the database: ${error}\n`);
 }
 
 const vid_list = sequelize.define("vid_list", {
@@ -111,9 +111,9 @@ const play_lists = sequelize.define("play_lists", {
 });
 
 sequelize.sync().then(() => {
-    console.log("vid_list and play_lists tables exist or are created successfully!");
+    console.log("vid_list and play_lists tables exist or are created successfully!\n");
 }).catch((error) => {
-    console.error("Unable to create table : ", error);
+    console.error(`Unable to create table : ${error}\n`);
 });
 
 // sequelize need to start before this can start
@@ -157,7 +157,7 @@ async function url_to_title(body_url) {
     }
 }
 async function list_spawner(body_url, start_num, stop_num) {
-    console.log(`\nlist_spawner:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\tUrl: ${body_url}`);
+    console.log(`\nlist_spawner:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\tUrl: ${body_url}\n`);
     return new Promise((resolve, reject) => {
         const yt_list = spawn("yt-dlp", [
             "--playlist-start",
@@ -193,7 +193,7 @@ async function process_response(response, body_url, index) {
     if (body_url !== "None") {
         index--;
     }
-    console.log(`\nprocess_response:\n\tIndex: ${index}\n\tUrl: ${body_url}`);
+    console.log(`\nprocess_response:\n\tIndex: ${index}\n\tUrl: ${body_url}\n`);
     const init_resp = { count: 0, resp_url: body_url, start: index };
     sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
     await Promise.all(response.map(async (element) => {
@@ -250,8 +250,7 @@ async function update_stuff(found, data) {
               reference: ${found.reference == data.reference}, 
               title: ${found.title == data.title}, 
               available: ${found.available == data.available}, 
-              list_order: ${found.list_order == data.list_order}
-            `);
+              list_order: ${found.list_order == data.list_order}\n`);
         found.id = data.id;
         found.reference = data.reference;
         found.title = data.title;
@@ -266,12 +265,12 @@ async function sleep(sleep_seconds = sleep_time) {
 
 // The scheduled updater
 async function scheduled_update_func() {
-    console.log(`\nScheduled update started at: ${new Date().toISOString()}`);
-    console.log("Starting the quick update");
+    console.log(`\nScheduled update started at: ${new Date().toISOString()}\n`);
+    console.log("\nStarting the quick update\n");
     //quick update then full update
     quick_updates().then(full_updates());
-    console.log(`\nScheduled update finished at: ${new Date().toISOString()}`);
-    console.log(`\nNext scheduled update on ${job.nextDates(1)}`);
+    console.log(`\nScheduled update finished at: ${new Date().toISOString()}\n`);
+    console.log(`\nNext scheduled update on ${job.nextDates(1)}\n`);
 }
 //scheduled_update_func();
 
@@ -281,7 +280,7 @@ async function quick_updates() {
             watch: 3
         }
     });
-    console.log(`\nUpdating ${playlists["rows"].length} playlists`);
+    console.log(`\nUpdating ${playlists["rows"].length} playlists\n`);
     for (const playlist of playlists["rows"]) {
         var index = 0;
         const last_item = await vid_list.findOne({
@@ -295,17 +294,17 @@ async function quick_updates() {
             limit: 1,
         });
         try {
-            console.log(`\nPlaylist: ${playlist.title.trim()} being updated from index ${last_item.list_order}`);
+            console.log(`\nPlaylist: ${playlist.title.trim()} being updated from index ${last_item.list_order}\n`);
             index = last_item.list_order;
 
             await sleep();
             await list_background(playlist.url, index, index + 10, 10);
-            console.log(`\nDone processing playlist ${playlist.url}`);
+            console.log(`\nDone processing playlist ${playlist.url}\n`);
 
             playlist.changed("updatedAt", true);
             await playlist.save();
         } catch (error) {
-            console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}`);
+            console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}\n`);
         }
     }
 }
@@ -316,19 +315,19 @@ async function full_updates() {
             watch: 2
         }
     });
-    console.log(`\nUpdating ${playlists["rows"].length} playlists`);
+    console.log(`\nUpdating ${playlists["rows"].length} playlists\n`);
     for (const playlist of playlists["rows"]) {
         try {
-            console.log(`\nPlaylist: ${playlist.title.trim()} being updated fully`);
+            console.log(`\nPlaylist: ${playlist.title.trim()} being updated fully\n`);
 
             await sleep();
             await list_background(playlist.url, 0, 10, 10);
-            console.log(`\nDone processing playlist ${playlist.url}`);
+            console.log(`\nDone processing playlist ${playlist.url}\n`);
 
             playlist.changed("updatedAt", true);
             await playlist.save();
         } catch (error) {
-            console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}`);
+            console.log(`\nError processing playlist ${playlist.url}\nerror: ${error.message}\n`);
         }
     }
 }
@@ -363,10 +362,11 @@ async function download_lister(req, res) {
 }
 // Add a parallel downloader someday
 async function download_sequential(items) {
-    console.log(`\nDownloading ${items.length} videos sequentially`);
+    console.log(`\nDownloading ${items.length} videos sequentially\n`);
     for (const [url_str, title, save_dir] of items) {
         try {
-            console.log(`\nDownloading ${url_str}`);
+            console.log(`\nDownloading ${url_str}\n\nProgress:\n`);
+            let hold = null;
             // check if the trim is actually necessary
             const save_path = path_fs.join(save_loc, save_dir.trim());
             // if save_dir == "",  then save_path == save_loc
@@ -377,16 +377,24 @@ async function download_sequential(items) {
             const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
             yt_dlp.stdout.on("data", async (data) => {
                 sock.emit("progress", { message: "" });
-                //console.log(`Download data: \n${data}`);
-                /*try {
+                try {
                     // Keeping these just so it can be used to maybe add a progress bar
-                    const percentage = /(\d{1,3}\.\d)%/.exec(`${data}`);
+                    const percentage = +/(\d{1,3}\.\d)/.exec(`${data}`)[0];
                     if (percentage !== null) {
-                        sock.emit("progress", { message: percentage[0] });
+                        //console.log(Math.floor(percentage/10),hold,Math.floor(percentage/10)>hold)
+                        if (Math.floor(percentage/10) == 0 && hold === null) {
+                            hold = 0;
+                            console.log(`${data}`);
+                        }
+                        else if (Math.floor(percentage/10)>hold) {
+                            hold = Math.floor(percentage/10);
+                            console.log(`${data}`);
+                        }
+                        //sock.emit("progress", { message: percentage[0] });
                     }
                 } catch (error) {
                     sock.emit("error", { message: `${error}` });
-                }*/
+                }
             });
             yt_dlp.stderr.on("data", (data) => {
                 console.error(`stderr: ${data}`);
@@ -406,7 +414,7 @@ async function download_sequential(items) {
             });
             // this holds the for loop, preventing the next iteration from happening
             await new Promise((resolve) => yt_dlp.on("close", resolve));
-            console.log(`\nDownloaded ${title} at location ${save_path}`)
+            console.log(`\nDownloaded ${title} at location ${save_path}\n`)
         } catch (error) {
             console.error(error);
         }
@@ -426,7 +434,7 @@ async function list_init(req, res) {
             index = (start_num > 0) ? start_num - 1 : 0; // index starts from 0 in this function
         console.log(`\nlist_init:\n\tbody_url: ${body["url"]}\n\tstart_num: ${body["start"]}\n\t` +
             `stop_num: ${body["stop"]}\n\tchunk_size: ${body["chunk"]}\n\t` +
-            `continuous: ${body["continuous"]}\n\tindex: ${index}\n\twatch: ${body["watch"]}`);
+            `continuous: ${body["continuous"]}\n\tindex: ${index}\n\twatch: ${body["watch"]}\n`);
         /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
         to the frontend but will continue in the background, this can cause issues like list_order getting 
         messed up or listing not completing.
@@ -434,19 +442,19 @@ async function list_init(req, res) {
         copy the urls then you can just set them to be processed in this mode.*/
         if (continuous) await sleep();
         const response_list = await list_spawner(body_url, start_num, stop_num);
-        console.log(`\nresponse_list:\t${JSON.stringify(response_list, null, 2)}\n\tresponse_list.length: ${response_list.length}`);
+        console.log(`\nresponse_list:\t${JSON.stringify(response_list, null, 2)}\n\tresponse_list.length: ${response_list.length}\n`);
         if (response_list.length > 1 || body_url.includes("playlist")) {
             if (body_url.includes("youtube") && body_url.includes("/@")) {
                 if (!/\/videos\/?$/.test(body_url)) {
                     body_url = body_url.replace(/\/$/, "") + "/videos";
                 }
-                console.log(`\n${body_url} is a youtube channel`);
+                console.log(`\n${body_url} is a youtube channel\n`);
             }
             if (body_url.includes("pornhub") && body_url.includes("/model/")) {
                 if (!/\/videos\/?$/.test(body_url)) {
                     body_url = body_url.replace(/\/$/, "") + "/videos";
                 }
-                console.log(`\n${body_url} is a hub channel`);
+                console.log(`\n${body_url} is a hub channel\n`);
             }
             const is_already_indexed = await play_lists.findOne({
                 where: { url: body_url },
@@ -492,7 +500,7 @@ async function list_init(req, res) {
             }).then(function () {
                 list_background(body_url, start_num, stop_num, chunk_size).then(
                     () => {
-                        console.log(`\nDone processing playlist: ${body_url}`);
+                        console.log(`\nDone processing playlist: ${body_url}\n`);
                         sock.emit("playlist-done", { message: "done processing playlist or channel" });
                     }
                 );
@@ -509,7 +517,7 @@ async function watch_list(req, res) {
         const body = await extract_json(req),
             body_url = body["url"],
             watch = body["watch"];
-        console.log(`watch_list:\n\turl: ${body_url}\n\twatch: ${watch}`);
+        console.log(`watch_list:\n\turl: ${body_url}\n\twatch: ${watch}\n`);
         const playlist = await play_lists.findOne({ where: { url: body_url } });
         playlist.watch = watch;
         await playlist.update({ watch }, { silent: true });
@@ -527,7 +535,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
         start_num = start_num + chunk_size;
         stop_num = stop_num + chunk_size;
         // ideally we can set it to zero but that would get us rate limited by the services
-        console.log(`\nlist_background:\n\tURL: ${body_url}\n\tChunk: ${chunk_size}\n\tStart: ${start_num}\n\tStop: ${stop_num}`);
+        console.log(`\nlist_background:\n\tURL: ${body_url}\n\tChunk: ${chunk_size}\n\tStart: ${start_num}\n\tStop: ${stop_num}\n`);
         await sleep();
         const response = await list_spawner(body_url, start_num, stop_num);
         if (response.length === 0) {
@@ -597,7 +605,7 @@ async function playlists_to_table(req, res) {
             type = (order == 2) ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
             row = (sort_with == 2) ? "createdAt" : (sort_with == 3) ? "updatedAt" : "order_added";
         console.log(`\nplaylists_to_table:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\t` +
-            `Order: ${order}\n\tType: ${type}\n\tQuery: "${query_string}"`);
+            `Order: ${order}\n\tType: ${type}\n\tQuery: "${query_string}"\n`);
         if (query_string == "") {
             play_lists.findAndCountAll({
                 limit: stop_num - start_num,
@@ -641,7 +649,7 @@ async function sublist_to_table(req, res) {
             list_order_type = sort_downloaded ? "DESC" : "ASC";
         console.log(`\nsublist_to_table:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\t` +
             `Order: ${list_order}\n\tType: ${list_order_type}\n\tQuery: "${query_string}"\n` +
-            `Reference: ${body_url}\n\tsort_downloaded: ${sort_downloaded}`);
+            `\tReference: ${body_url}\n\tsort_downloaded: ${sort_downloaded}\n`);
         // Sorting not implemented for sub-lists yet
         try {
             if (query_string == "") {
@@ -668,7 +676,7 @@ async function sublist_to_table(req, res) {
                     },
                     limit: stop_num - start_num,
                     offset: start_num,
-                    order: [[order, type]],
+                    order: [[list_order, list_order_type]],
                 }).then((result) => {
                     res.writeHead(200, corsHeaders(json_t));
                     res.end(JSON.stringify(result, null, 2));
@@ -754,15 +762,15 @@ const sock = io.on("connection", (socket) => {
 
 server.listen(port, async () => {
     if (process.env.hide_ports || process.env.hide_ports == undefined)
-        console.log(`Server listening on ${protocol}://${host}:${port}${url_base}`);
+        console.log(`Server listening on ${protocol}://${host}:${port}${url_base}\n`);
     else
-        console.log(`Server listening on ${protocol}://${host}${url_base}`);
+        console.log(`Server listening on ${protocol}://${host}${url_base}\n`);
     // I don't really know if calling these here is a good idea, but how else can I even do it?
-    console.time("sleep time");
+    console.time("sleep time\n");
     await sleep();
-    console.timeEnd("sleep time");
-    console.log(`Next scheduled update is on ${job.nextDates(1)}`);
-    console.log(`Download Options:\nyt-dlp ${options.join(" ")} "${save_loc}/{playlist_dir}" "{url}"`);
-    console.log(`List Options:\n` + 'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}');
+    console.timeEnd("sleep time\n");
+    console.log(`Next scheduled update is on ${job.nextDates(1)}\n`);
+    console.log(`Download Options:\nyt-dlp ${options.join(" ")} "${save_loc}/{playlist_dir}" "{url}"\n`);
+    console.log(`List Options:\n` + 'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}\n');
     job.start();
 });
