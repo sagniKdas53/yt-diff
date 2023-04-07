@@ -366,6 +366,7 @@ async function download_sequential(items) {
     console.log(`\nDownloading ${items.length} videos sequentially`);
     for (const [url_str, title, save_dir] of items) {
         try {
+            console.log(`\nDownloading ${url_str}`);
             // check if the trim is actually necessary
             const save_path = path_fs.join(save_loc, save_dir.trim());
             // if save_dir == "",  then save_path == save_loc
@@ -571,9 +572,9 @@ async function add_playlist(url_var, watch_var) {
             play_lists.findOrCreate({
                 where: { url: url_var },
                 defaults: {
-                    title: title_str,
+                    title: title_str.trim(),
                     watch: watch_var,
-                    save_dir: title_str,
+                    save_dir: title_str.trim(),
                     // this is coming as 0 everytime this needs fixing but I needs sleep
                     order_added: order_item
                 },
