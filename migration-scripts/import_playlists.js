@@ -4,8 +4,6 @@ const csv = require("csv-parser");
 const { Sequelize, DataTypes } = require("sequelize");
 const db_host = process.env.db_host || "localhost";
 
-const not_needed = ['', 'pornstar', 'model', 'videos'];
-
 const sequelize = new Sequelize("vidlist", "ytdiff", "ytd1ff", {
     host: db_host,
     dialect: "postgres",
@@ -20,36 +18,46 @@ try {
     console.error("Unable to connect to the database:", error);
 }
 
-const play_lists = sequelize.define("play_lists", {
-    title: {
+const vid_list = sequelize.define("vid_list", {
+    url: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    url: {
+    id: {
         type: DataTypes.STRING,
         allowNull: false,
         primaryKey: true,
     },
-    order_added: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        autoIncrement: true,
-    },
-    watch: {
-        type: DataTypes.SMALLINT,
-        allowNull: false,
-    },
-    save_dir: {
+    title: {
         type: DataTypes.STRING,
         allowNull: false,
-    }
+    },
+    downloaded: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+    },
+    available: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+    },
+    reference: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
+    list_order: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
 });
 // STRING is 255 chars
 sequelize.sync().then(() => {
     console.log("vid_list and play_lists tables exist or are created successfully!");
 }).catch((error) => {
     console.error("Unable to create table : ", error);
-}).then(() => {
+});
+
+
+() => {
     fs.createReadStream("play_lists.csv")
         .pipe(csv())
         .on("data", async (row) => {
@@ -89,7 +97,7 @@ sequelize.sync().then(() => {
         .on("end", () => {
             console.log("CSV file successfully processed");
         });
-});
+};
 
 async function string_slicer(str, len) {
     if (str.length > len) {

@@ -1,10 +1,3 @@
-yt-dlp/
-yt-dlp-2/
-yt-data/
 node_modules/
-vpn-mode/gluetun/
-vpn-mode/secrets.txt
-amd64/
-aarch64/
 migration-scripts/*.csv
-logs/
+migration-scripts/*.sql
