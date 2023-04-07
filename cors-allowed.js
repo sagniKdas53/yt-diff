@@ -1,3 +1,4 @@
+#!/home/sagnik/.nvm/versions/node/v18.12.0/bin/node
 "use strict";
 const { spawn } = require("child_process");
 const http = require("http");
