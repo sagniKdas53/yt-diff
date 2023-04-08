@@ -1,4 +1,3 @@
-#!/home/sagnik/.nvm/versions/node/v18.12.0/bin/node
 const fs = require("fs");
 const csv = require("csv-parser");
 const { Sequelize, DataTypes, Op } = require("sequelize");

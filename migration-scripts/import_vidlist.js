@@ -1,4 +1,3 @@
-#!/home/sagnik/.nvm/versions/node/v18.12.0/bin/node
 const fs = require("fs");
 const csv = require("csv-parser");
 const { Sequelize, DataTypes, Op } = require("sequelize");
@@ -86,10 +85,6 @@ sequelize
             updatedAt: row.updatedAt,
           });
           console.log("Created: " + JSON.stringify(entity));
-          // This doesn't work either.
-          //const [results, metadata] = await vid_list.sequelize.query(
-          //  `UPDATE vid_list SET updatedAt = '${row.updatedAt}' WHERE id = ${someIdValue};`
-          //);
         } catch (error) {
           console.error(error);
         }
