@@ -4,6 +4,8 @@ RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
 
 RUN echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/00-docker
 
+ENV OPENSSL_CONF=/dev/null
+
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update \
     && apt install ca-certificates xz-utils bzip2 wget -y \
@@ -11,13 +13,9 @@ RUN DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /
 
-# COPY /amd64/yt-dlp_linux /
-
 RUN wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" -O "yt-dlp_linux"
 
 RUN chmod +x yt-dlp_linux && mv yt-dlp_linux bin/yt-dlp
-
-# COPY /amd64/ffmpeg-master-latest-linux64-gpl.tar.xz /
 
 RUN wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg-master-latest-linux64-gpl.tar.xz"
 
@@ -27,8 +25,6 @@ RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
 
-# COPY /amd64/phantomjs-2.1.1-linux-x86_64.tar.bz2 /
-
 RUN wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs-2.1.1-linux-x86_64.tar.bz2"
 
 RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
@@ -37,9 +33,7 @@ RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
     && cd ../.. \
     && rm -rf phantomjs-2.1.1-linux-x86_64.tar.bz2 phantomjs-2.1.1-linux-x86_64
 
-COPY index.js index.html client.js package-lock.json package.json favicon.ico dbi.html nav.png /
-
-# COPY /amd64/node-v18.12.1-linux-x64.tar.xz /
+COPY cors-allowed.js package.json /
 
 RUN wget "https://nodejs.org/dist/v18.12.1/node-v18.12.1-linux-x64.tar.xz" -O "node-v18.12.1-linux-x64.tar.xz"
 
@@ -52,4 +46,4 @@ RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
 
 EXPOSE 8888
 
-CMD [ "node", "index.js" ]
+CMD [ "node", "cors-allowed.js" ]
