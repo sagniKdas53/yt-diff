@@ -275,7 +275,7 @@ async function update_stuff(found, data) {
   // Doesn't change the downloaded state
   // I have a sneaking suspecion that this
   // will fail when there is any real change
-  // in the video, let's see when that happens
+  // in the video, lets see when that happens
   if (
     found.id !== data.id ||
     found.reference !== data.reference ||
@@ -409,10 +409,13 @@ async function download_lister(req, res) {
 // Add a parallel downloader someday
 async function download_sequential(items) {
   console.log(`\nDownloading ${items.length} videos sequentially\n`);
+  var count = 1;
   for (const [url_str, title, save_dir] of items) {
     try {
-      console.log(`\nDownloading ${url_str}\n\nProgress:\n`);
-      let hold = null;
+      console.log(
+        `\nDownloading Video: ${count++}\n\nUrl: ${url_str}\n\nProgress:\n`
+      );
+      var hold = null;
       // check if the trim is actually necessary
       const save_path = path_fs.join(save_loc, save_dir.trim());
       // if save_dir == "",  then save_path == save_loc
