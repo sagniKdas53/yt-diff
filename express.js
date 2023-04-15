@@ -1,47 +1,25 @@
 #!/usr/bin/env node
+"use strict";
 
-// Imports
-var createError = require("http-errors");
-var express = require("express");
-var path = require("path");
-var cookieParser = require("cookie-parser");
-var logger = require("morgan");
-var debug = require("debug")("express:server");
-var http = require("http");
+// imports
+const express = require("express");
+const router = express.Router();
+const path_fs = require("path");
 
-// Initilize app
-var app = express();
+// getting env data
+const protocol = process.env.protocol || "http";
+const host = process.env.host || "localhost";
+const port = process.env.port || 8338;
+const url_base = process.env.base_url || "/ytdiff";
 
-// view engine setup
-app.set("views", path.join(__dirname, "views"));
-app.set("view engine", "jade");
-
-app.use(logger("dev"));
+const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, "dist")));
+app.use(router);
+app.use(express.static(path_fs.join(__dirname, "dist")));
 
-// catch 404 and forward to error handler
-app.use(function (req, res, next) {
-  next(createError(404));
-});
-
-// error handler
-app.use(function (err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get("env") === "development" ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render("error");
-});
-
-// REST API part
-app.get("/api/users", (req, res) => {
+// define a route that accepts GET requests
+router.get("/api/users", (req, res) => {
   // retrieve users from database or some other data source
-  console.log(req);
   const users = [
     { id: 1, name: "John" },
     { id: 2, name: "Jane" },
@@ -50,57 +28,33 @@ app.get("/api/users", (req, res) => {
   res.json(users); // send response as JSON data
 });
 
-// Making the actual server
-var port = normalizePort(process.env.PORT || "3000");
-app.set("port", port);
+// define a route that accepts POST requests
+router.post("/api/users", (req, res) => {
+  const { name } = req.body;
 
-var server = http.createServer(app);
-
-server.listen(port);
-server.on("error", onError);
-server.on("listening", onListening);
-
-function normalizePort(val) {
-  var port = parseInt(val, 10);
-
-  if (isNaN(port)) {
-    // named pipe
-    return val;
+  if (!name) {
+    // if name is missing from request body, send a 400 Bad Request response
+    return res.status(400).json({ error: "Name is required" });
   }
 
-  if (port >= 0) {
-    // port number
-    return port;
-  }
+  // create a new user and save to database or some other data source
+  const newUser = { id: 3, name };
 
-  return false;
-}
+  res.status(201).json(newUser); // send response as JSON data with status 201 Created
+});
 
-function onError(error) {
-  if (error.syscall !== "listen") {
-    throw error;
-  }
+// error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack); // log the error to console
 
-  var bind = typeof port === "string" ? "Pipe " + port : "Port " + port;
+  // send a 500 Internal Server Error response
+  res.status(500).json({ error: "Something went wrong" });
+});
 
-  // handle specific listen errors with friendly messages
-  switch (error.code) {
-    case "EACCES":
-      console.error(bind + " requires elevated privileges");
-      process.exit(1);
-      break;
-    case "EADDRINUSE":
-      console.error(bind + " is already in use");
-      process.exit(1);
-      break;
-    default:
-      throw error;
-  }
-}
-
-function onListening() {
-  var addr = server.address();
-  var bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
-  debug("Listening on " + bind);
-  console.log("Listening on " + bind);
-}
+app.listen(port, () => {
+  if (process.env.hide_ports || process.env.hide_ports == undefined)
+    console.log(
+      `Server listening on ${protocol}://${host}:${port}${url_base}\n`
+    );
+  else console.log(`Server listening on ${protocol}://${host}${url_base}\n`);
+});
