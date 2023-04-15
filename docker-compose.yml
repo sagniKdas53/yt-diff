@@ -28,7 +28,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile.local
+      dockerfile: Dockerfile
       args:
         - base_url=${BASE_URL}
       # Use this to modify the files during building
