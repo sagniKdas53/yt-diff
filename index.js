@@ -801,10 +801,16 @@ const server = http.createServer((req, res) => {
   }
 });
 
-const io = new Server(server, { path: url_base + "/socket.io/" });
+const io = new Server(server, {
+  //path: url_base + "/socket.io/",
+  // I don't know why but socket.io client wasn't working with url_base
+  cors: {
+    origin: "http://localhost:5173",
+  },
+});
 const sock = io.on("connection", (socket) => {
   socket.emit("init", { message: "Connected", id: socket.id });
-  //socket.on("acknowledge", console.log);
+  socket.on("acknowledge", console.log);
   return socket;
 });
 
