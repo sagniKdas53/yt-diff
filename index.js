@@ -441,7 +441,10 @@ async function download_sequential(items) {
             //sock.emit("progress", { message: percentage[0] });
           }
         } catch (error) {
-          sock.emit("error", { message: `${error}` });
+          // this is done so that the toasts don't go crazy
+          if (!error instanceof TypeError) {
+            sock.emit("error", { message: `${error}` });
+          }
         }
       });
       yt_dlp.stderr.on("data", (data) => {
@@ -802,8 +805,7 @@ const server = http.createServer((req, res) => {
 });
 
 const io = new Server(server, {
-  //path: url_base + "/socket.io/",
-  // I don't know why but socket.io client wasn't working with url_base
+  path: url_base + "/socket.io/",
   cors: {
     origin: "http://localhost:5173",
   },
@@ -821,10 +823,10 @@ server.listen(port, async () => {
     );
   else console.log(`Server listening on ${protocol}://${host}${url_base}\n`);
   // I don't really know if calling these here is a good idea, but how else can I even do it?
-  console.time("sleep time\n");
+  console.time("sleep time");
   await sleep();
-  console.timeEnd("sleep time\n");
-  console.log(`Next scheduled update is on ${job.nextDates(1)}\n`);
+  console.timeEnd("sleep time");
+  console.log(`\nNext scheduled update is on ${job.nextDates(1)}\n`);
   console.log(
     `Download Options:\nyt-dlp ${options.join(
       " "
