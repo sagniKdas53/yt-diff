@@ -33,9 +33,9 @@ RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
     && cd ../.. \
     && rm -rf phantomjs-2.1.1-linux-x86_64.tar.bz2 phantomjs-2.1.1-linux-x86_64
 
-COPY index.js package.json /
-
 RUN wget "https://nodejs.org/dist/v18.12.1/node-v18.12.1-linux-x64.tar.xz" -O "node-v18.12.1-linux-x64.tar.xz"
+
+COPY index.js package.json /
 
 RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
     && cd node-v18.12.1-linux-x64/bin \
