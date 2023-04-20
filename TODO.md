@@ -1,7 +1,7 @@
 # Todo
 
 1. [x] Make the code more organized and easier to find and rewrite.
-2. [ ] In bulk-listing mode, adding playlists makes their `list_order` not update properly, fix it.
+2. [x] In bulk-listing mode, adding playlists makes their `list_order` not update properly, fix it.
 3. [ ] Write the readme.md and usage.
 4. [ ] Add a way to add videos to multiple playlists, way harder to than it needs to be, really.
 5. [ ] Add a rate limiter to the socket.io, docs [here](https:github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#websocket-single-connection-prevent-flooding)
@@ -14,8 +14,11 @@
       1. [x] Based on the cron expression and updatedAt it can update them [Rejected]
       2. [x] Or it can update the lists every time it's triggered, it won't have the granular control but then again it's such a hassle to run a timer for very playlist
 7. [ ] Figure out why some vidoes are being marked as duplicate despite being not the case. (Happens only on some sites)
-8. [ ] Implement download_background_parallel()
-9. [ ] Rewrite the frontend in vue (learning it currently)
+   1. [ ] It's a site specific problem, nothing can be done for now
+8. Rewrite the backend in express.js
+   1. The api is served by express 
+   2. The static files from the react app are also served by express
+9.  [ ] Implement download_background_parallel()
 
 ## Watcher
 

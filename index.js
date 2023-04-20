@@ -228,7 +228,7 @@ async function process_response(response, body_url, index) {
   }
   console.log(`\nprocess_response:\n\tIndex: ${index}\n\tUrl: ${body_url}\n`);
   const init_resp = { count: 0, resp_url: body_url, start: index };
-  sock.emit("progress", { message: `Processing: ${body_url} from ${index}` });
+  sock.emit("listing-or-downloading", { percentage: 101 });
   await Promise.all(
     response.map(async (element) => {
       var title = element.split("\t")[0].trim(),
@@ -394,7 +394,12 @@ async function download_lister(req, res) {
         // do nothing, as this is just to make sure
         // that unlisted videos are put in save_loc
       }
-      response_list["item"].push([entry.url, entry.title, save_dir_var]);
+      response_list["item"].push([
+        entry.url,
+        entry.title,
+        save_dir_var,
+        id_str,
+      ]);
     }
     download_sequential(response_list["item"]);
     res.writeHead(200, corsHeaders(json_t));
@@ -410,7 +415,7 @@ async function download_lister(req, res) {
 async function download_sequential(items) {
   console.log(`\nDownloading ${items.length} videos sequentially\n`);
   var count = 1;
-  for (const [url_str, title, save_dir] of items) {
+  for (const [url_str, title, save_dir, id_str] of items) {
     try {
       console.log(
         `\nDownloading Video: ${count++}\n\nUrl: ${url_str}\n\nProgress:\n`
@@ -422,10 +427,9 @@ async function download_sequential(items) {
       if (save_path != save_loc && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
       }
-      sock.emit("download-start", { message: title });
+      sock.emit("download-start", { message: "" });
       const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
       yt_dlp.stdout.on("data", async (data) => {
-        sock.emit("progress", { message: "" });
         try {
           // Keeping these just so it can be used to maybe add a progress bar
           const percentage = +/(\d{1,3}\.\d)/.exec(`${data}`)[0];
@@ -438,7 +442,7 @@ async function download_sequential(items) {
               hold = Math.floor(percentage / 10);
               console.log(`${data}`);
             }
-            //sock.emit("progress", { message: percentage[0] });
+            sock.emit("listing-or-downloading", { percentage: percentage });
           }
         } catch (error) {
           // this is done so that the toasts don't go crazy
@@ -460,7 +464,10 @@ async function download_sequential(items) {
             downloaded: true,
           });
           await entity.save();
-          sock.emit("download-done", { message: `${entity.title}` });
+          sock.emit("download-done", {
+            message: `${entity.title}`,
+            id: id_str,
+          });
         }
       });
       // this holds the for loop, preventing the next iteration from happening
@@ -535,7 +542,7 @@ async function list_init(req, res) {
       // then the last unlisted video index is used to increment over.
       const last_item = await vid_list.findOne({
         where: {
-          reference: "None",
+          reference: body_url,
         },
         order: [["list_order", "DESC"]],
         attributes: ["list_order"],
@@ -562,6 +569,7 @@ async function list_init(req, res) {
           console.log(`\nDone processing playlist: ${body_url}\n`);
           sock.emit("playlist-done", {
             message: "done processing playlist or channel",
+            id: body_url === "None" ? body["url"] : body_url,
           });
         });
       });
