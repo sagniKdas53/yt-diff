@@ -3,3 +3,4 @@ migration-scripts/*.csv
 migration-scripts/*.sql
 yt-data/
 dist/
+logs/
