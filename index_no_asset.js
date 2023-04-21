@@ -786,7 +786,6 @@ async function sublist_to_table(req, res) {
 }
 
 const json_t = "text/json; charset=utf-8";
-const html = "text/html; charset=utf-8";
 const corsHeaders = (type) => {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -797,67 +796,8 @@ const corsHeaders = (type) => {
   };
 };
 
-const types = {
-  ".png": "image/png",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".html": "text/html; charset=utf-8",
-  ".webmanifest": "application/manifest+json",
-  ".xml": "application/xml",
-};
-
-function getFiles(dir) {
-  const files = fs.readdirSync(dir);
-  let fileList = [];
-
-  files.forEach((file) => {
-    const filePath = path_fs.join(dir, file);
-    const extension = path_fs.extname(filePath);
-    const stat = fs.statSync(filePath);
-
-    if (stat.isDirectory()) {
-      fileList = fileList.concat(getFiles(filePath));
-    } else {
-      fileList.push({ filePath, extension });
-    }
-  });
-
-  return fileList;
-}
-
-function makeAssets(fileList) {
-  const staticAssets = {};
-  fileList.forEach((element) => {
-    staticAssets[element.filePath.replace("dist", "/ytdiff")] = {
-      file: fs.readFileSync(element.filePath),
-      type: types[element.extension],
-    };
-  });
-  staticAssets["/ytdiff/"] = staticAssets["/ytdiff/index.html"];
-  staticAssets["/ytdiff"] = staticAssets["/ytdiff/index.html"];
-  return staticAssets;
-}
-
-const filesList = getFiles("dist");
-//console.log(filesList);
-const staticAssets = makeAssets(filesList);
-//console.log(staticAssets);
-
 const server = http.createServer((req, res) => {
-  //console.log(req.url);
-  if (req.url.startsWith(url_base) && req.method === "GET") {
-    try {
-      const get = req.url; //.replace(url_base, "");
-      //console.log(get, staticAssets[get].file, staticAssets[get].type);
-      res.writeHead(200, corsHeaders(staticAssets[get].type));
-      res.write(staticAssets[get].file);
-    } catch (error) {
-      res.writeHead(404, corsHeaders(html));
-      res.write("Not Found");
-    }
-    res.end();
-  } else if (req.method === "OPTIONS") {
+  if (req.method === "OPTIONS") {
     res.writeHead(204, corsHeaders(json_t));
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
@@ -871,7 +811,7 @@ const server = http.createServer((req, res) => {
   } else if (req.url === url_base + "/download" && req.method === "POST") {
     download_lister(req, res);
   } else {
-    res.writeHead(404, corsHeaders(html));
+    res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
     res.write("Not Found");
     res.end();
   }
