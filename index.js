@@ -458,13 +458,18 @@ async function download_sequential(items) {
         console.error(`error: ${error.message}`);
       });
       yt_dlp.on("close", async (code) => {
+        const entity = await vid_list.findOne({ where: { url: url_str } });
         if (code === 0) {
-          const entity = await vid_list.findOne({ where: { url: url_str } });
           entity.set({
             downloaded: true,
           });
           await entity.save();
           sock.emit("download-done", {
+            message: `${entity.title}`,
+            id: id_str,
+          });
+        } else {
+          sock.emit("download-failed", {
             message: `${entity.title}`,
             id: id_str,
           });
