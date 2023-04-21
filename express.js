@@ -9,13 +9,13 @@ const path_fs = require("path");
 // getting env data
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
-const port = process.env.port || 8338;
+const port = process.env.port || 5173;
 const url_base = process.env.base_url || "/ytdiff";
 
 const app = express();
 app.use(express.json());
 app.use(router);
-app.use(express.static(path_fs.join(__dirname, "dist")));
+app.use("/ytdiff/", express.static(path_fs.join(__dirname, "dist")));
 
 // define a route that accepts GET requests
 router.get("/api/users", (req, res) => {
