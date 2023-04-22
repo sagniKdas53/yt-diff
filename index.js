@@ -880,7 +880,12 @@ const server = http.createServer((req, res) => {
 const io = new Server(server, {
   path: url_base + "/socket.io/",
   cors: {
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://lenovo-ideapad-320-15ikb.tail9ece4.ts.net",
+      "http://192.168.0.103:8888",
+      "http://192.168.0.106:8888",
+    ],
   },
 });
 const sock = io.on("connection", (socket) => {
