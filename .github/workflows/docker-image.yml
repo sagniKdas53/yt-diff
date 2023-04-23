@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["master"]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,4 +17,4 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Build the Docker image
-        run: docker build . --file Dockerfile --tag purevert/yt-diff:ubuntu-latest
+        run: docker build . --file Dockerfile --tag purevert/yt-diff:latest

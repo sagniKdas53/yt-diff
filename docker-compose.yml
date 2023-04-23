@@ -47,7 +47,7 @@ services:
       - base_url=${BASE_URL}
       - db_host=${DB_HOST}
       - port=${PORT}
-      - hide_ports=true
+      - hide_ports=${HIDE_PORTS}
       - save_loc=${SAVE_PATH}
       - sleep=${SLEEP}
       - subtitles=${SAVE_SUBSTITLES}
@@ -66,7 +66,13 @@ services:
       - "traefik.http.routers.ytdiff.tls=true"
       - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
-
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
+      interval: 5m
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+      
   adminer:
     image: adminer:4.8.1-standalone
     container_name: adminer

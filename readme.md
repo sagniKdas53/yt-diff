@@ -14,7 +14,7 @@ yt-dlp bundled with a node-js server and somewhat usable UI to download vidoes f
 
 ### Test VPN by using
 
-`docker exec -it gluetun wget -qO- https://ipinfo.io`
+VPN will need more testing before it's implemented. [TODO]
 
 ## Usage
 
