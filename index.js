@@ -16,12 +16,13 @@ const url_base = process.env.base_url || "/ytdiff";
 const db_host = process.env.db_host || "localhost";
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
-const get_subs = process.env.subtitles || true;
-const get_description = process.env.description || true;
-const get_comments = process.env.comments || true;
-const get_thumbnail = process.env.thumbnail || true;
 const scheduled_update_string = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
+
+const get_subs = process.env.subtitles !== "false";
+const get_description = process.env.description !== "false";
+const get_comments = process.env.comments !== "false";
+const get_thumbnail = process.env.thumbnail !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const not_needed = ["", "pornstar", "model", "videos"];
@@ -858,6 +859,11 @@ const server = http.createServer((req, res) => {
     }
     res.end();
   } else if (req.method === "OPTIONS") {
+    // necessary for cors
+    res.writeHead(204, corsHeaders(json_t));
+    res.end();
+  } else if (req.method === "HEAD") {
+    // necessary for health check
     res.writeHead(204, corsHeaders(json_t));
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
@@ -895,11 +901,13 @@ const sock = io.on("connection", (socket) => {
 });
 
 server.listen(port, async () => {
-  if (process.env.hide_ports || process.env.hide_ports == undefined)
+  if (process.env.hide_ports !== "false") {
+    console.log(`Server listening on ${protocol}://${host}${url_base}\n`);
+  } else {
     console.log(
       `Server listening on ${protocol}://${host}:${port}${url_base}\n`
     );
-  else console.log(`Server listening on ${protocol}://${host}${url_base}\n`);
+  }
   // I don't really know if calling these here is a good idea, but how else can I even do it?
   console.time("sleep time");
   await sleep();

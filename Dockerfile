@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.10
 
 RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
 
@@ -35,7 +35,7 @@ RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
 
 RUN wget "https://nodejs.org/dist/v18.12.1/node-v18.12.1-linux-x64.tar.xz" -O "node-v18.12.1-linux-x64.tar.xz"
 
-COPY index.js package.json /
+COPY package.json /
 
 RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
     && cd node-v18.12.1-linux-x64/bin \
@@ -44,6 +44,13 @@ RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
     && node node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
     && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz 
 
+COPY index.js /
+
 EXPOSE 8888
+
+RUN groupadd -g 1000 ytdiff && \
+    useradd -u 1000 -g ytdiff -s /bin/bash -m ytdiff
+
+USER ytdiff
 
 CMD [ "node", "index.js" ]
