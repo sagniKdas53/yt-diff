@@ -22,7 +22,4 @@
 9. [ ] Implement a healtch check
 10. [ ] Implement download_background_parallel()
 11. [ ] Add an api end point where the video (yes this will only be for single videos) is sent as a POST request and is indexed and downloaded.
-
-## Watcher
-
-I plan on adding, auto downloading but I am not feelin "it" so I will do it someday.
+12. [ ] Check why healthcheck isn't working
