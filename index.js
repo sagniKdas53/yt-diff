@@ -307,7 +307,10 @@ async function scheduled_update_func() {
   console.log(`\nScheduled update started at: ${new Date().toISOString()}\n`);
   console.log("\nStarting the quick update\n");
   //quick update then full update
-  quick_updates().then(full_updates());
+  quick_updates().then(full_updates()).then(() => sock.emit("playlist-done", {
+    message: "done updating playlist or channel",
+    id: "None",
+  }));
   console.log(`\nScheduled update finished at: ${new Date().toISOString()}\n`);
   console.log(`\nNext scheduled update on ${job.nextDates(1)}\n`);
 }
@@ -332,8 +335,7 @@ async function quick_updates() {
     });
     try {
       console.log(
-        `\nPlaylist: ${playlist.title.trim()} being updated from index ${
-          last_item.list_order
+        `\nPlaylist: ${playlist.title.trim()} being updated from index ${last_item.list_order
         }\n`
       );
       index = last_item.list_order;
@@ -498,8 +500,8 @@ async function list_init(req, res) {
       index = start_num > 0 ? start_num - 1 : 0; // index starts from 0 in this function
     console.log(
       `\nlist_init:\n\tbody_url: ${body["url"]}\n\tstart_num: ${body["start"]}\n\t` +
-        `stop_num: ${body["stop"]}\n\tchunk_size: ${body["chunk"]}\n\t` +
-        `continuous: ${body["continuous"]}\n\tindex: ${index}\n\twatch: ${body["watch"]}\n`
+      `stop_num: ${body["stop"]}\n\tchunk_size: ${body["chunk"]}\n\t` +
+      `continuous: ${body["continuous"]}\n\tindex: ${index}\n\twatch: ${body["watch"]}\n`
     );
     /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
         to the frontend but will continue in the background, this can cause issues like list_order getting 
@@ -683,11 +685,11 @@ async function playlists_to_table(req, res) {
         sort_with == 2
           ? "createdAt"
           : sort_with == 3
-          ? "updatedAt"
-          : "order_added";
+            ? "updatedAt"
+            : "order_added";
     console.log(
       `\nplaylists_to_table:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\t` +
-        `Order: ${order}\n\tType: ${type}\n\tQuery: "${query_string}"\n`
+      `Order: ${order}\n\tType: ${type}\n\tQuery: "${query_string}"\n`
     );
     if (query_string == "") {
       play_lists
@@ -736,8 +738,8 @@ async function sublist_to_table(req, res) {
       list_order_type = sort_downloaded ? "DESC" : "ASC";
     console.log(
       `\nsublist_to_table:\n\tStart: ${start_num}\n\tStop: ${stop_num}\n\t` +
-        `Order: ${list_order}\n\tType: ${list_order_type}\n\tQuery: "${query_string}"\n` +
-        `\tReference: ${body_url}\n\tsort_downloaded: ${sort_downloaded}\n`
+      `Order: ${list_order}\n\tType: ${list_order_type}\n\tQuery: "${query_string}"\n` +
+      `\tReference: ${body_url}\n\tsort_downloaded: ${sort_downloaded}\n`
     );
     // Sorting not implemented for sub-lists yet
     try {
@@ -887,12 +889,12 @@ const io = new Server(server, {
   path: url_base + "/socket.io/",
   cors: {
     origin: [
-      "http://localhost:5173",
       "https://lenovo-ideapad-320-15ikb.tail9ece4.ts.net",
-      "http://192.168.0.103:8888",
-      "http://192.168.0.106:8888",
+      "http://localhost:5173",
       "http://192.168.0.103:5173",
       "http://192.168.0.106:5173",
+      "http://192.168.0.103:8888",
+      "http://192.168.0.106:8888",
     ],
   },
 });
@@ -922,7 +924,7 @@ server.listen(port, async () => {
   );
   console.log(
     `List Options:\n` +
-      'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}\n'
+    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}\n'
   );
   job.start();
 });

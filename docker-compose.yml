@@ -34,7 +34,7 @@ services:
       # Use this to modify the files during building
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
-      - /home/sagnik/Projects/material/dist:/dist
+      - /home/sagnik/Projects/yt-diff/react/dist:/dist
     depends_on:
       - yt-db
     networks:
