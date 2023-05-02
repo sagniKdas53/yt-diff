@@ -41,10 +41,17 @@ RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
     && cd node-v18.12.1-linux-x64/bin \
     && mv node ../../bin \
     && cd ../.. \
-    && node node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
-    && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz 
+    && node node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install
 
 COPY index.js /
+
+COPY react/ /react
+
+RUN cd react \
+    && node /node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
+    && /node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build \
+    && cd .. \
+    && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz react
 
 EXPOSE 8888
 

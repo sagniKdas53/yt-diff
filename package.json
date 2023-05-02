@@ -24,10 +24,10 @@
   "homepage": "https://github.com/sagniKdas53/yt-diff#readme",
   "dependencies": {
     "bootstrap": "^5.2.3",
-    "cron": "^2.2.0",
+    "cron": "^2.3.0",
     "pg": "^8.10.0",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.28.0",
+    "sequelize": "^6.31.1",
     "socket.io": "^4.6.1"
   },
   "devDependencies": {

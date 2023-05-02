@@ -13,13 +13,14 @@
 4. [ ] Figure out why some vidoes are being marked as duplicate despite being not the case. (Happens only on some sites)
    1. [ ] It's a site specific problem, nothing can be done for now
 5. [x] Rewrite the backend in express.js [Rejected]
-   1. [x] The api is served by express 
+   1. [x] The api is served by express
    2. [x] The static files from the react app are also served by express
     [ ] Write the readme.md and usage.
 6. [ ] Add a way to add videos to multiple playlists, way harder to than it needs to be, really.
 7. [ ] Add a rate limiter to the socket.io, docs [here](https:github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#websocket-single-connection-prevent-flooding)
-8. [ ] As it stands now just clean up the httpServer code
-9. [ ] Implement a healtch check
+8. [x] As it stands now just clean up the httpServer code
+9. [x] Implement a healtch check
 10. [ ] Implement download_background_parallel()
 11. [ ] Add an api end point where the video (yes this will only be for single videos) is sent as a POST request and is indexed and downloaded.
-12. [ ] Check why healthcheck isn't working
+12. [x] Check why healthcheck isn't working
+13. [ ] Make the CORS origins actually work

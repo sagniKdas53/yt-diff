@@ -893,6 +893,7 @@ const io = new Server(server, {
       "http://localhost:5173",
       "http://192.168.0.103:5173",
       "http://192.168.0.106:5173",
+      "http://localhost:8888",
       "http://192.168.0.103:8888",
       "http://192.168.0.106:8888",
     ],
