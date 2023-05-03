@@ -8,7 +8,7 @@ ENV OPENSSL_CONF=/dev/null
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update \
-    && apt install ca-certificates xz-utils bzip2 wget -y \
+    && apt install ca-certificates xz-utils bzip2 wget git -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
