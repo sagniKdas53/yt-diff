@@ -2,6 +2,5 @@ node_modules/
 migration-scripts/*.csv
 migration-scripts/*.sql
 yt-data/
-react/node_modules
 dist/
 logs/
