@@ -1,3 +1,6 @@
 [submodule "front-end"]
 	path = react
 	url = https://github.com/sagniKdas53/yt-diff-react
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/sagniKdas53/yt-diff-react
