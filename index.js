@@ -1,4 +1,3 @@
-#!/home/sagnik/.nvm/versions/node/v18.12.0/bin/node
 "use strict";
 const { spawn } = require("child_process");
 const http = require("http");
@@ -10,7 +9,7 @@ const CronJob = require("cron").CronJob;
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
-const port = process.env.port || 8888;
+const port = process.env.port || 8338;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
@@ -588,6 +587,57 @@ async function list_init(req, res) {
     res.end(JSON.stringify({ Error: error.message }));
   }
 }
+async function list_and_download(req, res) {
+  try {
+    const body = await extract_json(req);
+    var body_url = body["url"], index = -1;
+    console.log(
+      `\nlist_and_download:\n\tbody_url: ${body["url"]}\n`
+    );
+    const response_list = await list_spawner(body_url, 1, 2);
+    console.log(
+      `\nresponse_list:\t${JSON.stringify(
+        response_list,
+        null,
+        2
+      )}\n\tresponse_list.length: ${response_list.length}\n`
+    );
+    body_url = "None";
+    // If the url is determined to be an unlisted video
+    // (i.e: not belonging to a playlist)
+    // then the last unlisted video index is used to increment over.
+    const last_item = await vid_list.findOne({
+      where: {
+        reference: body_url,
+      },
+      order: [["list_order", "DESC"]],
+      attributes: ["list_order"],
+      limit: 1,
+    });
+    try {
+      index = last_item.list_order;
+    } catch (error) {
+      // encountered an error if unlisted videos was not initialized
+      index = -1; // it will become 1 in the DB
+    }
+    process_response(response_list, body_url, index)
+    // adding a socket emitter and directly downloading stuff here would be fatser but 
+    // I feel I should do it in the polymorphic way and reuse download_sequential
+      .then(function (init_resp) {
+        try {
+          res.writeHead(200, corsHeaders(json_t));
+          res.end(JSON.stringify(init_resp));
+        } catch (error) {
+          console.error(error);
+        }
+      })
+  } catch (error) {
+    console.error(error);
+    const status = error.status || 500;
+    res.writeHead(status, corsHeaders(json_t));
+    res.end(JSON.stringify({ Error: error.message }));
+  }
+}
 async function watch_list(req, res) {
   try {
     const body = await extract_json(req),
@@ -870,6 +920,8 @@ const server = http.createServer((req, res) => {
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
     list_init(req, res);
+  } else if (req.url === url_base + "/listndnld" && req.method === "POST") {
+    list_and_download(req, res);
   } else if (req.url === url_base + "/watchlist" && req.method === "POST") {
     watch_list(req, res);
   } else if (req.url === url_base + "/dbi" && req.method === "POST") {
