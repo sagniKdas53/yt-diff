@@ -494,6 +494,7 @@ async function list_init(req, res) {
       start_num = +body["start"] || 1,
       stop_num = +body["stop"] || 10,
       chunk_size = +body["chunk"] || 10,
+      // i forgot what this continuous thingy does
       continuous = body["continuous"] || false,
       watch = body["watch"] || 1;
     var body_url = body["url"],
@@ -588,6 +589,9 @@ async function list_init(req, res) {
     res.end(JSON.stringify({ Error: error.message }));
   }
 }
+// write a function to check if the file is already downloaded, if so then send it as a response
+// this way I can call it after some time to check if the file got downloaded or if it failed
+// on this note how about sending a list urls or a playlist and a range that will be downloaded.
 async function list_and_download(req, res) {
   try {
     const body = await extract_json(req);
