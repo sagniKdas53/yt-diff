@@ -9,7 +9,7 @@ const CronJob = require("cron").CronJob;
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
-const port = process.env.port || 8338;
+const port = process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
@@ -160,6 +160,7 @@ async function extract_json(req) {
     });
     req.on("end", function () {
       try {
+        // console.log(body); 
         const parsedBody = JSON.parse(body);
         resolve(parsedBody);
       } catch (error) {
@@ -621,14 +622,41 @@ async function list_and_download(req, res) {
       index = -1; // it will become 1 in the DB
     }
     process_response(response_list, body_url, index)
-    // adding a socket emitter and directly downloading stuff here would be fatser but 
-    // I feel I should do it in the polymorphic way and reuse download_sequential
+      // adding a socket emitter and directly downloading stuff here would be fatser but 
+      // I feel I should do it in the polymorphic way and reuse download_sequential
       .then(function (init_resp) {
         try {
           res.writeHead(200, corsHeaders(json_t));
           res.end(JSON.stringify(init_resp));
         } catch (error) {
           console.error(error);
+        }
+      })
+      .then(async function () {
+        //console.log("response_list", response_list);
+        const vid_id = response_list[0].split("\t")[1];
+        const entry = await vid_list.findOne({ where: { id: vid_id } });
+        var save_dir_var = "";
+        try {
+          const play_list = await play_lists.findOne({
+            where: { url: entry.reference },
+          });
+          save_dir_var = play_list.save_dir;
+        } catch (error) {
+          console.error(error);
+          // do nothing, as this is just to make sure
+          // that unlisted videos are put in save_loc
+        }
+        try {
+          await download_sequential([[
+            entry.url,
+            entry.title,
+            save_dir_var,
+            vid_id,
+          ]]);
+        } catch (error) {
+          console.error(error);
+          // do nothing, as i don't really remember what to do
         }
       })
   } catch (error) {
