@@ -46,7 +46,7 @@ RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
 
 COPY index.js /
 
-RUN git clone https://github.com/sagniKdas53/yt-diff-react frontend
+RUN git clone -b before-virtuiso https://github.com/sagniKdas53/yt-diff-react frontend
 
 RUN cd frontend \
     && node /node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
