@@ -1,0 +1,168 @@
+
+> yt-diff@1.3.0 dev
+> node --watch index.js
+
+[31mFailed running 'index.js'[39m
+c[32mRestarting 'index.js'[39m
+Server listening on http://localhost/ytdiff
+
+Connection to database has been established successfully.
+
+vid_list and play_lists tables exist or are created successfully!
+
+sleep time: 3.001s
+
+Next scheduled update is on 2023-05-07T00:00:00.000+05:30
+
+Download Options:
+yt-dlp --embed-metadata --write-subs --write-auto-subs --write-description --write-comments --write-thumbnail --paths "/home/sagnik/Videos/yt-dlp//{playlist_dir}" "{url}"
+
+List Options:
+yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s" {body_url}
+
+{ data: 'Connected', id: '-N0U9HLXq-qAOyW2AAAB' }
+
+sublist_to_table:
+	Start: 0
+	Stop: 10
+	Order: list_order
+	Type: ASC
+	Query: ""
+	Reference: None
+	sort_downloaded: false
+
+
+sublist_to_table:
+	Start: 0
+	Stop: 50
+	Order: list_order
+	Type: ASC
+	Query: ""
+	Reference: None
+	sort_downloaded: false
+
+
+sublist_to_table:
+	Start: 50
+	Stop: 100
+	Order: list_order
+	Type: ASC
+	Query: ""
+	Reference: None
+	sort_downloaded: false
+
+
+list_and_download:
+	body_url: https://youtube.com/shorts/SbueT569ObU?feature=share
+
+
+list_spawner:
+	Start: 1
+	Stop: 2
+	Url: https://youtube.com/shorts/SbueT569ObU?feature=share
+
+
+response_list:	[
+  "ww3 trailer\tSbueT569ObU\thttps://www.youtube.com/watch?v=SbueT569ObU"
+]
+	response_list.length: 1
+
+
+process_response:
+	Index: 83
+	Url: None
+
+
+Downloading 1 videos sequentially
+
+
+Downloading Video: 1
+
+Url: https://www.youtube.com/watch?v=SbueT569ObU
+
+Progress:
+
+c[32mRestarting 'index.js'[39m
+Server listening on http://localhost/ytdiff
+
+Connection to database has been established successfully.
+
+vid_list and play_lists tables exist or are created successfully!
+
+{ data: 'Connected', id: 'x-YTm-KKceKj_kvZAAAB' }
+sleep time: 3.001s
+
+Next scheduled update is on 2023-05-07T00:00:00.000+05:30
+
+Download Options:
+yt-dlp --embed-metadata --write-subs --write-auto-subs --write-description --write-comments --write-thumbnail --paths "/home/sagnik/Videos/yt-dlp//{playlist_dir}" "{url}"
+
+List Options:
+yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s" {body_url}
+
+
+sublist_to_table:
+	Start: 0
+	Stop: 50
+	Order: list_order
+	Type: ASC
+	Query: ""
+	Reference: None
+	sort_downloaded: false
+
+
+sublist_to_table:
+	Start: 50
+	Stop: 100
+	Order: list_order
+	Type: ASC
+	Query: ""
+	Reference: None
+	sort_downloaded: false
+
+
+list_and_download:
+	body_url: https://youtube.com/shorts/LEeIF7Pg7IA?feature=share
+
+
+list_spawner:
+	Start: 1
+	Stop: 2
+	Url: https://youtube.com/shorts/LEeIF7Pg7IA?feature=share
+
+
+response_list:	[
+  "Why Real Truffles Are So Expensive\tLEeIF7Pg7IA\thttps://www.youtube.com/watch?v=LEeIF7Pg7IA"
+]
+	response_list.length: 1
+
+
+process_response:
+	Index: 84
+	Url: None
+
+
+Downloading 1 videos sequentially
+
+
+Downloading Video: 1
+
+Url: https://www.youtube.com/watch?v=LEeIF7Pg7IA
+
+Progress:
+
+[download]    1.00KiB at  Unknown B/s (00:00:00)
+[download]  10.0% of ~  20.00MiB at    9.82MiB/s ETA 00:01 (frag 0/2)
+[download]  20.0% of ~  20.00MiB at   10.41MiB/s ETA 00:01 (frag 0/2)
+[download]  40.0% of ~  20.00MiB at   10.69MiB/s ETA 00:01 (frag 0/2)
+[download]  50.0% of ~  20.00MiB at   10.78MiB/s ETA 00:00 (frag 0/2)
+[download]  68.2% of ~  14.66MiB at   19.37KiB/s ETA 00:00 (frag 1/2)
+[download]  71.6% of ~  14.66MiB at    5.13MiB/s ETA 00:00 (frag 1/2)
+[download]  81.9% of ~  14.66MiB at    8.47MiB/s ETA 00:00 (frag 1/2)
+[download]  95.5% of ~  14.66MiB at    9.61MiB/s ETA 00:00 (frag 1/2)
+[download] 100.0% of ~  14.66MiB at    9.83MiB/s ETA 00:00 (frag 1/2)
+[download] 100% of  912.66KiB in 00:00:00 at 7.77MiB/s               
+
+
+Downloaded Why Real Truffles Are So Expensive at location /home/sagnik/Videos/yt-dlp/
+
