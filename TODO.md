@@ -4,12 +4,9 @@
 2. [ ] Add a rate limiter to the socket.io, docs [here](https:github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#websocket-single-connection-prevent-flooding)
 3. [ ] Implement download_background_parallel()
 4. [x] Add an api end point where the video (yes this will only be for single videos) is sent as a POST request and is indexed and downloaded.
-   1. [ ] Will making it take a list of urls and download them all in a list be too over the top for a rest api call
-   2. [ ] Sending an array of urls and an array of indices can be a valid way to use this API to download a list of videos,
-          like the array of urls will all get downloaded if they are single vidoes but if there is a playlist then it will show an error
-   3. [ ] If a playlist is submitted with start and end and an array of indices then it too can be downloaded.
-   4. [ ] ALL these are just ideas no garuntee that I will implement any of these as it might be too much work for not much results.
-   5. [ ] Then again this whole thing is a sunken cost problem, I should have stopped 2 months ago but I didn't.
+   1. [x] Add ability to know if the video is already downloaded or listed and then download it.
+   2. [ ] Add ability to download multiple videos, form this endpoint
+   3. [ ] Test a get parameter to submit a list of inddices to download from a playlist.
 5. [ ] Make an endpoint to cancel all running sub processes and then add it to be triggered by a button on the navigation bar
 6. [ ] Implement a task queue, so that incoming requests can be placed on a queue and processed as and when possible.
 7. [x] Make the code more organized and easier to find and rewrite.
