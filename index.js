@@ -595,74 +595,131 @@ async function list_init(req, res) {
 async function list_and_download(req, res) {
   try {
     const body = await extract_json(req);
-    var body_url = body["url"], index = -1;
+    var body_url = body["url"],
+      index = -1;
+    //const get = body["get"];
     console.log(
       `\nlist_and_download:\n\tbody_url: ${body["url"]}\n`
     );
-    const response_list = await list_spawner(body_url, 1, 2);
-    console.log(
-      `\nresponse_list:\t${JSON.stringify(
-        response_list,
-        null,
-        2
-      )}\n\tresponse_list.length: ${response_list.length}\n`
-    );
-    body_url = "None";
-    // If the url is determined to be an unlisted video
-    // (i.e: not belonging to a playlist)
-    // then the last unlisted video index is used to increment over.
-    const last_item = await vid_list.findOne({
-      where: {
-        reference: body_url,
-      },
-      order: [["list_order", "DESC"]],
-      attributes: ["list_order"],
-      limit: 1,
-    });
+    // check if it's already saved and download or not and save it
     try {
-      index = last_item.list_order;
-    } catch (error) {
-      // encountered an error if unlisted videos was not initialized
-      index = -1; // it will become 1 in the DB
-    }
-    process_response(response_list, body_url, index)
-      // adding a socket emitter and directly downloading stuff here would be fatser but 
-      // I feel I should do it in the polymorphic way and reuse download_sequential
-      .then(function (init_resp) {
-        try {
-          res.writeHead(200, corsHeaders(json_t));
-          res.end(JSON.stringify(init_resp));
-        } catch (error) {
-          console.error(error);
-        }
-      })
-      .then(async function () {
-        //console.log("response_list", response_list);
-        const vid_id = response_list[0].split("\t")[1];
-        const entry = await vid_list.findOne({ where: { id: vid_id } });
+      const dnld_list = { item: [] };
+      const entry = await vid_list.findOne({ where: { url: body_url } });
+      //console.log(entry, body_url);
+      if (entry !== null) {
         var save_dir_var = "";
         try {
-          const play_list = await play_lists.findOne({
-            where: { url: entry.reference },
-          });
-          save_dir_var = play_list.save_dir;
+          if (entry.reference !== "None") {
+            const play_list = await play_lists.findOne({
+              where: { url: entry.reference },
+            });
+            save_dir_var = play_list.save_dir;
+          }
         } catch (error) {
           console.error(error);
           // do nothing, as this is just to make sure
           // that unlisted videos are put in save_loc
         }
+        dnld_list["item"].push([
+          entry.url,
+          entry.title,
+          save_dir_var,
+          entry.id,
+        ]);
+        // downloading if it's already in the lists
+        if (entry.downloaded) {
+          try {
+            res.writeHead(200, corsHeaders(json_t));
+            res.end(JSON.stringify({ message: "Already downloaded", entry: dnld_list["item"] }));
+          } catch (error) {
+            console.error(error);
+          }
+        } else if (!entry.downloaded) {
+          try {
+            res.writeHead(200, corsHeaders(json_t));
+            res.end(JSON.stringify({ message: "Downloading", entry: dnld_list["item"] }));
+            await download_sequential(dnld_list["item"]);
+          } catch (error) {
+            console.error(error);
+            // do nothing, as i don't really remember what to do
+          }
+        }
+      }
+      else {
         try {
-          await download_sequential([[
-            entry.url,
-            entry.title,
-            save_dir_var,
-            vid_id,
-          ]]);
+          const response_list = await list_spawner(body_url, 1, 2);
+          console.log(
+            `\nresponse_list:\t${JSON.stringify(
+              response_list,
+              null,
+              2
+            )}\n\tresponse_list.length: ${response_list.length}\n`
+          );
+          body_url = "None";
+          // If the url is determined to be an unlisted video
+          // (i.e: not belonging to a playlist)
+          // then the last unlisted video index is used to increment over.
+          const last_item = await vid_list.findOne({
+            where: {
+              reference: body_url,
+            },
+            order: [["list_order", "DESC"]],
+            attributes: ["list_order"],
+            limit: 1,
+          });
+          try {
+            index = last_item.list_order;
+          } catch (error) {
+            // encountered an error if unlisted videos was not initialized
+            index = -1; // it will become 1 in the DB
+          }
+          process_response(response_list, body_url, index)
+            // adding a socket emitter and directly downloading stuff here would be fatser but 
+            // I feel I should do it in the polymorphic way and reuse download_sequential
+            .then(function (init_resp) {
+              try {
+                res.writeHead(200, corsHeaders(json_t));
+                res.end(JSON.stringify({ message: "Added an item", entry: response_list[0].split("\t") }));
+              } catch (error) {
+                console.error(error);
+              }
+            })
+            .then(async function () {
+              //console.log("response_list", response_list);
+              const vid_id = response_list[0].split("\t")[1];
+              const entry = await vid_list.findOne({ where: { id: vid_id } });
+              var save_dir_var = "";
+              try {
+                if (entry.reference !== "None") {
+                  const play_list = await play_lists.findOne({
+                    where: { url: entry.reference },
+                  });
+                  save_dir_var = play_list.save_dir;
+                }
+              } catch (error) {
+                console.error(error);
+                // do nothing, as this is just to make sure
+                // that unlisted videos are put in save_loc
+              }
+              try {
+                await download_sequential([[
+                  entry.url,
+                  entry.title,
+                  save_dir_var,
+                  vid_id,
+                ]]);
+              } catch (error) {
+                console.error(error);
+                // do nothing, as i don't really remember what to do
+              }
+            })
         } catch (error) {
           console.error(error);
-          // do nothing, as i don't really remember what to do
         }
-      })
+      }
+    } catch (error) {
+      console.error(error);
+    }
   } catch (error) {
     console.error(error);
     const status = error.status || 500;
