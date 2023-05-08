@@ -39,6 +39,8 @@ services:
       - yt-db
     networks:
       - revProxy-net
+    # expose:
+    #   - ${PORT}
     ports:
       - ${PORT}:${PORT}
     environment:

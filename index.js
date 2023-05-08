@@ -602,6 +602,8 @@ async function list_and_download(req, res) {
       `\nlist_and_download:\n\tbody_url: ${body["url"]}\n`
     );
     // check if it's already saved and download or not and save it
+    // not really necessary to emit this here because it's gonna be emitted later if it isn't indexed
+    // sock.emit("listing-or-downloading", { percentage: 101 });
     try {
       const dnld_list = { item: [] };
       const entry = await vid_list.findOne({ where: { url: body_url } });
