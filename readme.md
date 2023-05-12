@@ -19,3 +19,19 @@ VPN will need more testing before it's implemented. [TODO]
 ## Usage
 
 TODO
+
+## Commands that run thw whole thing
+
+### List
+
+```bash
+yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist \
+ --print "%(title)s\t%(id)s\t%(webpage_url)s" {body_url}
+```
+
+### Test
+
+```bash
+yt-dlp --playlist-start 1 --playlist-end 2 --flat-playlist \
+ --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize)s\t%(filesize_approx)s" https://www.youtube.com/shorts/6CSIMAIB2IU
+```
