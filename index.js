@@ -36,14 +36,41 @@ const options = [
   "--paths",
 ].filter(Boolean);
 
-
 // Logging methods
-const info = (msg) => { console.log(color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg.trim()}\n`)); };
-const verbose = (msg) => { console.log(color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg.trim()}\n`)); };
-const debug = (msg) => { console.log(color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg.trim()}\n`)); };
-const err = (msg) => { console.log(color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg.trim()}\n`)); };
-const warn = (msg) => { console.log(color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg.trim()}\n`)); };
-const trace = (msg) => { console.log(color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg.trim()}\n`)); };
+const info = (msg) => {
+  console.log(
+    color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg.trim()}\n`)
+  );
+};
+const verbose = (msg) => {
+  console.log(
+    color.greenBright(
+      `[${new Date().toLocaleString()}] VERBOSE: ${msg.trim()}\n`
+    )
+  );
+};
+const debug = (msg) => {
+  console.log(
+    color.magentaBright(
+      `[${new Date().toLocaleString()}] DEBUG: ${msg.trim()}\n`
+    )
+  );
+};
+const err = (msg) => {
+  console.log(
+    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg.trim()}\n`)
+  );
+};
+const warn = (msg) => {
+  console.log(
+    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg.trim()}\n`)
+  );
+};
+const trace = (msg) => {
+  console.log(
+    color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg.trim()}\n`)
+  );
+};
 
 if (!fs.existsSync(save_loc)) {
   fs.mkdirSync(save_loc, { recursive: true });
@@ -63,15 +90,16 @@ try {
   err(`Unable to connect to the database: ${error}`);
 }
 
+// url is the primary key of any video
 const video_list = sequelize.define("video_list", {
   url: {
     type: DataTypes.STRING,
     allowNull: false,
+    primaryKey: true,
   },
   id: {
     type: DataTypes.STRING,
     allowNull: false,
-    primaryKey: true,
   },
   title: {
     type: DataTypes.STRING,
@@ -85,15 +113,11 @@ const video_list = sequelize.define("video_list", {
     type: DataTypes.BOOLEAN,
     allowNull: false,
   },
-  /*
-  The plan here is to make a way such that a video can have 
-  multiple playlist_url and playlist_order for that given playlist_url
-  */
   playlist_url: {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  playlist_order: {
+  index_in_playlist: {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
@@ -107,6 +131,7 @@ const video_list = sequelize.define("video_list", {
   },
 });
 
+// url is the primary key of any playlist
 const playlist_list = sequelize.define("playlist_list", {
   title: {
     type: DataTypes.STRING,
@@ -140,10 +165,71 @@ const playlist_list = sequelize.define("playlist_list", {
   },
 });
 
+/*  video_url and index_in_playlist are forign keys from video_list, 
+    playlist_url is forign key from playlist_list
+
+    The plan here is to make a way such that a video can have a video associated with
+    multiple playlist_url and index_in_playlist for that given playlist_url   
+*/
+const playlist_video = sequelize.define(
+  "playlist_video",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
+    video_url: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      references: {
+        model: video_list,
+        key: "url",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+    index_in_playlist: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: video_list,
+        key: "index_in_playlist",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+    playlist_url: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      references: {
+        model: playlist_list,
+        key: "url",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
+    },
+  },
+  {
+    indexes: [
+      {
+        unique: true,
+        fields: ["video_url", "playlist_url", "index_in_playlist"],
+      },
+    ],
+  }
+);
+
+playlist_video.belongsTo(video_list, { foreignKey: 'video_url', through: 'playlist_video', otherKey: 'url' });
+playlist_video.belongsTo(playlist_list, { foreignKey: 'playlist_url', through: 'playlist_video', otherKey: 'url' });
+playlist_video.belongsTo(video_list, { foreignKey: 'index_in_playlist', through: 'playlist_video', otherKey: 'order_added' });
+
 sequelize
   .sync()
   .then(() => {
-    info("video_list and playlist_list tables exist or are created successfully");
+    info(
+      "video_list and playlist_list tables exist or are created successfully"
+    );
   })
   .catch((error) => {
     err(`Unable to create table : ${error}`);
@@ -199,7 +285,9 @@ async function url_to_title(body_url) {
   }
 }
 async function list_spawner(body_url, start_num, stop_num) {
-  trace(`list_spawner: Start: ${start_num}, Stop: ${stop_num}, Url: ${body_url}`);
+  trace(
+    `list_spawner: Start: ${start_num}, Stop: ${stop_num}, Url: ${body_url}`
+  );
   return new Promise((resolve, reject) => {
     const yt_list = spawn("yt-dlp", [
       "--playlist-start",
@@ -261,7 +349,7 @@ async function process_response(response, body_url, index) {
           title: title_fixed,
           downloaded: false,
           available: item_available,
-          playlist_order: ++index,
+          index_in_playlist: ++index,
         };
         const [found, created] = await video_list.findOrCreate({
           where: { url: vid_url },
@@ -290,30 +378,40 @@ async function update_stuff(found, data) {
     found.playlist_url !== data.playlist_url ||
     found.title !== data.title ||
     found.available !== data.available ||
-    found.playlist_order !== data.playlist_order
+    found.index_in_playlist !== data.index_in_playlist
   ) {
     const differences = [];
     if (found.id !== data.id) {
       differences.push(`id: ${found.id} (found) vs. ${data.id} (expected)`);
     }
     if (found.playlist_url !== data.playlist_url) {
-      differences.push(`playlist_url: ${found.playlist_url} (found) vs. ${data.playlist_url} (expected)`);
+      differences.push(
+        `playlist_url: ${found.playlist_url} (found) vs. ${data.playlist_url} (expected)`
+      );
     }
     if (found.title !== data.title) {
-      differences.push(`title: ${found.title} (found) vs. ${data.title} (expected)`);
+      differences.push(
+        `title: ${found.title} (found) vs. ${data.title} (expected)`
+      );
     }
     if (found.available !== data.available) {
-      differences.push(`available: ${found.available} (found) vs. ${data.available} (expected)`);
+      differences.push(
+        `available: ${found.available} (found) vs. ${data.available} (expected)`
+      );
     }
-    if (found.playlist_order !== data.playlist_order) {
-      differences.push(`playlist_order: ${found.playlist_order} (found) vs. ${data.playlist_order} (expected)`);
+    if (found.index_in_playlist !== data.index_in_playlist) {
+      differences.push(
+        `index_in_playlist: ${found.index_in_playlist} (found) vs. ${data.index_in_playlist} (expected)`
+      );
     }
-    warn(`Found ${differences.length} difference(s): ${differences.join(', ')}`);
+    warn(
+      `Found ${differences.length} difference(s): ${differences.join(", ")}`
+    );
     found.id = data.id;
     found.playlist_url = data.playlist_url;
     found.title = data.title;
     found.available = data.available;
-    found.playlist_order = data.playlist_order;
+    found.index_in_playlist = data.index_in_playlist;
     await found.save();
   }
 }
@@ -345,29 +443,32 @@ async function quick_updates() {
       monitoring_type: 3,
     },
   });
-  trace(`Updating ${playlists["rows"].length} playlists`)
+  trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     var index = 0;
     const last_item = await video_list.findOne({
       where: {
         playlist_url: playlist.url,
       },
-      order: [["playlist_order", "DESC"]],
-      attributes: ["playlist_order"],
+      order: [["index_in_playlist", "DESC"]],
+      attributes: ["index_in_playlist"],
       limit: 1,
     });
     try {
-      trace(`Playlist: ${playlist.title.trim()} being updated from index ${last_item.playlist_order}`)
-      index = last_item.playlist_order;
+      trace(
+        `Playlist: ${playlist.title.trim()} being updated from index ${last_item.index_in_playlist
+        }`
+      );
+      index = last_item.index_in_playlist;
 
       await sleep();
       await list_background(playlist.url, index, index + 10, 10);
-      trace(`Done processing playlist ${playlist.url}`)
+      trace(`Done processing playlist ${playlist.url}`);
 
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err(`error processing playlist ${playlist.url}, ${error.message}`)
+      err(`error processing playlist ${playlist.url}, ${error.message}`);
     }
   }
 }
@@ -507,26 +608,34 @@ async function list_and_download(req, res) {
       start_num = body["start"] !== undefined ? +body["start"] : 1,
       stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
       chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
-      sleep_before_listing = body["continuous"] !== undefined ? body["continuous"] : false,
-      monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
+      sleep_before_listing =
+        body["continuous"] !== undefined ? body["continuous"] : false,
+      monitoring_type =
+        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
       download_list = body["download"] !== undefined ? body["download"] : null,
       dnld_list = { items: [] };
     var body_url = body["url"] !== undefined ? body["url"] : "",
       index = start_num > 0 ? start_num - 1 : 0; // index starts from 0 in this function
     debug(`body: ${JSON.stringify(body)}`);
-    trace(`list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
+    trace(
+      `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
       `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
-      `sleep_before_listing: ${sleep_before_listing}, index: ${index}, monitoring_type: ${monitoring_type}`);
+      `sleep_before_listing: ${sleep_before_listing}, index: ${index}, monitoring_type: ${monitoring_type}`
+    );
     /*
     Checking if the body url is a playlist or not and checking if it's a single video and if it's available and or downloaded
       should be a good course fo action before continuing the rest of this process.
     */
-    const is_playlist_indexed = playlist_list.findOne({ where: { url: body_url } });
+    const is_playlist_indexed = playlist_list.findOne({
+      where: { url: body_url },
+    });
     // will download all the indexes that are specified in the download_list
     if (is_playlist_indexed !== null && download_list !== null) {
-      const videos = await video_list.findAll({ where: { playlist_url: body_url } });
-      download_list.forEach(element => {
-        dnld_list['items'].push([
+      const videos = await video_list.findAll({
+        where: { playlist_url: body_url },
+      });
+      download_list.forEach((element) => {
+        dnld_list["items"].push([
           videos[element].url,
           videos[element].title,
           is_playlist_indexed.save_dir,
@@ -535,19 +644,18 @@ async function list_and_download(req, res) {
       });
       const status = 200;
       res.writeHead(status, corsHeaders(json_t));
-      res.end(JSON.stringify({ "Downloading vidoes": JSON.stringify(dnld_list['items']) }));
+      res.end(
+        JSON.stringify({
+          "Downloading vidoes": JSON.stringify(dnld_list["items"]),
+        })
+      );
       // this is where the download is triggered
       await download_sequential(dnld_list["item"]);
     }
     const entry = await video_list.findOne({ where: { url: body_url } });
     // will download the vidoe that is specified in the body_url
     if (entry !== null && download_list !== null) {
-      dnld_list["item"].push([
-        entry.url,
-        entry.title,
-        "",
-        entry.id,
-      ]);
+      dnld_list["item"].push([entry.url, entry.title, "", entry.id]);
       // downloading if it's already in the lists
       if (entry.downloaded) {
         try {
@@ -582,17 +690,19 @@ async function list_and_download(req, res) {
     // add the downloading thing later, too tired for now.
     else {
       /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
-        to the frontend but will continue in the background, this can cause issues like playlist_order getting 
+        to the frontend but will continue in the background, this can cause issues like index_in_playlist getting 
         messed up or listing not completing.
         It"s best to not use bulk listing for playlists and channels but say you have 50 tabs open and you just 
         copy the urls then you can just set them to be processed in this mode.*/
       if (sleep_before_listing) await sleep();
       const response_list = await list_spawner(body_url, start_num, stop_num);
-      verbose(`response_list:\t${JSON.stringify(
-        response_list,
-        null,
-        2
-      )}, response_list.length: ${response_list.length}`);
+      verbose(
+        `response_list:\t${JSON.stringify(
+          response_list,
+          null,
+          2
+        )}, response_list.length: ${response_list.length}`
+      );
       if (response_list.length > 1 || body_url.includes("playlist")) {
         if (body_url.includes("youtube") && body_url.includes("/@")) {
           if (!/\/videos\/?$/.test(body_url)) {
@@ -628,12 +738,12 @@ async function list_and_download(req, res) {
           where: {
             playlist_url: body_url,
           },
-          order: [["playlist_order", "DESC"]],
-          attributes: ["playlist_order"],
+          order: [["index_in_playlist", "DESC"]],
+          attributes: ["index_in_playlist"],
           limit: 1,
         });
         try {
-          index = last_item.playlist_order;
+          index = last_item.index_in_playlist;
         } catch (error) {
           // encountered an error if unlisted videos was not initialized
           index = -1; // it will become 1 in the DB
@@ -649,16 +759,16 @@ async function list_and_download(req, res) {
           }
         })
         .then(function () {
-          list_background(body_url, start_num, stop_num, chunk_size).then(() => {
-            trace(`Done processing playlist: ${body_url}`);
-            sock.emit("playlist-done", {
-              message: "done processing playlist or channel",
-              id: body_url === "None" ? body["url"] : body_url,
-            });
-          });
+          list_background(body_url, start_num, stop_num, chunk_size).then(
+            () => {
+              trace(`Done processing playlist: ${body_url}`);
+              sock.emit("playlist-done", {
+                message: "done processing playlist or channel",
+                id: body_url === "None" ? body["url"] : body_url,
+              });
+            }
+          );
         });
-
-
     }
   } catch (error) {
     err(`${error.message}`);
@@ -672,7 +782,9 @@ async function monitoring_type_list(req, res) {
     const body = await extract_json(req),
       body_url = body["url"],
       monitoring_type = body["monitoring_type"];
-    trace(`monitoring_type_list:  url: ${body_url}, monitoring_type: ${monitoring_type}`);
+    trace(
+      `monitoring_type_list:  url: ${body_url}, monitoring_type: ${monitoring_type}`
+    );
     const playlist = await playlist_list.findOne({ where: { url: body_url } });
     playlist.monitoring_type = monitoring_type;
     await playlist.update({ monitoring_type }, { silent: true });
@@ -690,7 +802,9 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
     start_num = start_num + chunk_size;
     stop_num = stop_num + chunk_size;
     // ideally we can set it to zero but that would get us rate limited by the services
-    trace(`list_background: URL: ${body_url}, Chunk: ${chunk_size}, Start: ${start_num}, Stop: ${stop_num}`);
+    trace(
+      `list_background: URL: ${body_url}, Chunk: ${chunk_size}, Start: ${start_num}, Stop: ${stop_num}`
+    );
     await sleep();
     const response = await list_spawner(body_url, start_num, stop_num);
     if (response.length === 0) {
@@ -764,7 +878,9 @@ async function playlists_to_table(req, res) {
           : sort_with == 3
             ? "updatedAt"
             : "order_added";
-    trace(`playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, Order: ${order}, Type: ${type}, Query: "${query_string}"`)
+    trace(
+      `playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, Order: ${order}, Type: ${type}, Query: "${query_string}"`
+    );
     if (query_string == "") {
       playlist_list
         .findAndCountAll({
@@ -808,11 +924,13 @@ async function sublist_to_table(req, res) {
       stop_num = +body["stop"] || 10,
       query_string = body["query"] || "",
       sort_downloaded = body["sortDownloaded"],
-      playlist_order = sort_downloaded ? "downloaded" : "playlist_order",
+      index_in_playlist = sort_downloaded ? "downloaded" : "index_in_playlist",
       playlist_order_type = sort_downloaded ? "DESC" : "ASC";
-    trace(`sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-      `Order: ${playlist_order}, Type: ${playlist_order_type}, Query: "${query_string}", ` +
-      `playlist_url: ${body_url}, sort_downloaded: ${sort_downloaded}`);
+    trace(
+      `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
+      `Order: ${index_in_playlist}, Type: ${playlist_order_type}, Query: "${query_string}", ` +
+      `playlist_url: ${body_url}, sort_downloaded: ${sort_downloaded}`
+    );
     // Sorting not implemented for sub-lists yet
     try {
       if (query_string == "") {
@@ -823,9 +941,9 @@ async function sublist_to_table(req, res) {
             },
             limit: stop_num - start_num,
             offset: start_num,
-            order: [[playlist_order, playlist_order_type]],
+            order: [[index_in_playlist, playlist_order_type]],
             // [["downloaded", "DESC"]] -- to show the download on top
-            // [[playlist_order, playlist_order_type]] -- default
+            // [[index_in_playlist, playlist_order_type]] -- default
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
@@ -842,7 +960,7 @@ async function sublist_to_table(req, res) {
             },
             limit: stop_num - start_num,
             offset: start_num,
-            order: [[playlist_order, playlist_order_type]],
+            order: [[index_in_playlist, playlist_order_type]],
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
@@ -850,10 +968,10 @@ async function sublist_to_table(req, res) {
           });
       }
     } catch (error) {
-      err(`${error.message}`)
+      err(`${error.message}`);
     }
   } catch (error) {
-    err(`${error.message}`)
+    err(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -969,7 +1087,7 @@ const io = new Server(server, {
 });
 
 const clientConnected = ({ data, id }) => {
-  info(`${data} to client id ${id}`)
+  info(`${data} to client id ${id}`);
 };
 const sock = io.on("connection", (socket) => {
   socket.emit("init", { message: "Connected", id: socket.id });
@@ -981,21 +1099,21 @@ server.listen(port, async () => {
   if (process.env.hide_ports === "true") {
     info(`Server listening on ${protocol}://${host}${url_base}`);
   } else {
-    info(`Server listening on ${protocol}://${host}:${port}${url_base}`)
+    info(`Server listening on ${protocol}://${host}:${port}${url_base}`);
   }
   // I don't really know if calling these here is a good idea, but how else can I even do it?
   const start = Date.now();
   await sleep();
   const elapsed = Date.now() - start;
   info("Sleep duration: " + elapsed / 1000 + " seconds");
-  info(`Next scheduled update is on ${job.nextDates(
-    1
-  )}`);
-  verbose(`Download Options:\n\tyt-dlp ${options.join(
-    " "
-  )} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
-    }{playlist_dir}" "{url}"`);
-  verbose(`List Options:\n\t` +
-    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}')
+  info(`Next scheduled update is on ${job.nextDates(1)}`);
+  verbose(
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    }{playlist_dir}" "{url}"`
+  );
+  verbose(
+    `List Options:\n\t` +
+    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}'
+  );
   job.start();
 });
