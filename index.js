@@ -97,6 +97,7 @@ const video_list = sequelize.define("video_list", {
     allowNull: false,
     primaryKey: true,
   },
+  // this id is video id and is generated from the url but is necessary for easier processing
   id: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -113,6 +114,9 @@ const video_list = sequelize.define("video_list", {
     type: DataTypes.BOOLEAN,
     allowNull: false,
   },
+  /* putting these here works only if each video belongs to one and only one playlist,
+  else there will be multiple instances of the same video belonnging to different playlist 
+  that have different available and downloaded statuses
   playlist_url: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -120,7 +124,7 @@ const video_list = sequelize.define("video_list", {
   index_in_playlist: {
     type: DataTypes.INTEGER,
     allowNull: false,
-  },
+  },*/
   createdAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -142,6 +146,7 @@ const playlist_list = sequelize.define("playlist_list", {
     allowNull: false,
     primaryKey: true,
   },
+  // this is the order in which the playlists are added not the vidoes
   order_added: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -169,16 +174,19 @@ const playlist_list = sequelize.define("playlist_list", {
     playlist_url is forign key from playlist_list
 
     The plan here is to make a way such that a video can have a video associated with
-    multiple playlist_url and index_in_playlist for that given playlist_url   
+    multiple playlist_url and index_in_playlist for that given playlist_url  
+    
+    This is a junction table
 */
 const playlist_video = sequelize.define(
   "playlist_video",
   {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT,
       primaryKey: true,
       autoIncrement: true,
     },
+    // linked to the primary key of the video_list table
     video_url: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -189,16 +197,7 @@ const playlist_video = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
-    index_in_playlist: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: video_list,
-        key: "index_in_playlist",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
-    },
+    // linked to the primary key of the playlist_list
     playlist_url: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -209,8 +208,21 @@ const playlist_video = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "CASCADE",
     },
+    /*
+    index_in_playlist exists to provide order to the relation of  video primary key with a playlist primary key.
+    if index_in_playlist were added to the video_list table there would be a ton of duplicates of the
+    video in the table each having different playlist url and indexes, this table seems like a good compromise
+    */
+    index_in_playlist: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
   },
   {
+    /*
+    The same vidoe can appear in multiple playlists, and can appear multiple times in the same playlist so the 
+    only way to get an index is through the below 
+    */
     indexes: [
       {
         unique: true,
@@ -220,9 +232,17 @@ const playlist_video = sequelize.define(
   }
 );
 
-playlist_video.belongsTo(video_list, { foreignKey: 'video_url', through: 'playlist_video', otherKey: 'url' });
-playlist_video.belongsTo(playlist_list, { foreignKey: 'playlist_url', through: 'playlist_video', otherKey: 'url' });
-playlist_video.belongsTo(video_list, { foreignKey: 'index_in_playlist', through: 'playlist_video', otherKey: 'order_added' });
+playlist_video.belongsTo(video_list, {
+  foreignKey: "video_url",
+  through: "playlist_video",
+  otherKey: "url",
+});
+playlist_video.belongsTo(playlist_list, {
+  foreignKey: "playlist_url",
+  through: "playlist_video",
+  otherKey: "url",
+});
+//playlist_video.belongsTo(playlist_list, { foreignKey: 'index_in_playlist', through: 'playlist_video', otherKey: 'order_added' });
 
 sequelize
   .sync()
