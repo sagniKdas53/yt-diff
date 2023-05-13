@@ -367,7 +367,7 @@ async function quick_updates() {
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err(`Error processing playlist ${playlist.url}, ${error.message}`)
+      err(`error processing playlist ${playlist.url}, ${error.message}`)
     }
   }
 }
@@ -390,7 +390,7 @@ async function full_updates() {
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err(`Error processing playlist ${playlist.url}\n${error.message}`);
+      err(`error processing playlist ${playlist.url}\n${error.message}`);
     }
   }
 }
@@ -427,7 +427,7 @@ async function download_lister(req, res) {
     err(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ Error: error.message }));
+    res.end(JSON.stringify({ error: error.message }));
   }
 }
 // Add a parallel downloader someday
@@ -504,242 +504,167 @@ async function download_sequential(items) {
 async function list_init(req, res) {
   try {
     const body = await extract_json(req),
-      start_num = +body["start"] || 1,
-      stop_num = +body["stop"] || 10,
-      chunk_size = +body["chunk"] || 10,
-      // i forgot what this continuous thingy does
-      continuous = body["continuous"] || false,
-      monitoring_type = body["monitoring_type"] || 1;
-    var body_url = body["url"],
+      start_num = body["start"] !== undefined ? +body["start"] : 1,
+      stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
+      chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
+      sleep_before_listing = body["continuous"] !== undefined ? body["continuous"] : false,
+      monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
+      download_list = body["download"] !== undefined ? body["download"] : null,
+      dnld_list = { items: [] };
+    var body_url = body["url"] !== undefined ? body["url"] : "",
       index = start_num > 0 ? start_num - 1 : 0; // index starts from 0 in this function
-    trace(`list_init:  body_url: ${body["url"]
-      }, start_num: ${body["start"]}, ` +
-      `stop_num: ${body["stop"]}, chunk_size: ${body["chunk"]}, ` +
-      `continuous: ${body["continuous"]}, index: ${index}, monitoring_type: ${body["monitoring_type"]}`);
-    /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
+    debug(`body: ${JSON.stringify(body)}`);
+    trace(`list_init:  body_url: ${body_url}, start_num: ${start_num}, ` +
+      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
+      `sleep_before_listing: ${sleep_before_listing}, index: ${index}, monitoring_type: ${monitoring_type}`);
+    /*
+    Checking if the body url is a playlist or not and checking if it's a single video and if it's available and or downloaded
+      should be a good course fo action before continuing the rest of this process.
+    */
+    const is_playlist_indexed = playlist_list.findOne({ where: { url: body_url } });
+    // will download all the indexes that are specified in the download_list
+    if (is_playlist_indexed !== null && download_list !== null) {
+      const videos = await video_list.findAll({ where: { playlist_url: body_url } });
+      download_list.forEach(element => {
+        dnld_list['items'].push([
+          videos[element].url,
+          videos[element].title,
+          is_playlist_indexed.save_dir,
+          videos[element].id,
+        ]);
+      });
+      const status = 200;
+      res.writeHead(status, corsHeaders(json_t));
+      res.end(JSON.stringify({ "Downloading vidoes": JSON.stringify(dnld_list['items']) }));
+      // this is where the download is triggered
+      await download_sequential(dnld_list["item"]);
+    }
+    const entry = await video_list.findOne({ where: { url: body_url } });
+    // will download the vidoe that is specified in the body_url
+    if (entry !== null && download_list !== null) {
+      dnld_list["item"].push([
+        entry.url,
+        entry.title,
+        "",
+        entry.id,
+      ]);
+      // downloading if it's already in the lists
+      if (entry.downloaded) {
+        try {
+          res.writeHead(200, corsHeaders(json_t));
+          res.end(
+            JSON.stringify({
+              message: "Already downloaded",
+              entry: dnld_list["item"],
+            })
+          );
+        } catch (error) {
+          err(`${error.message}`);
+        }
+      } else if (!entry.downloaded) {
+        try {
+          res.writeHead(200, corsHeaders(json_t));
+          res.end(
+            JSON.stringify({
+              message: "Downloading",
+              entry: dnld_list["item"],
+            })
+          );
+          // this is where the download is triggered
+          await download_sequential(dnld_list["item"]);
+        } catch (error) {
+          err(`${error.message}`);
+          // do nothing, as i don't really know what to do
+        }
+      }
+    }
+    // nither an indexed playlist nor an index video, will need to indexed and if necessary download
+    // add the downloading thing later, too tired for now.
+    else {
+      /*This is to prevent spamming of the spawn process, since each spawn will only return first 10 items
         to the frontend but will continue in the background, this can cause issues like playlist_order getting 
         messed up or listing not completing.
         It"s best to not use bulk listing for playlists and channels but say you have 50 tabs open and you just 
         copy the urls then you can just set them to be processed in this mode.*/
-    if (continuous) await sleep();
-    const response_list = await list_spawner(body_url, start_num, stop_num);
-    verbose(`response_list:\t${JSON.stringify(
-      response_list,
-      null,
-      2
-    )}, response_list.length: ${response_list.length}`);
-    if (response_list.length > 1 || body_url.includes("playlist")) {
-      if (body_url.includes("youtube") && body_url.includes("/@")) {
-        if (!/\/videos\/?$/.test(body_url)) {
-          body_url = body_url.replace(/\/$/, "") + "/videos";
+      if (sleep_before_listing) await sleep();
+      const response_list = await list_spawner(body_url, start_num, stop_num);
+      verbose(`response_list:\t${JSON.stringify(
+        response_list,
+        null,
+        2
+      )}, response_list.length: ${response_list.length}`);
+      if (response_list.length > 1 || body_url.includes("playlist")) {
+        if (body_url.includes("youtube") && body_url.includes("/@")) {
+          if (!/\/videos\/?$/.test(body_url)) {
+            body_url = body_url.replace(/\/$/, "") + "/videos";
+          }
+          debug(`${body_url} is a youtube channel`);
         }
-        debug(`${body_url} is a youtube channel`);
-      }
-      if (body_url.includes("pornhub") && body_url.includes("/model/")) {
-        if (!/\/videos\/?$/.test(body_url)) {
-          body_url = body_url.replace(/\/$/, "") + "/videos";
+        if (body_url.includes("pornhub") && body_url.includes("/model/")) {
+          if (!/\/videos\/?$/.test(body_url)) {
+            body_url = body_url.replace(/\/$/, "") + "/videos";
+          }
+          debug(`${body_url} is a hub channel`);
         }
-        debug(`${body_url} is a hub channel`);
-      }
-      const is_already_indexed = await playlist_list.findOne({
-        where: { url: body_url },
-      });
-      try {
-        is_already_indexed.title.trim();
-      } catch (error) {
-        err(
-          "playlist or channel not encountered earlier, saving in playlist"
-        );
-        // Its not an error, but the title extraction,
-        // will only be done once the error is raised
-        await add_playlist(body_url, monitoring_type);
-      }
-    } else {
-      body_url = "None";
-      // If the url is determined to be an unlisted video
-      // (i.e: not belonging to a playlist)
-      // then the last unlisted video index is used to increment over.
-      const last_item = await video_list.findOne({
-        where: {
-          playlist_url: body_url,
-        },
-        order: [["playlist_order", "DESC"]],
-        attributes: ["playlist_order"],
-        limit: 1,
-      });
-      try {
-        index = last_item.playlist_order;
-      } catch (error) {
-        // encountered an error if unlisted videos was not initialized
-        index = -1; // it will become 1 in the DB
-      }
-    }
-    process_response(response_list, body_url, index)
-      .then(function (init_resp) {
-        try {
-          res.writeHead(200, corsHeaders(json_t));
-          res.end(JSON.stringify(init_resp));
-        } catch (error) {
-          err(`${error.message}`);
-        }
-      })
-      .then(function () {
-        list_background(body_url, start_num, stop_num, chunk_size).then(() => {
-          trace(`Done processing playlist: ${body_url}`);
-          sock.emit("playlist-done", {
-            message: "done processing playlist or channel",
-            id: body_url === "None" ? body["url"] : body_url,
-          });
+        const is_already_indexed = await playlist_list.findOne({
+          where: { url: body_url },
         });
-      });
-  } catch (error) {
-    err(`${error.message}`);
-    const status = error.status || 500;
-    res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ Error: error.message }));
-  }
-}
-// write a function to check if the file is already downloaded, if so then send it as a response
-// this way I can call it after some time to check if the file got downloaded or if it failed
-// on this note how about sending a list urls or a playlist and a range that will be downloaded.
-async function list_and_download(req, res) {
-  try {
-    const body = await extract_json(req);
-    var body_url = body["url"],
-      index = -1;
-    trace(`list_and_download:  body_url: ${body["url"]}`);
-    // check if it's already saved and download or not and save it
-    // not really necessary to emit this here because it's gonna be emitted later if it isn't indexed
-    try {
-      const dnld_list = { item: [] };
-      const entry = await video_list.findOne({ where: { url: body_url } });
-      if (entry !== null) {
-        var save_dir_var = "";
         try {
-          if (entry.playlist_url !== "None") {
-            const play_list = await playlist_list.findOne({
-              where: { url: entry.playlist_url },
-            });
-            save_dir_var = play_list.save_dir;
-          }
+          is_already_indexed.title.trim();
         } catch (error) {
-          err(`${error.message}`);
-          // do nothing, as this is just to make sure
-          // that unlisted videos are put in save_loc
-        }
-        dnld_list["item"].push([
-          entry.url,
-          entry.title,
-          save_dir_var,
-          entry.id,
-        ]);
-        // downloading if it's already in the lists
-        if (entry.downloaded) {
-          try {
-            res.writeHead(200, corsHeaders(json_t));
-            res.end(
-              JSON.stringify({
-                message: "Already downloaded",
-                entry: dnld_list["item"],
-              })
-            );
-          } catch (error) {
-            err(`${error.message}`);
-          }
-        } else if (!entry.downloaded) {
-          try {
-            res.writeHead(200, corsHeaders(json_t));
-            res.end(
-              JSON.stringify({
-                message: "Downloading",
-                entry: dnld_list["item"],
-              })
-            );
-            await download_sequential(dnld_list["item"]);
-          } catch (error) {
-            err(`${error.message}`);
-            // do nothing, as i don't really remember what to do
-          }
+          err(
+            "playlist or channel not encountered earlier, saving in playlist"
+          );
+          // Its not an error, but the title extraction,
+          // will only be done once the error is raised
+          await add_playlist(body_url, monitoring_type);
         }
       } else {
+        body_url = "None";
+        // If the url is determined to be an unlisted video
+        // (i.e: not belonging to a playlist)
+        // then the last unlisted video index is used to increment over.
+        const last_item = await video_list.findOne({
+          where: {
+            playlist_url: body_url,
+          },
+          order: [["playlist_order", "DESC"]],
+          attributes: ["playlist_order"],
+          limit: 1,
+        });
         try {
-          const response_list = await list_spawner(body_url, 1, 2);
-          trace(`response_list:\t${JSON.stringify(
-            response_list,
-            null,
-            2
-          )}, response_list.length: ${response_list.length}`);
-          body_url = "None";
-          // If the url is determined to be an unlisted video
-          // (i.e: not belonging to a playlist)
-          // then the last unlisted video index is used to increment over.
-          const last_item = await video_list.findOne({
-            where: {
-              playlist_url: body_url,
-            },
-            order: [["playlist_order", "DESC"]],
-            attributes: ["playlist_order"],
-            limit: 1,
-          });
-          try {
-            index = last_item.playlist_order;
-          } catch (error) {
-            // encountered an error if unlisted videos was not initialized
-            index = -1; // it will become 1 in the DB
-          }
-          process_response(response_list, body_url, index)
-            // adding a socket emitter and directly downloading stuff here would be fatser but
-            // I feel I should do it in the polymorphic way and reuse download_sequential
-            .then(function (init_resp) {
-              try {
-                res.writeHead(200, corsHeaders(json_t));
-                res.end(
-                  JSON.stringify({
-                    message: "Added an item",
-                    entry: response_list[0].split("\t"),
-                  })
-                );
-              } catch (error) {
-                err(`${error.message}`);
-              }
-            })
-            .then(async function () {
-              const vid_id = response_list[0].split("\t")[1];
-              const entry = await video_list.findOne({ where: { id: vid_id } });
-              var save_dir_var = "";
-              try {
-                if (entry.playlist_url !== "None") {
-                  const play_list = await playlist_list.findOne({
-                    where: { url: entry.playlist_url },
-                  });
-                  save_dir_var = play_list.save_dir;
-                }
-              } catch (error) {
-                err(`${error.message}`);
-                // do nothing, as this is just to make sure
-                // that unlisted videos are put in save_loc
-              }
-              try {
-                await download_sequential([
-                  [entry.url, entry.title, save_dir_var, vid_id],
-                ]);
-              } catch (error) {
-                err(`${error.message}`);
-                // do nothing, as i don't really remember what to do
-              }
-            });
+          index = last_item.playlist_order;
         } catch (error) {
-          err(`${error.message}`);
+          // encountered an error if unlisted videos was not initialized
+          index = -1; // it will become 1 in the DB
         }
       }
-    } catch (error) {
-      err(`${error.message}`);
+      process_response(response_list, body_url, index)
+        .then(function (init_resp) {
+          try {
+            res.writeHead(200, corsHeaders(json_t));
+            res.end(JSON.stringify(init_resp));
+          } catch (error) {
+            err(`${error.message}`);
+          }
+        })
+        .then(function () {
+          list_background(body_url, start_num, stop_num, chunk_size).then(() => {
+            trace(`Done processing playlist: ${body_url}`);
+            sock.emit("playlist-done", {
+              message: "done processing playlist or channel",
+              id: body_url === "None" ? body["url"] : body_url,
+            });
+          });
+        });
+
+
     }
   } catch (error) {
     err(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ Error: error.message }));
+    res.end(JSON.stringify({ error: error.message }));
   }
 }
 async function monitoring_type_list(req, res) {
@@ -754,10 +679,10 @@ async function monitoring_type_list(req, res) {
     res.writeHead(200, corsHeaders(json_t));
     res.end(JSON.stringify({ Outcome: "Success" }));
   } catch (error) {
-    error(`Error in monitoring_type_list: ${error.message}`);
+    error(`error in monitoring_type_list: ${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ Error: error.message }));
+    res.end(JSON.stringify({ error: error.message }));
   }
 }
 async function list_background(body_url, start_num, stop_num, chunk_size) {
@@ -872,7 +797,7 @@ async function playlists_to_table(req, res) {
     err(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ Error: error.message }));
+    res.end(JSON.stringify({ error: error.message }));
   }
 }
 async function sublist_to_table(req, res) {
@@ -931,7 +856,7 @@ async function sublist_to_table(req, res) {
     err(`${error.message}`)
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ Error: error.message }));
+    res.end(JSON.stringify({ error: error.message }));
   }
 }
 
@@ -1021,8 +946,6 @@ const server = http.createServer((req, res) => {
     playlists_to_table(req, res);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
     sublist_to_table(req, res);
-  } else if (req.url === url_base + "/download" && req.method === "POST") {
-    download_lister(req, res);
   } else {
     res.writeHead(404, corsHeaders(html));
     res.write("Not Found");
@@ -1064,7 +987,7 @@ server.listen(port, async () => {
   const start = Date.now();
   await sleep();
   const elapsed = Date.now() - start;
-  info("Sleep duration: " + elapsed + " seconds");
+  info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(
     1
   )}`);
