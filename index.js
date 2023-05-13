@@ -501,7 +501,7 @@ async function download_sequential(items) {
 }
 
 // List functions
-async function list_init(req, res) {
+async function list_and_download(req, res) {
   try {
     const body = await extract_json(req),
       start_num = body["start"] !== undefined ? +body["start"] : 1,
@@ -514,7 +514,7 @@ async function list_init(req, res) {
     var body_url = body["url"] !== undefined ? body["url"] : "",
       index = start_num > 0 ? start_num - 1 : 0; // index starts from 0 in this function
     debug(`body: ${JSON.stringify(body)}`);
-    trace(`list_init:  body_url: ${body_url}, start_num: ${start_num}, ` +
+    trace(`list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
       `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
       `sleep_before_listing: ${sleep_before_listing}, index: ${index}, monitoring_type: ${monitoring_type}`);
     /*
@@ -937,9 +937,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(204, corsHeaders(json_t));
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
-    list_init(req, res);
-  } else if (req.url === url_base + "/listndnld" && req.method === "POST") {
     list_and_download(req, res);
+  } else if (req.url === url_base + "/download" && req.method === "POST") {
+    download_lister(req, res);
   } else if (req.url === url_base + "/watchlist" && req.method === "POST") {
     monitoring_type_list(req, res);
   } else if (req.url === url_base + "/dbi" && req.method === "POST") {
