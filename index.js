@@ -163,7 +163,7 @@ const playlist_list = sequelize.define("playlist_list", {
     defaultValue: 0,
   },
   monitoring_type: {
-    type: DataTypes.TINYINT,
+    type: DataTypes.SMALLINT,
     allowNull: false,
   },
   save_dir: {
@@ -188,8 +188,8 @@ const playlist_list = sequelize.define("playlist_list", {
     
     This is a junction table
 */
-const playlist_video_junc = sequelize.define(
-  "playlist_video_junc",
+const playlist_video_indexer = sequelize.define(
+  "playlist_video_indexer",
   {
     id: {
       type: DataTypes.UUID,
@@ -242,14 +242,14 @@ const playlist_video_junc = sequelize.define(
   }
 );
 
-playlist_video_junc.belongsTo(video_list, {
+playlist_video_indexer.belongsTo(video_list, {
   foreignKey: "video_url",
-  through: "playlist_video_junc",
+  through: "playlist_video_indexer",
   otherKey: "video_url",
 });
-playlist_video_junc.belongsTo(playlist_list, {
+playlist_video_indexer.belongsTo(playlist_list, {
   foreignKey: "playlist_url",
-  through: "playlist_video_junc",
+  through: "playlist_video_indexer",
   otherKey: "playlist_url",
 });
 
@@ -403,7 +403,7 @@ async function process_response(response, body_url, index) {
         if (!createdVid) {
           update_vid_entry(foundVid, data);
         }
-        const [foundJunc, createdJunc] = await playlist_video_junc.findOrCreate(
+        const [foundJunc, createdJunc] = await playlist_video_indexer.findOrCreate(
           {
             where: {
               video_url: vid_url,
@@ -496,7 +496,7 @@ async function quick_updates() {
   trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     var index = 0;
-    const last_item = await playlist_video_junc.findOne({
+    const last_item = await playlist_video_indexer.findOne({
       where: {
         playlist_url: playlist.url,
       },
@@ -703,7 +703,7 @@ async function list_and_download(req, res) {
       // If the url is determined to be an unlisted video
       // (i.e: not belonging to a playlist)
       // then the last unlisted video index is used to increment over.
-      const last_item = await playlist_video_junc.findOne({
+      const last_item = await playlist_video_indexer.findOne({
         where: {
           playlist_url: body_url,
         },
@@ -900,7 +900,7 @@ async function sublist_to_table(req, res) {
     );
     try {
       if (query_string == "") {
-        playlist_video_junc
+        playlist_video_indexer
           .findAndCountAll({
             where: {
               playlist_url: playlist_url,
@@ -914,7 +914,7 @@ async function sublist_to_table(req, res) {
             res.end(JSON.stringify(result, null, 2));
           });
       } else {
-        playlist_video_junc
+        playlist_video_indexer
           .findAndCountAll({
             where: {
               playlist_url: playlist_url,
