@@ -46,16 +46,12 @@ const info = (msg) => {
 };
 const verbose = (msg) => {
   console.log(
-    color.greenBright(
-      `[${new Date().toLocaleString()}] VERBOSE: ${msg}\n`
-    )
+    color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}\n`)
   );
 };
 const debug = (msg) => {
   console.log(
-    color.magentaBright(
-      `[${new Date().toLocaleString()}] DEBUG: ${msg}\n`
-    )
+    color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}\n`)
   );
 };
 const err = (msg) => {
@@ -200,23 +196,23 @@ const playlist_video_indexer = sequelize.define(
     video_url: {
       type: DataTypes.STRING,
       allowNull: false,
-      // references: {
-      //   model: video_list,
-      //   key: "video_url",
-      // },
-      // onUpdate: "CASCADE",
-      // onDelete: "CASCADE",
+      references: {
+        model: video_list,
+        key: "video_url",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
     },
     // linked to the primary key of the playlist_list
     playlist_url: {
       type: DataTypes.STRING,
       allowNull: false,
-      // references: {
-      //   model: playlist_list,
-      //   key: "playlist_url",
-      // },
-      // onUpdate: "CASCADE",
-      // onDelete: "CASCADE",
+      references: {
+        model: playlist_list,
+        key: "playlist_url",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
     },
     /*
     index_in_playlist exists to provide order to the relation of  video primary key with a playlist primary key.
@@ -237,16 +233,23 @@ const playlist_video_indexer = sequelize.define(
       {
         unique: true,
         fields: ["video_url", "playlist_url", "index_in_playlist"],
-        name: 'unique_playlist_video_index'
+        name: "unique_playlist_video_index",
       },
     ],
   }
 );
 
 // Define the foreign key constraints
-playlist_video_indexer.belongsTo(playlist_list, { foreignKey: 'playlist_url', onUpdate: 'CASCADE', onDelete: 'CASCADE' });
-playlist_video_indexer.belongsTo(video_list, { foreignKey: 'video_url', onUpdate: 'CASCADE', onDelete: 'CASCADE' });
-
+// playlist_video_indexer.belongsTo(playlist_list, {
+//   foreignKey: "playlist_url",
+//   onUpdate: "CASCADE",
+//   onDelete: "CASCADE",
+// });
+// playlist_video_indexer.belongsTo(video_list, {
+//   foreignKey: "video_url",
+//   onUpdate: "CASCADE",
+//   onDelete: "CASCADE",
+// });
 
 sequelize
   .sync()
@@ -254,6 +257,16 @@ sequelize
     info(
       "video_list and playlist_list tables exist or are created successfully"
     );
+    // Making the unlisted playlist
+    playlist_list.findOrCreate({
+      where: { playlist_url: "None" },
+      defaults: {
+        title: "None",
+        monitoring_type: 1,
+        save_dir: "",
+        playlist_index: -1,
+      },
+    });
   })
   .catch((error) => {
     err(`Unable to create table : ${error}`);
@@ -365,6 +378,7 @@ async function process_response(response, body_url, index) {
   // I forgot why but this index--; makes the whole thing work okey
   if (body_url !== "None") {
     index--;
+    // make an exception so that videos not belonging to any list aren't being added multiple times
   }
   trace(`process_response: Index: ${index}, Url: ${body_url}`);
   const init_resp = { count: 0, resp_url: body_url, start: index };
@@ -408,14 +422,14 @@ async function process_response(response, body_url, index) {
         const junction_data = {
           video_url: vid_url,
           playlist_url: body_url,
-          index_in_playlist: ++index
+          index_in_playlist: ++index,
         };
         debug(JSON.stringify(junction_data));
         const [foundJunc, createdJunc] =
           await playlist_video_indexer.findOrCreate({
-            where: junction_data
+            where: junction_data,
           });
-        debug(JSON.stringify([foundJunc, createdJunc]))
+        debug(JSON.stringify([foundJunc, createdJunc]));
         if (!createdJunc) {
           verbose(`Found junc_table_entry: ${JSON.stringify(foundJunc)}`);
         }
@@ -589,6 +603,7 @@ async function download_sequential(items) {
   var count = 1;
   for (const [url_str, title, save_dir, id_str] of items) {
     try {
+      // yeah, this needs a join too from the playlits now to get the save directory and stuff
       trace(`Downloading Video: ${count++}, Url: ${url_str}, Progress:`);
       var hold = null;
       // check if the trim is actually necessary
@@ -657,7 +672,12 @@ async function download_sequential(items) {
 async function list_and_download(req, res) {
   try {
     const body = await extract_json(req),
-      start_num = body["start"] !== undefined ? (+body["start"] === 0 ? 1 : +body["start"]) : 1,
+      start_num =
+        body["start"] !== undefined
+          ? +body["start"] === 0
+            ? 1
+            : +body["start"]
+          : 1,
       stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
       chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
       sleep_before_listing =
@@ -824,7 +844,6 @@ async function add_playlist(url_var, monitoring_type_var) {
           title: title_str.trim(),
           monitoring_type: monitoring_type_var,
           save_dir: title_str.trim(),
-          // this is coming as 0 everytime this needs fixing but I needs sleep
           playlist_index: next_item_index,
         },
       });
@@ -892,40 +911,68 @@ async function sublist_to_table(req, res) {
       query_string = body["query"] !== undefined ? body["query"] : "",
       sort_downloaded =
         body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
-      field_to_sort = sort_downloaded ? "downloaded" : "index_in_playlist",
-      sort_type = sort_downloaded ? "DESC" : "ASC";
+      sort_type = sort_downloaded ? "DESC" : "ASC",
+      order_array = sort_downloaded
+        ? ["downloaded", sort_type]
+        : [playlist_video_indexer, "index_in_playlist", sort_type];
+
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-      `Field to sort: ${field_to_sort}, Sort type: ${sort_type}, Query: "${query_string}", ` +
+      `Order: ${JSON.stringify(order_array)}, Sort type: ${sort_type}, Query: "${query_string}", ` +
       `playlist_url: ${playlist_url}, sort_downloaded: ${sort_downloaded}`
     );
     try {
       if (query_string == "") {
-        playlist_video_indexer
-          .findAndCountAll({
-            where: {
-              playlist_url: playlist_url,
-            },
+        // playlist_video_indexer is not associated to video_list!
+        video_list
+          .findAll({
+            attributes: [
+              "title",
+              "video_id",
+              "video_url",
+              "downloaded",
+              "available",
+            ],
+            include: [
+              {
+                model: playlist_video_indexer,
+                attributes: ["playlist_url", "index_in_playlist"],
+                where: { playlist_url: playlist_url },
+                required: true,
+              },
+            ],
             limit: stop_num - start_num,
             offset: start_num,
-            order: [[field_to_sort, sort_type]],
+            order: [order_array],
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
             res.end(JSON.stringify(result, null, 2));
           });
       } else {
-        playlist_video_indexer
-          .findAndCountAll({
-            where: {
-              playlist_url: playlist_url,
-              title: {
-                [Op.iLike]: `%${query_string}%`,
+        video_list
+          .findAll({
+            attributes: [
+              "title",
+              "video_id",
+              "video_url",
+              "downloaded",
+              "available",
+            ],
+            include: [
+              {
+                model: playlist_video_indexer,
+                attributes: ["playlist_url", "index_in_playlist"],
+                where: {
+                  playlist_url: playlist_url,
+                  title: { [Op.iLike]: `%${query_string}%` },
+                },
+                required: true,
               },
-            },
+            ],
             limit: stop_num - start_num,
             offset: start_num,
-            order: [[field_to_sort, sort_type]],
+            order: [order_array],
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
