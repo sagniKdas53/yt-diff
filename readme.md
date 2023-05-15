@@ -33,5 +33,10 @@ yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist \
 
 ```bash
 yt-dlp --playlist-start 1 --playlist-end 2 --flat-playlist \
- --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize)s\t%(filesize_approx)s" https://www.youtube.com/shorts/6CSIMAIB2IU
+ --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize)s\t%(filesize_approx)s" https://www.youtube.com/playlist?list=PL4Oo6H2hGqj0YkYoOLFmrbhsVWfAjCLZw
+```
+
+```log
+Yes... this Voice Line is actually in the game\tK1VVWJrpDgs\thttps://www.youtube.com/watch?v=K1VVWJrpDgs\tNA\tNA
+Yes... this Voice Line is actually in the game\tK1VVWJrpDgs\thttps://www.youtube.com/watch?v=K1VVWJrpDgs\tNA\tNA
 ```
