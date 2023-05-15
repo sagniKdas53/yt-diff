@@ -41,36 +41,36 @@ const options = [
 // Logging methods
 const info = (msg) => {
   console.log(
-    color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg.trim()}\n`)
+    color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}\n`)
   );
 };
 const verbose = (msg) => {
   console.log(
     color.greenBright(
-      `[${new Date().toLocaleString()}] VERBOSE: ${msg.trim()}\n`
+      `[${new Date().toLocaleString()}] VERBOSE: ${msg}\n`
     )
   );
 };
 const debug = (msg) => {
   console.log(
     color.magentaBright(
-      `[${new Date().toLocaleString()}] DEBUG: ${msg.trim()}\n`
+      `[${new Date().toLocaleString()}] DEBUG: ${msg}\n`
     )
   );
 };
 const err = (msg) => {
   console.log(
-    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg.trim()}\n`)
+    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg}\n`)
   );
 };
 const warn = (msg) => {
   console.log(
-    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg.trim()}\n`)
+    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg}\n`)
   );
 };
 const trace = (msg) => {
   console.log(
-    color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg.trim()}\n`)
+    color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg}\n`)
   );
 };
 
@@ -84,13 +84,12 @@ const sequelize = new Sequelize({
   logging: true,
   username: "ytdiff",
   password: "ytd1ff",
-  database: "vidlist"
+  database: "vidlist",
 });
 
 try {
   sequelize.authenticate().then(() => {
     info("Connection to server has been established successfully");
-
   });
 } catch (error) {
   err(`Unable to connect to the server: ${error}`);
@@ -195,28 +194,29 @@ const playlist_video_indexer = sequelize.define(
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
+      allowNull: false,
     },
     // linked to the primary key of the video_list table
     video_url: {
       type: DataTypes.STRING,
       allowNull: false,
-      references: {
-        model: video_list,
-        key: "video_url",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
+      // references: {
+      //   model: video_list,
+      //   key: "video_url",
+      // },
+      // onUpdate: "CASCADE",
+      // onDelete: "CASCADE",
     },
     // linked to the primary key of the playlist_list
     playlist_url: {
       type: DataTypes.STRING,
       allowNull: false,
-      references: {
-        model: playlist_list,
-        key: "playlist_url",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
+      // references: {
+      //   model: playlist_list,
+      //   key: "playlist_url",
+      // },
+      // onUpdate: "CASCADE",
+      // onDelete: "CASCADE",
     },
     /*
     index_in_playlist exists to provide order to the relation of  video primary key with a playlist primary key.
@@ -237,21 +237,16 @@ const playlist_video_indexer = sequelize.define(
       {
         unique: true,
         fields: ["video_url", "playlist_url", "index_in_playlist"],
+        name: 'unique_playlist_video_index'
       },
     ],
   }
 );
 
-playlist_video_indexer.belongsTo(video_list, {
-  foreignKey: "video_url",
-  through: "playlist_video_indexer",
-  otherKey: "video_url",
-});
-playlist_video_indexer.belongsTo(playlist_list, {
-  foreignKey: "playlist_url",
-  through: "playlist_video_indexer",
-  otherKey: "playlist_url",
-});
+// Define the foreign key constraints
+playlist_video_indexer.belongsTo(playlist_list, { foreignKey: 'playlist_url', onUpdate: 'CASCADE', onDelete: 'CASCADE' });
+playlist_video_indexer.belongsTo(video_list, { foreignKey: 'video_url', onUpdate: 'CASCADE', onDelete: 'CASCADE' });
+
 
 sequelize
   .sync()
@@ -314,10 +309,14 @@ async function url_to_title(body_url) {
   }
 }
 function fix_common_errors(body_url) {
-  if (body_url.includes("youtube") && body_url.includes("/@")) {
-    if (!/\/videos\/?$/.test(body_url)) {
+  if (body_url.includes("youtube")) {
+    if (!/\/videos\/?$/.test(body_url) && body_url.includes("/@")) {
       body_url = body_url.replace(/\/$/, "") + "/videos";
     }
+    // if (/(.*)&t=[0-9s]*$/.test(body_url)) {
+    //   body_url = /(.*)&t=[0-9s]*$/.exec(str)[1];
+    //   debug(body_url);
+    // }
     debug(`${body_url} is a youtube channel`);
   }
   if (body_url.includes("pornhub") && body_url.includes("/model/")) {
@@ -372,11 +371,11 @@ async function process_response(response, body_url, index) {
   sock.emit("listing-or-downloading", { percentage: 101 });
   await Promise.all(
     response.map(async (element) => {
-      debug(element);
-      element_arr = element.split("\t");
+      const element_arr = element.split("\t");
       var title = element_arr[0].trim(),
         item_available = true;
-      const [vid_id, vid_url, vid_size] = element_arr.slice(1);
+      const [vid_id, vid_url, vid_size_temp] = element_arr.slice(1);
+      const vid_size = vid_size_temp === "NA" ? -1 : vid_size_temp;
       if (
         title === "[Deleted video]" ||
         title === "[Private video]" ||
@@ -386,38 +385,43 @@ async function process_response(response, body_url, index) {
       } else if (title === "NA") {
         title = vid_id.trim();
       }
-      const title_fixed = await string_slicer(title, MAX_LENGTH);
+      // Title is processed here
+      const title_processed = await string_slicer(title, MAX_LENGTH);
       try {
         // its pre-incrementing index here so in the listers it starts from 0
         const vid_data = {
           video_id: vid_id,
-          title: title_fixed,
+          title: title_processed,
           approximate_size: vid_size,
           downloaded: false,
           available: item_available,
         };
+        //debug(JSON.stringify(vid_data));
         const [foundVid, createdVid] = await video_list.findOrCreate({
           where: { video_url: vid_url },
           defaults: vid_data,
         });
+        //debug(JSON.stringify([foundVid, createdVid]));
         if (!createdVid) {
-          update_vid_entry(foundVid, data);
+          update_vid_entry(foundVid, vid_data);
         }
-        const [foundJunc, createdJunc] = await playlist_video_indexer.findOrCreate(
-          {
-            where: {
-              video_url: vid_url,
-              index_in_playlist: ++index,
-              playlist_url: body_url,
-            },
-          }
-        );
+        const junction_data = {
+          video_url: vid_url,
+          playlist_url: body_url,
+          index_in_playlist: ++index
+        };
+        debug(JSON.stringify(junction_data));
+        const [foundJunc, createdJunc] =
+          await playlist_video_indexer.findOrCreate({
+            where: junction_data
+          });
+        debug(JSON.stringify([foundJunc, createdJunc]))
         if (!createdJunc) {
           verbose(`Found junc_table_entry: ${JSON.stringify(foundJunc)}`);
         }
         init_resp["count"]++;
       } catch (error) {
-        err(`${error.message}`);
+        err(`${error.stack}`);
       }
     })
   );
@@ -552,7 +556,8 @@ async function download_lister(req, res) {
     const body = await extract_json(req),
       download_list = [],
       // remember to send this from the frontend
-      play_list_url = body["reference"] !== undefined ? body["reference"] : "None";
+      play_list_url =
+        body["reference"] !== undefined ? body["reference"] : "None";
     for (const id_str of body["id"]) {
       const video_item = await video_list.findOne({
         where: { video_id: id_str },
@@ -564,8 +569,7 @@ async function download_lister(req, res) {
         });
         save_dir = play_list.save_dir;
       } catch (error) {
-        if (save_dir !== "")
-          err(`${error.message}`);
+        if (save_dir !== "") err(`${error.message}`);
       }
       download_list.push([video_item.url, video_item.title, save_dir, id_str]);
     }
@@ -653,7 +657,7 @@ async function download_sequential(items) {
 async function list_and_download(req, res) {
   try {
     const body = await extract_json(req),
-      start_num = body["start"] !== undefined ? +body["start"] : 1,
+      start_num = body["start"] !== undefined ? (+body["start"] === 0 ? 1 : +body["start"]) : 1,
       stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
       chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
       sleep_before_listing =
@@ -666,12 +670,12 @@ async function list_and_download(req, res) {
       throw new Error("url is required");
     }
     var body_url = body["url"],
-      index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
+      last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
       `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
-      `sleep_before_listing: ${sleep_before_listing}, index: ${index}, monitoring_type: ${monitoring_type}`
+      `sleep_before_listing: ${sleep_before_listing}, index: ${last_item_index}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) await sleep();
@@ -691,9 +695,7 @@ async function list_and_download(req, res) {
       try {
         is_already_indexed.title.trim();
       } catch (error) {
-        err(
-          "playlist or channel not encountered earlier, saving in playlist"
-        );
+        err("playlist or channel not encountered earlier, saving in playlist");
         // Its not an error, but the title extraction,
         // will only be done once the error is raised
         await add_playlist(body_url, monitoring_type);
@@ -728,17 +730,14 @@ async function list_and_download(req, res) {
         }
       })
       .then(function () {
-        list_background(body_url, start_num, stop_num, chunk_size).then(
-          () => {
-            trace(`Done processing playlist: ${body_url}`);
-            sock.emit("playlist-done", {
-              message: "done processing playlist or channel",
-              id: body_url === "None" ? body["url"] : body_url,
-            });
-          }
-        );
+        list_background(body_url, start_num, stop_num, chunk_size).then(() => {
+          trace(`Done processing playlist: ${body_url}`);
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: body_url === "None" ? body["url"] : body_url,
+          });
+        });
       });
-
   } catch (error) {
     err(`${error.message}`);
     const status = error.status || 500;
@@ -794,7 +793,8 @@ async function add_playlist(url_var, monitoring_type_var) {
     attributes: ["playlist_index"],
     limit: 1,
   });
-  if (last_item_index !== null) next_item_index = last_item_index.playlist_index + 1;
+  if (last_item_index !== null)
+    next_item_index = last_item_index.playlist_index + 1;
   const get_title = spawn("yt-dlp", [
     "--playlist-end",
     1,
@@ -890,7 +890,8 @@ async function sublist_to_table(req, res) {
       start_num = body["start"] !== undefined ? +body["start"] : 0,
       stop_num = body["stop"] !== undefined ? body["stop"] : 10,
       query_string = body["query"] !== undefined ? body["query"] : "",
-      sort_downloaded = body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
+      sort_downloaded =
+        body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
       field_to_sort = sort_downloaded ? "downloaded" : "index_in_playlist",
       sort_type = sort_downloaded ? "DESC" : "ASC";
     trace(
@@ -1077,7 +1078,7 @@ server.listen(port, async () => {
   );
   verbose(
     `List Options:\n\t` +
-    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\\t%(id)s\\t%(webpage_url)s" {body_url}'
+    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
