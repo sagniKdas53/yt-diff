@@ -371,11 +371,11 @@ async function list_spawner(body_url, start_num, stop_num) {
   });
 }
 async function process_response(response, body_url, index) {
-  // I forgot why but this index--; makes the whole thing work okey
-  if (body_url !== "None") {
-    index--;
-    // make an exception so that videos not belonging to any list aren't being added multiple times
-  }
+  // // I forgot why but this index--; makes the whole thing work okey
+  // if (body_url !== "None") {
+  //   index--;
+  //   // make an exception so that videos not belonging to any list aren't being added multiple times
+  // }
   trace(`process_response: Index: ${index}, Url: ${body_url}`);
   const init_resp = { count: 0, resp_url: body_url, start: index };
   sock.emit("listing-or-downloading", { percentage: 101 });
@@ -418,21 +418,20 @@ async function process_response(response, body_url, index) {
         const junction_data = {
           video_url: vid_url,
           playlist_url: body_url,
-          index_in_playlist: map_idx,
+          index_in_playlist: index + map_idx,
         };
         debug(JSON.stringify(junction_data));
-        const [foundJunc, createdJunc] =
-          await video_indexer.findOrCreate({
-            // I am not sure but I think this is getting updated before it's saved if I make and pass it as an object
-            where: {
-              video_url: vid_url,
-              playlist_url: body_url,
-              index_in_playlist: map_idx,
-            },
-          });
+        const [foundJunc, createdJunc] = await video_indexer.findOrCreate({
+          // I am not sure but I think this is getting updated before it's saved if I make and pass it as an object
+          where: {
+            video_url: vid_url,
+            playlist_url: body_url,
+            index_in_playlist: index + map_idx,
+          },
+        });
         debug(
           "Result of video_playlist_index add " +
-            JSON.stringify([foundJunc, createdJunc])
+          JSON.stringify([foundJunc, createdJunc])
         );
         if (!createdJunc) {
           verbose(`Found junc_table_entry: ${JSON.stringify(foundJunc)}`);
@@ -489,6 +488,7 @@ async function update_vid_entry(found, data) {
   }
 }
 async function sleep(sleep_seconds = sleep_time) {
+  debug("Sleeping for " + sleep_seconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
 }
 
@@ -528,8 +528,7 @@ async function quick_updates() {
     });
     try {
       trace(
-        `Playlist: ${playlist.title.trim()} being updated from index ${
-          last_item.index_in_playlist
+        `Playlist: ${playlist.title.trim()} being updated from index ${last_item.index_in_playlist
         }`
       );
       index = last_item.index_in_playlist;
@@ -575,9 +574,9 @@ async function download_lister(req, res) {
     const body = await extract_json(req),
       download_list = [],
       // remember to send this from the frontend
-      play_list_url =
-        body["reference"] !== undefined ? body["reference"] : "None";
+      play_list_url = body["url"] !== undefined ? body["url"] : "None";
     for (const id_str of body["id"]) {
+      debug(id_str);
       const video_item = await video_list.findOne({
         where: { video_id: id_str },
       });
@@ -590,7 +589,12 @@ async function download_lister(req, res) {
       } catch (error) {
         if (save_dir !== "") err(`${error.message}`);
       }
-      download_list.push([video_item.url, video_item.title, save_dir, id_str]);
+      download_list.push([
+        video_item.video_url,
+        video_item.title,
+        save_dir,
+        id_str,
+      ]);
     }
     download_sequential(download_list);
     res.writeHead(200, corsHeaders(json_t));
@@ -647,7 +651,9 @@ async function download_sequential(items) {
         err(`${error.message}`);
       });
       yt_dlp.on("close", async (code) => {
-        const entity = await video_list.findOne({ where: { url: url_str } });
+        const entity = await video_list.findOne({
+          where: { video_url: url_str },
+        });
         if (code === 0) {
           entity.set({
             downloaded: true,
@@ -690,7 +696,7 @@ async function list_and_download(req, res) {
       monitoring_type =
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
       download_list = body["download"] !== undefined ? body["download"] : null,
-      dnld_list = [];
+      dnld_list = []; // use this for downloading in one request
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
@@ -699,8 +705,8 @@ async function list_and_download(req, res) {
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
-        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
-        `sleep_before_listing: ${sleep_before_listing}, index: ${last_item_index}, monitoring_type: ${monitoring_type}`
+      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
+      `sleep_before_listing: ${sleep_before_listing}, index: ${last_item_index}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) await sleep();
@@ -736,6 +742,8 @@ async function list_and_download(req, res) {
         // If the url is determined to be an unlisted video
         // (i.e: not belonging to a playlist)
         // then the last unlisted video index is used to increment over.
+        // Although it doesn't really matter if a video is added many times, to the unlisted "None" playlist
+        // I think it's shouldn't be done, so add a check here to find out if it's being added multiple times.
         const last_item = await video_indexer.findOne({
           where: {
             playlist_url: body_url,
@@ -935,8 +943,8 @@ async function sublist_to_table(req, res) {
 
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-        ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
-        `playlist_url: ${playlist_url}`
+      ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
+      `playlist_url: ${playlist_url}`
     );
     try {
       if (query_string == "") {
@@ -1136,13 +1144,12 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${
-      save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
     `List Options:\n\t` +
-      'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
+    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
