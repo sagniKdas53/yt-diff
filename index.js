@@ -77,7 +77,7 @@ if (!fs.existsSync(save_loc)) {
 const sequelize = new Sequelize({
   host: db_host,
   dialect: "postgres",
-  logging: true,
+  logging: false,
   username: "ytdiff",
   password: "ytd1ff",
   database: "vidlist",
@@ -183,8 +183,8 @@ const playlist_list = sequelize.define("playlist_list", {
     
     This is a junction table
 */
-const playlist_video_indexer = sequelize.define(
-  "playlist_video_indexer",
+const video_indexer = sequelize.define(
+  "video_indexer",
   {
     id: {
       type: DataTypes.UUID,
@@ -207,12 +207,12 @@ const playlist_video_indexer = sequelize.define(
     playlist_url: {
       type: DataTypes.STRING,
       allowNull: false,
-      references: {
-        model: playlist_list,
-        key: "playlist_url",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
+      // references: {
+      //   model: playlist_list,
+      //   key: "playlist_url",
+      // },
+      // onUpdate: "CASCADE",
+      // onDelete: "CASCADE",
     },
     /*
     index_in_playlist exists to provide order to the relation of  video primary key with a playlist primary key.
@@ -223,27 +223,27 @@ const playlist_video_indexer = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-  },
-  {
-    /*
-    The same video can appear in multiple playlists, and can appear multiple times in the same playlist so the 
-    only way to get an index is through the below 
-    */
-    indexes: [
-      {
-        unique: true,
-        fields: ["video_url", "playlist_url", "index_in_playlist"],
-        name: "unique_playlist_video_index",
-      },
-    ],
   }
+  // {
+  //   /*
+  //   The same video can appear in multiple playlists, and can appear multiple times in the same playlist so the
+  //   only way to get an index is through the below
+  //   */
+  //   indexes: [
+  //     {
+  //       unique: true,
+  //       fields: ["video_url", "playlist_url", "index_in_playlist"],
+  //       name: "unique_playlist_video_index",
+  //     },
+  //   ],
+  // }
 );
 
 // Define the relationships
-playlist_video_indexer.belongsTo(video_list, {
+video_indexer.belongsTo(video_list, {
   foreignKey: "video_url",
 });
-video_list.hasMany(playlist_video_indexer, {
+video_list.hasMany(video_indexer, {
   foreignKey: "video_url",
 });
 
@@ -380,7 +380,7 @@ async function process_response(response, body_url, index) {
   const init_resp = { count: 0, resp_url: body_url, start: index };
   sock.emit("listing-or-downloading", { percentage: 101 });
   await Promise.all(
-    response.map(async (element) => {
+    response.map(async (element, map_idx) => {
       const element_arr = element.split("\t");
       var title = element_arr[0].trim(),
         item_available = true;
@@ -411,27 +411,35 @@ async function process_response(response, body_url, index) {
           where: { video_url: vid_url },
           defaults: vid_data,
         });
-        //debug(JSON.stringify([foundVid, createdVid]));
+        debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
         if (!createdVid) {
           update_vid_entry(foundVid, vid_data);
         }
         const junction_data = {
           video_url: vid_url,
           playlist_url: body_url,
-          index_in_playlist: ++index,
+          index_in_playlist: map_idx,
         };
         debug(JSON.stringify(junction_data));
         const [foundJunc, createdJunc] =
-          await playlist_video_indexer.findOrCreate({
-            where: junction_data,
+          await video_indexer.findOrCreate({
+            // I am not sure but I think this is getting updated before it's saved if I make and pass it as an object
+            where: {
+              video_url: vid_url,
+              playlist_url: body_url,
+              index_in_playlist: map_idx,
+            },
           });
-        debug(JSON.stringify([foundJunc, createdJunc]));
+        debug(
+          "Result of video_playlist_index add " +
+            JSON.stringify([foundJunc, createdJunc])
+        );
         if (!createdJunc) {
           verbose(`Found junc_table_entry: ${JSON.stringify(foundJunc)}`);
         }
         init_resp["count"]++;
       } catch (error) {
-        err(`${error.stack}`);
+        err(`${error.message}\n${error.stack}`);
       }
     })
   );
@@ -510,7 +518,7 @@ async function quick_updates() {
   trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     var index = 0;
-    const last_item = await playlist_video_indexer.findOne({
+    const last_item = await video_indexer.findOne({
       where: {
         playlist_url: playlist.url,
       },
@@ -705,56 +713,69 @@ async function list_and_download(req, res) {
         2
       )}, response_list.length: ${response_list.length}`
     );
-    if (response_list.length > 1) {
-      const is_already_indexed = await playlist_list.findOne({
-        where: { playlist_url: body_url },
-      });
-      try {
-        is_already_indexed.title.trim();
-      } catch (error) {
-        err("playlist or channel not encountered earlier, saving in playlist");
-        // Its not an error, but the title extraction,
-        // will only be done once the error is raised
-        await add_playlist(body_url, monitoring_type);
-      }
-    } else {
-      body_url = "None";
-      // If the url is determined to be an unlisted video
-      // (i.e: not belonging to a playlist)
-      // then the last unlisted video index is used to increment over.
-      const last_item = await playlist_video_indexer.findOne({
-        where: {
-          playlist_url: body_url,
-        },
-        order: [["index_in_playlist", "DESC"]],
-        attributes: ["index_in_playlist"],
-        limit: 1,
-      });
-      try {
-        last_item_index = last_item.index_in_playlist;
-      } catch (error) {
-        // encountered an error if unlisted videos was not initialized
-        last_item_index = -1; // it will become 1 in the DB
-      }
-    }
-    process_response(response_list, body_url, last_item_index)
-      .then(function (init_resp) {
-        try {
-          res.writeHead(200, corsHeaders(json_t));
-          res.end(JSON.stringify(init_resp));
-        } catch (error) {
-          err(`${error.message}`);
-        }
-      })
-      .then(function () {
-        list_background(body_url, start_num, stop_num, chunk_size).then(() => {
-          trace(`Done processing playlist: ${body_url}`);
-          sock.emit("playlist-done", {
-            message: "done processing playlist or channel",
-            id: body_url === "None" ? body["url"] : body_url,
-          });
+    const play_list_exists = new Promise(async (resolve, reject) => {
+      if (response_list.length > 1) {
+        const is_already_indexed = await playlist_list.findOne({
+          where: { playlist_url: body_url },
         });
-      });
+        try {
+          is_already_indexed.title.trim();
+          resolve(last_item_index);
+        } catch (error) {
+          err(
+            "playlist or channel not encountered earlier, saving in playlist"
+          );
+          // Its not an error, but the title extraction,
+          // will only be done once the error is raised
+          await add_playlist(body_url, monitoring_type)
+            .then(sleep())
+            .then(resolve(last_item_index));
+        }
+      } else {
+        body_url = "None";
+        // If the url is determined to be an unlisted video
+        // (i.e: not belonging to a playlist)
+        // then the last unlisted video index is used to increment over.
+        const last_item = await video_indexer.findOne({
+          where: {
+            playlist_url: body_url,
+          },
+          order: [["index_in_playlist", "DESC"]],
+          attributes: ["index_in_playlist"],
+          limit: 1,
+        });
+        try {
+          last_item_index = last_item.index_in_playlist;
+        } catch (error) {
+          // encountered an error if unlisted videos was not initialized
+          last_item_index = -1; // it will become 1 in the DB
+        }
+        resolve(last_item_index);
+      }
+    });
+    await play_list_exists.then((last_item_index) => {
+      debug("last_item_index: " + last_item_index);
+      process_response(response_list, body_url, last_item_index)
+        .then(function (init_resp) {
+          try {
+            res.writeHead(200, corsHeaders(json_t));
+            res.end(JSON.stringify(init_resp));
+          } catch (error) {
+            err(`${error.message}`);
+          }
+        })
+        .then(function () {
+          list_background(body_url, start_num, stop_num, chunk_size).then(
+            () => {
+              trace(`Done processing playlist: ${body_url}`);
+              sock.emit("playlist-done", {
+                message: "done processing playlist or channel",
+                id: body_url === "None" ? body["url"] : body_url,
+              });
+            }
+          );
+        });
+    });
   } catch (error) {
     err(`${error.message}`);
     const status = error.status || 500;
@@ -919,8 +940,8 @@ async function sublist_to_table(req, res) {
     );
     try {
       if (query_string == "") {
-        // playlist_video_indexer is not associated to video_list!
-        playlist_video_indexer
+        // video_indexer is not associated to video_list!
+        video_indexer
           .findAndCountAll({
             attributes: ["index_in_playlist", "playlist_url"],
             include: [
@@ -948,7 +969,7 @@ async function sublist_to_table(req, res) {
             res.end(JSON.stringify(result, null, 2));
           });
       } else {
-        playlist_video_indexer
+        video_indexer
           .findAndCountAll({
             attributes: ["index_in_playlist", "playlist_url"],
             include: [
