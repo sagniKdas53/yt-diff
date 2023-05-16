@@ -151,7 +151,9 @@ FROM
     video_list
     INNER JOIN playlist_video_indexer ON video_list.video_url = playlist_video_indexer.video_url
 ORDER BY
-    playlist_video_indexer.index_in_playlist ASC -- Inner join with where clause
+    playlist_video_indexer.index_in_playlist ASC 
+    
+-- Inner join with where clause
 SELECT
     video_list.title,
     video_list.video_id,
@@ -179,3 +181,41 @@ WHERE
     playlist_video_indexer.playlist_url = 'https://www.youtube.com/playlist?list=pl789'
 ORDER BY
     playlist_video_indexer.index_in_playlist ASC;
+
+-- Sequelize 
+SELECT
+    "video_list".*,
+    "playlist_video_indexers"."id" AS "playlist_video_indexers.id",
+    "playlist_video_indexers"."playlist_url" AS "playlist_video_indexers.playlist_url",
+    "playlist_video_indexers"."index_in_playlist" AS "playlist_video_indexers.index_in_playlist"
+FROM
+    (
+        SELECT
+            "video_list"."title",
+            "video_list"."video_id",
+            "video_list"."video_url",
+            "video_list"."downloaded",
+            "video_list"."available"
+        FROM
+            "video_lists" AS "video_list"
+        WHERE
+            (
+                SELECT
+                    "video_url"
+                FROM
+                    "playlist_video_indexers" AS "playlist_video_indexers"
+                WHERE
+                    (
+                        "playlist_video_indexers"."playlist_url" = 'None'
+                        AND "playlist_video_indexers"."video_url" = "video_list"."video_url"
+                    )
+                LIMIT
+                    1
+            ) IS NOT NULL
+        LIMIT
+            10 OFFSET 0
+    ) AS "video_list"
+    INNER JOIN "playlist_video_indexers" AS "playlist_video_indexers" ON "video_list"."video_url" = "playlist_video_indexers"."video_url"
+    AND "playlist_video_indexers"."playlist_url" = 'None'
+ORDER BY
+    "playlist_video_indexers"."index_in_playlist" ASC;

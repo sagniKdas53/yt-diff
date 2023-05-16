@@ -239,17 +239,13 @@ const playlist_video_indexer = sequelize.define(
   }
 );
 
-// Define the foreign key constraints
-// playlist_video_indexer.belongsTo(playlist_list, {
-//   foreignKey: "playlist_url",
-//   onUpdate: "CASCADE",
-//   onDelete: "CASCADE",
-// });
-// playlist_video_indexer.belongsTo(video_list, {
-//   foreignKey: "video_url",
-//   onUpdate: "CASCADE",
-//   onDelete: "CASCADE",
-// });
+// Define the relationships
+playlist_video_indexer.belongsTo(video_list, {
+  foreignKey: "video_url",
+});
+video_list.hasMany(playlist_video_indexer, {
+  foreignKey: "video_url",
+});
 
 sequelize
   .sync()
@@ -449,7 +445,7 @@ async function update_vid_entry(found, data) {
   // in the video, lets see when that happens
   if (
     found.video_id !== data.video_id ||
-    found.approximate_size !== data.approximate_size ||
+    +found.approximate_size !== +data.approximate_size ||
     found.title !== data.title ||
     found.available !== data.available
   ) {
@@ -457,7 +453,7 @@ async function update_vid_entry(found, data) {
     if (found.id !== data.id) {
       differences.push(`id: ${found.id} (found) vs. ${data.id} (expected)`);
     }
-    if (found.approximate_size !== data.approximate_size) {
+    if (+found.approximate_size !== +data.approximate_size) {
       differences.push(
         `approximate_size: ${found.approximate_size} (found) vs. ${data.approximate_size} (expected)`
       );
@@ -476,7 +472,7 @@ async function update_vid_entry(found, data) {
       `Found ${differences.length} difference(s): ${differences.join(", ")}`
     );
     found.id = data.id;
-    found.approximate_size = data.approximate_size;
+    found.approximate_size = +data.approximate_size;
     found.title = data.title;
     found.available = data.available;
     await found.save();
@@ -524,7 +520,8 @@ async function quick_updates() {
     });
     try {
       trace(
-        `Playlist: ${playlist.title.trim()} being updated from index ${last_item.index_in_playlist
+        `Playlist: ${playlist.title.trim()} being updated from index ${
+          last_item.index_in_playlist
         }`
       );
       index = last_item.index_in_playlist;
@@ -694,8 +691,8 @@ async function list_and_download(req, res) {
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
-      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
-      `sleep_before_listing: ${sleep_before_listing}, index: ${last_item_index}, monitoring_type: ${monitoring_type}`
+        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
+        `sleep_before_listing: ${sleep_before_listing}, index: ${last_item_index}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) await sleep();
@@ -911,38 +908,38 @@ async function sublist_to_table(req, res) {
       query_string = body["query"] !== undefined ? body["query"] : "",
       sort_downloaded =
         body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
-      sort_type = sort_downloaded ? "DESC" : "ASC",
       order_array = sort_downloaded
-        ? ["downloaded", sort_type]
-        : [playlist_video_indexer, "index_in_playlist", sort_type];
+        ? [video_list, "downloaded", "DESC"]
+        : ["index_in_playlist", "ASC"];
 
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-      `Order: ${JSON.stringify(order_array)}, Sort type: ${sort_type}, Query: "${query_string}", ` +
-      `playlist_url: ${playlist_url}, sort_downloaded: ${sort_downloaded}`
+        ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
+        `playlist_url: ${playlist_url}`
     );
     try {
       if (query_string == "") {
         // playlist_video_indexer is not associated to video_list!
-        video_list
-          .findAll({
-            attributes: [
-              "title",
-              "video_id",
-              "video_url",
-              "downloaded",
-              "available",
-            ],
+        playlist_video_indexer
+          .findAndCountAll({
+            attributes: ["index_in_playlist", "playlist_url"],
             include: [
               {
-                model: playlist_video_indexer,
-                attributes: ["playlist_url", "index_in_playlist"],
-                where: { playlist_url: playlist_url },
-                required: true,
+                attributes: [
+                  "title",
+                  "video_id",
+                  "video_url",
+                  "downloaded",
+                  "available",
+                ],
+                model: video_list,
               },
             ],
+            where: { playlist_url: playlist_url },
             limit: stop_num - start_num,
             offset: start_num,
+            // To sort by downloaded - [video_list, "downloaded", "DESC"]
+            // To sort by index_in_playlist - ["index_in_playlist", "DESC"]
             order: [order_array],
           })
           .then((result) => {
@@ -950,26 +947,23 @@ async function sublist_to_table(req, res) {
             res.end(JSON.stringify(result, null, 2));
           });
       } else {
-        video_list
-          .findAll({
-            attributes: [
-              "title",
-              "video_id",
-              "video_url",
-              "downloaded",
-              "available",
-            ],
+        playlist_video_indexer
+          .findAndCountAll({
+            attributes: ["index_in_playlist", "playlist_url"],
             include: [
               {
-                model: playlist_video_indexer,
-                attributes: ["playlist_url", "index_in_playlist"],
-                where: {
-                  playlist_url: playlist_url,
-                  title: { [Op.iLike]: `%${query_string}%` },
-                },
-                required: true,
+                attributes: [
+                  "title",
+                  "video_id",
+                  "video_url",
+                  "downloaded",
+                  "available",
+                ],
+                model: video_list,
+                where: { title: { [Op.iLike]: `%${query_string}%` } },
               },
             ],
+            where: { playlist_url: playlist_url },
             limit: stop_num - start_num,
             offset: start_num,
             order: [order_array],
@@ -1120,12 +1114,13 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${
+      save_loc.endsWith("/") ? save_loc : save_loc + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
     `List Options:\n\t` +
-    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
+      'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
