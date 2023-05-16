@@ -1,5 +1,5 @@
-[submodule "front-end"]
-	path = react
+[submodule "before-virtuiso"]
+	path = before-virtuiso
 	url = https://github.com/sagniKdas53/yt-diff-react
 [submodule "frontend"]
 	path = frontend

@@ -941,6 +941,7 @@ async function sublist_to_table(req, res) {
             // To sort by downloaded - [video_list, "downloaded", "DESC"]
             // To sort by index_in_playlist - ["index_in_playlist", "DESC"]
             order: [order_array],
+            //raw: true,
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
