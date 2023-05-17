@@ -1,13 +1,14 @@
 "use strict";
-const { spawn } = require("child_process");
-const http = require("http");
-const fs = require("fs");
-const path_fs = require("path");
 const { Sequelize, DataTypes, Op } = require("sequelize");
-const { Server } = require("socket.io");
-const CronJob = require("cron").CronJob;
-const color = require("cli-color");
+const { spawn } = require("child_process");
 const { v4: uuidv4 } = require("uuid");
+const color = require("cli-color");
+const CronJob = require("cron").CronJob;
+const fs = require("fs");
+const http = require("http");
+const path_fs = require("path");
+
+const { Server } = require("socket.io");
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
@@ -27,7 +28,7 @@ const get_thumbnail = process.env.thumbnail !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const not_needed = ["", "pornstar", "model", "videos"];
-// spankbang lists playlits as playlist/1,2 so need to add a way to integarte it
+// spankbang lists playlists as playlist/1,2 so need to add a way to integrate it
 const options = [
   "--embed-metadata",
   get_subs ? "--write-subs" : "",
@@ -127,7 +128,7 @@ const video_list = sequelize.define("video_list", {
     allowNull: false,
   },
   /* putting these here works only if each video belongs to one and only one playlist,
-  else there will be multiple instances of the same video belonnging to different playlist 
+  else there will be multiple instances of the same video belonging to different playlist 
   that have different available and downloaded statuses
   playlist_url: {
     type: DataTypes.STRING,
@@ -158,7 +159,7 @@ const playlist_list = sequelize.define("playlist_list", {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  // this is the order in which the playlists are added not the vidoes
+  // this is the order in which the playlists are added not the videos
   playlist_index: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -182,8 +183,8 @@ const playlist_list = sequelize.define("playlist_list", {
   },
 });
 
-/*  video_url is the forign keys from video_list, 
-    playlist_url is forign key from playlist_list
+/*  video_url is the foreign keys from video_list, 
+    playlist_url is foreign key from playlist_list
 
     The plan here is to make a way such that a video can have a video associated with
     multiple playlist_url and index_in_playlist for that given playlist_url  
@@ -333,7 +334,7 @@ function fix_common_errors(body_url) {
     //   body_url = /(.*)&t=[0-9s]*$/.exec(str)[1];
     //   debug(body_url);
     // }
-    debug(`${body_url} is a youtube channel`);
+    debug(`${body_url} is a youtube link`);
   }
   if (body_url.includes("pornhub") && body_url.includes("/model/")) {
     if (!/\/videos\/?$/.test(body_url)) {
@@ -378,11 +379,6 @@ async function list_spawner(body_url, start_num, stop_num) {
   });
 }
 async function process_response(response, body_url, index) {
-  // // I forgot why but this index--; makes the whole thing work okey
-  // if (body_url !== "None") {
-  //   index--;
-  //   // make an exception so that videos not belonging to any list aren't being added multiple times
-  // }
   trace(`process_response: Index: ${index}, Url: ${body_url}`);
   const init_resp = { count: 0, resp_url: body_url, start: index };
   sock.emit("listing-or-downloading", { percentage: 101 });
@@ -428,7 +424,7 @@ async function process_response(response, body_url, index) {
           index_in_playlist: index + map_idx,
         };
         debug(JSON.stringify(junction_data));
-        const [foundJunc, createdJunc] = await video_indexer.findOrCreate({
+        const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
           // I am not sure but I think this is getting updated before
           // it's saved if I make and pass it as an object
           where: {
@@ -439,10 +435,10 @@ async function process_response(response, body_url, index) {
         });
         debug(
           "Result of video_playlist_index add " +
-            JSON.stringify([foundJunc, createdJunc])
+            JSON.stringify([foundJunction, createdJunction])
         );
-        if (!createdJunc) {
-          verbose(`Found junc_table_entry: ${JSON.stringify(foundJunc)}`);
+        if (!createdJunction) {
+          verbose(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
         }
         init_resp["count"]++;
       } catch (error) {
@@ -455,7 +451,7 @@ async function process_response(response, body_url, index) {
 async function update_vid_entry(found, data) {
   // The object was found and not created
   // Doesn't change the downloaded state
-  // I have a sneaking suspecion that this
+  // I have a sneaking suspicion that this
   // will fail when there is any real change
   // in the video, lets see when that happens
   if (
@@ -492,7 +488,7 @@ async function update_vid_entry(found, data) {
     found.available = data.available;
     await found.save();
   } else if (found.downloaded !== data.downloaded) {
-    verbose("This proprty doesn't need modification");
+    verbose("This property doesn't need modification");
   }
 }
 async function sleep(sleep_seconds = sleep_time) {
@@ -621,7 +617,7 @@ async function download_sequential(items) {
   var count = 1;
   for (const [url_str, title, save_dir, id_str] of items) {
     try {
-      // yeah, this needs a join too from the playlits now to get the save directory and stuff
+      // yeah, this needs a join too from the playlists now to get the save directory and stuff
       trace(`Downloading Video: ${count++}, Url: ${url_str}, Progress:`);
       var hold = null;
       // check if the trim is actually necessary
@@ -767,25 +763,26 @@ async function list_func(req, res) {
         );
         if (video_already_unlisted !== null) {
           debug("Video already saved as unlisted");
-
           reject(video_already_unlisted);
+        } else {
+          debug("Adding a new video to the unlisted videos list");
+          const last_item = await video_indexer.findOne({
+            where: {
+              playlist_url: body_url,
+            },
+            order: [["index_in_playlist", "DESC"]],
+            attributes: ["index_in_playlist"],
+            limit: 1,
+          });
+          debug(JSON.stringify(last_item));
+          try {
+            last_item_index = last_item.index_in_playlist;
+          } catch (error) {
+            // encountered an error if unlisted videos was not initialized
+            last_item_index = 0;
+          }
+          resolve(last_item_index + 1);
         }
-        const last_item = await video_indexer.findOne({
-          where: {
-            playlist_url: body_url,
-          },
-          order: [["index_in_playlist", "DESC"]],
-          attributes: ["index_in_playlist"],
-          limit: 1,
-        });
-        debug(JSON.stringify(last_item));
-        try {
-          last_item_index = last_item.index_in_playlist;
-        } catch (error) {
-          // encountered an error if unlisted videos was not initialized
-          last_item_index = 0;
-        }
-        resolve(last_item_index + 1);
       }
     });
     await play_list_exists.then(
@@ -813,6 +810,7 @@ async function list_func(req, res) {
           });
       },
       (video_already_unlisted) => {
+        trace("Video already saved as unlisted");
         try {
           res.writeHead(200, corsHeaders(json_t));
           res.end(
@@ -823,6 +821,10 @@ async function list_func(req, res) {
               start: video_already_unlisted.index_in_playlist,
             })
           );
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: body_url === "None" ? body["url"] : body_url,
+          });
         } catch (error) {
           err_log(`${error.message}`);
         }
@@ -846,7 +848,9 @@ async function monitoring_type_func(req, res) {
     trace(
       `monitoring_type_func:  url: ${body_url}, monitoring_type: ${monitoring_type}`
     );
-    const playlist = await playlist_list.findOne({ where: { playlist_url: body_url } });
+    const playlist = await playlist_list.findOne({
+      where: { playlist_url: body_url },
+    });
     playlist.monitoring_type = monitoring_type;
     await playlist.update({ monitoring_type }, { silent: true });
     res.writeHead(200, corsHeaders(json_t));
@@ -871,7 +875,7 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
     if (response.length === 0) {
       break;
     }
-    // yt-dlp starts counting from 1 for some reason so 1 needs to be subtrated here.
+    // yt-dlp starts counting from 1 for some reason so 1 needs to be subtracted here.
     await process_response(response, body_url, start_num - 1);
   }
 }
