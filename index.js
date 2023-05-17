@@ -39,6 +39,13 @@ const options = [
 ].filter(Boolean);
 
 // Logging methods
+const msg_trimmer = (msg) => {
+  try {
+    return msg.trim();
+  } catch (error) {
+    return msg;
+  }
+};
 const info = (msg) => {
   console.log(
     color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}\n`)
@@ -54,7 +61,7 @@ const debug = (msg) => {
     color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}\n`)
   );
 };
-const err = (msg) => {
+const err_log = (msg) => {
   console.log(
     color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg}\n`)
   );
@@ -88,7 +95,7 @@ try {
     info("Connection to server has been established successfully");
   });
 } catch (error) {
-  err(`Unable to connect to the server: ${error}`);
+  err_log(`Unable to connect to the server: ${error}`);
 }
 
 // video_url is the primary key of any video
@@ -265,7 +272,7 @@ sequelize
     });
   })
   .catch((error) => {
-    err(`Unable to create table : ${error}`);
+    err_log(`Unable to create table : ${error}`);
   });
 
 // sequelize need to start before this can start
@@ -313,7 +320,7 @@ async function url_to_title(body_url) {
       .filter((item) => !not_needed.includes(item))
       .join("");
   } catch (error) {
-    err(`${error.message}`);
+    err_log(`${error.message}`);
     return body_url;
   }
 }
@@ -357,14 +364,14 @@ async function list_spawner(body_url, start_num, stop_num) {
     });
     yt_list.stderr.on("data", (data) => {
       // maybe use sockets to send the stderr to the
-      err(`stderr: ${data}`);
+      err_log(`stderr: ${data}`);
     });
     yt_list.on("error", (error) => {
-      err(`${error.message}`);
+      err_log(`${error.message}`);
     });
     yt_list.on("close", (code) => {
       if (code !== 0) {
-        err(`yt-dlp returned code: ${code}`);
+        err_log(`yt-dlp returned code: ${code}`);
       }
       resolve(response.split("\n").filter((line) => line.length > 0));
     });
@@ -439,7 +446,7 @@ async function process_response(response, body_url, index) {
         }
         init_resp["count"]++;
       } catch (error) {
-        err(`${error.message}\n${error.stack}`);
+        err_log(`${error.message}\n${error.stack}`);
       }
     })
   );
@@ -542,7 +549,7 @@ async function quick_updates() {
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err(`error processing playlist ${playlist.url}, ${error.message}`);
+      err_log(`error processing playlist ${playlist.url}, ${error.message}`);
     }
   }
 }
@@ -565,7 +572,7 @@ async function full_updates() {
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err(`error processing playlist ${playlist.url}\n${error.message}`);
+      err_log(`error processing playlist ${playlist.url}\n${error.message}`);
     }
   }
 }
@@ -589,7 +596,7 @@ async function download_lister(req, res) {
         });
         save_dir = play_list.save_dir;
       } catch (error) {
-        if (save_dir !== "") err(`${error.message}`);
+        if (save_dir !== "") err_log(`${error.message}`);
       }
       download_list.push([
         video_item.video_url,
@@ -602,7 +609,7 @@ async function download_lister(req, res) {
     res.writeHead(200, corsHeaders(json_t));
     res.end(JSON.stringify({ Downloading: download_list }));
   } catch (error) {
-    err(`${error.message}`);
+    err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -647,10 +654,10 @@ async function download_sequential(items) {
         }
       });
       yt_dlp.stderr.on("data", (data) => {
-        err(`stderr: ${data}`);
+        err_log(`stderr: ${data}`);
       });
       yt_dlp.on("error", (error) => {
-        err(`${error.message}`);
+        err_log(`${error.message}`);
       });
       yt_dlp.on("close", async (code) => {
         const entity = await video_list.findOne({
@@ -676,13 +683,13 @@ async function download_sequential(items) {
       await new Promise((resolve) => yt_dlp.on("close", resolve));
       trace(`Downloaded ${title} at location ${save_path}`);
     } catch (error) {
-      err(`${error.message}`);
+      err_log(`${error.message}`);
     }
   }
 }
 
 // List functions
-async function list_and_download(req, res) {
+async function list_func(req, res) {
   try {
     const body = await extract_json(req),
       start_num =
@@ -694,7 +701,7 @@ async function list_and_download(req, res) {
       stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
       chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
       sleep_before_listing =
-        body["continuous"] !== undefined ? body["continuous"] : false,
+        body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
       download_list = body["download"] !== undefined ? body["download"] : null;
@@ -705,7 +712,7 @@ async function list_and_download(req, res) {
       last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
-      `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
+      `list_func:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
         `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
         `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
@@ -729,7 +736,7 @@ async function list_and_download(req, res) {
           is_already_indexed.title.trim();
           resolve(last_item_index);
         } catch (error) {
-          err(
+          err_log(
             "playlist or channel not encountered earlier, saving in playlist"
           );
           // Its not an error, but the title extraction,
@@ -745,6 +752,24 @@ async function list_and_download(req, res) {
         // then the last unlisted video index is used to increment over.
         // Although it doesn't really matter if a video is added many times, to the unlisted "None" playlist
         // I think it's shouldn't be done, so add a check here to find out if it's being added multiple times.
+        const video_already_unlisted = await video_indexer.findOne({
+          where: {
+            video_url: response_list[0].split("\t")[2],
+            playlist_url: body_url,
+          },
+        });
+        debug(
+          JSON.stringify(response_list) +
+            "\n " +
+            response_list[0].split("\t")[2] +
+            "\n " +
+            JSON.stringify(video_already_unlisted)
+        );
+        if (video_already_unlisted !== null) {
+          debug("Video already saved as unlisted");
+
+          reject(video_already_unlisted);
+        }
         const last_item = await video_indexer.findOne({
           where: {
             playlist_url: body_url,
@@ -753,63 +778,81 @@ async function list_and_download(req, res) {
           attributes: ["index_in_playlist"],
           limit: 1,
         });
+        debug(JSON.stringify(last_item));
         try {
           last_item_index = last_item.index_in_playlist;
         } catch (error) {
           // encountered an error if unlisted videos was not initialized
-          last_item_index = -1; // it will become 1 in the DB
+          last_item_index = 0;
         }
-        resolve(last_item_index);
+        resolve(last_item_index + 1);
       }
     });
-    await play_list_exists.then((last_item_index) => {
-      debug("last_item_index: " + last_item_index);
-      process_response(response_list, body_url, last_item_index)
-        .then(function (init_resp) {
-          try {
-            res.writeHead(200, corsHeaders(json_t));
-            res.end(JSON.stringify(init_resp));
-          } catch (error) {
-            err(`${error.message}`);
-          }
-        })
-        .then(function () {
-          list_background(body_url, start_num, stop_num, chunk_size).then(
-            () => {
-              trace(`Done processing playlist: ${body_url}`);
-              sock.emit("playlist-done", {
-                message: "done processing playlist or channel",
-                id: body_url === "None" ? body["url"] : body_url,
-              });
+    await play_list_exists.then(
+      (last_item_index) => {
+        debug("last_item_index: " + last_item_index);
+        process_response(response_list, body_url, last_item_index)
+          .then(function (init_resp) {
+            try {
+              res.writeHead(200, corsHeaders(json_t));
+              res.end(JSON.stringify(init_resp));
+            } catch (error) {
+              err_log(`${error.message}`);
             }
+          })
+          .then(function () {
+            list_background(body_url, start_num, stop_num, chunk_size).then(
+              () => {
+                trace(`Done processing playlist: ${body_url}`);
+                sock.emit("playlist-done", {
+                  message: "done processing playlist or channel",
+                  id: body_url === "None" ? body["url"] : body_url,
+                });
+              }
+            );
+          });
+      },
+      (video_already_unlisted) => {
+        try {
+          res.writeHead(200, corsHeaders(json_t));
+          res.end(
+            JSON.stringify({
+              message: "Video already saved as unlisted",
+              count: 1,
+              resp_url: body_url,
+              start: video_already_unlisted.index_in_playlist,
+            })
           );
-        });
-    });
+        } catch (error) {
+          err_log(`${error.message}`);
+        }
+      }
+    );
   } catch (error) {
-    err(`${error.message}`);
+    err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
   }
 }
-async function monitoring_type_list(req, res) {
+async function monitoring_type_func(req, res) {
   try {
     const body = await extract_json(req),
       body_url = body["url"],
-      monitoring_type = body["monitoring_type"];
-    if (body["url"] === undefined || body["monitoring_type"] === undefined) {
-      throw new Error("url and monitoring_type are required");
+      monitoring_type = body["watch"];
+    if (body["url"] === undefined || body["watch"] === undefined) {
+      throw new Error("url and watch are required");
     }
     trace(
-      `monitoring_type_list:  url: ${body_url}, monitoring_type: ${monitoring_type}`
+      `monitoring_type_func:  url: ${body_url}, monitoring_type: ${monitoring_type}`
     );
-    const playlist = await playlist_list.findOne({ where: { url: body_url } });
+    const playlist = await playlist_list.findOne({ where: { playlist_url: body_url } });
     playlist.monitoring_type = monitoring_type;
     await playlist.update({ monitoring_type }, { silent: true });
     res.writeHead(200, corsHeaders(json_t));
     res.end(JSON.stringify({ Outcome: "Success" }));
   } catch (error) {
-    error(`error in monitoring_type_list: ${error.message}`);
+    err_log(`error in monitoring_type_func: ${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -860,7 +903,7 @@ async function add_playlist(url_var, monitoring_type_var) {
           title_str = await url_to_title(url_var);
         } catch (error) {
           title_str = url_var;
-          err(`${error.message}`);
+          err_log(`${error.message}`);
         }
       }
       title_str = await string_slicer(title_str, MAX_LENGTH);
@@ -876,7 +919,7 @@ async function add_playlist(url_var, monitoring_type_var) {
         },
       });
     } else {
-      err("Playlist could not be created");
+      err_log("Playlist could not be created");
     }
   });
 }
@@ -925,7 +968,7 @@ async function playlists_to_table(req, res) {
         });
     }
   } catch (error) {
-    err(`${error.message}`);
+    err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -1007,10 +1050,10 @@ async function sublist_to_table(req, res) {
           });
       }
     } catch (error) {
-      err(`${error.message}`);
+      err_log(`${error.message}`);
     }
   } catch (error) {
-    err(`${error.message}`);
+    err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -1094,12 +1137,12 @@ const server = http.createServer((req, res) => {
     res.writeHead(204, corsHeaders(json_t));
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
-    list_and_download(req, res);
+    list_func(req, res);
   } else if (req.url === url_base + "/download" && req.method === "POST") {
     download_lister(req, res);
-  } else if (req.url === url_base + "/watchlist" && req.method === "POST") {
-    monitoring_type_list(req, res);
-  } else if (req.url === url_base + "/dbi" && req.method === "POST") {
+  } else if (req.url === url_base + "/watch" && req.method === "POST") {
+    monitoring_type_func(req, res);
+  } else if (req.url === url_base + "/getplay" && req.method === "POST") {
     playlists_to_table(req, res);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
     sublist_to_table(req, res);
