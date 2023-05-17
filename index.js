@@ -422,7 +422,8 @@ async function process_response(response, body_url, index) {
         };
         debug(JSON.stringify(junction_data));
         const [foundJunc, createdJunc] = await video_indexer.findOrCreate({
-          // I am not sure but I think this is getting updated before it's saved if I make and pass it as an object
+          // I am not sure but I think this is getting updated before
+          // it's saved if I make and pass it as an object
           where: {
             video_url: vid_url,
             playlist_url: body_url,
@@ -431,7 +432,7 @@ async function process_response(response, body_url, index) {
         });
         debug(
           "Result of video_playlist_index add " +
-          JSON.stringify([foundJunc, createdJunc])
+            JSON.stringify([foundJunc, createdJunc])
         );
         if (!createdJunc) {
           verbose(`Found junc_table_entry: ${JSON.stringify(foundJunc)}`);
@@ -528,7 +529,8 @@ async function quick_updates() {
     });
     try {
       trace(
-        `Playlist: ${playlist.title.trim()} being updated from index ${last_item.index_in_playlist
+        `Playlist: ${playlist.title.trim()} being updated from index ${
+          last_item.index_in_playlist
         }`
       );
       index = last_item.index_in_playlist;
@@ -695,8 +697,7 @@ async function list_and_download(req, res) {
         body["continuous"] !== undefined ? body["continuous"] : false,
       monitoring_type =
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
-      download_list = body["download"] !== undefined ? body["download"] : null,
-      dnld_list = []; // use this for downloading in one request
+      download_list = body["download"] !== undefined ? body["download"] : null;
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
@@ -704,9 +705,9 @@ async function list_and_download(req, res) {
       last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
-      `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, ` +
-      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
-      `sleep_before_listing: ${sleep_before_listing}, index: ${last_item_index}, monitoring_type: ${monitoring_type}`
+      `list_and_download:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
+        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
+        `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) await sleep();
@@ -863,7 +864,8 @@ async function add_playlist(url_var, monitoring_type_var) {
         }
       }
       title_str = await string_slicer(title_str, MAX_LENGTH);
-      // no need to use found or create syntax here as this is only run the first time a playlist is made
+      // no need to use found or create syntax here as
+      // this is only run the first time a playlist is made
       playlist_list.findOrCreate({
         where: { playlist_url: url_var },
         defaults: {
@@ -891,7 +893,8 @@ async function playlists_to_table(req, res) {
       type = order == 2 ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
       row = sort_with == 3 ? "updatedAt" : "playlist_index";
     trace(
-      `playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, Order: ${order}, Type: ${type}, Query: "${query_string}"`
+      `playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, ` +
+        `Order: ${order}, Type: ${type}, Query: "${query_string}"`
     );
     if (query_string == "") {
       playlist_list
@@ -943,8 +946,8 @@ async function sublist_to_table(req, res) {
 
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-      ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
-      `playlist_url: ${playlist_url}`
+        ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
+        `playlist_url: ${playlist_url}`
     );
     try {
       if (query_string == "") {
@@ -1144,12 +1147,14 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${
+      save_loc.endsWith("/") ? save_loc : save_loc + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
     `List Options:\n\t` +
-    'yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
+      "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
+      '--print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
