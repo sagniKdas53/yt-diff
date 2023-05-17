@@ -424,20 +424,19 @@ async function process_response(response, body_url, index) {
           index_in_playlist: index + map_idx,
         };
         debug(JSON.stringify(junction_data));
-        const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
-          // I am not sure but I think this is getting updated before
-          // it's saved if I make and pass it as an object
-          where: {
-            video_url: vid_url,
-            playlist_url: body_url,
-            index_in_playlist: index + map_idx,
-          },
-        });
+        const [foundJunction, createdJunction] =
+          await video_indexer.findOrCreate({
+            // I am not sure but I think this is getting updated before
+            // it's saved if I make and pass it as an object
+            where: junction_data,
+          });
         debug(
           "Result of video_playlist_index add " +
             JSON.stringify([foundJunction, createdJunction])
         );
         if (!createdJunction) {
+          // this seems like a good place to mention that
+          // I should check the update functions too
           verbose(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
         }
         init_resp["count"]++;
@@ -578,28 +577,32 @@ async function download_lister(req, res) {
   try {
     const body = await extract_json(req),
       download_list = [],
+      in_download_list = new Set(),
       // remember to send this from the frontend
       play_list_url = body["url"] !== undefined ? body["url"] : "None";
     for (const id_str of body["id"]) {
-      debug(id_str);
-      const video_item = await video_list.findOne({
-        where: { video_id: id_str },
-      });
-      var save_dir = "";
-      try {
-        const play_list = await playlist_list.findOne({
-          where: { url: play_list_url },
+      if (!in_download_list.has(id_str)) {
+        debug(id_str);
+        const video_item = await video_list.findOne({
+          where: { video_id: id_str },
         });
-        save_dir = play_list.save_dir;
-      } catch (error) {
-        if (save_dir !== "") err_log(`${error.message}`);
+        var save_dir = "";
+        try {
+          const play_list = await playlist_list.findOne({
+            where: { url: play_list_url },
+          });
+          save_dir = play_list.save_dir;
+        } catch (error) {
+          if (save_dir !== "") err_log(`${error.message}`);
+        }
+        download_list.push([
+          video_item.video_url,
+          video_item.title,
+          save_dir,
+          id_str,
+        ]);
+        in_download_list.add(id_str);
       }
-      download_list.push([
-        video_item.video_url,
-        video_item.title,
-        save_dir,
-        id_str,
-      ]);
     }
     download_sequential(download_list);
     res.writeHead(200, corsHeaders(json_t));
@@ -742,46 +745,57 @@ async function list_func(req, res) {
             .then(resolve(last_item_index));
         }
       } else {
-        body_url = "None";
-        // If the url is determined to be an unlisted video
-        // (i.e: not belonging to a playlist)
-        // then the last unlisted video index is used to increment over.
-        // Although it doesn't really matter if a video is added many times, to the unlisted "None" playlist
-        // I think it's shouldn't be done, so add a check here to find out if it's being added multiple times.
-        const video_already_unlisted = await video_indexer.findOne({
-          where: {
-            video_url: response_list[0].split("\t")[2],
-            playlist_url: body_url,
-          },
-        });
-        debug(
-          JSON.stringify(response_list) +
-            "\n " +
-            response_list[0].split("\t")[2] +
-            "\n " +
-            JSON.stringify(video_already_unlisted)
-        );
-        if (video_already_unlisted !== null) {
-          debug("Video already saved as unlisted");
-          reject(video_already_unlisted);
-        } else {
-          debug("Adding a new video to the unlisted videos list");
-          const last_item = await video_indexer.findOne({
+        try {
+          body_url = "None";
+          // If the url is determined to be an unlisted video
+          // (i.e: not belonging to a playlist)
+          // then the last unlisted video index is used to increment over.
+          // Although it doesn't really matter if a video is added many times, to the unlisted "None" playlist
+          // I think it's shouldn't be done, so add a check here to find out if it's being added multiple times.
+          const video_already_unlisted = await video_indexer.findOne({
             where: {
+              video_url: response_list[0].split("\t")[2],
               playlist_url: body_url,
             },
-            order: [["index_in_playlist", "DESC"]],
-            attributes: ["index_in_playlist"],
-            limit: 1,
           });
-          debug(JSON.stringify(last_item));
-          try {
-            last_item_index = last_item.index_in_playlist;
-          } catch (error) {
-            // encountered an error if unlisted videos was not initialized
-            last_item_index = 0;
+          debug(
+            JSON.stringify(response_list) +
+              "\n " +
+              response_list[0].split("\t")[2] +
+              "\n " +
+              JSON.stringify(video_already_unlisted)
+          );
+          if (video_already_unlisted !== null) {
+            debug("Video already saved as unlisted");
+            reject(video_already_unlisted);
+          } else {
+            debug("Adding a new video to the unlisted videos list");
+            const last_item = await video_indexer.findOne({
+              where: {
+                playlist_url: body_url,
+              },
+              order: [["index_in_playlist", "DESC"]],
+              attributes: ["index_in_playlist"],
+              limit: 1,
+            });
+            debug(JSON.stringify(last_item));
+            try {
+              last_item_index = last_item.index_in_playlist;
+            } catch (error) {
+              // encountered an error if unlisted videos was not initialized
+              last_item_index = 0;
+            }
+            resolve(last_item_index + 1);
           }
-          resolve(last_item_index + 1);
+        } catch (error) {
+          err_log(`${error.message}`);
+          const status = error.status || 500;
+          res.writeHead(status, corsHeaders(json_t));
+          res.end(JSON.stringify({ error: error.message }));
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: body_url === "None" ? body["url"] : body_url,
+          });
         }
       }
     });
@@ -835,6 +849,10 @@ async function list_func(req, res) {
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
+    sock.emit("playlist-done", {
+      message: "done processing playlist or channel",
+      id: body_url === "None" ? body["url"] : body_url,
+    });
   }
 }
 async function monitoring_type_func(req, res) {
