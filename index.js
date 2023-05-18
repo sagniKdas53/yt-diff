@@ -715,7 +715,7 @@ async function list_func(req, res) {
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_func:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
-        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, download_list: [${download_list}], ` +
+        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
         `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
@@ -968,6 +968,11 @@ async function playlists_to_table(req, res) {
     if (query_string == "") {
       playlist_list
         .findAndCountAll({
+          where: {
+            playlist_index: {
+              [Op.gte]: 0,
+            },
+          },
           limit: stop_num - start_num,
           offset: start_num,
           order: [[row, type]],
@@ -982,6 +987,11 @@ async function playlists_to_table(req, res) {
           where: {
             title: {
               [Op.iLike]: `%${query_string}%`,
+            },
+            playlist_index: {
+              // In future there can many more hidden playlists
+              // so this seems like a good addition
+              [Op.gte]: 0,
             },
           },
           limit: stop_num - start_num,
