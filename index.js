@@ -523,7 +523,7 @@ async function quick_updates() {
     var index = 0;
     const last_item = await video_indexer.findOne({
       where: {
-        playlist_url: playlist.url,
+        playlist_url: playlist.playlist_url,
       },
       order: [["index_in_playlist", "DESC"]],
       attributes: ["index_in_playlist"],
@@ -538,13 +538,15 @@ async function quick_updates() {
       index = last_item.index_in_playlist;
 
       await sleep();
-      await list_background(playlist.url, index, index + 10, 10);
-      trace(`Done processing playlist ${playlist.url}`);
+      await list_background(playlist.playlist_url, index - 10, index, 10);
+      trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err_log(`error processing playlist ${playlist.url}, ${error.message}`);
+      err_log(
+        `error processing playlist ${playlist.playlist_url}, ${error.message}`
+      );
     }
   }
 }
@@ -561,13 +563,15 @@ async function full_updates() {
       trace(`Playlist: ${playlist.title.trim()} being updated fully`);
 
       await sleep();
-      await list_background(playlist.url, 0, 10, 10);
-      trace(`Done processing playlist ${playlist.url}`);
+      await list_background(playlist.playlist_url, 0, 10, 10);
+      trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err_log(`error processing playlist ${playlist.url}\n${error.message}`);
+      err_log(
+        `error processing playlist ${playlist.playlist_url}\n${error.message}`
+      );
     }
   }
 }
@@ -702,8 +706,7 @@ async function list_func(req, res) {
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
-        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
-      download_list = body["download"] !== undefined ? body["download"] : null;
+        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
@@ -881,6 +884,7 @@ async function monitoring_type_func(req, res) {
   }
 }
 async function list_background(body_url, start_num, stop_num, chunk_size) {
+  // yes a playlist on youtube atleast can only be 5000 long  && stop_num < 5000
   while (true && body_url != "None") {
     start_num = start_num + chunk_size;
     stop_num = stop_num + chunk_size;
@@ -1219,7 +1223,7 @@ server.listen(port, async () => {
   verbose(
     `List Options:\n\t` +
       "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-      '--print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s" {body_url}'
+      '--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
