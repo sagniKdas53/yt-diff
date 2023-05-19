@@ -1,6 +1,6 @@
 [submodule "before-virtuiso"]
-	path = before-virtuiso
+	path = frontendv1
 	url = https://github.com/sagniKdas53/yt-diff-react
 [submodule "frontend"]
-	path = frontend
+	path = frontendv2
 	url = https://github.com/sagniKdas53/yt-diff-react

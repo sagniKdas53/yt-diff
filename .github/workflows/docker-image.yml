@@ -1,4 +1,4 @@
-name: Docker Image CI and publish a Docker image
+name: Publish a Docker image on push to master branch.
 
 on:
   push:
