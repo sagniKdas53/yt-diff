@@ -592,13 +592,17 @@ async function download_lister(req, res) {
         });
         var save_dir = "";
         try {
-          const play_list = await playlist_list.findOne({
-            where: { url: play_list_url },
+          const save_dir_const = await playlist_list.findOne({
+            where: { playlist_url: play_list_url },
           });
-          save_dir = play_list.save_dir;
+          save_dir = save_dir_const.save_dir;
         } catch (error) {
-          if (save_dir !== "") err_log(`${error.message}`);
+          if (save_dir !== "") {
+            save_dir = "";
+            err_log(`${error.message}`);
+          }
         }
+        debug(save_dir);
         download_list.push([
           video_item.video_url,
           video_item.title,
@@ -628,6 +632,7 @@ async function download_sequential(items) {
       trace(`Downloading Video: ${count++}, Url: ${url_str}, Progress:`);
       var hold = null;
       // check if the trim is actually necessary
+      debug(save_dir);
       const save_path = path_fs.join(save_loc, save_dir.trim());
       // if save_dir == "",  then save_path == save_loc
       if (save_path != save_loc && !fs.existsSync(save_path)) {
