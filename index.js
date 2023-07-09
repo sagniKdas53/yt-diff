@@ -1198,7 +1198,7 @@ const io = new Server(server, {
   path: url_base + "/socket.io/",
   cors: {
     origin: [
-      "https://lenovo-ideapad-320-15ikb.tail9ece4.ts.net",
+      "https://ideapad.tail9ece4.ts.net",
       "http://localhost:5173",
       "http://192.168.0.103:5173",
       "http://192.168.0.106:5173",
