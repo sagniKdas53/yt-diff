@@ -1,4 +1,4 @@
-FROM ubuntu:22.10
+FROM ubuntu:22.04
 
 RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
 
@@ -8,6 +8,7 @@ ENV OPENSSL_CONF=/dev/null
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update \
+    && apt-get -y upgrade \
     && apt install ca-certificates xz-utils bzip2 wget git -y \
     && rm -rf /var/lib/apt/lists/*
 
@@ -25,8 +26,8 @@ RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ../.. \
     && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
 
-# Sometimes the download fails, it's bitbuckets fault most of the time
-RUN wget "https://cdn11.bunkr.ru/phantomjs-2.1.1-linux-x86_64.tar-MpDenPfv.tar.bz2" -O "phantomjs-2.1.1-linux-x86_64.tar.bz2"
+# Sometimes the download fails, it's bitbuckets not having bandwidth most of the time
+RUN wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs-2.1.1-linux-x86_64.tar.bz2"
 
 RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
     && cd phantomjs-2.1.1-linux-x86_64/bin \
