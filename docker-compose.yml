@@ -23,6 +23,27 @@ services:
     volumes:
       - ${DB_LOCATION}:/var/lib/postgresql/data
 
+  yt-db-backup:
+    container_name: ytdiff_db_dumper
+    image: prodrigestivill/postgres-backup-local
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: yt-db
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      SCHEDULE: "@daily"
+      BACKUP_NUM_KEEP: 3
+      BACKUP_DIR: /db_dumps
+    volumes:
+      - ${DB_DUMP_LOCATION}/db_dumps:/db_dumps
+    depends_on:
+      - yt-db
+    restart: always
+    networks:
+      - revProxy-net
+
   yt-diff:
     image: purevert/yt-diff:amd64
     container_name: yt-diff
