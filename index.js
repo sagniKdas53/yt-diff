@@ -183,12 +183,12 @@ const playlist_list = sequelize.define("playlist_list", {
   },
 });
 
-/*  video_url is the foreign keys from video_list, 
+/*  video_url is the foreign keys from video_list,
     playlist_url is foreign key from playlist_list
 
     The plan here is to make a way such that a video can have a video associated with
-    multiple playlist_url and index_in_playlist for that given playlist_url  
-    
+    multiple playlist_url and index_in_playlist for that given playlist_url
+
     This is a junction table
 */
 const video_indexer = sequelize.define(
@@ -518,6 +518,12 @@ async function quick_updates() {
       monitoring_type: 3,
     },
   });
+  /*
+  The quick_updates logic is wrong, because in order to fetch the newest
+  videos we need to just fetch the videos from 0 through to the chunk_size
+  once all the videos that we have fetched are already in the database
+  then it can stop, this function will need to be rewritten and tested.
+  */
   trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     var index = 0;
