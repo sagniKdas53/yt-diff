@@ -4,3 +4,4 @@ migration-scripts/*.sql
 yt-data/
 logs/
 dist/
+update.log
