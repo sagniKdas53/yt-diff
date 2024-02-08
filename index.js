@@ -12,13 +12,13 @@ const { Server } = require("socket.io");
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
-const port = process.env.port || 8888;
+const port = process.env.port || 8989;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
-const scheduled_update_string = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
+const scheduled_update_string = process.env.scheduled || "*/10 * * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 
 const get_subs = process.env.subtitles !== "false";
@@ -378,9 +378,67 @@ async function list_spawner(body_url, start_num, stop_num) {
     });
   });
 }
-async function process_response(response, body_url, index) {
+async function process_response(response, body_url, index, skip_checks) {
   trace(`process_response: Index: ${index}, Url: ${body_url}`);
-  const init_resp = { count: 0, resp_url: body_url, start: index };
+  const init_resp = {
+    count: 0,
+    resp_url: body_url,
+    start: index,
+    quit_listing: false,
+  };
+
+  if (!skip_checks) {
+    // Query to check if all items already exist in the video_list table
+    const allItemsExistInVideoList = await Promise.all(
+      response.map(async (element) => {
+        const element_arr = element.split("\t");
+        const vid_url = element_arr[2];
+        const foundItem = await video_list.findOne({
+          where: { video_url: vid_url },
+        });
+        // [2/8/2024, 1:10:12 AM] DEBUG: found item: null for url: y-w3h4tRuC8
+        // Too tired will fix this tomorrow actually someday also need to
+        // remove duplicated in junction table
+        debug(`found item: ${JSON.stringify(foundItem)} for url: ${vid_url}`);
+        return foundItem !== null;
+      })
+    );
+    // Query to check if the video is already indexed in the junction table
+    const allItemsExistInVideoIndexer = await Promise.all(
+      response.map(async (element) => {
+        const element_arr = element.split("\t");
+        const vid_url = element_arr[2];
+        const playlist_url = body_url; // Assuming body_url refers to the playlist_url
+        const foundItem = await video_indexer.findOne({
+          where: { video_url: vid_url, playlist_url: playlist_url },
+        });
+        debug(
+          `found item: ${JSON.stringify(
+            foundItem
+          )} for url: ${vid_url} and playlist_url ${playlist_url}`
+        );
+        return foundItem !== null;
+      })
+    );
+    if (
+      allItemsExistInVideoList.every((item) => item === true) &&
+      allItemsExistInVideoIndexer.every((item) => item === true)
+    ) {
+      debug("All items already exist in the database.");
+      init_resp["quit_listing"] = true;
+      return init_resp; // Return early if all items exist
+    } else {
+      debug(`allItemsExistInVideoList: ${JSON.stringify(
+        allItemsExistInVideoList
+      )}\n
+      allItemsExistInVideoIndexer: ${JSON.stringify(
+        allItemsExistInVideoIndexer
+      )}`);
+    }
+  } else {
+    debug('Doing full update on playlist')
+  }
+
   sock.emit("listing-or-downloading", { percentage: 101 });
   await Promise.all(
     response.map(async (element, map_idx) => {
@@ -432,7 +490,7 @@ async function process_response(response, body_url, index) {
           });
         debug(
           "Result of video_playlist_index add " +
-            JSON.stringify([foundJunction, createdJunction])
+          JSON.stringify([foundJunction, createdJunction])
         );
         if (!createdJunction) {
           // this seems like a good place to mention that
@@ -526,25 +584,25 @@ async function quick_updates() {
   */
   trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
-    var index = 0;
-    const last_item = await video_indexer.findOne({
+    var index = -9;
+    /*const last_item = await video_indexer.findOne({
       where: {
         playlist_url: playlist.playlist_url,
       },
       order: [["index_in_playlist", "DESC"]],
       attributes: ["index_in_playlist"],
       limit: 1,
-    });
+    });*/
     try {
-      trace(
+      /*trace(
         `Playlist: ${playlist.title.trim()} being updated from index ${
           last_item.index_in_playlist
         }`
       );
-      index = last_item.index_in_playlist;
+      index = last_item.index_in_playlist;*/
 
       await sleep();
-      await list_background(playlist.playlist_url, index - 10, index, 10);
+      await list_background(playlist.playlist_url, index, index + 10, 10, false);
       trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
@@ -569,7 +627,7 @@ async function full_updates() {
       trace(`Playlist: ${playlist.title.trim()} being updated fully`);
 
       await sleep();
-      await list_background(playlist.playlist_url, 0, 10, 10);
+      await list_background(playlist.playlist_url, 0, 10, 10, true);
       trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
@@ -713,6 +771,8 @@ async function list_func(req, res) {
             : +body["start"]
           : 1,
       stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
+      // According to https://github.com/TeamNewPipe/NewPipe/issues/875 the partial
+      // playlist load size is 100 videos or approximately 25kb, more testing is required
       chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
@@ -726,8 +786,8 @@ async function list_func(req, res) {
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_func:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
-        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
-        `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
+      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
+      `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) await sleep();
@@ -774,10 +834,10 @@ async function list_func(req, res) {
           });
           debug(
             JSON.stringify(response_list) +
-              "\n " +
-              response_list[0].split("\t")[2] +
-              "\n " +
-              JSON.stringify(video_already_unlisted)
+            "\n " +
+            response_list[0].split("\t")[2] +
+            "\n " +
+            JSON.stringify(video_already_unlisted)
           );
           if (video_already_unlisted !== null) {
             debug("Video already saved as unlisted");
@@ -816,7 +876,7 @@ async function list_func(req, res) {
     await play_list_exists.then(
       (last_item_index) => {
         debug("last_item_index: " + last_item_index);
-        process_response(response_list, body_url, last_item_index)
+        process_response(response_list, body_url, last_item_index, true)
           .then(function (init_resp) {
             try {
               res.writeHead(200, corsHeaders(json_t));
@@ -826,7 +886,7 @@ async function list_func(req, res) {
             }
           })
           .then(function () {
-            list_background(body_url, start_num, stop_num, chunk_size).then(
+            list_background(body_url, start_num, stop_num, chunk_size, true).then(
               () => {
                 trace(`Done processing playlist: ${body_url}`);
                 sock.emit("playlist-done", {
@@ -894,9 +954,12 @@ async function monitoring_type_func(req, res) {
     res.end(JSON.stringify({ error: error.message }));
   }
 }
-async function list_background(body_url, start_num, stop_num, chunk_size) {
+async function list_background(body_url, start_num, stop_num, chunk_size, skip_checks) {
   // yes a playlist on youtube atleast can only be 5000 long  && stop_num < 5000
-  while (true && body_url != "None") {
+  var max_size = 5000;
+  var loop_num = max_size / chunk_size;
+  var count = 0;
+  while (count < loop_num && body_url != "None") {
     start_num = start_num + chunk_size;
     stop_num = stop_num + chunk_size;
     // ideally we can set it to zero but that would get us rate limited by the services
@@ -909,7 +972,17 @@ async function list_background(body_url, start_num, stop_num, chunk_size) {
       break;
     }
     // yt-dlp starts counting from 1 for some reason so 1 needs to be subtracted here.
-    await process_response(response, body_url, start_num - 1);
+    const { quit_listing } = await process_response(
+      response,
+      body_url,
+      start_num - 1,
+      skip_checks
+    );
+    if (quit_listing) {
+      trace(`Quitting listing at Start: ${start_num}, Stop: ${stop_num}`);
+      break;
+    }
+    count++;
   }
 }
 async function add_playlist(url_var, monitoring_type_var) {
@@ -974,7 +1047,7 @@ async function playlists_to_table(req, res) {
       row = sort_with == 3 ? "updatedAt" : "playlist_index";
     trace(
       `playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, ` +
-        `Order: ${order}, Type: ${type}, Query: "${query_string}"`
+      `Order: ${order}, Type: ${type}, Query: "${query_string}"`
     );
     if (query_string == "") {
       playlist_list
@@ -1036,8 +1109,8 @@ async function sublist_to_table(req, res) {
 
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-        ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
-        `playlist_url: ${playlist_url}`
+      ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
+      `playlist_url: ${playlist_url}`
     );
     try {
       if (query_string == "") {
@@ -1237,14 +1310,13 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${
-      save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
     `List Options:\n\t` +
-      "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-      '--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}'
+    "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
+    '--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
