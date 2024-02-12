@@ -44,12 +44,12 @@ services:
       - revProxy-net
 
   yt-diff:
-    image: purevert/yt-diff:amd64
+    image: purevert/yt-diff:aarch64
     container_name: yt-diff
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.aarch64
       args:
         - base_url=${BASE_URL}
       # Use this to modify the files during building
