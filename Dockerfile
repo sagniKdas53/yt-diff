@@ -55,6 +55,8 @@ RUN cd frontend \
     && cd .. \
     && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz frontend
 
+RUN apt remove git ca-certificates xz-utils bzip2 wget -y
+
 EXPOSE 8888
 
 RUN groupadd -g 1000 ytdiff && \
