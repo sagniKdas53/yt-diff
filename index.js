@@ -16,9 +16,11 @@ const port = process.env.port || 8989;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
+const db_user = process.env.db_user || "ytdiff";
+const db_pass = process.env.db_password || "ytd1ff"; // Do remember to change this
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
-const scheduled_update_string = process.env.scheduled || "*/10 * * * *"; // Default: Every 12 hours
+const scheduled_update_string = process.env.scheduled || "*/10 * * * *"; // Default: Every 10 minutes
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 
 const get_subs = process.env.subtitles !== "false";
@@ -86,8 +88,8 @@ const sequelize = new Sequelize({
   host: db_host,
   dialect: "postgres",
   logging: false,
-  username: "ytdiff",
-  password: "ytd1ff",
+  username: db_user,
+  password: db_pass,
   database: "vidlist",
 });
 
