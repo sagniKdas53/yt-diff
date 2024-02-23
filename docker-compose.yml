@@ -56,7 +56,7 @@ services:
       - revProxy-net
 
   yt-diff:
-    image: purevert/yt-diff:amd64-alpine
+    image: purevert/yt-diff:alpine-amd64
     container_name: yt-diff
     restart: always
     build:
@@ -87,6 +87,7 @@ services:
       - hide_ports=${HIDE_PORTS}
       - save_loc=${SAVE_PATH}
       - sleep=${SLEEP}
+      - chunk_size_env=${CHUNK_SIZE}
       - subtitles=${SAVE_SUBSTITLES}
       - description=${SAVE_DESCRIPTION}
       - comments=${SAVE_COMMENTS}

@@ -12,7 +12,7 @@ const { Server } = require("socket.io");
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
-const port = process.env.port || 8989;
+const port = process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
@@ -20,6 +20,7 @@ const db_user = process.env.db_user || "ytdiff";
 const db_pass = process.env.db_password || "ytd1ff"; // Do remember to change this
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
+const chunk_size_env = process.env.chunk_size_env || 100; // From my research, this is what youtube uses
 const scheduled_update_string = process.env.scheduled || "*/10 * * * *"; // Default: Every 10 minutes
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 
@@ -398,9 +399,6 @@ async function process_response(response, body_url, index, skip_checks) {
         const foundItem = await video_list.findOne({
           where: { video_url: vid_url },
         });
-        // [2/8/2024, 1:10:12 AM] DEBUG: found item: null for url: y-w3h4tRuC8
-        // Too tired will fix this tomorrow actually someday also need to
-        // remove duplicated in junction table
         debug(`found item: ${JSON.stringify(foundItem)} for url: ${vid_url}`);
         return foundItem !== null;
       })
@@ -586,7 +584,7 @@ async function quick_updates() {
   */
   trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
-    var index = -9;
+    var index = -chunk_size_env+1;
     /*const last_item = await video_indexer.findOne({
       where: {
         playlist_url: playlist.playlist_url,
@@ -604,7 +602,7 @@ async function quick_updates() {
       index = last_item.index_in_playlist;*/
 
       await sleep();
-      await list_background(playlist.playlist_url, index, index + 10, 10, false);
+      await list_background(playlist.playlist_url, index, index + chunk_size_env, chunk_size_env, false);
       trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
@@ -629,7 +627,7 @@ async function full_updates() {
       trace(`Playlist: ${playlist.title.trim()} being updated fully`);
 
       await sleep();
-      await list_background(playlist.playlist_url, 0, 10, 10, true);
+      await list_background(playlist.playlist_url, 0, chunk_size_env, chunk_size_env, true);
       trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
@@ -772,14 +770,18 @@ async function list_func(req, res) {
             ? 1
             : +body["start"]
           : 1,
-      stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
-      // According to https://github.com/TeamNewPipe/NewPipe/issues/875 the partial
-      // playlist load size is 100 videos or approximately 25kb, more testing is required
-      chunk_size = body["chunk"] !== undefined ? +body["chunk"] : 10,
+      // The chunk size is sent from the frontend as it is the
+      // number of videos requested for the initial request
+      // The rest of the program uses the environment values
+      // If not specified environment variable will be used to determine the chunk size
+      chunk_size = body["chunk"] !== undefined ? +body["chunk"] : chunk_size_env,
+      // Setting this after chunk_size is determined is the right thing to do
+      stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size,
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
+    // debug("chunk_size: " + chunk_size + "\nstop_num: "+ stop_num)
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
@@ -1041,7 +1043,7 @@ async function playlists_to_table(req, res) {
   try {
     const body = await extract_json(req),
       start_num = body["start"] !== undefined ? +body["start"] : 0,
-      stop_num = body["stop"] !== undefined ? +body["stop"] : 10,
+      stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size_env,
       sort_with = body["sort"] !== undefined ? +body["sort"] : 1,
       order = body["order"] !== undefined ? +body["order"] : 1,
       query_string = body["query"] !== undefined ? body["query"] : "",
@@ -1101,7 +1103,7 @@ async function sublist_to_table(req, res) {
     const body = await extract_json(req),
       playlist_url = body["url"] !== undefined ? body["url"] : "None",
       start_num = body["start"] !== undefined ? +body["start"] : 0,
-      stop_num = body["stop"] !== undefined ? body["stop"] : 10,
+      stop_num = body["stop"] !== undefined ? body["stop"] : chunk_size_env,
       query_string = body["query"] !== undefined ? body["query"] : "",
       sort_downloaded =
         body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
