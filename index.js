@@ -12,15 +12,19 @@ const { Server } = require("socket.io");
 
 const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
-const port = process.env.port || 8888;
+const port = +process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
 
 const db_host = process.env.db_host || "localhost";
 const db_user = process.env.db_user || "ytdiff";
-const db_pass = process.env.db_password || "ytd1ff"; // Do remember to change this
+const db_pass = process.env.db_password_file
+  ? fs.readFileSync(process.env.db_password_file, "utf8").trim()
+  : (process.env.db_password && process.env.db_password.trim())
+    ? process.env.db_password
+    : "ytd1ff"; // Do remember to change this
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
-const chunk_size_env = process.env.chunk_size_env || 100; // From my research, this is what youtube uses
+const chunk_size_env = +process.env.chunk_size_env || 10; // From my research, this is what youtube uses
 const scheduled_update_string = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 
@@ -797,7 +801,7 @@ async function list_func(req, res) {
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
     // debug("chunk_size: " + chunk_size + "\nstop_num: "+ stop_num)
     var play_list_index = -1,
-    already_indexed = false;
+      already_indexed = false;
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
@@ -841,22 +845,26 @@ async function list_func(req, res) {
           // Its not an error, but the title extraction,
           // will only be done once the error is raised
           await add_playlist(body_url, monitoring_type)
-          .then(() => playlist_list.findOne({
-            order: [["createdAt", "DESC"]],
-          }))
-          .then(async (playlist) => {
-            if (playlist) {
-              await sleep(); // Assuming sleep is a function that returns a promise
-              play_list_index = playlist.playlist_index;
-              trace(`Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`);
-              resolve(last_item_index); // Resolve with last_item_index
-            } else {
-              throw new Error("Playlist not found");
-            }
-          })
-          .catch((error) => {
-            err_log("Error occurred:", error);
-          });
+            .then(() =>
+              playlist_list.findOne({
+                order: [["createdAt", "DESC"]],
+              })
+            )
+            .then(async (playlist) => {
+              if (playlist) {
+                await sleep(); // Assuming sleep is a function that returns a promise
+                play_list_index = playlist.playlist_index;
+                trace(
+                  `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
+                );
+                resolve(last_item_index); // Resolve with last_item_index
+              } else {
+                throw new Error("Playlist not found");
+              }
+            })
+            .catch((error) => {
+              err_log("Error occurred:", error);
+            });
         }
       } else {
         try {
@@ -919,8 +927,8 @@ async function list_func(req, res) {
         process_response(response_list, body_url, last_item_index, true)
           .then(function (init_resp) {
             try {
-              init_resp["prev_playlist_index"]=play_list_index+1;
-              init_resp["already_indexed"]=already_indexed;
+              init_resp["prev_playlist_index"] = play_list_index + 1;
+              init_resp["already_indexed"] = already_indexed;
               res.writeHead(200, corsHeaders(json_t));
               res.end(JSON.stringify(init_resp));
             } catch (error) {

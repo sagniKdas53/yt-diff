@@ -23,7 +23,7 @@ services:
       - revProxy-net
     environment:
       POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: /run/secrets/db_password
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - ${DB_LOCATION}:/var/lib/postgresql/data
@@ -67,7 +67,6 @@ services:
       # Use this to modify the files during building
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
-      #- ./dist:/dist
     depends_on:
       - yt-db
     networks:
@@ -76,13 +75,15 @@ services:
     #   - ${PORT}
     ports:
       - ${PORT}:${PORT}
+    secrets:
+      - db_password
     environment:
       - host=${HOSTNAME}
       - protocol=${PROTOCOL}
       - base_url=${BASE_URL}
       - db_host=${DB_HOST}
       - db_user=${DB_USERNAME}
-      - db_password=/run/secrets/db_password
+      - db_password_file=/run/secrets/db_password
       - port=${PORT}
       - hide_ports=${HIDE_PORTS}
       - save_loc=${SAVE_PATH}
@@ -94,8 +95,6 @@ services:
       - thumbnail=${SAVE_THUMBNAIL}
       - time_zone=${TZ_PREFERRED}
       - scheduled=${UPDATE_SCHEDULED}
-    secrets:
-      - db_password
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.ytdiff.entryPoints=web,websecure'
