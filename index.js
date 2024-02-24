@@ -21,7 +21,7 @@ const db_pass = process.env.db_password || "ytd1ff"; // Do remember to change th
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
 const chunk_size_env = process.env.chunk_size_env || 100; // From my research, this is what youtube uses
-const scheduled_update_string = process.env.scheduled || "*/10 * * * *"; // Default: Every 10 minutes
+const scheduled_update_string = process.env.scheduled || "0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
 
 const get_subs = process.env.subtitles !== "false";
@@ -131,7 +131,7 @@ const video_list = sequelize.define("video_list", {
     allowNull: false,
   },
   /* putting these here works only if each video belongs to one and only one playlist,
-  else there will be multiple instances of the same video belonging to different playlist 
+  else there will be multiple instances of the same video belonging to different playlist
   that have different available and downloaded statuses
   playlist_url: {
     type: DataTypes.STRING,
@@ -436,7 +436,7 @@ async function process_response(response, body_url, index, skip_checks) {
       )}`);
     }
   } else {
-    debug('Doing full update on playlist')
+    debug("Doing full update on playlist");
   }
 
   sock.emit("listing-or-downloading", { percentage: 101 });
@@ -490,7 +490,7 @@ async function process_response(response, body_url, index, skip_checks) {
           });
         debug(
           "Result of video_playlist_index add " +
-          JSON.stringify([foundJunction, createdJunction])
+            JSON.stringify([foundJunction, createdJunction])
         );
         if (!createdJunction) {
           // this seems like a good place to mention that
@@ -584,7 +584,7 @@ async function quick_updates() {
   */
   trace(`Updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
-    var index = -chunk_size_env+1;
+    var index = -chunk_size_env + 1;
     /*const last_item = await video_indexer.findOne({
       where: {
         playlist_url: playlist.playlist_url,
@@ -602,7 +602,13 @@ async function quick_updates() {
       index = last_item.index_in_playlist;*/
 
       await sleep();
-      await list_background(playlist.playlist_url, index, index + chunk_size_env, chunk_size_env, false);
+      await list_background(
+        playlist.playlist_url,
+        index,
+        index + chunk_size_env,
+        chunk_size_env,
+        false
+      );
       trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
@@ -627,7 +633,13 @@ async function full_updates() {
       trace(`Playlist: ${playlist.title.trim()} being updated fully`);
 
       await sleep();
-      await list_background(playlist.playlist_url, 0, chunk_size_env, chunk_size_env, true);
+      await list_background(
+        playlist.playlist_url,
+        0,
+        chunk_size_env,
+        chunk_size_env,
+        true
+      );
       trace(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
@@ -774,9 +786,11 @@ async function list_func(req, res) {
       // number of videos requested for the initial request
       // The rest of the program uses the environment values
       // If not specified environment variable will be used to determine the chunk size
-      chunk_size = body["chunk"] !== undefined ? +body["chunk"] : chunk_size_env,
-      // Setting this after chunk_size is determined is the right thing to do
-      stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size,
+      // chunk_size = body["chunk"] !== undefined ? +body["chunk"] : +chunk_size_env,
+      // // Setting this after chunk_size is determined is the right thing to do
+      // stop_num = body["stop"] !== undefined ? +body["stop"] : +chunk_size,
+      chunk_size = +chunk_size_env,
+      stop_num = +chunk_size,
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
@@ -790,12 +804,12 @@ async function list_func(req, res) {
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_func:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
-      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
-      `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
+        `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
+        `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) await sleep();
-    // honest looking up if the playlist or video is already indexed is a pain
+    // looking up if the playlist or video is already indexed is a pain
     const response_list = await list_spawner(body_url, start_num, stop_num);
     verbose(
       `response_list:\t${JSON.stringify(
@@ -809,8 +823,13 @@ async function list_func(req, res) {
         const is_already_indexed = await playlist_list.findOne({
           where: { playlist_url: body_url },
         });
+        var play_list_index = 0;
         try {
           is_already_indexed.title.trim();
+          trace(
+            `Playlist: ${is_already_indexed.title} is indexed at ${is_already_indexed.playlist_index}`
+          );
+          play_list_index = is_already_indexed.playlist_index;
           resolve(last_item_index);
         } catch (error) {
           err_log(
@@ -819,8 +838,26 @@ async function list_func(req, res) {
           // Its not an error, but the title extraction,
           // will only be done once the error is raised
           await add_playlist(body_url, monitoring_type)
-            .then(sleep())
-            .then(resolve(last_item_index));
+            .then(() =>
+              playlist_list.findOne({
+                order: [["createdAt", "DESC"]],
+              })
+            )
+            .then(async (playlist) => {
+              if (playlist) {
+                await sleep();
+                play_list_index = playlist.playlist_index;
+                trace(
+                  `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
+                );
+                return last_item_index; // Resolve with last_item_index
+              } else {
+                throw new Error("Playlist not found");
+              }
+            })
+            .catch((error) => {
+              err_log("Error occurred:", error);
+            });
         }
       } else {
         try {
@@ -838,10 +875,10 @@ async function list_func(req, res) {
           });
           debug(
             JSON.stringify(response_list) +
-            "\n " +
-            response_list[0].split("\t")[2] +
-            "\n " +
-            JSON.stringify(video_already_unlisted)
+              "\n " +
+              response_list[0].split("\t")[2] +
+              "\n " +
+              JSON.stringify(video_already_unlisted)
           );
           if (video_already_unlisted !== null) {
             debug("Video already saved as unlisted");
@@ -890,15 +927,19 @@ async function list_func(req, res) {
             }
           })
           .then(function () {
-            list_background(body_url, start_num, stop_num, chunk_size, true).then(
-              () => {
-                trace(`Done processing playlist: ${body_url}`);
-                sock.emit("playlist-done", {
-                  message: "done processing playlist or channel",
-                  id: body_url === "None" ? body["url"] : body_url,
-                });
-              }
-            );
+            list_background(
+              body_url,
+              start_num,
+              stop_num,
+              chunk_size,
+              true
+            ).then(() => {
+              trace(`Done processing playlist: ${body_url}`);
+              sock.emit("playlist-done", {
+                message: "done processing playlist or channel",
+                id: body_url === "None" ? body["url"] : body_url,
+              });
+            });
           });
       },
       (video_already_unlisted) => {
@@ -958,7 +999,13 @@ async function monitoring_type_func(req, res) {
     res.end(JSON.stringify({ error: error.message }));
   }
 }
-async function list_background(body_url, start_num, stop_num, chunk_size, skip_checks) {
+async function list_background(
+  body_url,
+  start_num,
+  stop_num,
+  chunk_size,
+  skip_checks
+) {
   // yes a playlist on youtube atleast can only be 5000 long  && stop_num < 5000
   var max_size = 5000;
   var loop_num = max_size / chunk_size;
@@ -1051,7 +1098,7 @@ async function playlists_to_table(req, res) {
       row = sort_with == 3 ? "updatedAt" : "playlist_index";
     trace(
       `playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, ` +
-      `Order: ${order}, Type: ${type}, Query: "${query_string}"`
+        `Order: ${order}, Type: ${type}, Query: "${query_string}"`
     );
     if (query_string == "") {
       playlist_list
@@ -1113,8 +1160,8 @@ async function sublist_to_table(req, res) {
 
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
-      ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
-      `playlist_url: ${playlist_url}`
+        ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
+        `playlist_url: ${playlist_url}`
     );
     try {
       if (query_string == "") {
@@ -1314,13 +1361,14 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${
+      save_loc.endsWith("/") ? save_loc : save_loc + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
     `List Options:\n\t` +
-    "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-    '--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}'
+      "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
+      '--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}'
   );
   job.start();
 });
