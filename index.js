@@ -485,7 +485,7 @@ async function process_response(response, body_url, index, skip_checks) {
         const [foundJunction, createdJunction] =
           await video_indexer.findOrCreate({
             // I am not sure but I think this is getting updated before
-            // it's saved if I make and pass it as an object
+            // it is saved if I make and pass it as an object
             where: junction_data,
           });
         debug(
@@ -507,7 +507,7 @@ async function process_response(response, body_url, index, skip_checks) {
 }
 async function update_vid_entry(found, data) {
   // The object was found and not created
-  // Doesn't change the downloaded state
+  // Does not change the downloaded state
   // I have a sneaking suspicion that this
   // will fail when there is any real change
   // in the video, lets see when that happens
@@ -545,7 +545,7 @@ async function update_vid_entry(found, data) {
     found.available = data.available;
     await found.save();
   } else if (found.downloaded !== data.downloaded) {
-    verbose("This property doesn't need modification");
+    verbose("This property does not need modification");
   }
 }
 async function sleep(sleep_seconds = sleep_time) {
@@ -731,7 +731,7 @@ async function download_sequential(items) {
             sock.emit("listing-or-downloading", { percentage: percentage });
           }
         } catch (error) {
-          // this is done so that the toasts don't go crazy
+          // this is done so that the toasts do not go crazy
           if (!error instanceof TypeError) {
             sock.emit("error", { message: `${error}` });
           }
@@ -796,6 +796,8 @@ async function list_func(req, res) {
       monitoring_type =
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
     // debug("chunk_size: " + chunk_size + "\nstop_num: "+ stop_num)
+    var play_list_index = -1,
+    already_indexed = false;
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
@@ -823,12 +825,13 @@ async function list_func(req, res) {
         const is_already_indexed = await playlist_list.findOne({
           where: { playlist_url: body_url },
         });
-        var play_list_index = 0;
         try {
           is_already_indexed.title.trim();
           trace(
             `Playlist: ${is_already_indexed.title} is indexed at ${is_already_indexed.playlist_index}`
           );
+          already_indexed = true;
+          // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
           play_list_index = is_already_indexed.playlist_index;
           resolve(last_item_index);
         } catch (error) {
@@ -838,26 +841,22 @@ async function list_func(req, res) {
           // Its not an error, but the title extraction,
           // will only be done once the error is raised
           await add_playlist(body_url, monitoring_type)
-            .then(() =>
-              playlist_list.findOne({
-                order: [["createdAt", "DESC"]],
-              })
-            )
-            .then(async (playlist) => {
-              if (playlist) {
-                await sleep();
-                play_list_index = playlist.playlist_index;
-                trace(
-                  `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
-                );
-                return last_item_index; // Resolve with last_item_index
-              } else {
-                throw new Error("Playlist not found");
-              }
-            })
-            .catch((error) => {
-              err_log("Error occurred:", error);
-            });
+          .then(() => playlist_list.findOne({
+            order: [["createdAt", "DESC"]],
+          }))
+          .then(async (playlist) => {
+            if (playlist) {
+              await sleep(); // Assuming sleep is a function that returns a promise
+              play_list_index = playlist.playlist_index;
+              trace(`Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`);
+              resolve(last_item_index); // Resolve with last_item_index
+            } else {
+              throw new Error("Playlist not found");
+            }
+          })
+          .catch((error) => {
+            err_log("Error occurred:", error);
+          });
         }
       } else {
         try {
@@ -865,8 +864,8 @@ async function list_func(req, res) {
           // If the url is determined to be an unlisted video
           // (i.e: not belonging to a playlist)
           // then the last unlisted video index is used to increment over.
-          // Although it doesn't really matter if a video is added many times, to the unlisted "None" playlist
-          // I think it's shouldn't be done, so add a check here to find out if it's being added multiple times.
+          // Although it does not really matter if a video is added many times, to the unlisted "None" playlist
+          // I think it should not be done, so add a check here to find out if it is being added multiple times.
           const video_already_unlisted = await video_indexer.findOne({
             where: {
               video_url: response_list[0].split("\t")[2],
@@ -920,6 +919,8 @@ async function list_func(req, res) {
         process_response(response_list, body_url, last_item_index, true)
           .then(function (init_resp) {
             try {
+              init_resp["prev_playlist_index"]=play_list_index+1;
+              init_resp["already_indexed"]=already_indexed;
               res.writeHead(200, corsHeaders(json_t));
               res.end(JSON.stringify(init_resp));
             } catch (error) {
@@ -1354,7 +1355,7 @@ server.listen(port, async () => {
   } else {
     info(`Server listening on ${protocol}://${host}:${port}${url_base}`);
   }
-  // I don't really know if calling these here is a good idea, but how else can I even do it?
+  // I do not really know if calling these here is a good idea, but how else can I even do it?
   const start = Date.now();
   await sleep();
   const elapsed = Date.now() - start;
@@ -1368,7 +1369,7 @@ server.listen(port, async () => {
   verbose(
     `List Options:\n\t` +
       "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-      '--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}'
+      `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}`
   );
   job.start();
 });
