@@ -80,6 +80,7 @@ services:
     environment:
       - host=${HOSTNAME}
       - protocol=${PROTOCOL}
+      - native_https_support=${NATIVE_HTTPS_SUPPORT}
       - base_url=${BASE_URL}
       - db_host=${DB_HOST}
       - db_user=${DB_USERNAME}

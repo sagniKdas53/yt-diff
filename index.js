@@ -14,6 +14,8 @@ const protocol = process.env.protocol || "http";
 const host = process.env.host || "localhost";
 const port = +process.env.port || 8888;
 const url_base = process.env.base_url || "/ytdiff";
+const native_https_support = process.env.native_https_support || "http";
+const native_https_key_location = process.env.native_https_key_location || "letsencrypt/live/ytdiff.cloud"
 
 const db_host = process.env.db_host || "localhost";
 const db_user = process.env.db_user || "ytdiff";
@@ -396,6 +398,9 @@ async function process_response(
     quit_listing: false,
   };
   sock.emit("listing-or-downloading", { percentage: 101 });
+  // Reverse the response array
+  response.reverse();
+  // Processing the response
   // if (is_update_operation) {
   // Query to check if all items already exist in the video_list table
   const allItemsExistInVideoList = await Promise.all(
@@ -418,11 +423,11 @@ async function process_response(
       const foundItem = await video_indexer.findOne({
         where: { video_url: vid_url, playlist_url: playlist_url },
       });
-      debug(
-        `found item: ${JSON.stringify(
-          foundItem
-        )} for url: ${vid_url} and playlist_url ${playlist_url}`
-      );
+      // debug(
+      //   `found item: ${JSON.stringify(
+      //     foundItem
+      //   )} for url: ${vid_url} and playlist_url ${playlist_url}`
+      // );
       return foundItem !== null;
     })
   );
@@ -450,74 +455,51 @@ async function process_response(
   await Promise.all(
     response.map(async (element, map_idx) => {
       try {
-        const element_arr = element.split("\t");
-        debug(`element_arr: ${element_arr}`);
-        var title = element_arr[0].trim(),
-          item_available = true;
-        const [vid_id, vid_url, vid_size_temp] = element_arr.slice(1);
-        const vid_size = vid_size_temp === "NA" ? -1 : vid_size_temp;
-        if (
-          title === "[Deleted video]" ||
-          title === "[Private video]" ||
-          title === "[Unavailable video]"
-        ) {
+        const [title, ...rest] = element.split("\t");
+        const vid_id = rest[0].trim();
+        const vid_url = rest[1];
+        const vid_size_temp = rest[2];
+        const vid_size = vid_size_temp === "NA" ? -1 : parseInt(vid_size_temp);
+        let item_available = true;
+        if (["[Deleted video]", "[Private video]", "[Unavailable video]"].includes(title)) {
           item_available = false;
-        } else if (title === "NA") {
-          title = vid_id.trim();
         }
-        // Title is processed here
-        const title_processed = await string_slicer(title, MAX_LENGTH);
-        try {
-          if (allItemsExistInVideoList[map_idx] === false) {
-            // its pre-incrementing index here so in the listers it starts from 0
-            const vid_data = {
-              video_id: vid_id,
-              title: title_processed,
-              approximate_size: vid_size,
-              downloaded: false,
-              available: item_available,
-            };
-            //debug(JSON.stringify(vid_data));
-            const [foundVid, createdVid] = await video_list.findOrCreate({
-              where: { video_url: vid_url },
-              defaults: vid_data,
-            });
-            debug(
-              "Result of video add " + JSON.stringify([foundVid, createdVid])
-            );
-            if (!createdVid) {
-              update_vid_entry(foundVid, vid_data);
-            }
+        const title_processed = await string_slicer(title === "NA" ? vid_id.trim() : title, MAX_LENGTH);
+        if (!allItemsExistInVideoList[map_idx]) {
+          const vid_data = {
+            video_id: vid_id,
+            title: title_processed,
+            approximate_size: vid_size,
+            downloaded: false,
+            available: item_available,
+          };
+          const [foundVid, createdVid] = await video_list.findOrCreate({
+            where: { video_url: vid_url },
+            defaults: vid_data,
+          });
+          debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          if (!createdVid) {
+            update_vid_entry(foundVid, vid_data);
           }
-          if (allItemsExistInVideoIndexer[map_idx] === false) {
-            const junction_data = {
-              video_url: vid_url,
-              playlist_url: body_url,
-              index_in_playlist: index + map_idx,
-            };
-            debug(JSON.stringify(junction_data));
-            const [foundJunction, createdJunction] =
-              await video_indexer.findOrCreate({
-                // I am not sure but I think this is getting updated before
-                // it is saved if I make and pass it as an object
-                where: junction_data,
-              });
-            debug(
-              "Result of video_playlist_index add " +
-              JSON.stringify([foundJunction, createdJunction])
-            );
-            if (!createdJunction) {
-              // this seems like a good place to mention that
-              // I should check the update functions too
-              verbose(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
-            }
-          }
-        } catch (error) {
-          err_log(`${error.message}\n${error.stack}`);
         }
-        init_resp["count"]++;
+        if (!allItemsExistInVideoIndexer[map_idx]) {
+          const junction_data = {
+            video_url: vid_url,
+            playlist_url: body_url,
+            index_in_playlist: index + map_idx,
+          };
+          const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
+            where: junction_data,
+          });
+          debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          if (!createdJunction) {
+            verbose(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
+          }
+        }
       } catch (error) {
         err_log(`${error.message}\n${error.stack}`);
+      } finally {
+        init_resp["count"]++;
       }
     })
   );
@@ -1186,7 +1168,13 @@ async function sublist_to_table(req, res) {
         body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
       order_array = sort_downloaded
         ? [video_list, "downloaded", "DESC"]
-        : ["index_in_playlist", "ASC"];
+        : ["updatedAt", "DESC"]
+    // : ["index_in_playlist", "ASC"];
+    // : ["createdAt", "DESC"];
+    // From what it seems createdAt - DESC is a better way to determine the order in which
+    // new videos are added to the list, also the order in which videos are added to a playlist
+    // only problem is when processing in chunks the oldest videos are added last so when ordered
+    // by descending they get listed first
 
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
@@ -1317,10 +1305,17 @@ function makeAssets(fileList) {
 
 const filesList = getFiles("dist");
 const staticAssets = makeAssets(filesList);
-const server_options = protocol === "http" ? {} : {
-  key: fs.readFileSync("key.pem"),
-  cert: fs.readFileSync("certificate.pem")
-};
+let server_options = {};
+if (native_https_support === "https") {
+  const certFilesList = getFiles(`letsencrypt/live/${host}`);
+  debug("certFilesList: " + JSON.stringify(certFilesList));
+  const staticCertAssets = makeAssets(certFilesList);
+  debug("static assets: " + JSON.stringify(Object.keys(staticCertAssets)));
+  server_options = {
+    key: staticCertAssets[`letsencrypt/live/${host}/privkey.pem`],
+    cert: staticCertAssets[`letsencrypt/live/${host}/fullchain.pem`]
+  };
+}
 
 const server = http.createServer(server_options, (req, res) => {
   if (req.url.startsWith(url_base) && req.method === "GET") {

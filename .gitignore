@@ -4,5 +4,6 @@ migration-scripts/*.sql
 yt-data/
 logs/
 dist/
+letsencrypt/
 update.log
 db_password.txt

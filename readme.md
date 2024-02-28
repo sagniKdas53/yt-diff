@@ -40,3 +40,22 @@ yt-dlp --playlist-start 1 --playlist-end 2 --flat-playlist \
 Yes... this Voice Line is actually in the game\tK1VVWJrpDgs\thttps://www.youtube.com/watch?v=K1VVWJrpDgs\tNA\tNA
 Yes... this Voice Line is actually in the game\tK1VVWJrpDgs\thttps://www.youtube.com/watch?v=K1VVWJrpDgs\tNA\tNA
 ```
+
+
+```sql
+SELECT *
+FROM video_indexers
+INNER JOIN video_lists ON video_indexers.video_url = video_lists.video_url
+WHERE video_indexers.playlist_url = 'https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3qXOV_XHT_FVR-e0gvkhtJ'
+ORDER BY index_in_playlist DESC;
+```
+
+
+```sql
+SELECT DISTINCT video_lists.video_url,video_indexers.index_in_playlist,video_lists.title,video_indexers."createdAt",video_indexers."updatedAt"
+FROM video_indexers
+INNER JOIN video_lists ON video_indexers.video_url = video_lists.video_url
+WHERE video_indexers.playlist_url = 'https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3qXOV_XHT_FVR-e0gvkhtJ'
+ORDER BY video_indexers."updatedAt" DESC
+LIMIT 50
+```
