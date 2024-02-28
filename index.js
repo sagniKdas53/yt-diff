@@ -19,13 +19,13 @@ const db_host = process.env.db_host || "localhost";
 const db_user = process.env.db_user || "ytdiff";
 const db_pass = process.env.db_password_file
   ? fs.readFileSync(process.env.db_password_file, "utf8").trim()
-  : (process.env.db_password && process.env.db_password.trim())
+  : process.env.db_password && process.env.db_password.trim()
     ? process.env.db_password
     : "ytd1ff"; // Do remember to change this
 const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
 const chunk_size_env = +process.env.chunk_size_env || 10; // From my research, this is what youtube uses
-const scheduled_update_string = process.env.scheduled || "*/10 * * * *";
+const scheduled_update_string = process.env.scheduled || "*/5 * * * *";
 // "0 */1 * * *";
 //"0 */12 * * *"; // Default: Every 12 hours
 const time_zone = process.env.time_zone || "Asia/Kolkata";
@@ -191,42 +191,40 @@ const playlist_list = sequelize.define("playlist_list", {
 
     This is a junction table
 */
-const video_indexer = sequelize.define(
-  "video_indexer",
-  {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-      allowNull: false,
+const video_indexer = sequelize.define("video_indexer", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  // linked to the primary key of the video_list table
+  video_url: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    references: {
+      model: video_list,
+      key: "video_url",
     },
-    // linked to the primary key of the video_list table
-    video_url: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      references: {
-        model: video_list,
-        key: "video_url",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
-    },
-    // linked to the primary key of the playlist_list
-    playlist_url: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    /*
+    onUpdate: "CASCADE",
+    onDelete: "CASCADE",
+  },
+  // linked to the primary key of the playlist_list
+  playlist_url: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  /*
     index_in_playlist exists to provide order to the relation of  video primary key with a playlist primary key.
     if index_in_playlist were added to the video_list table there would be a ton of duplicates of the
     video in the table each having different playlist url and indexes, this table seems like a good compromise
     */
-    index_in_playlist: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-  }
-);
+  index_in_playlist: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+});
 
 // Define the relationships
 video_indexer.belongsTo(video_list, {
@@ -235,6 +233,29 @@ video_indexer.belongsTo(video_list, {
 video_list.hasMany(video_indexer, {
   foreignKey: "video_url",
 });
+
+//Define the hook on the video_indexer model
+// video_indexer.addHook("beforeCreate", async (videoIndexer, options) => {
+//   try {
+//     verbose(`videoIndexer: ${videoIndexer}`);
+//     // Find the maximum index_in_playlist for the given playlist_url
+//     const maxIndex = await video_indexer.max("index_in_playlist",{
+//       where: { playlist_url: videoIndexer.playlist_url }
+//     });
+
+//     // If there are existing videos in the playlist, increment the index by 1
+//     if (maxIndex !== null) {
+//       videoIndexer.index_in_playlist = maxIndex + 1;
+//     } else {
+//       // If no videos exist in the playlist, set index to 0
+//       videoIndexer.index_in_playlist = 0;
+//     }
+//     verbose("Setting index to " + videoIndexer.index_in_play);
+//   } catch (error) {
+//     err_log("Error updating index_in_playlist:", error);
+//     throw error;
+//   }
+// });
 
 sequelize
   .sync()
@@ -359,8 +380,15 @@ async function list_spawner(body_url, start_num, stop_num) {
     });
   });
 }
-async function process_response(response, body_url, index, is_update_operation) {
-  trace(`process_response: Index: ${index}, Url: ${body_url}, Updating Playlist: ${is_update_operation}`);
+async function process_response(
+  response,
+  body_url,
+  index,
+  is_update_operation
+) {
+  trace(
+    `process_response: Index: ${index}, Url: ${body_url}, Updating Playlist: ${is_update_operation}`
+  );
   const init_resp = {
     count: 0,
     resp_url: body_url,
@@ -454,7 +482,9 @@ async function process_response(response, body_url, index, is_update_operation) 
               where: { video_url: vid_url },
               defaults: vid_data,
             });
-            debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+            debug(
+              "Result of video add " + JSON.stringify([foundVid, createdVid])
+            );
             if (!createdVid) {
               update_vid_entry(foundVid, vid_data);
             }
@@ -617,7 +647,9 @@ async function full_updates() {
   trace(`Full updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     try {
-      trace(`Full updating playlist: ${playlist.title.trim()} being updated fully`);
+      trace(
+        `Full updating playlist: ${playlist.title.trim()} being updated fully`
+      );
       // Since this is a full update the is_update_operation will be false
       await sleep();
       await list_background(
@@ -1013,7 +1045,9 @@ async function list_background(
     await sleep();
     const response = await list_spawner(body_url, start_num, stop_num);
     if (response.length === 0) {
-      trace(`Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`);
+      trace(
+        `Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`
+      );
       break;
     }
     // yt-dlp starts counting from 1 for some reason so 1 needs to be subtracted here.
@@ -1024,7 +1058,9 @@ async function list_background(
       is_update_operation
     );
     if (quit_listing) {
-      trace(`Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`);
+      trace(
+        `Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`
+      );
       break;
     }
     count++;
@@ -1281,8 +1317,12 @@ function makeAssets(fileList) {
 
 const filesList = getFiles("dist");
 const staticAssets = makeAssets(filesList);
+const server_options = protocol === "http" ? {} : {
+  key: fs.readFileSync("key.pem"),
+  cert: fs.readFileSync("certificate.pem")
+};
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(server_options, (req, res) => {
   if (req.url.startsWith(url_base) && req.method === "GET") {
     try {
       const get = req.url; //.replace(url_base, "");
