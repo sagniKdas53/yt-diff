@@ -410,7 +410,11 @@ async function process_response(
       const foundItem = await video_list.findOne({
         where: { video_url: vid_url },
       });
-      debug(`found item: ${JSON.stringify(foundItem)} for url: ${vid_url}`);
+      // debug(
+      //   `found item: ${JSON.stringify(
+      //     foundItem
+      //   )} for url: ${vid_url}`
+      // );
       return foundItem !== null;
     })
   );

@@ -1,4 +1,4 @@
-version: "3"
+version: "3.6"
 
 networks:
   revProxy-net:
@@ -56,12 +56,12 @@ services:
       - revProxy-net
 
   yt-diff:
-    image: purevert/yt-diff:alpine-amd64
+    image: purevert/yt-diff:aarch64
     container_name: yt-diff
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile.alpine
+      dockerfile: Dockerfile.aarch64
       args:
         - base_url=${BASE_URL}
       # Use this to modify the files during building
@@ -104,7 +104,7 @@ services:
       - 'traefik.http.services.ytdiff.loadBalancer.passHostHeader=true'
       - "traefik.http.routers.ytdiff.middlewares=http-to-https@docker"
       - "traefik.http.routers.ytdiff.tls=true"
-      - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
+      - "traefik.http.routers.ytdiff.tls.certresolver=production"
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
@@ -119,8 +119,8 @@ services:
     restart: always
     depends_on:
       - yt-db
-    ports:
-      - 9090:8080
+    # ports:
+    #   - 8080:8080
     networks:
       - revProxy-net
     labels:
@@ -132,5 +132,5 @@ services:
       - "traefik.http.middlewares.strip-adminer.stripprefix.prefixes=/adminer"
       - "traefik.http.routers.adminer.middlewares=strip-adminer@docker,http-to-https@docker"
       - "traefik.http.routers.adminer.tls=true"
-      - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
+      - "traefik.http.routers.adminer.tls.certresolver=production"
       - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
