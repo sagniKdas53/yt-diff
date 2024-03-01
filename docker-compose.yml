@@ -56,12 +56,12 @@ services:
       - revProxy-net
 
   yt-diff:
-    image: purevert/yt-diff:alpine-amd64
+    image: purevert/yt-diff:amd64
     container_name: yt-diff
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile.alpine
+      dockerfile: Dockerfile
       args:
         - base_url=${BASE_URL}
       # Use this to modify the files during building
@@ -73,29 +73,32 @@ services:
       - revProxy-net
     # expose:
     #   - ${PORT}
-    ports:
-      - ${PORT}:${PORT}
+    # ports:
+    #   - ${PORT}:${PORT}
     secrets:
       - db_password
     environment:
-      - host=${HOSTNAME}
-      - protocol=${PROTOCOL}
-      - native_https_support=${NATIVE_HTTPS_SUPPORT}
-      - base_url=${BASE_URL}
-      - db_host=${DB_HOST}
-      - db_user=${DB_USERNAME}
-      - db_password_file=/run/secrets/db_password
-      - port=${PORT}
-      - hide_ports=${HIDE_PORTS}
-      - save_loc=${SAVE_PATH}
-      - sleep=${SLEEP}
-      - chunk_size_env=${CHUNK_SIZE}
-      - subtitles=${SAVE_SUBSTITLES}
-      - description=${SAVE_DESCRIPTION}
-      - comments=${SAVE_COMMENTS}
-      - thumbnail=${SAVE_THUMBNAIL}
-      - time_zone=${TZ_PREFERRED}
-      - scheduled=${UPDATE_SCHEDULED}
+      - PROTOCOL=${PROTOCOL}
+      - HOSTNAME=${HOSTNAME}
+      - PORT=${PORT}
+      - BASE_URL=${BASE_URL}
+      - HIDE_PORTS=${HIDE_PORTS}
+      - USE_NATIVE_HTTPS=${USE_NATIVE_HTTPS}
+      # Database configuration
+      - DB_HOST=${DB_HOST}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+      # Download configuration
+      - SAVE_PATH=${SAVE_PATH}
+      - SLEEP=${SLEEP}
+      - CHUNK_SIZE_DEFAULT=${CHUNK_SIZE_DEFAULT}
+      - SAVE_SUBTITLES=${SAVE_SUBTITLES}
+      - SAVE_DESCRIPTION=${SAVE_DESCRIPTION}
+      - SAVE_COMMENTS=${SAVE_COMMENTS}
+      - SAVE_THUMBNAIL=${SAVE_THUMBNAIL}
+      # Update configuration
+      - TZ_PREFERRED=${TZ_PREFERRED}
+      - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.ytdiff.entryPoints=web,websecure'
@@ -120,7 +123,7 @@ services:
     depends_on:
       - yt-db
     ports:
-      - 9090:8080
+      - 8080:8080
     networks:
       - revProxy-net
     labels:

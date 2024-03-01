@@ -10,32 +10,30 @@ const path_fs = require("path");
 
 const { Server } = require("socket.io");
 
-const protocol = process.env.protocol || "http";
-const host = process.env.host || "localhost";
-const port = +process.env.port || 8888;
-const url_base = process.env.base_url || "/ytdiff";
-const native_https_support = process.env.native_https_support || "http";
-const native_https_key_location = process.env.native_https_key_location || "letsencrypt/live/ytdiff.cloud"
+const protocol = process.env.PROTOCOL || "http";
+const host = process.env.HOSTNAME || "localhost";
+const port = +process.env.PORT || 8888;
+const url_base = process.env.BASE_URL || "/ytdiff";
 
-const db_host = process.env.db_host || "localhost";
-const db_user = process.env.db_user || "ytdiff";
-const db_pass = process.env.db_password_file
-  ? fs.readFileSync(process.env.db_password_file, "utf8").trim()
-  : process.env.db_password && process.env.db_password.trim()
-    ? process.env.db_password
-    : "ytd1ff"; // Do remember to change this
-const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
-const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
-const chunk_size_env = +process.env.chunk_size_env || 10; // From my research, this is what youtube uses
-const scheduled_update_string = process.env.scheduled || "*/5 * * * *";
-// "0 */1 * * *";
-//"0 */12 * * *"; // Default: Every 12 hours
-const time_zone = process.env.time_zone || "Asia/Kolkata";
+const db_host = process.env.DB_HOST || "localhost";
+const db_user = process.env.DB_USERNAME || "ytdiff";
+// Do remember to change this
+const db_pass = process.env.DB_PASSWORD_FILE
+  ? fs.readFileSync(process.env.DB_PASSWORD_FILE, "utf8").trim()
+  : process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim()
+    ? process.env.DB_PASSWORD
+    : "ytd1ff";
 
-const get_subs = process.env.subtitles !== "false";
-const get_description = process.env.description !== "false";
-const get_comments = process.env.comments !== "false";
-const get_thumbnail = process.env.thumbnail !== "false";
+const save_location = process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/";
+const sleep_time = process.env.SLEEP ?? 3; // Will accept zero seconds, not recommended though.
+const chunk_size_env = +process.env.CHUNK_SIZE_DEFAULT || 10; // From my research, this is what youtube uses
+const scheduled_update_string = process.env.UPDATE_SCHEDULED || "0 */1 * * *";
+const time_zone = process.env.TZ_PREFERRED || "Asia/Kolkata";
+
+const save_subs = process.env.SAVE_SUBTITLES !== "false";
+const save_description = process.env.SAVE_DESCRIPTION !== "false";
+const save_comments = process.env.SAVE_COMMENTS !== "false";
+const save_thumbnail = process.env.SAVE_THUMBNAIL !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const not_needed = ["", "pornstar", "model", "videos"];
@@ -43,11 +41,11 @@ const playlistRegex = /(?:playlist|list=)\b/i;
 // spankbang lists playlists as playlist/1,2 so need to add a way to integrate it
 const options = [
   "--embed-metadata",
-  get_subs ? "--write-subs" : "",
-  get_subs ? "--write-auto-subs" : "",
-  get_description ? "--write-description" : "",
-  get_comments ? "--write-comments" : "",
-  get_thumbnail ? "--write-thumbnail" : "",
+  save_subs ? "--write-subs" : "",
+  save_subs ? "--write-auto-subs" : "",
+  save_description ? "--write-description" : "",
+  save_comments ? "--write-comments" : "",
+  save_thumbnail ? "--write-thumbnail" : "",
   "--paths",
 ].filter(Boolean);
 
@@ -90,8 +88,8 @@ const trace = (msg) => {
   );
 };
 
-if (!fs.existsSync(save_loc)) {
-  fs.mkdirSync(save_loc, { recursive: true });
+if (!fs.existsSync(save_location)) {
+  fs.mkdirSync(save_location, { recursive: true });
 }
 
 const sequelize = new Sequelize({
@@ -410,7 +408,11 @@ async function process_response(
       const foundItem = await video_list.findOne({
         where: { video_url: vid_url },
       });
-      debug(`found item: ${JSON.stringify(foundItem)} for url: ${vid_url}`);
+      // debug(
+      //   `found item: ${JSON.stringify(
+      //     foundItem
+      //   )} for url: ${vid_url}`
+      // );
       return foundItem !== null;
     })
   );
@@ -710,9 +712,9 @@ async function download_sequential(items) {
       var hold = null;
       // check if the trim is actually necessary
       debug(save_dir);
-      const save_path = path_fs.join(save_loc, save_dir.trim());
-      // if save_dir == "",  then save_path == save_loc
-      if (save_path != save_loc && !fs.existsSync(save_path)) {
+      const save_path = path_fs.join(save_location, save_dir.trim());
+      // if save_dir == "",  then save_path == save_location
+      if (save_path != save_location && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
       }
       sock.emit("download-start", { message: "" });
@@ -1306,15 +1308,19 @@ function makeAssets(fileList) {
 const filesList = getFiles("dist");
 const staticAssets = makeAssets(filesList);
 let server_options = {};
-if (native_https_support === "https") {
-  const certFilesList = getFiles(`letsencrypt/live/${host}`);
-  debug("certFilesList: " + JSON.stringify(certFilesList));
-  const staticCertAssets = makeAssets(certFilesList);
-  debug("static assets: " + JSON.stringify(Object.keys(staticCertAssets)));
-  server_options = {
-    key: staticCertAssets[`letsencrypt/live/${host}/privkey.pem`],
-    cert: staticCertAssets[`letsencrypt/live/${host}/fullchain.pem`]
-  };
+
+if (process.env.USE_NATIVE_HTTPS === "true") {
+  const keyPath = process.env.KEY_PATH;
+  const certPath = process.env.CERT_PATH;
+  try {
+    server_options = {
+      key: fs.readFileSync(keyPath, 'utf8'),
+      cert: fs.readFileSync(certPath, 'utf8')
+    };
+  } catch (error) {
+    console.error("Error reading secret files:", error);
+    process.exit(1);
+  }
 }
 
 const server = http.createServer(server_options, (req, res) => {
@@ -1378,7 +1384,7 @@ const sock = io.on("connection", (socket) => {
 });
 
 server.listen(port, async () => {
-  if (process.env.hide_ports === "true") {
+  if (process.env.HIDE_PORTS === "true") {
     info(`Server listening on ${protocol}://${host}${url_base}`);
   } else {
     info(`Server listening on ${protocol}://${host}:${port}${url_base}`);
@@ -1390,7 +1396,7 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_location.endsWith("/") ? save_location : save_location + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
