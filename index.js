@@ -27,7 +27,7 @@ const db_pass = process.env.DB_PASSWORD_FILE
 const save_location = process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.SLEEP ?? 3; // Will accept zero seconds, not recommended though.
 const chunk_size_env = +process.env.CHUNK_SIZE_DEFAULT || 10; // From my research, this is what youtube uses
-const scheduled_update_string = process.env.UPDATE_SCHEDULED || "0 */1 * * *";
+const scheduled_update_string = process.env.UPDATE_SCHEDULED || "*/30 * * * *";
 const time_zone = process.env.TZ_PREFERRED || "Asia/Kolkata";
 
 const save_subs = process.env.SAVE_SUBTITLES !== "false";
@@ -50,6 +50,11 @@ const options = [
 ].filter(Boolean);
 
 // Logging methods
+const allowed_log_levels = (process.env.LOG_LEVELS || "info,trace,debug").split(",");
+const cached_log_level =
+  [allowed_log_levels.includes("info"),
+  allowed_log_levels.includes("trace"),
+  allowed_log_levels.includes("debug")];
 const msg_trimmer = (msg) => {
   try {
     return msg.trim();
@@ -58,34 +63,38 @@ const msg_trimmer = (msg) => {
   }
 };
 const info = (msg) => {
-  console.log(
-    color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}\n`)
-  );
+  if (cached_log_level[0])
+    console.log(
+      color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
+    );
 };
 const verbose = (msg) => {
+  // This is just for adding some color to the logs, I don't use it anywhere meaningful
   console.log(
-    color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}\n`)
+    color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
   );
 };
 const debug = (msg) => {
-  console.log(
-    color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}\n`)
-  );
+  if (cached_log_level[2])
+    console.log(
+      color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}`)
+    );
 };
 const err_log = (msg) => {
-  console.log(
-    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg}\n`)
+  console.error(
+    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
   );
 };
 const warn = (msg) => {
   console.log(
-    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg}\n`)
+    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg}`)
   );
 };
 const trace = (msg) => {
-  console.log(
-    color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg}\n`)
-  );
+  if (cached_log_level[1])
+    console.log(
+      color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg}`)
+    );
 };
 
 if (!fs.existsSync(save_location)) {
@@ -234,29 +243,6 @@ video_list.hasMany(video_indexer, {
   foreignKey: "video_url",
 });
 
-//Define the hook on the video_indexer model
-// video_indexer.addHook("beforeCreate", async (videoIndexer, options) => {
-//   try {
-//     verbose(`videoIndexer: ${videoIndexer}`);
-//     // Find the maximum index_in_playlist for the given playlist_url
-//     const maxIndex = await video_indexer.max("index_in_playlist",{
-//       where: { playlist_url: videoIndexer.playlist_url }
-//     });
-
-//     // If there are existing videos in the playlist, increment the index by 1
-//     if (maxIndex !== null) {
-//       videoIndexer.index_in_playlist = maxIndex + 1;
-//     } else {
-//       // If no videos exist in the playlist, set index to 0
-//       videoIndexer.index_in_playlist = 0;
-//     }
-//     verbose("Setting index to " + videoIndexer.index_in_play);
-//   } catch (error) {
-//     err_log("Error updating index_in_playlist:", error);
-//     throw error;
-//   }
-// });
-
 sequelize
   .sync()
   .then(() => {
@@ -396,10 +382,26 @@ async function process_response(
     quit_listing: false,
   };
   sock.emit("listing-or-downloading", { percentage: 101 });
-  // Reverse the response array
-  response.reverse();
-  // Processing the response
-  // if (is_update_operation) {
+  // Setting this to zero so that no effect is there in normal runs
+  let last_item_index = 0;
+  if (is_update_operation) {
+    // manipulate the index
+    const last_item = await video_indexer.findOne({
+      where: {
+        playlist_url: body_url,
+      },
+      order: [["index_in_playlist", "DESC"]],
+      attributes: ["index_in_playlist"],
+      limit: 1,
+    });
+    //debug(JSON.stringify(last_item));
+    try {
+      last_item_index = last_item.index_in_playlist + 1;
+    } catch (error) {
+      // encountered an error if unlisted videos was not initialized
+      last_item_index = 1;
+    }
+  }
   // Query to check if all items already exist in the video_list table
   const allItemsExistInVideoList = await Promise.all(
     response.map(async (element) => {
@@ -442,10 +444,10 @@ async function process_response(
     init_resp["count"] = allItemsExistInVideoIndexer.length;
     return init_resp; // Return early if all items exist
   } else {
-    debug(`allItemsExistInVideoList: ${JSON.stringify(
+    debug(`Videos per list index exist in video_list: ${JSON.stringify(
       allItemsExistInVideoList
-    )}\n
-      allItemsExistInVideoIndexer: ${JSON.stringify(
+    )}`)
+    debug(`Videos per list index exist in video_indexer: ${JSON.stringify(
       allItemsExistInVideoIndexer
     )}`);
   }
@@ -479,7 +481,7 @@ async function process_response(
             where: { video_url: vid_url },
             defaults: vid_data,
           });
-          debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          // debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
           if (!createdVid) {
             update_vid_entry(foundVid, vid_data);
           }
@@ -488,14 +490,14 @@ async function process_response(
           const junction_data = {
             video_url: vid_url,
             playlist_url: body_url,
-            index_in_playlist: index + map_idx,
+            index_in_playlist: index + map_idx + last_item_index,
           };
           const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
             where: junction_data,
           });
-          debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          // debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
           if (!createdJunction) {
-            verbose(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
+            debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
           }
         }
       } catch (error) {
@@ -547,7 +549,7 @@ async function update_vid_entry(found, data) {
     found.available = data.available;
     await found.save();
   } else if (found.downloaded !== data.downloaded) {
-    verbose("This property does not need modification");
+    debug("This property does not need modification");
   }
 }
 async function sleep(sleep_seconds = sleep_time) {
@@ -578,31 +580,11 @@ async function quick_updates() {
       monitoring_type: 3,
     },
   });
-  /*
-  The quick_updates logic is wrong, because in order to fetch the newest
-  videos we need to just fetch the videos from 0 through to the chunk_size
-  once all the videos that we have fetched are already in the database
-  then it can stop, this function will need to be rewritten and tested.
-  */
+
   trace(`Fast updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     var index = -chunk_size_env + 1;
-    /*const last_item = await video_indexer.findOne({
-      where: {
-        playlist_url: playlist.playlist_url,
-      },
-      order: [["index_in_playlist", "DESC"]],
-      attributes: ["index_in_playlist"],
-      limit: 1,
-    });*/
     try {
-      /*trace(
-        `Playlist: ${playlist.title.trim()} being updated from index ${
-          last_item.index_in_playlist
-        }`
-      );
-      index = last_item.index_in_playlist;*/
-
       await sleep();
       await list_background(
         playlist.playlist_url,
@@ -785,13 +767,6 @@ async function list_func(req, res) {
             ? 1
             : +body["start"]
           : 1,
-      // The chunk size is sent from the frontend as it is the
-      // number of videos requested for the initial request
-      // The rest of the program uses the environment values
-      // If not specified environment variable will be used to determine the chunk size
-      // chunk_size = body["chunk"] !== undefined ? +body["chunk"] : +chunk_size_env,
-      // // Setting this after chunk_size is determined is the right thing to do
-      // stop_num = body["stop"] !== undefined ? +body["stop"] : +chunk_size,
       chunk_size = +chunk_size_env,
       stop_num = +chunk_size,
       sleep_before_listing =
@@ -812,10 +787,9 @@ async function list_func(req, res) {
       `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
-    if (sleep_before_listing) await sleep();
-    // looking up if the playlist or video is already indexed is a pain
+    if (sleep_before_listing) { await sleep(); }
     const response_list = await list_spawner(body_url, start_num, stop_num);
-    verbose(
+    debug(
       `response_list:\t${JSON.stringify(
         response_list,
         null,
@@ -829,9 +803,8 @@ async function list_func(req, res) {
           where: { playlist_url: body_url },
         });
         try {
-          is_already_indexed.title.trim();
           trace(
-            `Playlist: ${is_already_indexed.title} is indexed at ${is_already_indexed.playlist_index}`
+            `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
           );
           already_indexed = true;
           // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
@@ -843,6 +816,7 @@ async function list_func(req, res) {
           );
           // Its not an error, but the title extraction,
           // will only be done once the error is raised
+          // then is used to find the index of the previous playlist
           await add_playlist(body_url, monitoring_type)
             .then(() =>
               playlist_list.findOne({
@@ -871,8 +845,6 @@ async function list_func(req, res) {
           // If the url is determined to be an unlisted video
           // (i.e: not belonging to a playlist)
           // then the last unlisted video index is used to increment over.
-          // Although it does not really matter if a video is added many times, to the unlisted "None" playlist
-          // I think it should not be done, so add a check here to find out if it is being added multiple times.
           const video_already_unlisted = await video_indexer.findOne({
             where: {
               video_url: response_list[0].split("\t")[2],
@@ -899,7 +871,7 @@ async function list_func(req, res) {
               attributes: ["index_in_playlist"],
               limit: 1,
             });
-            debug(JSON.stringify(last_item));
+            //debug(JSON.stringify(last_item));
             try {
               last_item_index = last_item.index_in_playlist;
             } catch (error) {
@@ -1170,14 +1142,7 @@ async function sublist_to_table(req, res) {
         body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
       order_array = sort_downloaded
         ? [video_list, "downloaded", "DESC"]
-        : ["updatedAt", "DESC"]
-    // : ["index_in_playlist", "ASC"];
-    // : ["createdAt", "DESC"];
-    // From what it seems createdAt - DESC is a better way to determine the order in which
-    // new videos are added to the list, also the order in which videos are added to a playlist
-    // only problem is when processing in chunks the oldest videos are added last so when ordered
-    // by descending they get listed first
-
+        : ["index_in_playlist", "ASC"];
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
       ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +

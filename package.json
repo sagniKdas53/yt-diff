@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/sagniKdas53/yt-diff#readme",
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "bootstrap": "^5.2.3",
     "cli-color": "^2.0.3",
     "cron": "^2.3.0",
