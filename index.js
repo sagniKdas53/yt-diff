@@ -7,6 +7,8 @@ const CronJob = require("cron").CronJob;
 const fs = require("fs");
 const http = require("http");
 const path_fs = require("path");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const { Server } = require("socket.io");
 
@@ -36,6 +38,12 @@ const save_comments = process.env.SAVE_COMMENTS !== "false";
 const save_thumbnail = process.env.SAVE_THUMBNAIL !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
+const salt_rounds = 10;
+const secret_key = process.env.SECRET_KEY_FILE
+  ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
+  : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
+    ? process.env.SECRET_KEY
+    : "ytd1ff";
 const not_needed = ["", "pornstar", "model", "videos"];
 const playlistRegex = /(?:playlist|list=)\b/i;
 // spankbang lists playlists as playlist/1,2 so need to add a way to integrate it
@@ -69,7 +77,7 @@ const info = (msg) => {
     );
 };
 const verbose = (msg) => {
-  // This is just for adding some color to the logs, I don't use it anywhere meaningful
+  // This is just for adding some color to the logs, I don"t use it anywhere meaningful
   console.log(
     color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
   );
@@ -232,6 +240,28 @@ const video_indexer = sequelize.define("video_indexer", {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 0,
+  },
+});
+
+const users = sequelize.define("users", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  user_name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  salt: {
+    type: DataTypes.STRING,
+    allowNull: false,
   },
 });
 
@@ -556,6 +586,87 @@ async function sleep(sleep_seconds = sleep_time) {
   debug("Sleeping for " + sleep_seconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
 }
+// Authentication stuff
+async function hash_password(password) {
+  try {
+    const salt = await bcrypt.genSalt(salt_rounds);
+    const hash = await bcrypt.hash(password, salt);
+    return [salt, hash];
+  } catch (error) {
+    throw new Error("Error hashing password");
+  }
+}
+async function register(req, res) {
+  const body = await extract_json(req),
+    user_name = body["user_name"],
+    body_password = body["password"];
+  const foundUser = await users.findOne({
+    where: { user_name: user_name },
+  });
+  if (body_password !== undefined) {
+    if (foundUser === null) {
+      const [salt, password] = await hash_password(body_password);
+      users.create({ user_name: user_name, salt: salt, password: password });
+      res.writeHead(201, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "user added successfully" }));
+    } else {
+      res.writeHead(409, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "user already exists" }));
+    }
+  } else {
+    res.writeHead(400, corsHeaders(json_t));
+    res.end(JSON.stringify({ Outcome: "password is empty" }));
+  }
+}
+function generate_token(user) {
+  return jwt.sign({ id: user.userId, lastPasswordChange: user.updatedAt }, secret_key, { expiresIn: "365d" }); // 1 year expiration
+}
+async function verify_token(token) {
+  var valid = true;
+  jwt.verify(token, secret_key, async (err, decoded) => {
+    if (err) {
+      err_log(err);
+      valid = false;
+    }
+    verbose(`Decoded token: ${JSON.stringify(decoded)}}`);
+    const foundUser = await users.findByPk(
+      decoded.userId
+    );
+    verbose(`foundUser: ${JSON.stringify(foundUser)}`)
+    // Check if the token"s user"s last password change timestamp matches the one in the database
+    if (foundUser === null) {
+      err_log(`User not found in the database`);
+      valid = false;
+    } if (foundUser.updatedAt !== decoded.lastPasswordChange) {
+      debug(`foundUser.updatedAt: ${foundUser.updatedAt}`);
+      debug(`decoded.lastPasswordChange: ${decoded.lastPasswordChange}`);
+      err_log(`Token Expired`);
+      valid = false;
+    }
+  });
+  return valid;
+}
+async function login(req, res) {
+  const body = await extract_json(req),
+    user_name = body["user_name"],
+    body_password = body["password"];
+  const foundUser = await users.findOne({
+    where: { user_name: user_name },
+  });
+  if (foundUser === null) {
+    res.writeHead(404, corsHeaders(json_t));
+    res.end(JSON.stringify({ Outcome: "user not found" }));
+  } else {
+    const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
+    if (!passwordMatch) {
+      res.writeHead(401, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "invalid password" }));
+    }
+    res.writeHead(202, corsHeaders(json_t));
+    const token = generate_token(foundUser);
+    res.end(JSON.stringify({ token: token }));
+  }
+}
 
 // The scheduled updater
 async function scheduled_updater() {
@@ -772,7 +883,12 @@ async function list_func(req, res) {
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
-        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
+        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
+      token = body["token"];
+    verbose(`body: ${JSON.stringify(body)}`)
+    debug("before token validation");
+    const is_valid = await verify_token(token, res);
+    debug("after token validation:" + is_valid);
     var play_list_index = -1,
       already_indexed = false;
     if (body["url"] === undefined) {
@@ -894,7 +1010,7 @@ async function list_func(req, res) {
     });
     await play_list_exists.then(
       (last_item_index) => {
-        debug("last_item_index: " + last_item_index);
+        // debug("last_item_index: " + last_item_index);
         process_response(response_list, body_url, last_item_index, false)
           .then(function (init_resp) {
             try {
@@ -945,6 +1061,7 @@ async function list_func(req, res) {
     );
   } catch (error) {
     err_log(`${error.message}`);
+    console.error(error.stack);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -1279,8 +1396,8 @@ if (process.env.USE_NATIVE_HTTPS === "true") {
   const certPath = process.env.CERT_PATH;
   try {
     server_options = {
-      key: fs.readFileSync(keyPath, 'utf8'),
-      cert: fs.readFileSync(certPath, 'utf8')
+      key: fs.readFileSync(keyPath, "utf8"),
+      cert: fs.readFileSync(certPath, "utf8")
     };
   } catch (error) {
     console.error("Error reading secret files:", error);
@@ -1317,6 +1434,10 @@ const server = http.createServer(server_options, (req, res) => {
     playlists_to_table(req, res);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
     sublist_to_table(req, res);
+  } else if (req.url === url_base + "/register" && req.method === "POST") {
+    register(req, res);
+  } else if (req.url === url_base + "/login" && req.method === "POST") {
+    login(req, res);
   } else {
     res.writeHead(404, corsHeaders(html));
     res.write("Not Found");
