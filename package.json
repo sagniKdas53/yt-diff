@@ -27,6 +27,7 @@
     "bootstrap": "^5.2.3",
     "cli-color": "^2.0.3",
     "cron": "^2.3.0",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.10.0",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.31.1",
