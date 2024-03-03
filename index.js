@@ -9,6 +9,7 @@ const http = require("http");
 const path_fs = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const NodeCache = require('node-cache');
 
 const { Server } = require("socket.io");
 
@@ -39,6 +40,7 @@ const save_thumbnail = process.env.SAVE_THUMBNAIL !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const salt_rounds = 10;
+const user_cache = new NodeCache({ stdTTL: 3600, checkperiod: 7200 });
 const secret_key = process.env.SECRET_KEY_FILE
   ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
   : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
@@ -182,7 +184,7 @@ const playlist_list = sequelize.define("playlist_list", {
     defaultValue: 0,
   },
   monitoring_type: {
-    type: DataTypes.SMALLINT,
+    type: DataTypes.STRING,
     allowNull: false,
   },
   save_dir: {
@@ -284,7 +286,7 @@ sequelize
       where: { playlist_url: "None" },
       defaults: {
         title: "None",
-        monitoring_type: 1,
+        monitoring_type: "N/A",
         save_dir: "",
         playlist_index: -1,
       },
@@ -619,30 +621,48 @@ async function register(req, res) {
   }
 }
 function generate_token(user) {
-  return jwt.sign({ id: user.userId, lastPasswordChange: user.updatedAt }, secret_key, { expiresIn: "365d" }); // 1 year expiration
+  return jwt.sign({ id: user.id, lastPasswordChange: user.updatedAt }, secret_key, { expiresIn: "30d" }); // 1 year expiration
 }
-async function verify_token(token) {
+async function verify_token(req, res, next) {
   try {
+    const body = await extract_json(req),
+      token = body["token"];
     const decoded = jwt.verify(token, secret_key);
     //verbose(`Decoded token: ${JSON.stringify(decoded)}}`);
-    const foundUser = await users.findByPk(decoded.userId);
+    let foundUser = user_cache.get(decoded.id);
+    if (!foundUser) {
+      debug(`Checking the database for a user with id ${decoded.id}`);
+      foundUser = await users.findByPk(decoded.id);
+      user_cache.set(decoded.id, foundUser);
+    }
     //verbose(`foundUser: ${JSON.stringify(foundUser)}`)
     // Check if the token's user's last password change timestamp matches the one in the database
     if (foundUser === null) {
       err_log("User not found in the database");
-      return [false, "User not found in the database"];
+      res.writeHead(404, corsHeaders(json_t));
+      return res.end(JSON.stringify({ Outcome: "User not found" }));
     }
-    const foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
+    var foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
     if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
-      //debug(`foundUser.updatedAt: ${foundUserUpdatedAt}`);
-      //debug(`decoded.lastPasswordChange: ${decoded.lastPasswordChange}`);
-      err_log(`Token Expired`);
-      return [false, "Token Expired"];
+      debug(`Checking the database for a user with id ${decoded.id}`);
+      foundUser = await users.findByPk(decoded.id);
+      user_cache.set(decoded.id, foundUser);
+      foundUserUpdatedAt = foundUser.updatedAt.toISOString();
+      // Logging the re-fetched user data
+      debug(`foundUser.updatedAt: ${foundUserUpdatedAt}`);
+      debug(`decoded.lastPasswordChange: ${decoded.lastPasswordChange}`);
+      // Checking again
+      if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+        err_log(`Token Expired`);
+        res.writeHead(401, corsHeaders(json_t));
+        return res.end(JSON.stringify({ Outcome: "Token Expired" }));
+      }
     }
-    return [true, "Success"];
+    next(body, res);
   } catch (error) {
     err_log(error);
-    return [false, error.message];
+    res.writeHead(500, corsHeaders(json_t));
+    res.end(JSON.stringify({ Outcome: "Internal Server Error" }));
   }
 }
 async function login(req, res) {
@@ -652,6 +672,7 @@ async function login(req, res) {
   const foundUser = await users.findOne({
     where: { user_name: user_name },
   });
+  //verbose(`Found user ${JSON.stringify(foundUser)}`)
   if (foundUser === null) {
     res.writeHead(404, corsHeaders(json_t));
     res.end(JSON.stringify({ Outcome: "user not found" }));
@@ -687,7 +708,7 @@ async function scheduled_updater() {
 async function quick_updates() {
   const playlists = await playlist_list.findAndCountAll({
     where: {
-      monitoring_type: 3,
+      monitoring_type: "Fast",
     },
   });
 
@@ -717,7 +738,7 @@ async function quick_updates() {
 async function full_updates() {
   const playlists = await playlist_list.findAndCountAll({
     where: {
-      monitoring_type: 2,
+      monitoring_type: "Full",
     },
   });
   trace(`Full updating ${playlists["rows"].length} playlists`);
@@ -748,10 +769,9 @@ async function full_updates() {
 }
 
 // Download functions
-async function download_lister(req, res) {
+async function download_lister(body, res) {
   try {
-    const body = await extract_json(req),
-      download_list = [],
+    const download_list = [],
       in_download_list = new Set(),
       // remember to send this from the frontend
       play_list_url = body["url"] !== undefined ? body["url"] : "None";
@@ -868,205 +888,191 @@ async function download_sequential(items) {
 }
 
 // List functions
-async function list_func(req, res) {
+async function list_func(body, res) {
   try {
-    const body = await extract_json(req),
-      start_num =
-        body["start"] !== undefined
-          ? +body["start"] === 0
-            ? 1
-            : +body["start"]
-          : 1,
+    const start_num =
+      body["start"] !== undefined
+        ? +body["start"] === 0
+          ? 1
+          : +body["start"]
+        : 1,
       chunk_size = +chunk_size_env,
       stop_num = +chunk_size,
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
-        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1,
-      token = body["token"];
-    verbose(`body: ${JSON.stringify(body)}`)
-    verify_token(token).then(async (validity_arr) => {
-      if (validity_arr[0]) {
-        var play_list_index = -1,
-          already_indexed = false;
-        if (body["url"] === undefined) {
-          throw new Error("url is required");
-        }
-        var body_url = body["url"],
-          last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
-        //debug(`payload: ${JSON.stringify(body)}`);
-        trace(
-          `list_func:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
-          `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
-          `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
-        );
-        body_url = fix_common_errors(body_url);
-        if (sleep_before_listing) { await sleep(); }
-        const response_list = await list_spawner(body_url, start_num, stop_num);
-        debug(
-          `response_list:\t${JSON.stringify(
-            response_list,
-            null,
-            2
-          )}, response_list.length: ${response_list.length}`
-        );
-        // Checking if the response qualifies as a playlist
-        const play_list_exists = new Promise(async (resolve, reject) => {
-          if (response_list.length > 1 || playlistRegex.test(body_url)) {
-            const is_already_indexed = await playlist_list.findOne({
-              where: { playlist_url: body_url },
-            });
-            try {
-              trace(
-                `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
-              );
-              already_indexed = true;
-              // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
-              play_list_index = is_already_indexed.playlist_index;
-              resolve(last_item_index);
-            } catch (error) {
-              err_log(
-                "playlist or channel not encountered earlier, saving in playlist"
-              );
-              // Its not an error, but the title extraction,
-              // will only be done once the error is raised
-              // then is used to find the index of the previous playlist
-              await add_playlist(body_url, monitoring_type)
-                .then(() =>
-                  playlist_list.findOne({
-                    order: [["createdAt", "DESC"]],
-                  })
-                )
-                .then(async (playlist) => {
-                  if (playlist) {
-                    await sleep();
-                    play_list_index = playlist.playlist_index;
-                    trace(
-                      `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
-                    );
-                    resolve(last_item_index);
-                  } else {
-                    throw new Error("Playlist not found");
-                  }
-                })
-                .catch((error) => {
-                  err_log("Error occurred:", error);
-                });
-            }
-          } else {
-            try {
-              body_url = "None";
-              // If the url is determined to be an unlisted video
-              // (i.e: not belonging to a playlist)
-              // then the last unlisted video index is used to increment over.
-              const video_already_unlisted = await video_indexer.findOne({
-                where: {
-                  video_url: response_list[0].split("\t")[2],
-                  playlist_url: body_url,
-                },
-              });
-              debug(
-                JSON.stringify(response_list) +
-                "\n " +
-                response_list[0].split("\t")[2] +
-                "\n " +
-                JSON.stringify(video_already_unlisted)
-              );
-              if (video_already_unlisted !== null) {
-                debug("Video already saved as unlisted");
-                reject(video_already_unlisted);
-              } else {
-                debug("Adding a new video to the unlisted videos list");
-                const last_item = await video_indexer.findOne({
-                  where: {
-                    playlist_url: body_url,
-                  },
-                  order: [["index_in_playlist", "DESC"]],
-                  attributes: ["index_in_playlist"],
-                  limit: 1,
-                });
-                //debug(JSON.stringify(last_item));
-                try {
-                  last_item_index = last_item.index_in_playlist;
-                } catch (error) {
-                  // encountered an error if unlisted videos was not initialized
-                  last_item_index = 0;
-                }
-                resolve(last_item_index + 1);
-              }
-            } catch (error) {
-              err_log(`${error.message}`);
-              const status = error.status || 500;
-              res.writeHead(status, corsHeaders(json_t));
-              res.end(JSON.stringify({ error: error.message }));
-              sock.emit("playlist-done", {
-                message: "done processing playlist or channel",
-                id: body_url === "None" ? body["url"] : body_url,
-              });
-            }
-          }
+        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
+    //verbose(`body: ${JSON.stringify(body)}`)
+    var play_list_index = -1,
+      already_indexed = false;
+    if (body["url"] === undefined) {
+      throw new Error("url is required");
+    }
+    var body_url = body["url"],
+      last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
+    //debug(`payload: ${JSON.stringify(body)}`);
+    trace(
+      `list_func:  body_url: ${body_url}, start_num: ${start_num}, index: ${last_item_index}, ` +
+      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
+      `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
+    );
+    body_url = fix_common_errors(body_url);
+    if (sleep_before_listing) { await sleep(); }
+    const response_list = await list_spawner(body_url, start_num, stop_num);
+    debug(
+      `response_list:\t${JSON.stringify(
+        response_list,
+        null,
+        2
+      )}, response_list.length: ${response_list.length}`
+    );
+    // Checking if the response qualifies as a playlist
+    const play_list_exists = new Promise(async (resolve, reject) => {
+      if (response_list.length > 1 || playlistRegex.test(body_url)) {
+        const is_already_indexed = await playlist_list.findOne({
+          where: { playlist_url: body_url },
         });
-        await play_list_exists.then(
-          (last_item_index) => {
-            // debug("last_item_index: " + last_item_index);
-            process_response(response_list, body_url, last_item_index, false)
-              .then(function (init_resp) {
-                try {
-                  init_resp["prev_playlist_index"] = play_list_index + 1;
-                  init_resp["already_indexed"] = already_indexed;
-                  res.writeHead(200, corsHeaders(json_t));
-                  res.end(JSON.stringify(init_resp));
-                } catch (error) {
-                  err_log(`${error.message}`);
-                }
+        try {
+          trace(
+            `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
+          );
+          already_indexed = true;
+          // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
+          play_list_index = is_already_indexed.playlist_index;
+          resolve(last_item_index);
+        } catch (error) {
+          err_log(
+            "playlist or channel not encountered earlier, saving in playlist"
+          );
+          // Its not an error, but the title extraction,
+          // will only be done once the error is raised
+          // then is used to find the index of the previous playlist
+          await add_playlist(body_url, monitoring_type)
+            .then(() =>
+              playlist_list.findOne({
+                order: [["createdAt", "DESC"]],
               })
-              .then(function () {
-                list_background(
-                  body_url,
-                  start_num,
-                  stop_num,
-                  chunk_size,
-                  true
-                ).then(() => {
-                  trace(`Done processing playlist: ${body_url}`);
-                  sock.emit("playlist-done", {
-                    message: "done processing playlist or channel",
-                    id: body_url === "None" ? body["url"] : body_url,
-                  });
-                });
-              });
-          },
-          (video_already_unlisted) => {
-            trace("Video already saved as unlisted");
-            try {
-              res.writeHead(200, corsHeaders(json_t));
-              res.end(
-                JSON.stringify({
-                  message: "Video already saved as unlisted",
-                  count: 1,
-                  resp_url: body_url,
-                  start: video_already_unlisted.index_in_playlist,
-                })
-              );
-              sock.emit("playlist-done", {
-                message: "done processing playlist or channel",
-                id: body_url === "None" ? body["url"] : body_url,
-              });
-            } catch (error) {
-              err_log(`${error.message}`);
-            }
-          }
-        );
+            )
+            .then(async (playlist) => {
+              if (playlist) {
+                await sleep();
+                play_list_index = playlist.playlist_index;
+                trace(
+                  `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
+                );
+                resolve(last_item_index);
+              } else {
+                throw new Error("Playlist not found");
+              }
+            })
+            .catch((error) => {
+              err_log("Error occurred:", error);
+            });
+        }
       } else {
-        res.writeHead(401, corsHeaders(json_t));
-        res.end(JSON.stringify({ error: validity_arr[1] }));
-        // Add a custom websocket error if I feel like later.
-        sock.emit("playlist-done", {
-          message: "done processing playlist or channel",
-          id: body_url === "None" ? body["url"] : body_url,
-        });
+        try {
+          body_url = "None";
+          // If the url is determined to be an unlisted video
+          // (i.e: not belonging to a playlist)
+          // then the last unlisted video index is used to increment over.
+          const video_already_unlisted = await video_indexer.findOne({
+            where: {
+              video_url: response_list[0].split("\t")[2],
+              playlist_url: body_url,
+            },
+          });
+          debug(
+            JSON.stringify(response_list) +
+            "\n " +
+            response_list[0].split("\t")[2] +
+            "\n " +
+            JSON.stringify(video_already_unlisted)
+          );
+          if (video_already_unlisted !== null) {
+            debug("Video already saved as unlisted");
+            reject(video_already_unlisted);
+          } else {
+            debug("Adding a new video to the unlisted videos list");
+            const last_item = await video_indexer.findOne({
+              where: {
+                playlist_url: body_url,
+              },
+              order: [["index_in_playlist", "DESC"]],
+              attributes: ["index_in_playlist"],
+              limit: 1,
+            });
+            //debug(JSON.stringify(last_item));
+            try {
+              last_item_index = last_item.index_in_playlist;
+            } catch (error) {
+              // encountered an error if unlisted videos was not initialized
+              last_item_index = 0;
+            }
+            resolve(last_item_index + 1);
+          }
+        } catch (error) {
+          err_log(`${error.message}`);
+          const status = error.status || 500;
+          res.writeHead(status, corsHeaders(json_t));
+          res.end(JSON.stringify({ error: error.message }));
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: body_url === "None" ? body["url"] : body_url,
+          });
+        }
       }
     });
+    await play_list_exists.then(
+      (last_item_index) => {
+        // debug("last_item_index: " + last_item_index);
+        process_response(response_list, body_url, last_item_index, false)
+          .then(function (init_resp) {
+            try {
+              init_resp["prev_playlist_index"] = play_list_index + 1;
+              init_resp["already_indexed"] = already_indexed;
+              res.writeHead(200, corsHeaders(json_t));
+              res.end(JSON.stringify(init_resp));
+            } catch (error) {
+              err_log(`${error.message}`);
+            }
+          })
+          .then(function () {
+            list_background(
+              body_url,
+              start_num,
+              stop_num,
+              chunk_size,
+              true
+            ).then(() => {
+              trace(`Done processing playlist: ${body_url}`);
+              sock.emit("playlist-done", {
+                message: "done processing playlist or channel",
+                id: body_url === "None" ? body["url"] : body_url,
+              });
+            });
+          });
+      },
+      (video_already_unlisted) => {
+        trace("Video already saved as unlisted");
+        try {
+          res.writeHead(200, corsHeaders(json_t));
+          res.end(
+            JSON.stringify({
+              message: "Video already saved as unlisted",
+              count: 1,
+              resp_url: body_url,
+              start: video_already_unlisted.index_in_playlist,
+            })
+          );
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: body_url === "None" ? body["url"] : body_url,
+          });
+        } catch (error) {
+          err_log(`${error.message}`);
+        }
+      }
+    );
   } catch (error) {
     err_log(`${error.message}`);
     console.error(error.stack);
@@ -1079,10 +1085,9 @@ async function list_func(req, res) {
     });
   }
 }
-async function monitoring_type_func(req, res) {
+async function monitoring_type_func(body, res) {
   try {
-    const body = await extract_json(req),
-      body_url = body["url"],
+    const body_url = body["url"],
       monitoring_type = body["watch"];
     if (body["url"] === undefined || body["watch"] === undefined) {
       throw new Error("url and watch are required");
@@ -1197,10 +1202,9 @@ async function add_playlist(url_var, monitoring_type_var) {
 }
 
 // List function that send data to frontend
-async function playlists_to_table(req, res) {
+async function playlists_to_table(body, res) {
   try {
-    const body = await extract_json(req),
-      start_num = body["start"] !== undefined ? +body["start"] : 0,
+    const start_num = body["start"] !== undefined ? +body["start"] : 0,
       stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size_env,
       sort_with = body["sort"] !== undefined ? +body["sort"] : 1,
       order = body["order"] !== undefined ? +body["order"] : 1,
@@ -1256,10 +1260,9 @@ async function playlists_to_table(req, res) {
     res.end(JSON.stringify({ error: error.message }));
   }
 }
-async function sublist_to_table(req, res) {
+async function sublist_to_table(body, res) {
   try {
-    const body = await extract_json(req),
-      playlist_url = body["url"] !== undefined ? body["url"] : "None",
+    const playlist_url = body["url"] !== undefined ? body["url"] : "None",
       start_num = body["start"] !== undefined ? +body["start"] : 0,
       stop_num = body["stop"] !== undefined ? body["stop"] : chunk_size_env,
       query_string = body["query"] !== undefined ? body["query"] : "",
@@ -1433,15 +1436,15 @@ const server = http.createServer(server_options, (req, res) => {
     res.writeHead(204, corsHeaders(json_t));
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
-    list_func(req, res);
+    verify_token(req, res, list_func);
   } else if (req.url === url_base + "/download" && req.method === "POST") {
-    download_lister(req, res);
+    verify_token(req, res,download_lister);
   } else if (req.url === url_base + "/watch" && req.method === "POST") {
-    monitoring_type_func(req, res);
+    verify_token(req, res,monitoring_type_func);
   } else if (req.url === url_base + "/getplay" && req.method === "POST") {
-    playlists_to_table(req, res);
+    verify_token(req, res, playlists_to_table);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
-    sublist_to_table(req, res);
+    verify_token(req, res, sublist_to_table);
   } else if (req.url === url_base + "/register" && req.method === "POST") {
     register(req, res);
   } else if (req.url === url_base + "/login" && req.method === "POST") {
