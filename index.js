@@ -7,51 +7,64 @@ const CronJob = require("cron").CronJob;
 const fs = require("fs");
 const http = require("http");
 const path_fs = require("path");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const NodeCache = require("node-cache");
 
 const { Server } = require("socket.io");
 
-const protocol = process.env.protocol || "http";
-const host = process.env.host || "localhost";
-const port = +process.env.port || 8888;
-const url_base = process.env.base_url || "/ytdiff";
-const native_https_support = process.env.native_https_support || "http";
-const native_https_key_location = process.env.native_https_key_location || "letsencrypt/live/ytdiff.cloud"
+const protocol = process.env.PROTOCOL || "http";
+const host = process.env.HOSTNAME || "localhost";
+const port = +process.env.PORT || 8888;
+const url_base = process.env.BASE_URL || "/ytdiff";
 
-const db_host = process.env.db_host || "localhost";
-const db_user = process.env.db_user || "ytdiff";
-const db_pass = process.env.db_password_file
-  ? fs.readFileSync(process.env.db_password_file, "utf8").trim()
-  : process.env.db_password && process.env.db_password.trim()
-    ? process.env.db_password
-    : "ytd1ff"; // Do remember to change this
-const save_loc = process.env.save_loc || "/home/sagnik/Videos/yt-dlp/";
-const sleep_time = process.env.sleep ?? 3; // Will accept zero seconds, not recommended though.
-const chunk_size_env = +process.env.chunk_size_env || 10; // From my research, this is what youtube uses
-const scheduled_update_string = process.env.scheduled || "*/5 * * * *";
-// "0 */1 * * *";
-//"0 */12 * * *"; // Default: Every 12 hours
-const time_zone = process.env.time_zone || "Asia/Kolkata";
+const db_host = process.env.DB_HOST || "localhost";
+const db_user = process.env.DB_USERNAME || "ytdiff";
+// Do remember to change this
+const db_pass = process.env.DB_PASSWORD_FILE
+  ? fs.readFileSync(process.env.DB_PASSWORD_FILE, "utf8").trim()
+  : process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim()
+    ? process.env.DB_PASSWORD
+    : "ytd1ff";
 
-const get_subs = process.env.subtitles !== "false";
-const get_description = process.env.description !== "false";
-const get_comments = process.env.comments !== "false";
-const get_thumbnail = process.env.thumbnail !== "false";
+const save_location = process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/";
+const sleep_time = process.env.SLEEP ?? 3; // Will accept zero seconds, not recommended though.
+const chunk_size_env = +process.env.CHUNK_SIZE_DEFAULT || 10; // From my research, this is what youtube uses
+const scheduled_update_string = process.env.UPDATE_SCHEDULED || "*/30 * * * *";
+const time_zone = process.env.TZ_PREFERRED || "Asia/Kolkata";
+
+const save_subs = process.env.SAVE_SUBTITLES !== "false";
+const save_description = process.env.SAVE_DESCRIPTION !== "false";
+const save_comments = process.env.SAVE_COMMENTS !== "false";
+const save_thumbnail = process.env.SAVE_THUMBNAIL !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
+const salt_rounds = 10;
+const user_cache = new NodeCache({ stdTTL: 3600, checkperiod: 7200 });
+const secret_key = process.env.SECRET_KEY_FILE
+  ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
+  : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
+    ? process.env.SECRET_KEY
+    : "ytd1ff";
 const not_needed = ["", "pornstar", "model", "videos"];
 const playlistRegex = /(?:playlist|list=)\b/i;
 // spankbang lists playlists as playlist/1,2 so need to add a way to integrate it
 const options = [
   "--embed-metadata",
-  get_subs ? "--write-subs" : "",
-  get_subs ? "--write-auto-subs" : "",
-  get_description ? "--write-description" : "",
-  get_comments ? "--write-comments" : "",
-  get_thumbnail ? "--write-thumbnail" : "",
+  save_subs ? "--write-subs" : "",
+  save_subs ? "--write-auto-subs" : "",
+  save_description ? "--write-description" : "",
+  save_comments ? "--write-comments" : "",
+  save_thumbnail ? "--write-thumbnail" : "",
   "--paths",
 ].filter(Boolean);
 
 // Logging methods
+const allowed_log_levels = (process.env.LOG_LEVELS || "info,trace,debug").split(",");
+const cached_log_level =
+  [allowed_log_levels.includes("info"),
+  allowed_log_levels.includes("trace"),
+  allowed_log_levels.includes("debug")];
 const msg_trimmer = (msg) => {
   try {
     return msg.trim();
@@ -60,38 +73,42 @@ const msg_trimmer = (msg) => {
   }
 };
 const info = (msg) => {
-  console.log(
-    color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}\n`)
-  );
+  if (cached_log_level[0])
+    console.log(
+      color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
+    );
 };
 const verbose = (msg) => {
+  // This is just for adding some color to the logs, I don"t use it anywhere meaningful
   console.log(
-    color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}\n`)
+    color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
   );
 };
 const debug = (msg) => {
-  console.log(
-    color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}\n`)
-  );
+  if (cached_log_level[2])
+    console.log(
+      color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}`)
+    );
 };
 const err_log = (msg) => {
-  console.log(
-    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg}\n`)
+  console.error(
+    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
   );
 };
 const warn = (msg) => {
   console.log(
-    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg}\n`)
+    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg}`)
   );
 };
 const trace = (msg) => {
-  console.log(
-    color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg}\n`)
-  );
+  if (cached_log_level[1])
+    console.log(
+      color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg}`)
+    );
 };
 
-if (!fs.existsSync(save_loc)) {
-  fs.mkdirSync(save_loc, { recursive: true });
+if (!fs.existsSync(save_location)) {
+  fs.mkdirSync(save_location, { recursive: true });
 }
 
 const sequelize = new Sequelize({
@@ -167,7 +184,7 @@ const playlist_list = sequelize.define("playlist_list", {
     defaultValue: 0,
   },
   monitoring_type: {
-    type: DataTypes.SMALLINT,
+    type: DataTypes.STRING,
     allowNull: false,
   },
   save_dir: {
@@ -228,6 +245,28 @@ const video_indexer = sequelize.define("video_indexer", {
   },
 });
 
+const users = sequelize.define("users", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  user_name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  salt: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+});
+
 // Define the relationships
 video_indexer.belongsTo(video_list, {
   foreignKey: "video_url",
@@ -235,29 +274,6 @@ video_indexer.belongsTo(video_list, {
 video_list.hasMany(video_indexer, {
   foreignKey: "video_url",
 });
-
-//Define the hook on the video_indexer model
-// video_indexer.addHook("beforeCreate", async (videoIndexer, options) => {
-//   try {
-//     verbose(`videoIndexer: ${videoIndexer}`);
-//     // Find the maximum index_in_playlist for the given playlist_url
-//     const maxIndex = await video_indexer.max("index_in_playlist",{
-//       where: { playlist_url: videoIndexer.playlist_url }
-//     });
-
-//     // If there are existing videos in the playlist, increment the index by 1
-//     if (maxIndex !== null) {
-//       videoIndexer.index_in_playlist = maxIndex + 1;
-//     } else {
-//       // If no videos exist in the playlist, set index to 0
-//       videoIndexer.index_in_playlist = 0;
-//     }
-//     verbose("Setting index to " + videoIndexer.index_in_play);
-//   } catch (error) {
-//     err_log("Error updating index_in_playlist:", error);
-//     throw error;
-//   }
-// });
 
 sequelize
   .sync()
@@ -270,7 +286,7 @@ sequelize
       where: { playlist_url: "None" },
       defaults: {
         title: "None",
-        monitoring_type: 1,
+        monitoring_type: "N/A",
         save_dir: "",
         playlist_index: -1,
       },
@@ -398,10 +414,26 @@ async function process_response(
     quit_listing: false,
   };
   sock.emit("listing-or-downloading", { percentage: 101 });
-  // Reverse the response array
-  response.reverse();
-  // Processing the response
-  // if (is_update_operation) {
+  // Setting this to zero so that no effect is there in normal runs
+  let last_item_index = 0;
+  if (is_update_operation) {
+    // manipulate the index
+    const last_item = await video_indexer.findOne({
+      where: {
+        playlist_url: body_url,
+      },
+      order: [["index_in_playlist", "DESC"]],
+      attributes: ["index_in_playlist"],
+      limit: 1,
+    });
+    //debug(JSON.stringify(last_item));
+    try {
+      last_item_index = last_item.index_in_playlist + 1;
+    } catch (error) {
+      // encountered an error if unlisted videos was not initialized
+      last_item_index = 1;
+    }
+  }
   // Query to check if all items already exist in the video_list table
   const allItemsExistInVideoList = await Promise.all(
     response.map(async (element) => {
@@ -444,10 +476,10 @@ async function process_response(
     init_resp["count"] = allItemsExistInVideoIndexer.length;
     return init_resp; // Return early if all items exist
   } else {
-    debug(`allItemsExistInVideoList: ${JSON.stringify(
+    debug(`Videos per list index exist in video_list: ${JSON.stringify(
       allItemsExistInVideoList
-    )}\n
-      allItemsExistInVideoIndexer: ${JSON.stringify(
+    )}`)
+    debug(`Videos per list index exist in video_indexer: ${JSON.stringify(
       allItemsExistInVideoIndexer
     )}`);
   }
@@ -481,7 +513,7 @@ async function process_response(
             where: { video_url: vid_url },
             defaults: vid_data,
           });
-          debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          // debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
           if (!createdVid) {
             update_vid_entry(foundVid, vid_data);
           }
@@ -490,14 +522,14 @@ async function process_response(
           const junction_data = {
             video_url: vid_url,
             playlist_url: body_url,
-            index_in_playlist: index + map_idx,
+            index_in_playlist: index + map_idx + last_item_index,
           };
           const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
             where: junction_data,
           });
-          debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          // debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
           if (!createdJunction) {
-            verbose(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
+            debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
           }
         }
       } catch (error) {
@@ -549,12 +581,130 @@ async function update_vid_entry(found, data) {
     found.available = data.available;
     await found.save();
   } else if (found.downloaded !== data.downloaded) {
-    verbose("This property does not need modification");
+    debug("This property does not need modification");
   }
 }
 async function sleep(sleep_seconds = sleep_time) {
   debug("Sleeping for " + sleep_seconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
+}
+// Authentication stuff
+async function hash_password(password) {
+  try {
+    const salt = await bcrypt.genSalt(salt_rounds);
+    const hash = await bcrypt.hash(password, salt);
+    return [salt, hash];
+  } catch (error) {
+    throw new Error("Error hashing password");
+  }
+}
+async function register(req, res) {
+  const body = await extract_json(req),
+    user_name = body["user_name"],
+    body_password = body["password"];
+  const foundUser = await users.findOne({
+    where: { user_name: user_name },
+  });
+  if (body_password !== undefined) {
+    if (foundUser === null) {
+      const [salt, password] = await hash_password(body_password);
+      users.create({ user_name: user_name, salt: salt, password: password });
+      res.writeHead(201, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "User added successfully" }));
+    } else {
+      res.writeHead(409, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "User already exists" }));
+    }
+  } else {
+    res.writeHead(400, corsHeaders(json_t));
+    res.end(JSON.stringify({ Outcome: "Password is empty" }));
+  }
+}
+function generate_token(user, expiry_time) {
+  return jwt.sign(
+    {
+      id: user.id,
+      lastPasswordChange: user.updatedAt
+    },
+    secret_key, { expiresIn: expiry_time }
+  );
+}
+async function verify_token(req, res, next) {
+  try {
+    const body = await extract_json(req),
+      token = body["token"];
+    const decoded = jwt.verify(token, secret_key);
+    //verbose(`Decoded token: ${JSON.stringify(decoded)}}`);
+    let foundUser = user_cache.get(decoded.id);
+    if (!foundUser) {
+      debug(`Checking the database for a user with id ${decoded.id}`);
+      foundUser = await users.findByPk(decoded.id);
+      user_cache.set(decoded.id, foundUser);
+    }
+    //verbose(`foundUser: ${JSON.stringify(foundUser)}`)
+    // Check if the last password change timestamp matches the one in the database for the user
+    if (foundUser === null) {
+      err_log("User not found in the database");
+      res.writeHead(404, corsHeaders(json_t));
+      return res.end(JSON.stringify({ Outcome: "User not found" }));
+    }
+    var foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
+    if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+      debug(`Checking the database for a user with id ${decoded.id}`);
+      foundUser = await users.findByPk(decoded.id);
+      user_cache.set(decoded.id, foundUser);
+      foundUserUpdatedAt = foundUser.updatedAt.toISOString();
+      // Logging the re-fetched user data
+      debug(`foundUser.updatedAt: ${foundUserUpdatedAt}`);
+      debug(`decoded.lastPasswordChange: ${decoded.lastPasswordChange}`);
+      // Checking again
+      if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+        err_log(`Token Expired`);
+        res.writeHead(401, corsHeaders(json_t));
+        return res.end(JSON.stringify({ Outcome: "Token Expired" }));
+      }
+    }
+    next(body, res);
+  } catch (error) {
+    err_log(error);
+    if (error.name === "TokenExpiredError") {
+      sock.emit("token-expired")
+      res.writeHead(401, corsHeaders(json_t));
+      return res.end(JSON.stringify({ Outcome: "Token Expired" }));
+    }
+    res.writeHead(500, corsHeaders(json_t));
+    return res.end(JSON.stringify({ Outcome: error.message }));
+  }
+}
+async function login(req, res) {
+  try {
+    const body = await extract_json(req),
+      user_name = body["user_name"],
+      body_password = body["password"],
+      expiry_time = body["expiry_time"] || "1d";
+    verbose(`Token expires in ${expiry_time}`);
+    const foundUser = await users.findOne({
+      where: { user_name: user_name },
+    });
+    verbose(`Found user ${JSON.stringify(foundUser)}`)
+    if (foundUser === null) {
+      res.writeHead(404, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
+    } else {
+      const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
+      if (!passwordMatch) {
+        res.writeHead(401, corsHeaders(json_t));
+        return res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
+      }
+      const token = generate_token(foundUser, expiry_time);
+      res.writeHead(202, corsHeaders(json_t));
+      return res.end(JSON.stringify({ token: token }));
+    }
+  } catch (error) {
+    err_log(`Error generating token: ${error.message}`);
+    res.writeHead(500, corsHeaders(json_t));
+    res.end(JSON.stringify({ Outcome: "Internal Server Error" }));
+  }
 }
 
 // The scheduled updater
@@ -577,34 +727,14 @@ async function scheduled_updater() {
 async function quick_updates() {
   const playlists = await playlist_list.findAndCountAll({
     where: {
-      monitoring_type: 3,
+      monitoring_type: "Fast",
     },
   });
-  /*
-  The quick_updates logic is wrong, because in order to fetch the newest
-  videos we need to just fetch the videos from 0 through to the chunk_size
-  once all the videos that we have fetched are already in the database
-  then it can stop, this function will need to be rewritten and tested.
-  */
+
   trace(`Fast updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     var index = -chunk_size_env + 1;
-    /*const last_item = await video_indexer.findOne({
-      where: {
-        playlist_url: playlist.playlist_url,
-      },
-      order: [["index_in_playlist", "DESC"]],
-      attributes: ["index_in_playlist"],
-      limit: 1,
-    });*/
     try {
-      /*trace(
-        `Playlist: ${playlist.title.trim()} being updated from index ${
-          last_item.index_in_playlist
-        }`
-      );
-      index = last_item.index_in_playlist;*/
-
       await sleep();
       await list_background(
         playlist.playlist_url,
@@ -627,7 +757,7 @@ async function quick_updates() {
 async function full_updates() {
   const playlists = await playlist_list.findAndCountAll({
     where: {
-      monitoring_type: 2,
+      monitoring_type: "Full",
     },
   });
   trace(`Full updating ${playlists["rows"].length} playlists`);
@@ -658,10 +788,9 @@ async function full_updates() {
 }
 
 // Download functions
-async function download_lister(req, res) {
+async function download_lister(body, res) {
   try {
-    const body = await extract_json(req),
-      download_list = [],
+    const download_list = [],
       in_download_list = new Set(),
       // remember to send this from the frontend
       play_list_url = body["url"] !== undefined ? body["url"] : "None";
@@ -714,9 +843,9 @@ async function download_sequential(items) {
       var hold = null;
       // check if the trim is actually necessary
       debug(save_dir);
-      const save_path = path_fs.join(save_loc, save_dir.trim());
-      // if save_dir == "",  then save_path == save_loc
-      if (save_path != save_loc && !fs.existsSync(save_path)) {
+      const save_path = path_fs.join(save_location, save_dir.trim());
+      // if save_dir == "",  then save_path == save_location
+      if (save_path != save_location && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
       }
       sock.emit("download-start", { message: "" });
@@ -778,28 +907,21 @@ async function download_sequential(items) {
 }
 
 // List functions
-async function list_func(req, res) {
+async function list_func(body, res) {
   try {
-    const body = await extract_json(req),
-      start_num =
-        body["start"] !== undefined
-          ? +body["start"] === 0
-            ? 1
-            : +body["start"]
-          : 1,
-      // The chunk size is sent from the frontend as it is the
-      // number of videos requested for the initial request
-      // The rest of the program uses the environment values
-      // If not specified environment variable will be used to determine the chunk size
-      // chunk_size = body["chunk"] !== undefined ? +body["chunk"] : +chunk_size_env,
-      // // Setting this after chunk_size is determined is the right thing to do
-      // stop_num = body["stop"] !== undefined ? +body["stop"] : +chunk_size,
+    const start_num =
+      body["start"] !== undefined
+        ? +body["start"] === 0
+          ? 1
+          : +body["start"]
+        : 1,
       chunk_size = +chunk_size_env,
       stop_num = +chunk_size,
       sleep_before_listing =
         body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type =
         body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
+    //verbose(`body: ${JSON.stringify(body)}`)
     var play_list_index = -1,
       already_indexed = false;
     if (body["url"] === undefined) {
@@ -814,10 +936,9 @@ async function list_func(req, res) {
       `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
     body_url = fix_common_errors(body_url);
-    if (sleep_before_listing) await sleep();
-    // looking up if the playlist or video is already indexed is a pain
+    if (sleep_before_listing) { await sleep(); }
     const response_list = await list_spawner(body_url, start_num, stop_num);
-    verbose(
+    debug(
       `response_list:\t${JSON.stringify(
         response_list,
         null,
@@ -831,9 +952,8 @@ async function list_func(req, res) {
           where: { playlist_url: body_url },
         });
         try {
-          is_already_indexed.title.trim();
           trace(
-            `Playlist: ${is_already_indexed.title} is indexed at ${is_already_indexed.playlist_index}`
+            `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
           );
           already_indexed = true;
           // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
@@ -845,6 +965,7 @@ async function list_func(req, res) {
           );
           // Its not an error, but the title extraction,
           // will only be done once the error is raised
+          // then is used to find the index of the previous playlist
           await add_playlist(body_url, monitoring_type)
             .then(() =>
               playlist_list.findOne({
@@ -873,8 +994,6 @@ async function list_func(req, res) {
           // If the url is determined to be an unlisted video
           // (i.e: not belonging to a playlist)
           // then the last unlisted video index is used to increment over.
-          // Although it does not really matter if a video is added many times, to the unlisted "None" playlist
-          // I think it should not be done, so add a check here to find out if it is being added multiple times.
           const video_already_unlisted = await video_indexer.findOne({
             where: {
               video_url: response_list[0].split("\t")[2],
@@ -901,7 +1020,7 @@ async function list_func(req, res) {
               attributes: ["index_in_playlist"],
               limit: 1,
             });
-            debug(JSON.stringify(last_item));
+            //debug(JSON.stringify(last_item));
             try {
               last_item_index = last_item.index_in_playlist;
             } catch (error) {
@@ -924,7 +1043,7 @@ async function list_func(req, res) {
     });
     await play_list_exists.then(
       (last_item_index) => {
-        debug("last_item_index: " + last_item_index);
+        // debug("last_item_index: " + last_item_index);
         process_response(response_list, body_url, last_item_index, false)
           .then(function (init_resp) {
             try {
@@ -975,6 +1094,7 @@ async function list_func(req, res) {
     );
   } catch (error) {
     err_log(`${error.message}`);
+    console.error(error.stack);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: error.message }));
@@ -984,10 +1104,9 @@ async function list_func(req, res) {
     });
   }
 }
-async function monitoring_type_func(req, res) {
+async function monitoring_type_func(body, res) {
   try {
-    const body = await extract_json(req),
-      body_url = body["url"],
+    const body_url = body["url"],
       monitoring_type = body["watch"];
     if (body["url"] === undefined || body["watch"] === undefined) {
       throw new Error("url and watch are required");
@@ -1102,10 +1221,9 @@ async function add_playlist(url_var, monitoring_type_var) {
 }
 
 // List function that send data to frontend
-async function playlists_to_table(req, res) {
+async function playlists_to_table(body, res) {
   try {
-    const body = await extract_json(req),
-      start_num = body["start"] !== undefined ? +body["start"] : 0,
+    const start_num = body["start"] !== undefined ? +body["start"] : 0,
       stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size_env,
       sort_with = body["sort"] !== undefined ? +body["sort"] : 1,
       order = body["order"] !== undefined ? +body["order"] : 1,
@@ -1161,10 +1279,9 @@ async function playlists_to_table(req, res) {
     res.end(JSON.stringify({ error: error.message }));
   }
 }
-async function sublist_to_table(req, res) {
+async function sublist_to_table(body, res) {
   try {
-    const body = await extract_json(req),
-      playlist_url = body["url"] !== undefined ? body["url"] : "None",
+    const playlist_url = body["url"] !== undefined ? body["url"] : "None",
       start_num = body["start"] !== undefined ? +body["start"] : 0,
       stop_num = body["stop"] !== undefined ? body["stop"] : chunk_size_env,
       query_string = body["query"] !== undefined ? body["query"] : "",
@@ -1172,14 +1289,7 @@ async function sublist_to_table(req, res) {
         body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
       order_array = sort_downloaded
         ? [video_list, "downloaded", "DESC"]
-        : ["updatedAt", "DESC"]
-    // : ["index_in_playlist", "ASC"];
-    // : ["createdAt", "DESC"];
-    // From what it seems createdAt - DESC is a better way to determine the order in which
-    // new videos are added to the list, also the order in which videos are added to a playlist
-    // only problem is when processing in chunks the oldest videos are added last so when ordered
-    // by descending they get listed first
-
+        : ["index_in_playlist", "ASC"];
     trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
       ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
@@ -1310,15 +1420,19 @@ function makeAssets(fileList) {
 const filesList = getFiles("dist");
 const staticAssets = makeAssets(filesList);
 let server_options = {};
-if (native_https_support === "https") {
-  const certFilesList = getFiles(`letsencrypt/live/${host}`);
-  debug("certFilesList: " + JSON.stringify(certFilesList));
-  const staticCertAssets = makeAssets(certFilesList);
-  debug("static assets: " + JSON.stringify(Object.keys(staticCertAssets)));
-  server_options = {
-    key: staticCertAssets[`letsencrypt/live/${host}/privkey.pem`],
-    cert: staticCertAssets[`letsencrypt/live/${host}/fullchain.pem`]
-  };
+
+if (process.env.USE_NATIVE_HTTPS === "true") {
+  const keyPath = process.env.KEY_PATH;
+  const certPath = process.env.CERT_PATH;
+  try {
+    server_options = {
+      key: fs.readFileSync(keyPath, "utf8"),
+      cert: fs.readFileSync(certPath, "utf8")
+    };
+  } catch (error) {
+    console.error("Error reading secret files:", error);
+    process.exit(1);
+  }
 }
 
 const server = http.createServer(server_options, (req, res) => {
@@ -1341,15 +1455,19 @@ const server = http.createServer(server_options, (req, res) => {
     res.writeHead(204, corsHeaders(json_t));
     res.end();
   } else if (req.url === url_base + "/list" && req.method === "POST") {
-    list_func(req, res);
+    verify_token(req, res, list_func);
   } else if (req.url === url_base + "/download" && req.method === "POST") {
-    download_lister(req, res);
+    verify_token(req, res, download_lister);
   } else if (req.url === url_base + "/watch" && req.method === "POST") {
-    monitoring_type_func(req, res);
+    verify_token(req, res, monitoring_type_func);
   } else if (req.url === url_base + "/getplay" && req.method === "POST") {
-    playlists_to_table(req, res);
+    verify_token(req, res, playlists_to_table);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
-    sublist_to_table(req, res);
+    verify_token(req, res, sublist_to_table);
+  } else if (req.url === url_base + "/register" && req.method === "POST") {
+    register(req, res);
+  } else if (req.url === url_base + "/login" && req.method === "POST") {
+    login(req, res);
   } else {
     res.writeHead(404, corsHeaders(html));
     res.write("Not Found");
@@ -1382,7 +1500,7 @@ const sock = io.on("connection", (socket) => {
 });
 
 server.listen(port, async () => {
-  if (process.env.hide_ports === "true") {
+  if (process.env.HIDE_PORTS === "true") {
     info(`Server listening on ${protocol}://${host}${url_base}`);
   } else {
     info(`Server listening on ${protocol}://${host}:${port}${url_base}`);
@@ -1394,7 +1512,7 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_loc.endsWith("/") ? save_loc : save_loc + "/"
+    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_location.endsWith("/") ? save_location : save_location + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
