@@ -78,7 +78,7 @@ sequelize
           console.log("Created: " + JSON.stringify(entity));
           // This doesn't work either.
           //const [results, metadata] = await play_lists.sequelize.query(
-          //  `UPDATE play_lists SET updatedAt = '${row.updatedAt}' WHERE url = ${row.url};`
+          //  `UPDATE play_lists SET updatedAt = "${row.updatedAt}" WHERE url = ${row.url};`
           //);
         } catch (error) {
           console.error(error);

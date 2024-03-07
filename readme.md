@@ -55,7 +55,7 @@ ORDER BY index_in_playlist DESC;
 SELECT DISTINCT video_lists.video_url,video_indexers.index_in_playlist,video_lists.title,video_indexers."createdAt",video_indexers."updatedAt"
 FROM video_indexers
 INNER JOIN video_lists ON video_indexers.video_url = video_lists.video_url
-WHERE video_indexers.playlist_url = 'https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3qXOV_XHT_FVR-e0gvkhtJ'
+WHERE video_indexers.playlist_url = 'https://www.youtube.com/playlist?list=PLyIwTNqpN_9ZKZoQ8XzADGtbuVtbsTCjH'
 ORDER BY video_indexers."updatedAt" DESC
 LIMIT 50
 ```
