@@ -9,7 +9,7 @@ const http = require("http");
 const path_fs = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const NodeCache = require('node-cache');
+const NodeCache = require("node-cache");
 
 const { Server } = require("socket.io");
 
@@ -610,18 +610,24 @@ async function register(req, res) {
       const [salt, password] = await hash_password(body_password);
       users.create({ user_name: user_name, salt: salt, password: password });
       res.writeHead(201, corsHeaders(json_t));
-      res.end(JSON.stringify({ Outcome: "user added successfully" }));
+      res.end(JSON.stringify({ Outcome: "User added successfully" }));
     } else {
       res.writeHead(409, corsHeaders(json_t));
-      res.end(JSON.stringify({ Outcome: "user already exists" }));
+      res.end(JSON.stringify({ Outcome: "User already exists" }));
     }
   } else {
     res.writeHead(400, corsHeaders(json_t));
-    res.end(JSON.stringify({ Outcome: "password is empty" }));
+    res.end(JSON.stringify({ Outcome: "Password is empty" }));
   }
 }
-function generate_token(user) {
-  return jwt.sign({ id: user.id, lastPasswordChange: user.updatedAt }, secret_key, { expiresIn: "30d" }); // 1 year expiration
+function generate_token(user, expiry_time) {
+  return jwt.sign(
+    {
+      id: user.id,
+      lastPasswordChange: user.updatedAt
+    },
+    secret_key, { expiresIn: expiry_time }
+  );
 }
 async function verify_token(req, res, next) {
   try {
@@ -636,7 +642,7 @@ async function verify_token(req, res, next) {
       user_cache.set(decoded.id, foundUser);
     }
     //verbose(`foundUser: ${JSON.stringify(foundUser)}`)
-    // Check if the token's user's last password change timestamp matches the one in the database
+    // Check if the last password change timestamp matches the one in the database for the user
     if (foundUser === null) {
       err_log("User not found in the database");
       res.writeHead(404, corsHeaders(json_t));
@@ -661,30 +667,43 @@ async function verify_token(req, res, next) {
     next(body, res);
   } catch (error) {
     err_log(error);
+    if (error.name === "TokenExpiredError") {
+      sock.emit("token-expired")
+      res.writeHead(401, corsHeaders(json_t));
+      return res.end(JSON.stringify({ Outcome: "Token Expired" }));
+    }
     res.writeHead(500, corsHeaders(json_t));
-    res.end(JSON.stringify({ Outcome: "Internal Server Error" }));
+    return res.end(JSON.stringify({ Outcome: error.message }));
   }
 }
 async function login(req, res) {
-  const body = await extract_json(req),
-    user_name = body["user_name"],
-    body_password = body["password"];
-  const foundUser = await users.findOne({
-    where: { user_name: user_name },
-  });
-  //verbose(`Found user ${JSON.stringify(foundUser)}`)
-  if (foundUser === null) {
-    res.writeHead(404, corsHeaders(json_t));
-    res.end(JSON.stringify({ Outcome: "user not found" }));
-  } else {
-    const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
-    if (!passwordMatch) {
-      res.writeHead(401, corsHeaders(json_t));
-      res.end(JSON.stringify({ Outcome: "invalid password" }));
+  try {
+    const body = await extract_json(req),
+      user_name = body["user_name"],
+      body_password = body["password"],
+      expiry_time = body["expiry_time"] || "1d";
+    verbose(`Token expires in ${expiry_time}`);
+    const foundUser = await users.findOne({
+      where: { user_name: user_name },
+    });
+    verbose(`Found user ${JSON.stringify(foundUser)}`)
+    if (foundUser === null) {
+      res.writeHead(404, corsHeaders(json_t));
+      res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
+    } else {
+      const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
+      if (!passwordMatch) {
+        res.writeHead(401, corsHeaders(json_t));
+        return res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
+      }
+      const token = generate_token(foundUser, expiry_time);
+      res.writeHead(202, corsHeaders(json_t));
+      return res.end(JSON.stringify({ token: token }));
     }
-    res.writeHead(202, corsHeaders(json_t));
-    const token = generate_token(foundUser);
-    res.end(JSON.stringify({ token: token }));
+  } catch (error) {
+    err_log(`Error generating token: ${error.message}`);
+    res.writeHead(500, corsHeaders(json_t));
+    res.end(JSON.stringify({ Outcome: "Internal Server Error" }));
   }
 }
 
@@ -1438,9 +1457,9 @@ const server = http.createServer(server_options, (req, res) => {
   } else if (req.url === url_base + "/list" && req.method === "POST") {
     verify_token(req, res, list_func);
   } else if (req.url === url_base + "/download" && req.method === "POST") {
-    verify_token(req, res,download_lister);
+    verify_token(req, res, download_lister);
   } else if (req.url === url_base + "/watch" && req.method === "POST") {
-    verify_token(req, res,monitoring_type_func);
+    verify_token(req, res, monitoring_type_func);
   } else if (req.url === url_base + "/getplay" && req.method === "POST") {
     verify_token(req, res, playlists_to_table);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
