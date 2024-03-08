@@ -83,7 +83,7 @@ services:
       - PORT=${PORT}
       - BASE_URL=${BASE_URL}
       - HIDE_PORTS=${HIDE_PORTS}
-      - USE_NATIVE_HTTPS=${USE_NATIVE_HTTPS}
+      - USE_NATIVE_HTTPS=${NATIVE_HTTPS_SUPPORT}
       # Database configuration
       - DB_HOST=${DB_HOST}
       - DB_USERNAME=${DB_USERNAME}
@@ -107,7 +107,7 @@ services:
       - 'traefik.http.services.ytdiff.loadBalancer.passHostHeader=true'
       - "traefik.http.routers.ytdiff.middlewares=http-to-https@docker"
       - "traefik.http.routers.ytdiff.tls=true"
-      - "traefik.http.routers.ytdiff.tls.certresolver=production"
+      - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
     # healthcheck:
     #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
@@ -135,5 +135,5 @@ services:
       - "traefik.http.middlewares.strip-adminer.stripprefix.prefixes=/adminer"
       - "traefik.http.routers.adminer.middlewares=strip-adminer@docker,http-to-https@docker"
       - "traefik.http.routers.adminer.tls=true"
-      - "traefik.http.routers.adminer.tls.certresolver=production"
+      - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
       - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
