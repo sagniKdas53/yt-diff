@@ -909,18 +909,12 @@ async function download_sequential(items) {
 // List functions
 async function list_func(body, res) {
   try {
-    const start_num =
-      body["start"] !== undefined
-        ? +body["start"] === 0
-          ? 1
-          : +body["start"]
-        : 1,
+    const start_num = body["start"] !== undefined ?
+      +body["start"] === 0 ? 1 : +body["start"] : 1,
       chunk_size = +chunk_size_env,
-      stop_num = +chunk_size,
-      sleep_before_listing =
-        body["sleep"] !== undefined ? body["sleep"] : false,
-      monitoring_type =
-        body["monitoring_type"] !== undefined ? body["monitoring_type"] : 1;
+      stop_num = +chunk_size + 1,
+      sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false,
+      monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
     //verbose(`body: ${JSON.stringify(body)}`)
     var play_list_index = -1,
       already_indexed = false;
@@ -1045,7 +1039,7 @@ async function list_func(body, res) {
       (last_item_index) => {
         // debug("last_item_index: " + last_item_index);
         process_response(response_list, body_url, last_item_index, false)
-          .then(function (init_resp) {
+          .then((init_resp) => {
             try {
               init_resp["prev_playlist_index"] = play_list_index + 1;
               init_resp["already_indexed"] = already_indexed;
@@ -1055,7 +1049,7 @@ async function list_func(body, res) {
               err_log(`${error.message}`);
             }
           })
-          .then(function () {
+          .then(() => {
             list_background(
               body_url,
               start_num,
