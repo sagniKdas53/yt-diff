@@ -676,6 +676,17 @@ async function verify_token(req, res, next) {
     return res.end(JSON.stringify({ Outcome: error.message }));
   }
 }
+async function verify_socket(data) {
+  verbose(`verify_socket: ${JSON.stringify(data.handshake.auth.token)}`);
+  if (data.handshake.auth.token) {
+    debug(`okay`);
+    return true;
+  }
+  else {
+    debug(`not okay`);
+    return false;
+  }
+}
 async function login(req, res) {
   try {
     const body = await extract_json(req),
@@ -1485,12 +1496,42 @@ const io = new Server(server, {
   },
 });
 
-const clientConnected = ({ data, id }) => {
-  info(`${data} to client id ${id}`);
-};
+io.use((socket, next) => {
+  verify_socket(socket).then((result) => {
+    if (result) {
+      info("Valid socket");
+      next();
+    } else {
+      err_log("Invalid socket");
+    }
+  }).catch((err) => {
+    err_log(err);
+  });
+});
+
+const MAX_CLIENTS = 1;
+var connectedClients = 0;
 const sock = io.on("connection", (socket) => {
+  if (connectedClients >= MAX_CLIENTS) {
+    info("Rejecting client: " + socket.id);
+    socket.emit("connection_error", "Server full");
+    // Disconnect the client
+    socket.disconnect(true);
+    return;
+  }
+
+  // Increment the count of connected clients
   socket.emit("init", { message: "Connected", id: socket.id });
-  socket.on("acknowledge", clientConnected);
+  socket.on("acknowledge", ({ data, id }) => {
+    info(`${data} to client id ${id}`);
+    connectedClients++;
+  });
+
+  socket.on("disconnect", () => {
+    // Decrement the count of connected clients when a client disconnects
+    info(`Disconnected from client id ${socket.id}`);
+    connectedClients--;
+  });
   return socket;
 });
 
