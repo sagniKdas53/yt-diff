@@ -1,4 +1,4 @@
-FROM ubuntu:jammy-20240125
+FROM ubuntu:22.04
 
 RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
 
@@ -47,9 +47,8 @@ RUN tar -xf node-v18.19.0-linux-arm64.tar.xz  \
     && chown root node \
     && chgrp root node \
     && mv node ../../bin \
-    && cd ../.. 
-
-RUN node node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install
+    && cd ../.. \
+    && node node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install
 
 COPY index.js /
 
@@ -60,6 +59,8 @@ RUN cd frontend \
     && /node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js run build \
     && cd .. \
     && rm -rf node-v18.19.0-linux-arm64 node-v18.19.0-linux-arm64.tar.xz frontend
+
+RUN apt remove git ca-certificates xz-utils bzip2 wget -y
 
 EXPOSE 8888
 

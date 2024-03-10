@@ -14,17 +14,35 @@ RUN DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /
 
-RUN wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" -O "yt-dlp_linux"
+ARG ARCH=$(dpkg --print-architecture)
+
+RUN if [ "$ARCH" = "amd64" ]; then \
+    wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" -O "yt-dlp_linux"; \
+    else \
+    wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64" -O "yt-dlp_linux"; \
+    fi
 
 RUN chmod +x yt-dlp_linux && mv yt-dlp_linux bin/yt-dlp
 
-RUN wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg-master-latest-linux64-gpl.tar.xz"
+RUN if [ "$ARCH" = "amd64" ]; then \
+    wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -O "ffmpeg-master-latest-linux64-gpl.tar.xz"; \
+    else \
+    wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" -O "ffmpeg-master-latest-linuxarm64-gpl.tar.xz"; \
+    fi
 
-RUN tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
+RUN if [ "$ARCH" = "amd64" ]; then \
+    tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
     && cd ffmpeg-master-latest-linux64-gpl/bin \
     && mv ffmpeg ffplay ffprobe ../../bin \
     && cd ../.. \
-    && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
+    && rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz; \
+    else \
+    tar -xf ffmpeg-master-latest-linuxarm64-gpl.tar.xz \
+    && cd ffmpeg-master-latest-linuxarm64-gpl/bin \
+    && mv ffmpeg ffplay ffprobe ../../bin \
+    && cd ../.. \
+    && rm -rf ffmpeg-master-latest-linuxarm64-gpl ffmpeg-master-latest-linuxarm64-gpl.tar.xz; \
+    fi
 
 # Sometimes the download fails, it's bitbuckets not having bandwidth most of the time
 RUN wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs-2.1.1-linux-x86_64.tar.bz2"
@@ -35,25 +53,37 @@ RUN tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 \
     && cd ../.. \
     && rm -rf phantomjs-2.1.1-linux-x86_64.tar.bz2 phantomjs-2.1.1-linux-x86_64
 
-RUN wget "https://nodejs.org/dist/v18.12.1/node-v18.12.1-linux-x64.tar.xz" -O "node-v18.12.1-linux-x64.tar.xz"
-
 COPY package.json /
 
-RUN tar -xf node-v18.12.1-linux-x64.tar.xz  \
-    && cd node-v18.12.1-linux-x64/bin \
+RUN if [ "$ARCH" = "amd64" ]; then \
+    wget "https://nodejs.org/dist/v18.19.0/node-v18.19.0-linux-x64.tar.xz" -O "node-v18.19.0-linux-x64.tar.xz"; \
+    else \
+    wget "https://nodejs.org/dist/v18.19.0/node-v18.19.0-linux-arm64.tar.xz" -O "node-v18.19.0-linux-arm64.tar.xz"; \
+    fi
+
+RUN if [ "$ARCH" = "amd64" ]; then \
+    tar -xf node-v18.19.0-linux-x64.tar.xz  \
+    && cd node-v18.19.0-linux-x64/bin \
     && mv node ../../bin \
     && cd ../.. \
-    && node node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install
+    && node node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install; \
+    else \
+    tar -xf node-v18.19.0-linux-arm64.tar.xz  \
+    && cd node-v18.19.0-linux-arm64/bin \
+    && mv node ../../bin \
+    && cd ../.. \
+    && node node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install; \
+    fi
 
 COPY index.js /
 
 RUN git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend
 
 RUN cd frontend \
-    && node /node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
-    && /node-v18.12.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build \
+    && node /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
+    && /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build \
     && cd .. \
-    && rm -rf node-v18.12.1-linux-x64 node-v18.12.1-linux-x64.tar.xz frontend
+    && rm -rf node-v18.19.0-linux-x64 node-v18.19.0-linux-x64.tar.xz frontend
 
 RUN apt remove git ca-certificates xz-utils bzip2 wget -y
 
