@@ -911,11 +911,12 @@ async function list_func(body, res) {
   try {
     const start_num = body["start"] !== undefined ?
       +body["start"] === 0 ? 1 : +body["start"] : 1,
-      chunk_size = +chunk_size_env,
+      chunk_size = +body["chunk_size"] >= +chunk_size_env ? +body["chunk_size"] : +chunk_size_env,
       stop_num = +chunk_size + 1,
       sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false,
       monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
-    //verbose(`body: ${JSON.stringify(body)}`)
+    //verbose(`body: ${JSON.stringify(body)}`);
+    //verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
     var play_list_index = -1,
       already_indexed = false;
     if (body["url"] === undefined) {
