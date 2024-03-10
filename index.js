@@ -40,7 +40,10 @@ const save_thumbnail = process.env.SAVE_THUMBNAIL !== "false";
 
 const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const salt_rounds = 10;
-const user_cache = new NodeCache({ stdTTL: 3600, checkperiod: 7200 });
+const global_stdTTL = 3600;
+const max_requests_per_ip_in_stdTTL = process.env.MAX_REQUESTS_PER_IP || 10;
+const user_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200 });
+const ip_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200 });
 const secret_key = process.env.SECRET_KEY_FILE
   ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
   : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
@@ -588,7 +591,13 @@ async function sleep(sleep_seconds = sleep_time) {
   debug("Sleeping for " + sleep_seconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
 }
-// Authentication stuff
+//Authentication functions
+/**
+ * Asynchronously hashes the given password using bcrypt.
+ *
+ * @param {string} password - The password to be hashed
+ * @return {Promise<Array>} A promise that resolves to an array containing the salt and hash
+ */
 async function hash_password(password) {
   try {
     const salt = await bcrypt.genSalt(salt_rounds);
@@ -598,6 +607,13 @@ async function hash_password(password) {
     throw new Error("Error hashing password");
   }
 }
+/**
+ * Asynchronously registers a user based on the request and response objects.
+ *
+ * @param {Object} req - the request object
+ * @param {Object} res - the response object
+ * @return {Promise<void>} a promise that resolves when the registration process is complete
+ */
 async function register(req, res) {
   const body = await extract_json(req),
     user_name = body["user_name"],
@@ -620,6 +636,13 @@ async function register(req, res) {
     res.end(JSON.stringify({ Outcome: "Password is empty" }));
   }
 }
+/**
+ * Generates a token for the given user with the specified expiry time.
+ *
+ * @param {Object} user - The user object
+ * @param {string} expiry_time - The expiry time for the token
+ * @return {string} The generated token
+ */
 function generate_token(user, expiry_time) {
   return jwt.sign(
     {
@@ -629,6 +652,14 @@ function generate_token(user, expiry_time) {
     secret_key, { expiresIn: expiry_time }
   );
 }
+/**
+ * Verify the token from the request, check for user data in cache or database, and handle token expiration or other errors.
+ *
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ * @param {function} next - The next middleware function
+ * @return {Promise<void>} Promise that resolves when the verification is completed
+ */
 async function verify_token(req, res, next) {
   try {
     const body = await extract_json(req),
@@ -676,17 +707,90 @@ async function verify_token(req, res, next) {
     return res.end(JSON.stringify({ Outcome: error.message }));
   }
 }
+/**
+ * Verify the socket data and return true if the token is valid, false otherwise.
+ *
+ * @param {Object} data - the socket data containing the authentication token
+ * @return {boolean} true if the token is valid, false otherwise
+ */
 async function verify_socket(data) {
-  verbose(`verify_socket: ${JSON.stringify(data.handshake.auth.token)}`);
-  if (data.handshake.auth.token) {
-    debug(`okay`);
+  try {
+    const token = data.handshake.auth.token;
+    const decoded = jwt.verify(token, secret_key);
+
+    let foundUser = user_cache.get(decoded.id);
+    if (!foundUser) {
+      debug(`Checking the database for a user with id ${decoded.id}`);
+      foundUser = await users.findByPk(decoded.id);
+      user_cache.set(decoded.id, foundUser);
+    }
+
+    // Check if the last password change timestamp matches the one in the token
+    const foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
+    if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+      debug(`Checking the database for a user with id ${decoded.id}`);
+      foundUser = await users.findByPk(decoded.id);
+      user_cache.set(decoded.id, foundUser);
+
+      // Update timestamp
+      const updatedFoundUserUpdatedAt = foundUser.updatedAt.toISOString();
+
+      // Checking again
+      if (updatedFoundUserUpdatedAt !== decoded.lastPasswordChange) {
+        debug(`Token Expired`);
+        return false;
+      }
+    }
     return true;
-  }
-  else {
-    debug(`not okay`);
+  } catch (error) {
+    if (error.name === "JsonWebTokenError") {
+      err_log(`${error.message.split(":")[0]}`);
+    }
+    else if (error.name === "TokenExpiredError") {
+      err_log(`Token Expired`);
+    }
+    else {
+      err_log(error);
+    }
     return false;
   }
 }
+/**
+ * A rate limiter function that checks the incoming request's IP address against the maximum requests allowed within a standard TTL window. It then updates the IP cache and forwards the request to the next function.
+ *
+ * @param {object} req - the request object
+ * @param {object} res - the response object
+ * @param {function} current - the current function to be called
+ * @param {function} next - the next function to be called
+ * @param {number} max_requests_per_ip_in_stdTTL - maximum requests allowed per IP within standard TTL
+ * @param {number} stdTTL - standard time-to-live value in seconds
+ */
+async function rate_limiter(req, res, current, next, max_requests_per_ip_in_stdTTL, stdTTL) {
+  // const req_clone = req.clone();
+  const ipAddress = req.connection.remoteAddress;
+  debug(`incoming request from ${ipAddress}`);
+  if (ip_cache.get(ipAddress) >= max_requests_per_ip_in_stdTTL) {
+    debug(`rate limit ${ipAddress}`);
+    res.writeHead(429, corsHeaders(json_t));
+    return res.end(JSON.stringify({ Outcome: "Too many requests" }));
+  }
+  if (!ip_cache.has(ipAddress)) {
+    ip_cache.set(ipAddress, 1, +stdTTL);
+    debug(`adding to ip_cache ${ipAddress}: ${ip_cache.get(ipAddress)}`);
+  }
+  else {
+    ip_cache.set(ipAddress, ip_cache.get(ipAddress) + 1, +stdTTL);
+    debug(`ip_cache ${ipAddress}: ${ip_cache.get(ipAddress)}`);
+  }
+  current(req, res, next);
+}
+/**
+ * Asynchronous function for user login.
+ *
+ * @param {Object} req - the request object
+ * @param {Object} res - the response object
+ * @return {Promise} a Promise that resolves when the login process is complete
+ */
 async function login(req, res) {
   try {
     const body = await extract_json(req),
@@ -844,6 +948,12 @@ async function download_lister(body, res) {
   }
 }
 // Add a parallel downloader someday
+/**
+ * Downloads the given items sequentially.
+ *
+ * @param {Array} items - array of items to be downloaded
+ * @return {Promise} a promise that resolves when all the items have been downloaded
+ */
 async function download_sequential(items) {
   trace(`Downloading ${items.length} videos sequentially`);
   var count = 1;
@@ -1467,13 +1577,19 @@ const server = http.createServer(server_options, (req, res) => {
   } else if (req.url === url_base + "/watch" && req.method === "POST") {
     verify_token(req, res, monitoring_type_func);
   } else if (req.url === url_base + "/getplay" && req.method === "POST") {
+    //rate_limiter(req, res, verify_token, playlists_to_table);
     verify_token(req, res, playlists_to_table);
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
+    //rate_limiter(req, res, verify_token, sublist_to_table);
     verify_token(req, res, sublist_to_table);
   } else if (req.url === url_base + "/register" && req.method === "POST") {
-    register(req, res);
+    //register(req, res);
+    rate_limiter(req, res, register, (req, res, next) => next(req, res),
+      max_requests_per_ip_in_stdTTL, global_stdTTL);
   } else if (req.url === url_base + "/login" && req.method === "POST") {
-    login(req, res);
+    //login(req, res);
+    rate_limiter(req, res, login, (req, res, next) => next(req, res),
+      max_requests_per_ip_in_stdTTL, global_stdTTL);
   } else {
     res.writeHead(404, corsHeaders(html));
     res.write("Not Found");
@@ -1499,22 +1615,25 @@ const io = new Server(server, {
 io.use((socket, next) => {
   verify_socket(socket).then((result) => {
     if (result) {
-      info("Valid socket");
+      //debug("Valid socket: " + socket.id);
       next();
-    } else {
-      err_log("Invalid socket");
+    }
+    else {
+      //err_log("Invalid socket: " + socket.id);
+      next(new Error("Invalid socket"));
     }
   }).catch((err) => {
     err_log(err);
+    next(new Error(err.message));
   });
 });
 
-const MAX_CLIENTS = 1;
+const MAX_CLIENTS = 10;
 var connectedClients = 0;
 const sock = io.on("connection", (socket) => {
   if (connectedClients >= MAX_CLIENTS) {
     info("Rejecting client: " + socket.id);
-    socket.emit("connection_error", "Server full");
+    socket.emit("connection-error", "Server full");
     // Disconnect the client
     socket.disconnect(true);
     return;
