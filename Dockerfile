@@ -22,13 +22,7 @@ COPY index.js /
 
 RUN ./get-packages.sh | tee exec-log.txt
 
-RUN git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend \
-    && cd frontend \
-    && node /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install \
-    && /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build \
-    && cd .. \
-    && rm -rf node-v18.19.0-linux-x64 node-v18.19.0-linux-x64.tar.xz frontend \
-    && apt remove git ca-certificates xz-utils bzip2 wget -y \
+RUN apt remove git ca-certificates xz-utils bzip2 wget -y \
     && groupadd -g 1000 ytdiff \
     && useradd -u 1000 -g ytdiff -s /bin/bash -m ytdiff
 
