@@ -66,3 +66,19 @@ elif [ "$ARCH" = "arm64" ]; then
         cd ../.. &&
         node node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install
 fi
+
+if [ "$ARCH" = "amd64" ]; then
+    git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend &&
+        cd frontend &&
+        node /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install &&
+        /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build &&
+        cd .. &&
+        rm -rf node-v18.19.0-linux-x64 node-v18.19.0-linux-x64.tar.xz frontend
+elif [ "$ARCH" = "arm64" ]; then
+    git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend &&
+        cd frontend &&
+        node /node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install &&
+        /node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js run build &&
+        cd .. &&
+        rm -rf node-v18.19.0-linux-arm64 node-v18.19.0-linux-arm64.tar.xz frontend
+fi
