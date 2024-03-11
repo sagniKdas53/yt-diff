@@ -13,7 +13,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  docker:
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,7 +53,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v3
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
@@ -75,6 +75,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           platforms: linux/amd64,linux/arm64
+          # Todo: Find if it's possible to build vite woithout this
+          build-args: |
+            BASE_URL=/ytdiff
           # cache-from: |
           #   type=local,src=/tmp/.buildx-cache
           #   type=local,src=${{ steps.composer-cache.outputs.dir }}

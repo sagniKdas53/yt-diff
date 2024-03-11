@@ -20,7 +20,7 @@ COPY get-packages.sh /
 
 COPY index.js /
 
-RUN ./get-packages.sh | tee exec-log.txt
+RUN ./get-packages.sh
 
 RUN apt remove git ca-certificates xz-utils bzip2 wget -y \
     && groupadd -g 1000 ytdiff \
