@@ -5,8 +5,8 @@ networks:
     external: true
 
 secrets:
-   db_password:
-     file: db_password.txt
+  db_password:
+    file: db_password.txt
 
 services:
   yt-db:
@@ -27,6 +27,8 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - ${DB_LOCATION}:/var/lib/postgresql/data
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   yt-db-backup:
     container_name: ytdiff_db_dumper
@@ -54,16 +56,19 @@ services:
     restart: always
     networks:
       - revProxy-net
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   yt-diff:
     image: purevert/yt-diff:amd64
+    # image: ghcr.io/sagnikdas53/yt-diff:master
     container_name: yt-diff
     restart: always
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        - base_url=${BASE_URL}
+        - VITE_BASE_PATH=${BASE_URL}
       # Use this to modify the files during building
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
@@ -109,6 +114,7 @@ services:
       - "traefik.http.routers.ytdiff.tls=true"
       - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
+      - "com.centurylinklabs.watchtower.enable=true"
     # healthcheck:
     #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
     #   interval: 5m
@@ -137,3 +143,4 @@ services:
       - "traefik.http.routers.adminer.tls=true"
       - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
       - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
+      - "com.centurylinklabs.watchtower.enable=true"

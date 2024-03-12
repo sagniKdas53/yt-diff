@@ -75,12 +75,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           platforms: linux/amd64,linux/arm64
-          # Todo: Find if it's possible to build vite woithout this
-          build-args: |
-            BASE_URL=/ytdiff
           # cache-from: |
           #   type=local,src=/tmp/.buildx-cache
           #   type=local,src=${{ steps.composer-cache.outputs.dir }}
           # cache-to: |
           #   type=local,dest=/tmp/.buildx-cache
           #   type=local,dest=${{ steps.composer-cache.outputs.dir }}
+          # Todo: Find if it's possible to build vite woithout this
+          build-args: |
+            VITE_BASE_PATH=/ytdiff
