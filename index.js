@@ -1600,14 +1600,10 @@ const server = http.createServer(server_options, (req, res) => {
 const io = new Server(server, {
   path: url_base + "/socket.io/",
   cors: {
+    // cors will only happen on these so it's best to keep it limited
     origin: [
-      "https://ideapad.tail9ece4.ts.net",
       "http://localhost:5173",
-      "http://192.168.0.103:5173",
-      "http://192.168.0.106:5173",
       "http://localhost:8888",
-      "http://192.168.0.103:8888",
-      "http://192.168.0.106:8888",
     ],
   },
 });

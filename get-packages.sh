@@ -2,6 +2,8 @@
 
 ARCH=$(dpkg --print-architecture)
 
+echo "Detected architecture: $ARCH"
+
 if [ "$ARCH" = "amd64" ]; then
     echo "detected amd64"
 elif [ "$ARCH" = "arm64" ]; then
@@ -66,6 +68,8 @@ elif [ "$ARCH" = "arm64" ]; then
         cd ../.. &&
         node node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install
 fi
+
+echo "Building for base url: $VITE_BASE_PATH"
 
 if [ "$ARCH" = "amd64" ]; then
     git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend &&
