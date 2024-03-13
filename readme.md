@@ -7,6 +7,17 @@ yt-dlp bundled with a node-js server and somewhat usable UI to download vidoes f
 1. Modify the docker compose as needed and fill the .env
 2. `docker-compose --env-file .env.local up -d --build --remove-orphans --force-recreate --renew-anon-volumes`
 
+### Building the docker image from scratch
+
+Amd64:
+```bash
+docker build --build-arg VITE_BASE_PATH="/ytdiff" --no-cache -t purevert/yt-diff:amd64 .
+```
+Alpine-amd64:
+```bash
+docker build --build-arg VITE_BASE_PATH="/ytdiff" --build-arg ARCH=amd64 --file Dockerfile.alpine  --no-cache -t purevert/yt-diff:amd64-alpine .
+```
+
 ## Usage
 
 TODO

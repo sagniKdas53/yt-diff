@@ -20,6 +20,10 @@ COPY get-packages.sh /
 
 COPY index.js /
 
+ARG VITE_BASE_PATH=/ytdiff
+
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+
 RUN ./get-packages.sh
 
 RUN apt remove git ca-certificates xz-utils bzip2 wget -y \
