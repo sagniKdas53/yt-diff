@@ -1,4 +1,10 @@
-FROM purevert/node-alpine:amd64
+ARG ARCH=latest
+
+FROM purevert/node-alpine:${ARCH}
+
+ARG VITE_BASE_PATH=/ytdiff
+
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 RUN apk add yt-dlp git ffmpeg \
   && git clone https://github.com/sagniKdas53/yt-diff yt-diff \

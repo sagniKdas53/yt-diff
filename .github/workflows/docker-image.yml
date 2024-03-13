@@ -84,3 +84,14 @@ jobs:
           # Todo: Find if it's possible to build vite woithout this
           build-args: |
             VITE_BASE_PATH=/ytdiff
+
+      - name: Prune
+        uses: vlaurin/action-ghcr-prune@v0.6.0
+        with:
+          token: ${{ secrets.PRUNE_TOKEN }}
+          organization: sagnikdas53
+          container: yt-diff
+          dry-run: true # Dry-run first, then change to `false`
+          keep-younger-than: 0 # days
+          keep-last: 6
+          prune-untagged: true
