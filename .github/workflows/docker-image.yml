@@ -1,4 +1,4 @@
-name: Publish multi-arch Docker image on push to master branch
+name: Build
 
 on:
   push:
