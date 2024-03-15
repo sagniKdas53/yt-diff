@@ -1,9 +1,9 @@
 name: Publish multi-arch Docker image on push to master branch
 
 on:
-  # push:
-  #   branches:
-  #     - master
+  push:
+    branches:
+      - master
   pull_request:
     branches:
       - master
@@ -51,6 +51,23 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}
             type=sha
+
+      - name: Prune Old Images
+        uses: vlaurin/action-ghcr-prune@v0.6.0
+        with:
+          token: ${{ secrets.PRUNE_TOKEN }}
+          user: sagnikdas53
+          container: yt-diff
+          dry-run: false # Dry-run first, then change to `false`
+          keep-younger-than: 0 # days
+          keep-last: 6
+          prune-untagged: true
+          keep-tags-regexes: |
+            ^master$
+            ^latest$
+            ^pr-
+          prune-tags-regexes: |
+            ^sha-
 
       - name: Build and push
         uses: docker/build-push-action@v5
