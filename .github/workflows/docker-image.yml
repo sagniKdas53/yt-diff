@@ -1,9 +1,9 @@
 name: Publish multi-arch Docker image on push to master branch
 
 on:
-  push:
-    branches:
-      - master
+  # push:
+  #   branches:
+  #     - master
   pull_request:
     branches:
       - master
