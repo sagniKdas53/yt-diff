@@ -21,7 +21,7 @@ jobs:
           token: ${{ secrets.PRUNE_TOKEN }}
           user: sagnikdas53
           container: yt-diff
-          dry-run: true # Dry-run first, then change to `false`
+          dry-run: false # Dry-run first, then change to `false`
           keep-younger-than: 0 # days
           keep-last: 6
           prune-untagged: true
