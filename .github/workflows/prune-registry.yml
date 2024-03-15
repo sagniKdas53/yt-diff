@@ -1,9 +1,14 @@
 name: Prune Registry
 
+# on:
+#   workflow_dispatch:
+#   schedule:
+#     - cron: 0 2 * * *
+
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: 0 2 * * *
+  pull_request:
+    branches:
+      - master
 
 jobs:
   prune-images:
@@ -13,10 +18,12 @@ jobs:
         uses: vlaurin/action-ghcr-prune@v0.6.0
         with:
           token: ${{ secrets.PRUNE_TOKEN }}
-          organization: sagnikdas53
+          user: sagnikdas53
           container: yt-diff
           dry-run: true # Dry-run first, then change to `false`
           keep-younger-than: 0 # days
           keep-last: 6
           prune-untagged: true
+          keep-tags-regexes: |
+            ^pr-
 
