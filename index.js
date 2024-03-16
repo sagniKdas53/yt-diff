@@ -1499,6 +1499,8 @@ const types = {
   ".html": "text/html; charset=utf-8",
   ".webmanifest": "application/manifest+json",
   ".xml": "application/xml",
+  ".gz": "application/gzip",
+  ".br": "application/brotli",
 };
 
 function getFiles(dir) {
@@ -1530,6 +1532,10 @@ function makeAssets(fileList) {
   });
   staticAssets["/ytdiff/"] = staticAssets["/ytdiff/index.html"];
   staticAssets["/ytdiff"] = staticAssets["/ytdiff/index.html"];
+  staticAssets["/ytdiff/.gz"] = staticAssets["/ytdiff/index.html.gz"];
+  staticAssets["/ytdiff.gz"] = staticAssets["/ytdiff/index.html.gz"];
+  staticAssets["/ytdiff/.br"] = staticAssets["/ytdiff/index.html.br"];
+  staticAssets["/ytdiff.br"] = staticAssets["/ytdiff/index.html.br"];
   return staticAssets;
 }
 
@@ -1555,9 +1561,30 @@ const server = http.createServer(server_options, (req, res) => {
   if (req.url.startsWith(url_base) && req.method === "GET") {
     try {
       const get = req.url; //.replace(url_base, "");
-      res.writeHead(200, corsHeaders(staticAssets[get].type));
-      res.write(staticAssets[get].file);
+      const reqEncoding = req.headers["accept-encoding"] || "";
+      const resHeaders = corsHeaders(staticAssets[get].type);
+      //debug(`Request Accept-Encoding: [${reqEncoding}]`);
+      if (reqEncoding.includes("br")) {
+        //debug(`Sending ${get} compressed with brotli`);
+        resHeaders["Content-Encoding"] = "br";
+        res.writeHead(200, resHeaders);
+        //info(`Writing ${get}.br`);
+        res.write(staticAssets[get + ".br"].file);
+        //res.write(zlib.gzipSync(staticAssets[get].file));
+      } else if (reqEncoding.includes("gzip")) {
+        //debug(`Sending ${get} compressed with gzip`);
+        resHeaders["Content-Encoding"] = "gzip";
+        res.writeHead(200, resHeaders);
+        //info(`Writing ${get}.gz`);
+        res.write(staticAssets[get + ".gz"].file);
+        //res.write(zlib.gzipSync(staticAssets[get].file));
+      } else {
+        //debug(`Sending ${get} uncompressed`);
+        res.writeHead(200, resHeaders);
+        res.write(staticAssets[get].file);
+      }
     } catch (error) {
+      //err_log(`${error.message}`);
       res.writeHead(404, corsHeaders(html));
       res.write("Not Found");
     }
