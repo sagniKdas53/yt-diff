@@ -908,12 +908,12 @@ async function download_lister(body, res) {
     const download_list = [],
       in_download_list = new Set(),
       // remember to send this from the frontend
-      play_list_url = body["url"] !== undefined ? body["url"] : "None";
-    for (const id_str of body["id"]) {
-      if (!in_download_list.has(id_str)) {
-        debug(id_str);
+      play_list_url = body["playListUrl"] !== undefined ? body["playListUrl"] : "None";
+    for (const url_item of body["urlList"]) {
+      if (!in_download_list.has(url_item)) {
+        debug(`checking for ${url_item} in db`);
         const video_item = await video_list.findOne({
-          where: { video_id: id_str },
+          where: { video_url: url_item },
         });
         var save_dir = "";
         try {
@@ -929,12 +929,12 @@ async function download_lister(body, res) {
         }
         debug(save_dir);
         download_list.push([
-          video_item.video_url,
+          url_item,
           video_item.title,
           save_dir,
-          id_str,
+          video_item.video_id,
         ]);
-        in_download_list.add(id_str);
+        in_download_list.add(url_item);
       }
     }
     download_sequential(download_list);
@@ -1009,12 +1009,12 @@ async function download_sequential(items) {
           await entity.save();
           sock.emit("download-done", {
             message: `${entity.title}`,
-            id: id_str,
+            url: url_str,
           });
         } else {
           sock.emit("download-failed", {
             message: `${entity.title}`,
-            id: id_str,
+            url: url_str,
           });
         }
       });
