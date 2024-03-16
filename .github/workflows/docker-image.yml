@@ -63,8 +63,6 @@ jobs:
           keep-last: 6
           prune-untagged: true
           keep-tags-regexes: |
-            ^master$
-            ^latest$
             ^pr-
           prune-tags-regexes: |
             ^sha-
