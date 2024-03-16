@@ -1570,6 +1570,7 @@ const server = http.createServer(server_options, (req, res) => {
         res.writeHead(200, resHeaders);
         //info(`Writing ${get}.br`);
         res.write(staticAssets[get + ".br"].file);
+        return res.end();
         //res.write(zlib.gzipSync(staticAssets[get].file));
       } else if (reqEncoding.includes("gzip")) {
         //debug(`Sending ${get} compressed with gzip`);
@@ -1577,6 +1578,7 @@ const server = http.createServer(server_options, (req, res) => {
         res.writeHead(200, resHeaders);
         //info(`Writing ${get}.gz`);
         res.write(staticAssets[get + ".gz"].file);
+        return res.end();
         //res.write(zlib.gzipSync(staticAssets[get].file));
       } else {
         //debug(`Sending ${get} uncompressed`);
