@@ -75,7 +75,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           platforms: linux/amd64,linux/arm64  # https://docs.docker.com/build/ci/github-actions/cache/
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
           build-args: |
             VITE_BASE_PATH=/ytdiff
