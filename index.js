@@ -61,6 +61,9 @@ const options = [
   save_thumbnail ? "--write-thumbnail" : "",
   "--paths",
 ].filter(Boolean);
+const MAX_CLIENTS = 10;
+// let is superior to vars don't use vars
+let connectedClients = 0;
 
 // Logging methods
 const allowed_log_levels = (process.env.LOG_LEVELS || "info,trace,debug").split(",");
@@ -311,7 +314,7 @@ const job = new CronJob(
 // Utility functions
 async function extract_json(req) {
   return new Promise((resolve, reject) => {
-    var body = "";
+    let body = "";
     req.on("data", function (data) {
       body += data;
       if (body.length > 1e6) {
@@ -382,7 +385,7 @@ async function list_spawner(body_url, start_num, stop_num) {
       "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
       body_url,
     ]);
-    var response = "";
+    let response = "";
     yt_list.stdout.on("data", (data) => {
       response += data;
     });
@@ -679,7 +682,7 @@ async function verify_token(req, res, next) {
       res.writeHead(404, corsHeaders(json_t));
       return res.end(JSON.stringify({ Outcome: "User not found" }));
     }
-    var foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
+    let foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
     if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
       debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
@@ -848,7 +851,7 @@ async function quick_updates() {
 
   trace(`Fast updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
-    var index = -chunk_size_env + 1;
+    let index = -chunk_size_env + 1;
     try {
       await sleep();
       await list_background(
@@ -915,7 +918,7 @@ async function download_lister(body, res) {
         const video_item = await video_list.findOne({
           where: { video_url: url_item },
         });
-        var save_dir = "";
+        let save_dir = "";
         try {
           const save_dir_const = await playlist_list.findOne({
             where: { playlist_url: play_list_url },
@@ -931,8 +934,7 @@ async function download_lister(body, res) {
         download_list.push([
           url_item,
           video_item.title,
-          save_dir,
-          video_item.video_id,
+          save_dir
         ]);
         in_download_list.add(url_item);
       }
@@ -956,20 +958,21 @@ async function download_lister(body, res) {
  */
 async function download_sequential(items) {
   trace(`Downloading ${items.length} videos sequentially`);
-  var count = 1;
-  for (const [url_str, title, save_dir, id_str] of items) {
+  let count = 1;
+  for (const [url_str, title, save_dir] of items) {
     try {
       // yeah, this needs a join too from the playlists now to get the save directory and stuff
       trace(`Downloading Video: ${count++}, Url: ${url_str}, Progress:`);
-      var hold = null;
+      let hold = null;
       // check if the trim is actually necessary
-      debug(save_dir);
       const save_path = path_fs.join(save_location, save_dir.trim());
+      debug(`save path: ${save_path}`);
       // if save_dir == "",  then save_path == save_location
       if (save_path != save_location && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
       }
       sock.emit("download-start", { message: "" });
+      verbose(`executing: yt-dlp ${options.join(" ")} ${save_path} ${url_str}`);
       const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
       yt_dlp.stdout.on("data", async (data) => {
         try {
@@ -986,6 +989,7 @@ async function download_sequential(items) {
             sock.emit("listing-or-downloading", { percentage: percentage });
           }
         } catch (error) {
+          // err_log(`${data} : ${error.message}`);
           // this is done so that the toasts do not go crazy
           if (!error instanceof TypeError) {
             sock.emit("error", { message: `${error}` });
@@ -1038,12 +1042,12 @@ async function list_func(body, res) {
       monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
     //verbose(`body: ${JSON.stringify(body)}`);
     //verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
-    var play_list_index = -1,
+    let play_list_index = -1,
       already_indexed = false;
     if (body["url"] === undefined) {
       throw new Error("url is required");
     }
-    var body_url = body["url"],
+    let body_url = body["url"],
       last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
@@ -1252,9 +1256,9 @@ async function list_background(
   is_update_operation
 ) {
   // yes a playlist on youtube atleast can only be 5000 long  && stop_num < 5000
-  // var max_size = 5000;
-  // var loop_num = max_size / chunk_size;
-  var count = 0;
+  // let max_size = 5000;
+  // let loop_num = max_size / chunk_size;
+  let count = 0;
   while (body_url != "None") {
     start_num = start_num + chunk_size;
     stop_num = stop_num + chunk_size;
@@ -1288,7 +1292,7 @@ async function list_background(
   }
 }
 async function add_playlist(url_var, monitoring_type_var) {
-  var title_str = "",
+  let title_str = "",
     next_item_index = 0;
   const last_item_index = await playlist_list.findOne({
     order: [["playlist_index", "DESC"]],
@@ -1653,8 +1657,6 @@ io.use((socket, next) => {
   });
 });
 
-const MAX_CLIENTS = 10;
-var connectedClients = 0;
 const sock = io.on("connection", (socket) => {
   if (connectedClients >= MAX_CLIENTS) {
     info("Rejecting client: " + socket.id);
