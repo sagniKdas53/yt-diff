@@ -7,3 +7,4 @@ dist/
 letsencrypt/
 update.log
 db_password.txt
+tests/

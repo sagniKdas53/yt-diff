@@ -66,11 +66,13 @@ const MAX_CLIENTS = 10;
 let connectedClients = 0;
 
 // Logging methods
-const allowed_log_levels = (process.env.LOG_LEVELS || "info,trace,debug").split(",");
-const cached_log_level =
-  [allowed_log_levels.includes("info"),
-  allowed_log_levels.includes("trace"),
-  allowed_log_levels.includes("debug")];
+// The highest log level is trace(ie: shows every call), which is the default
+// info(ie: shows info about each call) is next and then debug(ie: shows debug info about each call)
+const allowed_log_levels = (process.env.LOG_LEVELS || "trace").toLowerCase().trim().split(",");
+
+const cached_log_level = allowed_log_levels.includes("trace") ? [true, true, true] :
+  allowed_log_levels.includes("info") ? [false, true, true] :
+    allowed_log_levels.includes("debug") ? [false, false, true] : [false, false, false];
 const msg_trimmer = (msg) => {
   try {
     return msg.trim();
@@ -78,10 +80,28 @@ const msg_trimmer = (msg) => {
     return msg;
   }
 };
-const info = (msg) => {
+const orange = color.xterm(208);
+// 153 is like sky but very light
+// 83 is greenish
+// 192 is like hay looks soothing TBH
+const trace_color = color.xterm(192);
+// trace < info < debug
+const trace = (msg) => {
   if (cached_log_level[0])
     console.log(
+      trace_color(`[${new Date().toLocaleString()}] TRACE: ${msg}`)
+    );
+};
+const info = (msg) => {
+  if (cached_log_level[1])
+    console.log(
       color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
+    );
+};
+const debug = (msg) => {
+  if (cached_log_level[2])
+    console.log(
+      color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}`)
     );
 };
 const verbose = (msg) => {
@@ -90,12 +110,6 @@ const verbose = (msg) => {
     color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
   );
 };
-const debug = (msg) => {
-  if (cached_log_level[2])
-    console.log(
-      color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}`)
-    );
-};
 const err_log = (msg) => {
   console.error(
     color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
@@ -103,15 +117,11 @@ const err_log = (msg) => {
 };
 const warn = (msg) => {
   console.log(
-    color.yellowBright(`[${new Date().toLocaleString()}] WARN: ${msg}`)
+    orange(`[${new Date().toLocaleString()}] WARNING: ${msg}`)
   );
 };
-const trace = (msg) => {
-  if (cached_log_level[1])
-    console.log(
-      color.cyanBright(`[${new Date().toLocaleString()}] TRACE: ${msg}`)
-    );
-};
+
+info(`Allowed log level: ${allowed_log_levels}`);
 
 if (!fs.existsSync(save_location)) {
   fs.mkdirSync(save_location, { recursive: true });
@@ -128,10 +138,10 @@ const sequelize = new Sequelize({
 
 try {
   sequelize.authenticate().then(() => {
-    info("Connection to server has been established successfully");
+    info("Connection to database has been established successfully");
   });
 } catch (error) {
-  err_log(`Unable to connect to the server: ${error}`);
+  err_log(`Unable to connect to the database: ${error}`);
 }
 
 // video_url is the primary key of any video
@@ -368,6 +378,7 @@ function fix_common_errors(body_url) {
     }
     debug(`${body_url} is a hub channel`);
   }
+  // TODO: Add checks for other sites
   return body_url;
 }
 async function list_spawner(body_url, start_num, stop_num) {
@@ -386,9 +397,11 @@ async function list_spawner(body_url, start_num, stop_num) {
       body_url,
     ]);
     let response = "";
+    yt_list.stdout.setEncoding("utf8");
     yt_list.stdout.on("data", (data) => {
       response += data;
     });
+    yt_list.stderr.setEncoding("utf8");
     yt_list.stderr.on("data", (data) => {
       // maybe use sockets to send the stderr to the
       err_log(`stderr: ${data}`);
@@ -432,7 +445,7 @@ async function process_response(
       attributes: ["index_in_playlist"],
       limit: 1,
     });
-    //debug(JSON.stringify(last_item));
+    debug(`In update operation found last item ${JSON.stringify(last_item)}`);
     try {
       last_item_index = last_item.index_in_playlist + 1;
     } catch (error) {
@@ -448,11 +461,11 @@ async function process_response(
       const foundItem = await video_list.findOne({
         where: { video_url: vid_url },
       });
-      // debug(
-      //   `found item: ${JSON.stringify(
-      //     foundItem
-      //   )} for url: ${vid_url}`
-      // );
+      debug(
+        `found item: ${JSON.stringify(
+          foundItem
+        )} in video_list for url: ${vid_url}`
+      );
       return foundItem !== null;
     })
   );
@@ -465,11 +478,11 @@ async function process_response(
       const foundItem = await video_indexer.findOne({
         where: { video_url: vid_url, playlist_url: playlist_url },
       });
-      // debug(
-      //   `found item: ${JSON.stringify(
-      //     foundItem
-      //   )} for url: ${vid_url} and playlist_url ${playlist_url}`
-      // );
+      debug(
+        `found item: ${JSON.stringify(
+          foundItem
+        )} in video_indexer for url: ${vid_url} and playlist_url ${playlist_url}`
+      );
       return foundItem !== null;
     })
   );
@@ -489,10 +502,6 @@ async function process_response(
       allItemsExistInVideoIndexer
     )}`);
   }
-  // }
-  // else {
-  //   debug("Doing full update on playlist");
-  // }
 
   await Promise.all(
     response.map(async (element, map_idx) => {
@@ -519,7 +528,7 @@ async function process_response(
             where: { video_url: vid_url },
             defaults: vid_data,
           });
-          // debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
           if (!createdVid) {
             update_vid_entry(foundVid, vid_data);
           }
@@ -533,7 +542,7 @@ async function process_response(
           const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
             where: junction_data,
           });
-          // debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
           if (!createdJunction) {
             debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
           }
@@ -553,6 +562,8 @@ async function update_vid_entry(found, data) {
   // I have a sneaking suspicion that this
   // will fail when there is any real change
   // in the video, lets see when that happens
+  trace(`update_vid_entry: found: ${JSON.stringify(found)} vs. data: ${JSON.stringify(data)}`);
+  // trace added here as an exception to check if this ever gets invoked or is just redundant
   if (
     found.video_id !== data.video_id ||
     +found.approximate_size !== +data.approximate_size ||
@@ -770,10 +781,10 @@ async function verify_socket(data) {
  */
 async function rate_limiter(req, res, current, next, max_requests_per_ip_in_stdTTL, stdTTL) {
   // const req_clone = req.clone();
-  const ipAddress = req.connection.remoteAddress;
-  debug(`incoming request from ${ipAddress}`);
+  const ipAddress = req.socket.remoteAddress;
+  trace(`Incoming request from ${ipAddress}`);
   if (ip_cache.get(ipAddress) >= max_requests_per_ip_in_stdTTL) {
-    debug(`rate limit ${ipAddress}`);
+    debug(`rate limiting ${ipAddress}`);
     res.writeHead(429, corsHeaders(json_t));
     return res.end(JSON.stringify({ Outcome: "Too many requests" }));
   }
@@ -799,12 +810,11 @@ async function login(req, res) {
     const body = await extract_json(req),
       user_name = body["user_name"],
       body_password = body["password"],
-      expiry_time = body["expiry_time"] || "1d";
-    verbose(`Token expires in ${expiry_time}`);
+      expiry_time = body["expiry_time"] || "31d";
     const foundUser = await users.findOne({
       where: { user_name: user_name },
     });
-    verbose(`Found user ${JSON.stringify(foundUser)}`)
+    verbose(`Issued token for user ${JSON.stringify(foundUser.user_name)} expires in ${expiry_time}`);
     if (foundUser === null) {
       res.writeHead(404, corsHeaders(json_t));
       res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
@@ -849,7 +859,7 @@ async function quick_updates() {
     },
   });
 
-  trace(`Fast updating ${playlists["rows"].length} playlists`);
+  info(`Fast updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     let index = -chunk_size_env + 1;
     try {
@@ -878,10 +888,10 @@ async function full_updates() {
       monitoring_type: "Full",
     },
   });
-  trace(`Full updating ${playlists["rows"].length} playlists`);
+  info(`Full updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     try {
-      trace(
+      info(
         `Full updating playlist: ${playlist.title.trim()} being updated fully`
       );
       // Since this is a full update the is_update_operation will be false
@@ -893,7 +903,7 @@ async function full_updates() {
         chunk_size_env,
         false
       );
-      trace(`Done processing playlist ${playlist.playlist_url}`);
+      info(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
       await playlist.save();
@@ -930,11 +940,11 @@ async function download_lister(body, res) {
             err_log(`${error.message}`);
           }
         }
-        debug(save_dir);
         download_list.push([
           url_item,
           video_item.title,
-          save_dir
+          save_dir,
+          video_item.video_id
         ]);
         in_download_list.add(url_item);
       }
@@ -959,34 +969,50 @@ async function download_lister(body, res) {
 async function download_sequential(items) {
   trace(`Downloading ${items.length} videos sequentially`);
   let count = 1;
-  for (const [url_str, title, save_dir] of items) {
+  for (const [url_str, title, save_dir, video_id] of items) {
     try {
       // yeah, this needs a join too from the playlists now to get the save directory and stuff
-      trace(`Downloading Video: ${count++}, Url: ${url_str}, Progress:`);
+      trace(`Downloading Video: ${count++}, Url: ${url_str}`);
       let hold = null;
+      // Find a way to check and update it in the db if it is not correct
+      let realFileName = null;
       // check if the trim is actually necessary
       const save_path = path_fs.join(save_location, save_dir.trim());
-      debug(`save path: ${save_path}`);
+      debug(`Downloading ${realFileName} to path: ${save_path}`);
       // if save_dir == "",  then save_path == save_location
       if (save_path != save_location && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
       }
       sock.emit("download-start", { message: "" });
-      verbose(`executing: yt-dlp ${options.join(" ")} ${save_path} ${url_str}`);
+      // verbose(`executing: yt-dlp ${options.join(" ")} ${save_path} ${url_str}`);
       const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
+      yt_dlp.stdout.setEncoding("utf8");
       yt_dlp.stdout.on("data", async (data) => {
         try {
-          // Keeping these just so it can be used to maybe add a progress bar
-          const percentage = +/(\d{1,3}\.\d)/.exec(`${data}`)[0];
-          if (percentage !== null) {
-            if (Math.floor(percentage / 10) == 0 && hold === null) {
+          const dataStr = data.toString().trim(); // Convert buffer to string once
+          // trace(dataStr);
+          // Percentage extraction
+          const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
+          if (percentageMatch !== null) {
+            const percentage = parseFloat(percentageMatch[0]);
+            const percentageDiv10 = Math.floor(percentage / 10);
+            if (percentageDiv10 === 0 && hold === null) {
               hold = 0;
-              trace(`${data}`);
-            } else if (Math.floor(percentage / 10) > hold) {
-              hold = Math.floor(percentage / 10);
-              trace(`${data}`);
+              trace(dataStr);
+            } else if (percentageDiv10 > hold) {
+              hold = percentageDiv10;
+              trace(dataStr);
             }
+            // Send percentage to the frontend
             sock.emit("listing-or-downloading", { percentage: percentage });
+          }
+          // Filename extraction
+          const fileNameMatch = /Destination: (.*)/s.exec(dataStr);
+          if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
+            realFileName = fileNameMatch[1]
+            .replace(path_fs.extname(fileNameMatch[1]), "")
+            .replace(save_path+"/", "").trim();
+            debug(`extracted filename: ${realFileName},\nfilename from db: ${title}`);
           }
         } catch (error) {
           // err_log(`${data} : ${error.message}`);
@@ -996,6 +1022,7 @@ async function download_sequential(items) {
           }
         }
       });
+      yt_dlp.stderr.setEncoding("utf8");
       yt_dlp.stderr.on("data", (data) => {
         err_log(`stderr: ${data}`);
       });
@@ -1007,13 +1034,19 @@ async function download_sequential(items) {
           where: { video_url: url_str },
         });
         if (code === 0) {
-          entity.set({
+          const entityProp = {
             downloaded: true,
-          });
+            available: true,
+            title: (title === video_id || title === "NA") ? (realFileName || title) : title
+          };
+          debug(`Update data: ${JSON.stringify(entityProp)}`);
+          entity.set(entityProp);
           await entity.save();
+          const titleForFrontend = entityProp.title;
           sock.emit("download-done", {
-            message: `${entity.title}`,
+            message: titleForFrontend,
             url: url_str,
+            title: titleForFrontend
           });
         } else {
           sock.emit("download-failed", {
@@ -1080,8 +1113,8 @@ async function list_func(body, res) {
           play_list_index = is_already_indexed.playlist_index;
           resolve(last_item_index);
         } catch (error) {
-          err_log(
-            "playlist or channel not encountered earlier, saving in playlist"
+          warn(
+            "playlist or channel not encountered earlier, saving in database"
           );
           // Its not an error, but the title extraction,
           // will only be done once the error is raised
@@ -1267,7 +1300,7 @@ async function list_background(
       `list_background: URL: ${body_url}, Chunk: ${chunk_size},` +
       `Start: ${start_num}, Stop: ${stop_num}, Iteration: ${count}`
     );
-    await sleep();
+    //await sleep();
     const response = await list_spawner(body_url, start_num, stop_num);
     if (response.length === 0) {
       trace(
@@ -1309,6 +1342,7 @@ async function add_playlist(url_var, monitoring_type_var) {
     "%(playlist_title)s",
     url_var,
   ]);
+  get_title.stdout.setEncoding("utf8");
   get_title.stdout.on("data", async (data) => {
     title_str += data;
   });
@@ -1694,12 +1728,11 @@ server.listen(port, async () => {
   info("Sleep duration: " + elapsed / 1000 + " seconds");
   info(`Next scheduled update is on ${job.nextDates(1)}`);
   verbose(
-    `Download Options:\n\tyt-dlp ${options.join(" ")} "${save_location.endsWith("/") ? save_location : save_location + "/"
+    `Download Options: yt-dlp ${options.join(" ")} "${save_location.endsWith("/") ? save_location : save_location + "/"
     }{playlist_dir}" "{url}"`
   );
   verbose(
-    `List Options:\n\t` +
-    "yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
+    "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
     `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}`
   );
   job.start();
