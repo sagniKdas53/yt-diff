@@ -37,10 +37,10 @@ docker build --build-arg VITE_BASE_PATH="/ytdiff" --build-arg ARCH=amd64 --file 
 
 ### Using pre-built image
 
-This is built using github actions replace it in docker-compose.yml and just run 
+This is built using github actions replace it in docker-compose.yml and just run
 
 ```bash
-docker-compose up -d
+docker-compose --env-file .env.local up --detach --force-recreate --remove-orphans --renew-anon-volumes
 ```
 
 #### Github container registry (ghcr.io)`ghcr.io/sagnikdas53/yt-diff:master`
