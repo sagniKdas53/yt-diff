@@ -1,7 +1,6 @@
 "use strict";
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const { spawn } = require("child_process");
-const { v4: uuidv4 } = require("uuid");
 const color = require("cli-color");
 const CronJob = require("cron").CronJob;
 const fs = require("fs");
@@ -1649,11 +1648,14 @@ const server = http.createServer(server_options, (req, res) => {
   } else if (req.url === url_base + "/getsub" && req.method === "POST") {
     //rate_limiter(req, res, verify_token, sublist_to_table);
     verify_token(req, res, sublist_to_table);
-  } else if (req.url === url_base + "/register" && req.method === "POST") {
-    //register(req, res);
-    rate_limiter(req, res, register, (req, res, next) => next(req, res),
-      max_requests_per_ip_in_stdTTL, global_stdTTL);
-  } else if (req.url === url_base + "/login" && req.method === "POST") {
+  }
+  // Disable register for now, will add it back in later when it's ready
+  // else if (req.url === url_base + "/register" && req.method === "POST") {
+  //   //register(req, res);
+  //   rate_limiter(req, res, register, (req, res, next) => next(req, res),
+  //     max_requests_per_ip_in_stdTTL, global_stdTTL);
+  // }
+  else if (req.url === url_base + "/login" && req.method === "POST") {
     //login(req, res);
     rate_limiter(req, res, login, (req, res, next) => next(req, res),
       max_requests_per_ip_in_stdTTL, global_stdTTL);
