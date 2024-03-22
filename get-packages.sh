@@ -50,23 +50,23 @@ tar -xf phantomjs-2.1.1-linux-x86_64.tar.bz2 &&
     rm -rf phantomjs-2.1.1-linux-x86_64.tar.bz2 phantomjs-2.1.1-linux-x86_64
 
 if [ "$ARCH" = "amd64" ]; then
-    wget "https://nodejs.org/dist/v18.19.0/node-v18.19.0-linux-x64.tar.xz" -O "node-v18.19.0-linux-x64.tar.xz"
+    wget "https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz" -O "node-v20.11.1-linux-x64.tar.xz"
 elif [ "$ARCH" = "arm64" ]; then
-    wget "https://nodejs.org/dist/v18.19.0/node-v18.19.0-linux-arm64.tar.xz" -O "node-v18.19.0-linux-arm64.tar.xz"
+    wget "https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-arm64.tar.xz" -O "node-v20.11.1-linux-arm64.tar.xz"
 fi
 
 if [ "$ARCH" = "amd64" ]; then
-    tar -xf node-v18.19.0-linux-x64.tar.xz &&
-        cd node-v18.19.0-linux-x64/bin &&
+    tar -xf node-v20.11.1-linux-x64.tar.xz &&
+        cd node-v20.11.1-linux-x64/bin &&
         mv node ../../bin &&
         cd ../.. &&
-        node node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install
+        node node-v20.11.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install
 elif [ "$ARCH" = "arm64" ]; then
-    tar -xf node-v18.19.0-linux-arm64.tar.xz &&
-        cd node-v18.19.0-linux-arm64/bin &&
+    tar -xf node-v20.11.1-linux-arm64.tar.xz &&
+        cd node-v20.11.1-linux-arm64/bin &&
         mv node ../../bin &&
         cd ../.. &&
-        node node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install
+        node node-v20.11.1-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install
 fi
 
 echo "Building for base url: $VITE_BASE_PATH"
@@ -74,15 +74,19 @@ echo "Building for base url: $VITE_BASE_PATH"
 if [ "$ARCH" = "amd64" ]; then
     git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend &&
         cd frontend &&
-        node /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install &&
-        /node-v18.19.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build &&
+        echo "Sleeping for 30s" &&
+        sleep 30s &&
+        node /node-v20.11.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js install &&
+        /node-v20.11.1-linux-x64/lib/node_modules/npm/bin/npm-cli.js run build &&
         cd .. &&
-        rm -rf node-v18.19.0-linux-x64 node-v18.19.0-linux-x64.tar.xz frontend
+        rm -rf node-v20.11.1-linux-x64 node-v20.11.1-linux-x64.tar.xz frontend
 elif [ "$ARCH" = "arm64" ]; then
     git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend &&
         cd frontend &&
-        node /node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install &&
-        /node-v18.19.0-linux-arm64/lib/node_modules/npm/bin/npm-cli.js run build &&
+        echo "Sleeping for 30s" &&
+        sleep 30s &&
+        node /node-v20.11.1-linux-arm64/lib/node_modules/npm/bin/npm-cli.js install &&
+        /node-v20.11.1-linux-arm64/lib/node_modules/npm/bin/npm-cli.js run build &&
         cd .. &&
-        rm -rf node-v18.19.0-linux-arm64 node-v18.19.0-linux-arm64.tar.xz frontend
+        rm -rf node-v20.11.1-linux-arm64 node-v20.11.1-linux-arm64.tar.xz frontend
 fi
