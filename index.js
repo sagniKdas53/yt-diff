@@ -41,8 +41,8 @@ const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const salt_rounds = 10;
 const global_stdTTL = 3600;
 const max_requests_per_ip_in_stdTTL = process.env.MAX_REQUESTS_PER_IP || 10;
-const user_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200 });
-const ip_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200 });
+const user_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200, maxKeys: 10 });
+const ip_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200, maxKeys: 10 });
 const secret_key = process.env.SECRET_KEY_FILE
   ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
   : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
@@ -547,7 +547,7 @@ async function process_response(
           }
         }
       } catch (error) {
-        err_log(`${error.message}\n${error.stack}`);
+        err_log(`${error.message} - ${error.stack}`);
       } finally {
         init_resp["count"]++;
       }
@@ -813,7 +813,7 @@ async function login(req, res) {
     const foundUser = await users.findOne({
       where: { user_name: user_name },
     });
-    verbose(`Issued token for user ${JSON.stringify(foundUser.user_name)} expires in ${expiry_time}`);
+    verbose(`Issued token for user ${foundUser.user_name} expires in ${expiry_time}`);
     if (foundUser === null) {
       res.writeHead(404, corsHeaders(json_t));
       res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
@@ -908,7 +908,7 @@ async function full_updates() {
       await playlist.save();
     } catch (error) {
       err_log(
-        `error processing playlist ${playlist.playlist_url}\n${error.message}`
+        `error processing playlist ${playlist.playlist_url}: ${error.message}`
       );
     }
   }
@@ -1005,13 +1005,14 @@ async function download_sequential(items) {
             // Send percentage to the frontend
             sock.emit("listing-or-downloading", { percentage: percentage });
           }
-          // Filename extraction
-          const fileNameMatch = /Destination: (.*)/s.exec(dataStr);
+          // Filename extraction, now it can handle if multiple lines
+          //  are received from stdout in a single on event
+          const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
           if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
             realFileName = fileNameMatch[1]
-            .replace(path_fs.extname(fileNameMatch[1]), "")
-            .replace(save_path+"/", "").trim();
-            debug(`extracted filename: ${realFileName},\nfilename from db: ${title}`);
+              .replace(path_fs.extname(fileNameMatch[1]), "")
+              .replace(save_path + "/", "").trim();
+            debug(`extracted filename: ${realFileName}, filename from db: ${title}`);
           }
         } catch (error) {
           // err_log(`${data} : ${error.message}`);
@@ -1090,13 +1091,7 @@ async function list_func(body, res) {
     body_url = fix_common_errors(body_url);
     if (sleep_before_listing) { await sleep(); }
     const response_list = await list_spawner(body_url, start_num, stop_num);
-    debug(
-      `response_list:\t${JSON.stringify(
-        response_list,
-        null,
-        2
-      )}, response_list.length: ${response_list.length}`
-    );
+    debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
     // Checking if the response qualifies as a playlist
     const play_list_exists = new Promise(async (resolve, reject) => {
       if (response_list.length > 1 || playlistRegex.test(body_url)) {
@@ -1152,11 +1147,7 @@ async function list_func(body, res) {
               playlist_url: body_url,
             },
           });
-          debug(
-            JSON.stringify(response_list) +
-            "\n " +
-            response_list[0].split("\t")[2] +
-            "\n " +
+          debug("unlisted video entry found: " +
             JSON.stringify(video_already_unlisted)
           );
           if (video_already_unlisted !== null) {
@@ -1401,7 +1392,7 @@ async function playlists_to_table(body, res) {
         })
         .then((result) => {
           res.writeHead(200, corsHeaders(json_t));
-          res.end(JSON.stringify(result, null, 2));
+          res.end(JSON.stringify(result));
         });
     } else {
       playlist_list
@@ -1422,7 +1413,7 @@ async function playlists_to_table(body, res) {
         })
         .then((result) => {
           res.writeHead(200, corsHeaders(json_t));
-          res.end(JSON.stringify(result, null, 2));
+          res.end(JSON.stringify(result));
         });
     }
   } catch (error) {
@@ -1476,7 +1467,7 @@ async function sublist_to_table(body, res) {
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
-            res.end(JSON.stringify(result, null, 2));
+            res.end(JSON.stringify(result));
           });
       } else {
         video_indexer
@@ -1502,7 +1493,7 @@ async function sublist_to_table(body, res) {
           })
           .then((result) => {
             res.writeHead(200, corsHeaders(json_t));
-            res.end(JSON.stringify(result, null, 2));
+            res.end(JSON.stringify(result));
           });
       }
     } catch (error) {
