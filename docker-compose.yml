@@ -49,6 +49,7 @@ services:
       SCHEDULE: "0 0 * * *"
       BACKUP_NUM_KEEP: 3
       BACKUP_DIR: /db_dumps
+    user: "${UID}:${GID}"
     volumes:
       - ${DB_DUMP_LOCATION}/db_dumps:/db_dumps
     depends_on:
