@@ -43,13 +43,11 @@ services:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       TZ: Asia/Kolkata
-      BACKUP_KEEP_DAYS: 4
-      BACKUP_KEEP_WEEKS: 3
-      BACKUP_KEEP_MONTHS: 2
-      SCHEDULE: "0 0 * * *"
-      BACKUP_NUM_KEEP: 3
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+      SCHEDULE: "@daily"
       BACKUP_DIR: /db_dumps
-    user: "${UID}:${GID}"
     volumes:
       - ${DB_DUMP_LOCATION}/db_dumps:/db_dumps
     depends_on:
