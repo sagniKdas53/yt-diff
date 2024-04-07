@@ -1427,10 +1427,11 @@ async function sublist_to_table(body, res) {
   try {
     const playlist_url = body["url"] !== undefined ? body["url"] : "None",
       start_num = body["start"] !== undefined ? +body["start"] : 0,
-      stop_num = body["stop"] !== undefined ? body["stop"] : chunk_size_env,
+      stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size_env,
       query_string = body["query"] !== undefined ? body["query"] : "",
-      sort_downloaded =
-        body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
+      sort_downloaded = body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
+      // [video_list, "downloaded", "DESC"] shows up as [null,"downloaded","DESC"] in the logs
+      // but don't remove as it work I don't remember why
       order_array = sort_downloaded
         ? [video_list, "downloaded", "DESC"]
         : ["index_in_playlist", "ASC"];
