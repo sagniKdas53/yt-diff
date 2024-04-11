@@ -1426,7 +1426,8 @@ async function playlists_to_table(body, res) {
 async function sublist_to_table(body, res) {
   try {
     const playlist_url = body["url"] !== undefined ? body["url"] : "None",
-      start_num = body["start"] !== undefined ? +body["start"] : 0,
+      // temp fix for Frontend bug that is causing the start number to be -ve and crashing the app
+      start_num = body["start"] !== undefined ? +body["start"] < 0 ? 0 : +body["start"] : 0,
       stop_num = body["stop"] !== undefined ? +body["stop"] : chunk_size_env,
       query_string = body["query"] !== undefined ? body["query"] : "",
       sort_downloaded = body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
