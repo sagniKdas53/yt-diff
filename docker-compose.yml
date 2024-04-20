@@ -44,12 +44,15 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       TZ: Asia/Kolkata
       BACKUP_KEEP_DAYS: 7
-      BACKUP_KEEP_WEEKS: 4
-      BACKUP_KEEP_MONTHS: 6
+      BACKUP_KEEP_WEEKS: 1
+      BACKUP_KEEP_MONTHS: 1
       SCHEDULE: "@daily"
       BACKUP_DIR: /db_dumps
+    user: ${UID:-1000}:${GID:-1000}
     volumes:
-      - ${DB_DUMP_LOCATION}/db_dumps:/db_dumps
+      - type: bind
+        source: ${DB_DUMP_LOCATION}/db_dumps
+        target: /db_dumps
     depends_on:
       - yt-db
     restart: always
