@@ -10,7 +10,7 @@ secrets:
 
 services:
   yt-db:
-    image: postgres:14.10-alpine3.18
+    image: postgres:16.2-alpine3.19
     container_name: yt-db
     ports:
       - 5432:5432
