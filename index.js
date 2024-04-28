@@ -29,6 +29,7 @@ const db_pass = process.env.DB_PASSWORD_FILE
 const save_location = process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.SLEEP ?? 3; // Will accept zero seconds, not recommended though.
 const chunk_size_env = +process.env.CHUNK_SIZE_DEFAULT || 10; // From my research, this is what youtube uses
+exports.chunk_size_env = chunk_size_env;
 const scheduled_update_string = process.env.UPDATE_SCHEDULED || "*/30 * * * *";
 const time_zone = process.env.TZ_PREFERRED || "Asia/Kolkata";
 
@@ -50,6 +51,7 @@ const secret_key = process.env.SECRET_KEY_FILE
     : "ytd1ff";
 const not_needed = ["", "pornstar", "model", "videos"];
 const playlistRegex = /(?:playlist|list=)\b/i;
+exports.playlistRegex = playlistRegex;
 // spankbang lists playlists as playlist/1,2 so need to add a way to integrate it
 const options = [
   "--embed-metadata",
@@ -72,6 +74,13 @@ const allowed_log_levels = (process.env.LOG_LEVELS || "trace").toLowerCase().tri
 const cached_log_level = allowed_log_levels.includes("trace") ? [true, true, true] :
   allowed_log_levels.includes("info") ? [false, true, true] :
     allowed_log_levels.includes("debug") ? [false, false, true] : [false, false, false];
+/**
+ * Trims the given message and returns the trimmed message. If an error occurs during trimming,
+ * the original message is returned.
+ *
+ * @param {string} msg - The message to be trimmed.
+ * @return {string} The trimmed message or the original message if an error occurs.
+ */
 const msg_trimmer = (msg) => {
   try {
     return msg.trim();
@@ -85,40 +94,80 @@ const orange = color.xterm(208);
 // 192 is like hay looks soothing TBH
 const trace_color = color.xterm(192);
 // trace < info < debug
+/**
+ * Logs a trace message if the log level is set to trace.
+ *
+ * @param {string} msg - The message to be logged.
+ * @return {undefined} This function does not return a value.
+ */
 const trace = (msg) => {
   if (cached_log_level[0])
     console.log(
       trace_color(`[${new Date().toLocaleString()}] TRACE: ${msg}`)
     );
 };
+exports.trace = trace;
+/**
+ * Logs an informational message if the log level is set to info.
+ *
+ * @param {string} msg - The message to be logged.
+ * @return {undefined} This function does not return a value.
+ */
 const info = (msg) => {
   if (cached_log_level[1])
     console.log(
       color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
     );
 };
+/**
+ * Logs a debug message if the log level is set to debug.
+ *
+ * @param {string} msg - The message to be logged.
+ * @return {undefined} This function does not return a value.
+ */
 const debug = (msg) => {
   if (cached_log_level[2])
     console.log(
       color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}`)
     );
 };
+exports.debug = debug;
+/**
+ * A description of the entire function.
+ *
+ * @param {string} msg - The message to be logged
+ * @return {undefined} This function does not return a value
+ */
 const verbose = (msg) => {
   // This is just for adding some color to the logs, I don"t use it anywhere meaningful
   console.log(
     color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
   );
 };
+/**
+ * Logs an error message with a timestamp and the trimmed message.
+ *
+ * @param {string} msg - The message to be logged.
+ * @return {undefined} This function does not return a value.
+ */
 const err_log = (msg) => {
   console.error(
     color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
   );
 };
+exports.err_log = err_log;
+/**
+ * Logs a warning message with a timestamp and the warning message.
+ *
+ * @param {string} msg - The warning message to be logged
+ * @return {undefined} This function does not return a value
+ */
 const warn = (msg) => {
   console.log(
     orange(`[${new Date().toLocaleString()}] WARNING: ${msg}`)
   );
 };
+exports.warn = warn;
 
 info(`Allowed log level: ${allowed_log_levels}`);
 
@@ -215,6 +264,7 @@ const playlist_list = sequelize.define("playlist_list", {
     allowNull: false,
   },
 });
+exports.playlist_list = playlist_list;
 
 /*  video_url is the foreign keys from video_list,
     playlist_url is foreign key from playlist_list
@@ -259,6 +309,7 @@ const video_indexer = sequelize.define("video_indexer", {
     defaultValue: 0,
   },
 });
+exports.video_indexer = video_indexer;
 
 const users = sequelize.define("users", {
   id: {
@@ -321,6 +372,12 @@ const job = new CronJob(
 );
 
 // Utility functions
+/**
+ * Extracts JSON data from a request object.
+ *
+ * @param {Object} req - The request object.
+ * @return {Promise<Object>} A promise that resolves with the parsed JSON data or rejects with an error object.
+ */
 async function extract_json(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -341,6 +398,13 @@ async function extract_json(req) {
     });
   });
 }
+/**
+ * Slices a string to a specified length if it exceeds the limit, otherwise returns the original string.
+ *
+ * @param {string} str - The input string to be sliced.
+ * @param {number} len - The maximum length of the sliced string.
+ * @return {Promise<string>} - The sliced string or the original string if it is within the limit.
+ */
 async function string_slicer(str, len) {
   if (str.length > len) {
     const encoder = new TextEncoder();
@@ -349,6 +413,12 @@ async function string_slicer(str, len) {
   }
   return str;
 }
+/**
+ * Converts a URL to a title by extracting the pathname, filtering out unnecessary parts, and joining the remaining parts.
+ *
+ * @param {string} body_url - The URL to extract the title from.
+ * @return {string} The extracted title from the URL.
+ */
 async function url_to_title(body_url) {
   try {
     return new URL(body_url).pathname
@@ -360,6 +430,12 @@ async function url_to_title(body_url) {
     return body_url;
   }
 }
+/**
+ * Fixes common errors in the given body URL related to YouTube and Pornhub links.
+ *
+ * @param {string} body_url - The URL to check and modify.
+ * @return {string} The modified URL after fixing common errors.
+ */
 function fix_common_errors(body_url) {
   if (body_url.includes("youtube")) {
     if (!/\/videos\/?$/.test(body_url) && body_url.includes("/@")) {
@@ -380,6 +456,15 @@ function fix_common_errors(body_url) {
   // TODO: Add checks for other sites
   return body_url;
 }
+exports.fix_common_errors = fix_common_errors;
+/**
+ * Spawns a child process to run the `yt-dlp` command with the given parameters and returns a promise that resolves with the response.
+ *
+ * @param {string} body_url - The URL of the playlist to download.
+ * @param {number} start_num - The starting index of the playlist to download.
+ * @param {number} stop_num - The ending index of the playlist to download.
+ * @return {Promise<string[]>} A promise that resolves with an array of strings representing the response from `yt-dlp`.
+ */
 async function list_spawner(body_url, start_num, stop_num) {
   trace(
     `list_spawner: Start: ${start_num}, Stop: ${stop_num}, Url: ${body_url}`
@@ -416,6 +501,16 @@ async function list_spawner(body_url, start_num, stop_num) {
     });
   });
 }
+exports.list_spawner = list_spawner;
+/**
+ * Processes the response from a list operation and updates the video_list and video_indexer tables.
+ *
+ * @param {Array} response - The response array containing video information.
+ * @param {string} body_url - The URL of the playlist.
+ * @param {number} index - The starting index of the list operation.
+ * @param {boolean} is_update_operation - Indicates if it is an update operation.
+ * @return {Promise<Object>} - A promise that resolves to an object containing the count of processed items, the response URL, the starting index, and a boolean indicating if listing should be quit.
+ */
 async function process_response(
   response,
   body_url,
@@ -501,7 +596,7 @@ async function process_response(
       allItemsExistInVideoIndexer
     )}`);
   }
-
+  // This is what I was looking for
   await Promise.all(
     response.map(async (element, map_idx) => {
       try {
@@ -555,6 +650,14 @@ async function process_response(
   );
   return init_resp;
 }
+exports.process_response = process_response;
+/**
+ * Updates a video entry in the database.
+ *
+ * @param {Object} found - The found video object.
+ * @param {Object} data - The data to update the video with.
+ * @return {Promise<void>} - A promise that resolves when the video entry is updated.
+ */
 async function update_vid_entry(found, data) {
   // The object was found and not created
   // Does not change the downloaded state
@@ -600,10 +703,20 @@ async function update_vid_entry(found, data) {
     debug("This property does not need modification");
   }
 }
+/**
+ * Asynchronously pauses the execution of the current code for a specified
+ * number of seconds.
+ *
+ * @param {number} [sleep_seconds=sleep_time] - The number of seconds to sleep.
+ * Defaults to the value of the `sleep_time` variable.
+ * @return {Promise<void>} A promise that resolves after the specified number of
+ * seconds have passed.
+ */
 async function sleep(sleep_seconds = sleep_time) {
   debug("Sleeping for " + sleep_seconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
 }
+exports.sleep = sleep;
 //Authentication functions
 /**
  * Asynchronously hashes the given password using bcrypt.
@@ -835,6 +948,13 @@ async function login(req, res) {
 }
 
 // The scheduled updater
+/**
+ * Executes a scheduled update by performing a quick update followed by a full update.
+ * Emits a "playlist-done" event with a message and id indicating that the update is complete.
+ * Logs the start and end time of the update, as well as the next scheduled update time.
+ *
+ * @return {Promise<void>} A promise that resolves when the update is complete.
+ */
 async function scheduled_updater() {
   info(`Scheduled update started at: ${new Date().toLocaleString()}`);
   info(`Starting the quick update`);
@@ -851,6 +971,11 @@ async function scheduled_updater() {
   info(`Next scheduled update on ${job.nextDates(1)}`);
 }
 
+/**
+ * Executes quick updates for playlists of monitoring_type "Fast".
+ *
+ * @return {Promise<void>} A promise that resolves when all playlists are updated.
+ */
 async function quick_updates() {
   const playlists = await playlist_list.findAndCountAll({
     where: {
@@ -881,6 +1006,11 @@ async function quick_updates() {
   }
 }
 // this one needs to be tested more
+/**
+ * Asynchronously updates all playlists marked as "Full" by performing a full update on each playlist.
+ *
+ * @return {Promise<void>} A Promise that resolves when all playlists have been updated.
+ */
 async function full_updates() {
   const playlists = await playlist_list.findAndCountAll({
     where: {
@@ -915,6 +1045,13 @@ async function full_updates() {
 }
 
 // Download functions
+/**
+ * Asynchronous function for downloading items based on input body and response.
+ *
+ * @param {Object} body - The body containing information for downloading.
+ * @param {Object} res - The response object to send back.
+ * @return {Promise} A Promise that resolves when the download process is completed.
+ */
 async function download_lister(body, res) {
   try {
     const download_list = [],
@@ -1063,25 +1200,32 @@ async function download_sequential(items) {
     }
   }
 }
-
 // List functions
+/**
+ * Asynchronously processes a list of URLs, extracts information from each URL, and sends the results to the frontend.
+ *
+ * @param {Object} body - An object containing the following properties:
+ *   - url_list {Array<string>}: A list of URLs to process.
+ *   - start {number} (optional): The starting index of the list to process. Defaults to 1.
+ *   - chunk_size {number} (optional): The number of items to process at a time. Defaults to the value of the chunk_size_env variable.
+ *   - sleep {boolean} (optional): Whether to wait for a short period of time before processing each URL. Defaults to false.
+ *   - monitoring_type {string} (optional): The type of monitoring to perform. Defaults to "N/A".
+ * @param {Object} res - The response object to send the results to.
+ * @return {Promise<void>} A promise that resolves when the processing is complete.
+ */
+
 async function list_func(body, res) {
   try {
     const start_num = body["start"] !== undefined ?
-      +body["start"] === 0 ? 1 : +body["start"] : 1,
-      chunk_size = +body["chunk_size"] >= +chunk_size_env ? +body["chunk_size"] : +chunk_size_env,
-      stop_num = +chunk_size + 1,
-      sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false,
-      monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
+      +body["start"] === 0 ? 1 : +body["start"] : 1, chunk_size = +body["chunk_size"] >= +chunk_size_env ? +body["chunk_size"] : +chunk_size_env, stop_num = +chunk_size + 1, sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false, monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
     //verbose(`body: ${JSON.stringify(body)}`);
     //verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
-    let play_list_index = -1,
-      already_indexed = false;
+
     if (body["url_list"] === undefined) {
       throw new Error("url list is required");
     }
-    let url_list = body["url_list"],
-      last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
+    let url_list = body["url_list"], last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
+
     //debug(`payload: ${JSON.stringify(body)}`);
     trace(
       `list_func:  url_list: ${url_list}, start_num: ${start_num}, index: ${last_item_index}, ` +
@@ -1093,163 +1237,32 @@ async function list_func(body, res) {
     // one by one, then send the updates to the frontend using sock.emit("playlist-done")
     // make sure the emits are giving the correct data (ie: url, index) to the frontend
     try {
-      for (let index = 0; index < url_list.length; index++) {
-        let current_url = url_list[index];
-        trace("Processing url: " + current_url);
-        current_url = fix_common_errors(current_url);
-        if (sleep_before_listing) { await sleep(); }
-        const response_list = await list_spawner(current_url, start_num, stop_num);
-        debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
-        // Checking if the response qualifies as a playlist
-        const play_list_exists = new Promise(async (resolve, reject) => {
-          if (response_list.length > 1 || playlistRegex.test(current_url)) {
-            const is_already_indexed = await playlist_list.findOne({
-              where: { playlist_url: current_url },
-            });
-            try {
-              trace(
-                `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
-              );
-              already_indexed = true;
-              // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
-              play_list_index = is_already_indexed.playlist_index;
-              resolve(last_item_index);
-            } catch (error) {
-              warn(
-                "playlist or channel not encountered earlier, saving in database"
-              );
-              // Its not an error, but the title extraction,
-              // will only be done once the error is raised
-              // then is used to find the index of the previous playlist
-              await add_playlist(current_url, monitoring_type)
-                .then(() =>
-                  playlist_list.findOne({
-                    order: [["createdAt", "DESC"]],
-                  })
-                )
-                .then(async (playlist) => {
-                  if (playlist) {
-                    await sleep();
-                    play_list_index = playlist.playlist_index;
-                    trace(
-                      `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
-                    );
-                    resolve(last_item_index);
-                  } else {
-                    throw new Error("Playlist not found");
-                  }
-                })
-                .catch((error) => {
-                  err_log("Error occurred:", error);
-                });
-            }
-          } else {
-            try {
-              current_url = "None";
-              // If the url is determined to be an unlisted video
-              // (i.e: not belonging to a playlist)
-              // then the last unlisted video index is used to increment over.
-              const video_already_unlisted = await video_indexer.findOne({
-                where: {
-                  video_url: response_list[0].split("\t")[2],
-                  playlist_url: current_url,
-                },
-              });
-              debug("unlisted video entry found: " +
-                JSON.stringify(video_already_unlisted)
-              );
-              if (video_already_unlisted !== null) {
-                debug("Video already saved as unlisted");
-                reject(video_already_unlisted);
-              } else {
-                debug("Adding a new video to the unlisted videos list");
-                const last_item = await video_indexer.findOne({
-                  where: {
-                    playlist_url: current_url,
-                  },
-                  order: [["index_in_playlist", "DESC"]],
-                  attributes: ["index_in_playlist"],
-                  limit: 1,
-                });
-                //debug(JSON.stringify(last_item));
-                try {
-                  last_item_index = last_item.index_in_playlist;
-                } catch (error) {
-                  // encountered an error if unlisted videos was not initialized
-                  last_item_index = 0;
-                }
-                resolve(last_item_index + 1);
-              }
-            } catch (error) {
-              err_log(`${error.message}`);
-              const status = error.status || 500;
-              res.writeHead(status, corsHeaders(json_t));
-              res.end(JSON.stringify({ error: error.message }));
-              sock.emit("playlist-done", {
-                message: "done processing playlist or channel",
-                id: current_url === "None" ? body["url_list"][index] : current_url,
-              });
-            }
-          }
-        });
-        await play_list_exists.then(
-          (last_item_index) => {
-            // debug("last_item_index: " + last_item_index);
-            process_response(response_list, current_url, last_item_index, false)
-              .then((init_resp) => {
-                try {
-                  init_resp["prev_playlist_index"] = play_list_index + 1;
-                  init_resp["already_indexed"] = already_indexed;
-                  res.writeHead(200, corsHeaders(json_t));
-                  res.end(JSON.stringify(init_resp));
-                } catch (error) {
-                  err_log(`${error.message}`);
-                }
-              })
-              .then(() => {
-                list_background(
-                  current_url,
-                  start_num,
-                  stop_num,
-                  chunk_size,
-                  true
-                ).then(() => {
-                  trace(`Done processing playlist: ${current_url}`);
-                  sock.emit("playlist-done", {
-                    message: "done processing playlist or channel",
-                    id: current_url === "None" ? body["url_list"][index] : current_url,
-                  });
-                });
-              });
-          },
-          (video_already_unlisted) => {
-            trace("Video already saved as unlisted");
-            try {
-              res.writeHead(200, corsHeaders(json_t));
-              res.end(
-                JSON.stringify({
-                  message: "Video already saved as unlisted",
-                  count: 1,
-                  resp_url: current_url,
-                  start: video_already_unlisted.index_in_playlist,
-                })
-              );
-              sock.emit("playlist-done", {
-                message: "done processing playlist or channel",
-                id: current_url === "None" ? body["url_list"][index] : current_url,
-              });
-            } catch (error) {
-              err_log(`${error.message}`);
-            }
-          }
-        );
+      // so this didn't work, need to figure out how to make it send requests one by one
+      let index = 0;
+      for (const current_url of url_list) {
+        //url_list.map(async (current_url, index) => {
+        debug(`current_url: ${current_url}, index: ${index}`);
+        const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
+        console.log(`done: ${done}`);
+        if (done) {
+          debug(`processed current_url: ${current_url}, index: ${index}`);
+        } else if (done instanceof Error) {
+          err_log(`${done.message}`);
+        } else {
+          debug(`done: ${done}, current_url: ${current_url}, index: ${index}`);
+        }
+        index += 1;
+        //});
       }
+      debug("List processing done");
     } catch (error) {
       err_log(`${error.message}`);
       console.error(error.stack);
       const status = error.status || 500;
-      res.writeHead(status, corsHeaders(json_t));
-      res.end(JSON.stringify({ error: error.message }));
+      if (index === 0) {
+        res.writeHead(status, corsHeaders(json_t));
+        res.end(JSON.stringify({ error: error.message }));
+      }
       sock.emit("playlist-done", {
         message: "done processing playlist or channel",
         id: current_url === "None" ? body["url_list"][index] : current_url,
@@ -1258,8 +1271,198 @@ async function list_func(body, res) {
   } catch (error) {
     err_log(`${error.message}`);
     console.error(error.stack);
+    const status = error.status || 500;
+    res.writeHead(status, corsHeaders(json_t));
+    res.end(JSON.stringify({ error: error.message }));
   }
 }
+/**
+ * Initializes the list processing for a given URL.
+ *
+ * @param {string} current_url - The URL to process.
+ * @param {Object} body - The request body.
+ * @param {number} index - The index of the URL in the list.
+ * @param {Object} res - The response object.
+ * @param {boolean} sleep_before_listing - Whether to sleep before listing.
+ * @param {number} last_item_index - The index of the last item processed.
+ * @param {number} start_num - The start number.
+ * @param {number} stop_num - The stop number.
+ * @param {number} chunk_size - The chunk size.
+ * @param {string} monitoring_type - The monitoring type.
+ * @return {Promise} A promise that resolves when the list processing is complete.
+ */
+function list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type) {
+  let play_list_index = -1, already_indexed = false;
+  return new Promise(async (resolve, reject) => {
+    trace("Processing url: " + current_url);
+    current_url = fix_common_errors(current_url);
+    if (sleep_before_listing) { await sleep(); }
+    const response_list = await list_spawner(current_url, start_num, stop_num);
+    debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
+    // Checking if the response qualifies as a playlist
+    const play_list_exists = new Promise(async (resolve, reject) => {
+      if (response_list.length > 1 || playlistRegex.test(current_url)) {
+        const is_already_indexed = await playlist_list.findOne({
+          where: { playlist_url: current_url },
+        });
+        try {
+          trace(
+            `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
+          );
+          already_indexed = true;
+          // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
+          play_list_index = is_already_indexed.playlist_index;
+          // Resolve the promise with the last item index
+          resolve(last_item_index);
+        } catch (error) {
+          warn(
+            "playlist or channel not encountered earlier, saving in database"
+          );
+          // Its not an error, but the title extraction,
+          // will only be done once the error is raised
+          // then is used to find the index of the previous playlist
+          await add_playlist(current_url, monitoring_type)
+            .then(() => playlist_list.findOne({
+              order: [["createdAt", "DESC"]],
+            })
+            )
+            .then(async (playlist) => {
+              if (playlist) {
+                await sleep();
+                play_list_index = playlist.playlist_index;
+                trace(
+                  `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
+                );
+                // Resolve the promise with the last item index
+                resolve(last_item_index);
+              } else {
+                throw new Error("Playlist not found");
+              }
+            })
+            .catch((error) => {
+              err_log("Error occurred:", error);
+            });
+        }
+      } else {
+        // This is an unlisted video, since the response does not qualify as a playlist
+        try {
+          current_url = "None";
+          // If the url is determined to be an unlisted video
+          // (i.e: not belonging to a playlist)
+          // then the last unlisted video index is used to increment over.
+          const video_already_unlisted = await video_indexer.findOne({
+            where: {
+              video_url: response_list[0].split("\t")[2],
+              playlist_url: current_url,
+            },
+          });
+          debug("unlisted video entry found: " +
+            JSON.stringify(video_already_unlisted)
+          );
+          if (video_already_unlisted !== null) {
+            debug("Video already saved as unlisted");
+            reject(video_already_unlisted);
+          } else {
+            debug("Adding a new video to the unlisted videos list");
+            const last_item = await video_indexer.findOne({
+              where: {
+                playlist_url: current_url,
+              },
+              order: [["index_in_playlist", "DESC"]],
+              attributes: ["index_in_playlist"],
+              limit: 1,
+            });
+            //debug(JSON.stringify(last_item));
+            try {
+              last_item_index = last_item.index_in_playlist;
+            } catch (error) {
+              // encountered an error if unlisted videos was not initialized
+              last_item_index = 0;
+            }
+            resolve(last_item_index + 1);
+          }
+        } catch (error) {
+          err_log(`${error.message}`);
+          const status = error.status || 500;
+          if (index === 0) {
+            res.writeHead(status, corsHeaders(json_t));
+            res.end(JSON.stringify({ error: error.message }));
+          }
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: current_url === "None" ? body["url_list"][index] : current_url,
+          });
+        }
+      }
+    });
+    await play_list_exists.then(
+      (last_item_index) => {
+        // debug("last_item_index: " + last_item_index);
+        process_response(response_list, current_url, last_item_index, false)
+          .then((init_resp) => {
+            try {
+              init_resp["prev_playlist_index"] = play_list_index + 1;
+              init_resp["already_indexed"] = already_indexed;
+              if (index === 0) {
+                res.writeHead(200, corsHeaders(json_t));
+                res.end(JSON.stringify(init_resp));
+              }
+              resolve(true)
+            } catch (error) {
+              err_log(`${error.message}`);
+              reject(error);
+            }
+          })
+          .then(() => {
+            list_background(
+              current_url,
+              start_num,
+              stop_num,
+              chunk_size,
+              true
+            ).then(() => {
+              trace(`Done processing playlist: ${current_url}`);
+              sock.emit("playlist-done", {
+                message: "done processing playlist or channel",
+                id: current_url === "None" ? body["url_list"][index] : current_url,
+              });
+            });
+          });
+      },
+      (video_already_unlisted) => {
+        trace("Video already saved as unlisted");
+        try {
+          if (index === 0) {
+            res.writeHead(200, corsHeaders(json_t));
+            res.end(
+              JSON.stringify({
+                message: "Video already saved as unlisted",
+                count: 1,
+                resp_url: current_url,
+                start: video_already_unlisted.index_in_playlist,
+              })
+            );
+          }
+          sock.emit("playlist-done", {
+            message: "done processing playlist or channel",
+            id: current_url === "None" ? body["url_list"][index] : current_url,
+          });
+          resolve(true);
+        } catch (error) {
+          err_log(`${error.message}`);
+          reject(error);
+        }
+      }
+    );
+  })
+}
+/**
+ * Asynchronously handles monitoring type functionality based on the input body and response.
+ *
+ * @param {Object} body - The body object containing url and watch parameters.
+ * @param {Object} res - The response object for sending the outcome of the monitoring.
+ * @return {Promise} A Promise that resolves when the monitoring process is complete.
+ */
 async function monitoring_type_func(body, res) {
   try {
     const body_url = body["url"],
@@ -1284,6 +1487,16 @@ async function monitoring_type_func(body, res) {
     res.end(JSON.stringify({ error: error.message }));
   }
 }
+/**
+ * Asynchronously performs a background listing operation.
+ *
+ * @param {string} body_url - The URL of the playlist.
+ * @param {number} start_num - The starting index of the playlist.
+ * @param {number} stop_num - The ending index of the playlist.
+ * @param {number} chunk_size - The size of each chunk to process.
+ * @param {boolean} is_update_operation - Indicates if the operation is an update.
+ * @return {undefined}
+ */
 async function list_background(
   body_url,
   start_num,
@@ -1327,6 +1540,14 @@ async function list_background(
     count++;
   }
 }
+exports.list_background = list_background;
+/**
+ * Adds a playlist to the playlist_list table in the database.
+ *
+ * @param {string} url_var - The URL of the playlist.
+ * @param {string} monitoring_type_var - The type of monitoring for the playlist.
+ * @return {Promise<void>} - A Promise that resolves when the playlist is added.
+ */
 async function add_playlist(url_var, monitoring_type_var) {
   let title_str = "",
     next_item_index = 0;
@@ -1376,8 +1597,15 @@ async function add_playlist(url_var, monitoring_type_var) {
     }
   });
 }
+exports.add_playlist = add_playlist;
 
 // List function that send data to frontend
+/**
+ * Asynchronously processes the playlists data and sends the result to the frontend.
+ *
+ * @param {Object} body - The request body containing parameters for processing playlists.
+ * @param {Object} res - The response object to send back the processed playlists data.
+ */
 async function playlists_to_table(body, res) {
   try {
     const start_num = body["start"] !== undefined ? +body["start"] : 0,
@@ -1436,6 +1664,13 @@ async function playlists_to_table(body, res) {
     res.end(JSON.stringify({ error: error.message }));
   }
 }
+/**
+ * Asynchronously processes the sublist data and sends the result to the frontend.
+ *
+ * @param {Object} body - The request body containing parameters for processing the sublist.
+ * @param {Object} res - The response object to send back the processed sublist data.
+ * @return {Promise} A promise that resolves when the data has been processed and sent to the frontend.
+ */
 async function sublist_to_table(body, res) {
   try {
     const playlist_url = body["url"] !== undefined ? body["url"] : "None",
@@ -1523,7 +1758,14 @@ async function sublist_to_table(body, res) {
 }
 
 const json_t = "text/json; charset=utf-8";
+exports.json_t = json_t;
 const html = "text/html; charset=utf-8";
+/**
+ * Returns CORS headers based on the specified type.
+ *
+ * @param {type} type - The type to be used for Content-Type header
+ * @return {object} CORS headers object
+ */
 const corsHeaders = (type) => {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -1533,6 +1775,7 @@ const corsHeaders = (type) => {
     "Content-Type": type,
   };
 };
+exports.corsHeaders = corsHeaders;
 
 const types = {
   ".png": "image/png",
@@ -1546,6 +1789,12 @@ const types = {
   ".br": "application/brotli",
 };
 
+/**
+ * Recursively retrieves a list of files and their corresponding extensions from a given directory.
+ *
+ * @param {string} dir - The directory path to start retrieving files from.
+ * @return {Array<{filePath: string, extension: string}>} An array of objects containing the file path and extension of each file found in the directory and its subdirectories.
+ */
 function getFiles(dir) {
   const files = fs.readdirSync(dir);
   let fileList = [];
@@ -1565,6 +1814,12 @@ function getFiles(dir) {
   return fileList;
 }
 
+/**
+ * Generates a dictionary of static assets from a list of file objects.
+ *
+ * @param {Array<{filePath: string, extension: string}>} fileList - The list of file objects containing the file path and extension.
+ * @return {Object<string, {file: Buffer, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
+ */
 function makeAssets(fileList) {
   const staticAssets = {};
   fileList.forEach((element) => {
@@ -1721,6 +1976,7 @@ const sock = io.on("connection", (socket) => {
   });
   return socket;
 });
+exports.sock = sock;
 
 server.listen(port, async () => {
   if (process.env.HIDE_PORTS === "true") {
