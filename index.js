@@ -1218,6 +1218,7 @@ async function list_func(body, res) {
   try {
     const start_num = body["start"] !== undefined ?
       +body["start"] === 0 ? 1 : +body["start"] : 1, chunk_size = +body["chunk_size"] >= +chunk_size_env ? +body["chunk_size"] : +chunk_size_env, stop_num = +chunk_size + 1, sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false, monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
+    let index = 0;
     //verbose(`body: ${JSON.stringify(body)}`);
     //verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
 
@@ -1238,18 +1239,21 @@ async function list_func(body, res) {
     // make sure the emits are giving the correct data (ie: url, index) to the frontend
     try {
       // so this didn't work, need to figure out how to make it send requests one by one
-      let index = 0;
+      // let index = 0;
       for (const current_url of url_list) {
         //url_list.map(async (current_url, index) => {
         debug(`current_url: ${current_url}, index: ${index}`);
-        const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
-        console.log(`done: ${done}`);
-        if (done) {
-          debug(`processed current_url: ${current_url}, index: ${index}`);
-        } else if (done instanceof Error) {
-          err_log(`${done.message}`);
-        } else {
-          debug(`done: ${done}, current_url: ${current_url}, index: ${index}`);
+        try {
+          const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
+          if (done) {
+            debug(`processed current_url: ${current_url}, index: ${index}`);
+          } else if (done instanceof Error) {
+            err_log(`list_func processing error: ${done.message}`);
+          } else {
+            debug(`done: ${done}, current_url: ${current_url}, index: ${index}`);
+          }
+        } catch (error) {
+          err_log(`list_func processing error: ${error.message}`);
         }
         index += 1;
         //});
@@ -1257,7 +1261,6 @@ async function list_func(body, res) {
       debug("List processing done");
     } catch (error) {
       err_log(`${error.message}`);
-      console.error(error.stack);
       const status = error.status || 500;
       if (index === 0) {
         res.writeHead(status, corsHeaders(json_t));
@@ -1270,10 +1273,9 @@ async function list_func(body, res) {
     }
   } catch (error) {
     err_log(`${error.message}`);
-    console.error(error.stack);
-    const status = error.status || 500;
-    res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ error: error.message }));
+    //const status = error.status || 500;
+    //res.writeHead(status, corsHeaders(json_t));
+    //res.end(JSON.stringify({ error: error.message }));
   }
 }
 /**
@@ -1293,6 +1295,8 @@ async function list_func(body, res) {
  */
 function list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type) {
   let play_list_index = -1, already_indexed = false;
+  trace(`list_init: url: ${current_url}, index: ${index}, start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, monitoring_type: ${monitoring_type}`);
+  //try {
   return new Promise(async (resolve, reject) => {
     trace("Processing url: " + current_url);
     current_url = fix_common_errors(current_url);
@@ -1300,6 +1304,9 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
     const response_list = await list_spawner(current_url, start_num, stop_num);
     debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
     // Checking if the response qualifies as a playlist
+    if (response_list.length === 0) {
+      reject(new Error("response_list.length is 0"));
+    }
     const play_list_exists = new Promise(async (resolve, reject) => {
       if (response_list.length > 1 || playlistRegex.test(current_url)) {
         const is_already_indexed = await playlist_list.findOne({
@@ -1455,6 +1462,13 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
       }
     );
   })
+  // } catch (error) {
+  //   trace(`Error in list_init: ${error.message}`);
+  //   return new Promise((_, reject) => {
+  //     // Not really sure what to do here
+  //     reject(error);
+  //   })
+  // }
 }
 /**
  * Asynchronously handles monitoring type functionality based on the input body and response.
@@ -1850,7 +1864,7 @@ if (process.env.USE_NATIVE_HTTPS === "true") {
       cert: fs.readFileSync(certPath, "utf8")
     };
   } catch (error) {
-    console.error("Error reading secret files:", error);
+    err_log("Error reading secret files:", error);
     process.exit(1);
   }
 }
