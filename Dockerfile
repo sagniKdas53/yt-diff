@@ -26,7 +26,7 @@ ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 RUN ./get-packages.sh
 
-RUN apt remove git ca-certificates xz-utils bzip2 wget -y \
+RUN apt remove git ca-certificates xz-utils bzip2 -y \
     && groupadd -g 1000 ytdiff \
     && useradd -u 1000 -g ytdiff -s /bin/bash -m ytdiff
 

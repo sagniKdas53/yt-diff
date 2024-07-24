@@ -30,6 +30,13 @@ services:
       - ${DB_LOCATION}:/var/lib/postgresql/data
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+      # Autoheal
+      - "autoheal.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   yt-db-backup:
     container_name: ytdiff_db_dumper
@@ -49,6 +56,7 @@ services:
       BACKUP_KEEP_MONTHS: 1
       SCHEDULE: "@daily"
       BACKUP_DIR: /db_dumps
+      HEALTHCHECK_ENABLED: "true"
     user: ${UID:-1000}:${GID:-1000}
     volumes:
       - type: bind
@@ -61,6 +69,13 @@ services:
       - revProxy-net
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+      # Autoheal
+      - "autoheal.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h yt-db -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   yt-diff:
     # image: purevert/yt-diff:amd64
@@ -118,12 +133,14 @@ services:
       - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
       - "com.centurylinklabs.watchtower.enable=true"
-    # healthcheck:
-    #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
-    #   interval: 5m
-    #   timeout: 5s
-    #   start_period: 30s
-    #   retries: 3
+      # Autoheal
+      - "autoheal.enable=true"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
+      interval: 5m
+      timeout: 5s
+      start_period: 30s
+      retries: 3
 
   adminer:
     image: adminer:4.8.1-standalone
@@ -147,3 +164,10 @@ services:
       - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
       - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
       - "com.centurylinklabs.watchtower.enable=true"
+    #   # Autoheal
+    #   - "autoheal.enable=true"
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 5
