@@ -152,6 +152,8 @@ services:
     #   - 8080:8080
     networks:
       - revProxy-net
+    volumes:
+      - ./curl-amd64:/curl
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.adminer.entryPoints=web,websecure'
@@ -164,10 +166,10 @@ services:
       - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
       - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
       - "com.centurylinklabs.watchtower.enable=true"
-    #   # Autoheal
-    #   - "autoheal.enable=true"
-    # healthcheck:
-    #   test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 5
+      # Autoheal
+      - "autoheal.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "/curl -f http://localhost:8080/index.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

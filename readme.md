@@ -104,3 +104,7 @@ Trying out this logging format
 ```bash
 yt-dlp --progress-template "download:[download] %(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s" https://www.youtube.com/watch?v=K1VVWJrpDgs
 ```
+
+# Curl:
+
+Get a static build form here: https://github.com/moparisthebest/static-curl
