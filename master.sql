@@ -1,0 +1,2 @@
+INSERT INTO users(id,user_name,password,salt,"createdAt","updatedAt")
+values('1fc19712-a4c3-459b-badb-9393ee748d1e','test-5be7216c-a4af-4019-b384-1c8f74250cec','$2b$10$5GT/ebDP1oZ0agpUyVGJduPxFtKbBbp2Ista8d2okjiZSn4C2x3p.','$2b$10$5GT/ebDP1oZ0agpUyVGJdu','2024-03-06 17:37:07.914+00','2024-03-06 17:37:07.914+00')

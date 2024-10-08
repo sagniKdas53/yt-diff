@@ -1,5 +1,3 @@
-version: "3.6"
-
 networks:
   revProxy-net:
     external: true
@@ -7,6 +5,9 @@ networks:
 secrets:
   db_password:
     file: db_password.txt
+
+volumes:
+  pgadmin-data:
 
 services:
   yt-db:
@@ -63,7 +64,8 @@ services:
         source: ${DB_DUMP_LOCATION}/db_dumps
         target: /db_dumps
     depends_on:
-      - yt-db
+      yt-db:
+        condition: service_healthy
     restart: always
     networks:
       - revProxy-net
@@ -91,7 +93,8 @@ services:
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
     depends_on:
-      - yt-db
+      yt-db:
+        condition: service_healthy
     networks:
       - revProxy-net
     # expose:
@@ -142,34 +145,40 @@ services:
       start_period: 30s
       retries: 3
 
-  adminer:
-    image: adminer:4.8.1-standalone
-    container_name: adminer
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4_container
     restart: always
+    # ports:
+    #   - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PG_ADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PG_ADMIN_PASSWORD}
+      SCRIPT_NAME: /pgadmin
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
     depends_on:
-      - yt-db
+      yt-db:
+        condition: service_healthy
     # ports:
     #   - 8080:8080
     networks:
       - revProxy-net
-    volumes:
-      - ./curl-amd64:/curl
     labels:
       - 'traefik.enable=true'
-      - 'traefik.http.routers.adminer.entryPoints=web,websecure'
-      - 'traefik.http.routers.adminer.rule=Host(`${HOSTNAME}`) && PathPrefix(`/adminer`)'
-      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
-      - 'traefik.http.services.adminer.loadBalancer.passHostHeader=true'
-      - "traefik.http.middlewares.strip-adminer.stripprefix.prefixes=/adminer"
-      - "traefik.http.routers.adminer.middlewares=strip-adminer@docker,http-to-https@docker"
-      - "traefik.http.routers.adminer.tls=true"
-      - "traefik.http.routers.adminer.tls.certresolver=tailsolver"
-      - "traefik.http.routers.adminer.tls.domains[0].main=${HOSTNAME}"
+      - 'traefik.http.routers.pgadmin.entryPoints=web,websecure'
+      - 'traefik.http.routers.pgadmin.rule=Host(`${HOSTNAME}`) && PathPrefix(`/pgadmin`)'
+      - "traefik.http.services.pgadmin.loadbalancer.server.port=80"
+      - 'traefik.http.services.pgadmin.loadBalancer.passHostHeader=true'
+      - "traefik.http.routers.pgadmin.middlewares=http-to-https@docker"
+      - "traefik.http.routers.pgadmin.tls=true"
+      - "traefik.http.routers.pgadmin.tls.certresolver=tailsolver"
+      - "traefik.http.routers.pgadmin.tls.domains[0].main=${HOSTNAME}"
       - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
       - "autoheal.enable=true"
     healthcheck:
-      test: ["CMD-SHELL", "/curl -f http://localhost:8080/index.php || exit 1"]
+      test: ["CMD", "wget", "-O", "-", "http://localhost:80/pgadmin/misc/ping"]
       interval: 30s
       timeout: 10s
       retries: 5
