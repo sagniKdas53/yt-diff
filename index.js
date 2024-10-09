@@ -8,6 +8,7 @@ const http = require("http");
 const path_fs = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const generator = require('generate-password');
 const NodeCache = require("node-cache");
 
 const { Server } = require("socket.io");
@@ -343,12 +344,12 @@ video_list.hasMany(video_indexer, {
 
 sequelize
   .sync()
-  .then(() => {
+  .then(async () => {
     info(
-      "video_list and playlist_list tables exist or are created successfully"
+      "tables exist or are created successfully"
     );
     // Making the unlisted playlist
-    playlist_list.findOrCreate({
+    const [unlistedPlaylist, created] = await playlist_list.findOrCreate({
       where: { playlist_url: "None" },
       defaults: {
         title: "None",
@@ -357,6 +358,25 @@ sequelize
         playlist_index: -1,
       },
     });
+    if (created) {
+      info(
+        "Unlisted playlist created successfully with playlist url: "
+        + unlistedPlaylist.playlist_url
+      );
+    }
+    // Making a default user
+    const userName = "admin";
+    const defaultUser = await users.findOne({ where: { user_name: userName } });
+    debug(`defaultUser: ${JSON.stringify(defaultUser)}`);
+    if (defaultUser === null) {
+      const generatedPassword = generate_password();
+      const [salt, password] = await hash_password(generatedPassword);
+      users.create({ user_name: userName, salt: salt, password: password });
+      info(
+        "Default user created successfully with user name: "
+        + userName + " and password: " + generatedPassword
+      );
+    }
   })
   .catch((error) => {
     err_log(`Unable to create table : ${error}`);
@@ -372,6 +392,22 @@ const job = new CronJob(
 );
 
 // Utility functions
+/**
+ * Generates a random password.
+ *
+ * @return {string} A 16 character long password.
+ */
+function generate_password() {
+  const password = generator.generate({
+    length: 16,
+    numbers: true,
+    lowercase: true,
+    uppercase: true,
+    symbols: true,
+    strict: true
+  });
+  return password;
+}
 /**
  * Extracts JSON data from a request object.
  *
