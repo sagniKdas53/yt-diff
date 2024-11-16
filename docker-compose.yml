@@ -39,45 +39,45 @@ services:
       timeout: 10s
       retries: 5
 
-  yt-db-backup:
-    container_name: ytdiff_db_dumper
-    image: prodrigestivill/postgres-backup-local
-    env_file:
-      - .env
-    secrets:
-      - db_password
-    environment:
-      POSTGRES_HOST: yt-db
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-      TZ: Asia/Kolkata
-      BACKUP_KEEP_DAYS: 7
-      BACKUP_KEEP_WEEKS: 1
-      BACKUP_KEEP_MONTHS: 1
-      SCHEDULE: "@daily"
-      BACKUP_DIR: /db_dumps
-      HEALTHCHECK_ENABLED: "true"
-    user: ${UID:-1000}:${GID:-1000}
-    volumes:
-      - type: bind
-        source: ${DB_DUMP_LOCATION}/db_dumps
-        target: /db_dumps
-    depends_on:
-      yt-db:
-        condition: service_healthy
-    restart: always
-    networks:
-      - revProxy-net
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-      # Autoheal
-      - "autoheal.enable=true"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h yt-db -U ${DB_USERNAME} -d ${DB_NAME}"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+  # yt-db-backup:
+  #   container_name: ytdiff_db_dumper
+  #   image: prodrigestivill/postgres-backup-local
+  #   env_file:
+  #     - .env
+  #   secrets:
+  #     - db_password
+  #   environment:
+  #     POSTGRES_HOST: yt-db
+  #     POSTGRES_DB: ${DB_NAME}
+  #     POSTGRES_USER: ${DB_USERNAME}
+  #     POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+  #     TZ: Asia/Kolkata
+  #     BACKUP_KEEP_DAYS: 7
+  #     BACKUP_KEEP_WEEKS: 1
+  #     BACKUP_KEEP_MONTHS: 1
+  #     SCHEDULE: "@daily"
+  #     BACKUP_DIR: /db_dumps
+  #     HEALTHCHECK_ENABLED: "true"
+  #   user: ${UID:-1000}:${GID:-1000}
+  #   volumes:
+  #     - type: bind
+  #       source: ${DB_DUMP_LOCATION}/db_dumps
+  #       target: /db_dumps
+  #   depends_on:
+  #     yt-db:
+  #       condition: service_healthy
+  #   restart: always
+  #   networks:
+  #     - revProxy-net
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #     # Autoheal
+  #     - "autoheal.enable=true"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -h yt-db -U ${DB_USERNAME} -d ${DB_NAME}"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
 
   yt-diff:
     # image: purevert/yt-diff:amd64
