@@ -9,7 +9,7 @@ const path_fs = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const generator = require('generate-password');
-const NodeCache = require("node-cache");
+const { LRUCache } = require('lru-cache');
 
 const { Server } = require("socket.io");
 
@@ -43,8 +43,53 @@ const MAX_LENGTH = 255; // this is what sequelize used for postgres
 const salt_rounds = 10;
 const global_stdTTL = 3600;
 const max_requests_per_ip_in_stdTTL = process.env.MAX_REQUESTS_PER_IP || 10;
-const user_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200, maxKeys: 10 });
-const ip_cache = new NodeCache({ stdTTL: global_stdTTL, checkperiod: 7200, maxKeys: 10 });
+/**
+ * Generates cache configuration options for an LRU cache.
+ *
+ * @param {number} size - The maximum total size of all cache items in bytes.
+ * @return {object} The cache options object containing configuration parameters:
+ *   - max: Maximum number of items to store in the cache.
+ *   - ttl: Time-to-live for each item in milliseconds.
+ *   - updateAgeOnGet: Whether to reset TTL on get() to keep active items longer.
+ *   - updateAgeOnHas: Whether to reset TTL on has() to keep active items longer.
+ *   - sizeCalculation: Function to calculate the size of a given value in bytes.
+ *   - maxSize: Maximum total size of all cache items in bytes.
+ *   - dispose: Function to clear sensitive data when an item is removed.
+ */
+const cache_options = (size) => ({
+  max: 10, // Maximum number of items to store in the cache
+  ttl: global_stdTTL * 1000, // Time-to-live for each item in milliseconds
+  updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
+  updateAgeOnHas: true, // Reset TTL on has() to keep active items longer
+  /**
+   * Calculates the size of a given value in bytes.
+   *
+   * @param {any} value - The value to calculate the size of.
+   * @param {string} key - The key associated with the value (not used in calculation).
+   * @return {number} The size of the value in bytes.
+   */
+  sizeCalculation: (value, key) => {
+    const value_string = JSON.stringify(value);
+    debug(`sizeCalculation for ${key} is ${value_string.length}`);
+    return value_string.length; // Size in bytes
+  },
+  maxSize: size, // Maximum total size of all cache items in bytes
+  /**
+   * Clear sensitive data when an item is removed.
+   *
+   * @param {string} key - The key associated with the value to be disposed of.
+   * @param {any} value - The value to be disposed of.
+   * @param {string} reason - The reason for disposing of the value.
+   */
+  dispose: (key, value, reason) => {
+    // Clear sensitive data when an item is removed
+    debug(`Disposing cache item with key: ${key} for reason: ${reason}`);
+    value = null;
+  },
+});
+
+const user_cache = new LRUCache(cache_options(10000));
+const ip_cache = new LRUCache(cache_options(1000));
 const secret_key = process.env.SECRET_KEY_FILE
   ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
   : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
@@ -367,8 +412,8 @@ sequelize
     // Making a default user
     const userName = "admin";
     const defaultUser = await users.findOne({ where: { user_name: userName } });
-    debug(`defaultUser: ${JSON.stringify(defaultUser)}`);
     if (defaultUser === null) {
+      debug("Creating default user");
       const generatedPassword = generate_password();
       const [salt, password] = await hash_password(generatedPassword);
       users.create({ user_name: userName, salt: salt, password: password });
@@ -376,6 +421,8 @@ sequelize
         "Default user created successfully with user name: "
         + userName + " and password: " + generatedPassword
       );
+    }else{
+      debug("Default user already exists");
     }
   })
   .catch((error) => {
@@ -962,17 +1009,19 @@ async function login(req, res) {
     const foundUser = await users.findOne({
       where: { user_name: user_name },
     });
-    verbose(`Issued token for user ${foundUser.user_name} expires in ${expiry_time}`);
     if (foundUser === null) {
+      verbose(`Issuing token for user ${user_name} failed`);
       res.writeHead(404, corsHeaders(json_t));
       res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
     } else {
       const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
       if (!passwordMatch) {
+        verbose(`Issuing token for user ${foundUser.user_name} failed`);
         res.writeHead(401, corsHeaders(json_t));
         return res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
       }
       const token = generate_token(foundUser, expiry_time);
+      verbose(`Issued token for user ${foundUser.user_name} expires in ${expiry_time}`);
       res.writeHead(202, corsHeaders(json_t));
       return res.end(JSON.stringify({ token: token }));
     }
