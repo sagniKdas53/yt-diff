@@ -93,8 +93,11 @@ const ip_cache = new LRUCache(cache_options(1000));
 const secret_key = process.env.SECRET_KEY_FILE
   ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
   : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
-    ? process.env.SECRET_KEY
-    : "ytd1ff";
+    ? process.env.SECRET_KEY.trim()
+    : new Error("SECRET_KEY or SECRET_KEY_FILE environment variable must be set");
+if(secret_key instanceof Error) {
+  throw secret_key;
+}
 const not_needed = ["", "pornstar", "model", "videos"];
 const playlistRegex = /(?:playlist|list=)\b/i;
 exports.playlistRegex = playlistRegex;
@@ -856,7 +859,7 @@ function generate_token(user, expiry_time) {
   return jwt.sign(
     {
       id: user.id,
-      lastPasswordChange: user.updatedAt
+      lastPasswordChangeTime: user.updatedAt
     },
     secret_key, { expiresIn: expiry_time }
   );
@@ -889,16 +892,16 @@ async function verify_token(req, res, next) {
       return res.end(JSON.stringify({ Outcome: "User not found" }));
     }
     let foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
-    if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+    if (foundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
       debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
       user_cache.set(decoded.id, foundUser);
       foundUserUpdatedAt = foundUser.updatedAt.toISOString();
       // Logging the re-fetched user data
-      debug(`foundUser.updatedAt: ${foundUserUpdatedAt}`);
-      debug(`decoded.lastPasswordChange: ${decoded.lastPasswordChange}`);
+      //debug(`foundUser.updatedAt: ${foundUserUpdatedAt}`);
+      //debug(`decoded.lastPasswordChangeTime: ${decoded.lastPasswordChangeTime}`);
       // Checking again
-      if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+      if (foundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
         err_log(`Token Expired`);
         res.writeHead(401, corsHeaders(json_t));
         return res.end(JSON.stringify({ Outcome: "Token Expired" }));
@@ -936,7 +939,7 @@ async function verify_socket(data) {
 
     // Check if the last password change timestamp matches the one in the token
     const foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
-    if (foundUserUpdatedAt !== decoded.lastPasswordChange) {
+    if (foundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
       debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
       user_cache.set(decoded.id, foundUser);
@@ -945,7 +948,7 @@ async function verify_socket(data) {
       const updatedFoundUserUpdatedAt = foundUser.updatedAt.toISOString();
 
       // Checking again
-      if (updatedFoundUserUpdatedAt !== decoded.lastPasswordChange) {
+      if (updatedFoundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
         debug(`Token Expired`);
         return false;
       }
