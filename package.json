@@ -4,8 +4,8 @@
   "description": "downloads videos and watches for changes using yt-dlp and maintains a database",
   "main": "index.js",
   "scripts": {
-    "dev": "node --watch index.js",
-    "serve": "node index.js"
+    "dev": "SECRET_KEY=ytd1ff node --watch index.js",
+    "run": "SECRET_KEY=ytd1ff node index.js"
   },
   "repository": {
     "type": "git",
