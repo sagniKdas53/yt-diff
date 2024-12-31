@@ -9,6 +9,7 @@ const path_fs = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const generator = require('generate-password');
+const he = require('he');
 const { LRUCache } = require('lru-cache');
 
 const { Server } = require("socket.io");
@@ -916,7 +917,7 @@ async function verify_token(req, res, next) {
       return res.end(JSON.stringify({ Outcome: "Token Expired" }));
     }
     res.writeHead(500, corsHeaders(json_t));
-    return res.end(JSON.stringify({ Outcome: error.message }));
+    return res.end(JSON.stringify({ Outcome: he.escape(error.message) }));
   }
 }
 /**
@@ -1026,7 +1027,7 @@ async function login(req, res) {
       const token = generate_token(foundUser, expiry_time);
       verbose(`Issued token for user ${foundUser.user_name} expires in ${expiry_time}`);
       res.writeHead(202, corsHeaders(json_t));
-      return res.end(JSON.stringify({ token: token }));
+      return res.end(JSON.stringify({ token: he.escape(token) }));
     }
   } catch (error) {
     err_log(`Error generating token: ${error.message}`);
@@ -1175,12 +1176,13 @@ async function download_lister(body, res) {
     }
     download_sequential(download_list);
     res.writeHead(200, corsHeaders(json_t));
-    res.end(JSON.stringify({ Downloading: download_list }));
+    // Need to check if escaping this breaks stuff
+    res.end(JSON.stringify({ Downloading: he.escape(download_list) }));
   } catch (error) {
     err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ error: error.message }));
+    res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
 // Add a parallel downloader someday
@@ -1352,7 +1354,7 @@ async function list_func(body, res) {
       const status = error.status || 500;
       if (index === 0) {
         res.writeHead(status, corsHeaders(json_t));
-        res.end(JSON.stringify({ error: error.message }));
+        res.end(JSON.stringify({ error: he.escape(error.message) }));
       }
       sock.emit("playlist-done", {
         message: "done processing playlist or channel",
@@ -1363,7 +1365,7 @@ async function list_func(body, res) {
     err_log(`${error.message}`);
     //const status = error.status || 500;
     //res.writeHead(status, corsHeaders(json_t));
-    //res.end(JSON.stringify({ error: error.message }));
+    //res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
 /**
@@ -1481,7 +1483,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
           const status = error.status || 500;
           if (index === 0) {
             res.writeHead(status, corsHeaders(json_t));
-            res.end(JSON.stringify({ error: error.message }));
+            res.end(JSON.stringify({ error: he.escape(error.message) }));
           }
           sock.emit("playlist-done", {
             message: "done processing playlist or channel",
@@ -1586,7 +1588,7 @@ async function monitoring_type_func(body, res) {
     err_log(`error in monitoring_type_func: ${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ error: error.message }));
+    res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
 /**
@@ -1763,7 +1765,7 @@ async function playlists_to_table(body, res) {
     err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ error: error.message }));
+    res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
 /**
@@ -1855,7 +1857,7 @@ async function sublist_to_table(body, res) {
     err_log(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
-    res.end(JSON.stringify({ error: error.message }));
+    res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
 

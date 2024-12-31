@@ -28,6 +28,7 @@
     "cli-color": "^2.0.3",
     "cron": "^2.3.0",
     "generate-password": "^1.7.1",
+    "he": "^1.2.0",
     "jsonwebtoken": "^9.0.2",
     "lru-cache": "^11.0.2",
     "node-cache": "^5.1.2",
