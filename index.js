@@ -96,7 +96,7 @@ const secret_key = process.env.SECRET_KEY_FILE
   : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
     ? process.env.SECRET_KEY.trim()
     : new Error("SECRET_KEY or SECRET_KEY_FILE environment variable must be set");
-if(secret_key instanceof Error) {
+if (secret_key instanceof Error) {
   throw secret_key;
 }
 const not_needed = ["", "pornstar", "model", "videos"];
@@ -425,7 +425,7 @@ sequelize
         "Default user created successfully with user name: "
         + userName + " and password: " + generatedPassword
       );
-    }else{
+    } else {
       debug("Default user already exists");
     }
   })
@@ -1176,8 +1176,8 @@ async function download_lister(body, res) {
     }
     download_sequential(download_list);
     res.writeHead(200, corsHeaders(json_t));
-    // Need to check if escaping this breaks stuff
-    res.end(JSON.stringify({ Downloading: he.escape(download_list) }));
+    // This doesn't need escaping as it's consumed interanlly
+    res.end(JSON.stringify({ Downloading: download_list }));
   } catch (error) {
     err_log(`${error.message}`);
     const status = error.status || 500;
@@ -1204,7 +1204,7 @@ async function download_sequential(items) {
       let realFileName = null;
       // check if the trim is actually necessary
       const save_path = path_fs.join(save_location, save_dir.trim());
-      debug(`Downloading ${realFileName} to path: ${save_path}`);
+      debug(`Downloading to path: ${save_path}`);
       // if save_dir == "",  then save_path == save_location
       if (save_path != save_location && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
