@@ -11,13 +11,14 @@ secrets:
 volumes:
   pgadmin-data:
 
+
 services:
   yt-db:
     image: postgres:16.2-alpine3.19
     # postgres:14.10-alpine3.18
     container_name: yt-db
-    ports:
-      - 5432:5432
+    # ports:
+    #   - 5432:5432
     restart: always
     env_file:
       - .env
@@ -36,62 +37,22 @@ services:
       # Autoheal
       - "autoheal.enable=true"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}" ]
       interval: 30s
       timeout: 10s
       retries: 5
-
-  # yt-db-backup:
-  #   container_name: ytdiff_db_dumper
-  #   image: prodrigestivill/postgres-backup-local
-  #   env_file:
-  #     - .env
-  #   secrets:
-  #     - db_password
-  #   environment:
-  #     POSTGRES_HOST: yt-db
-  #     POSTGRES_DB: ${DB_NAME}
-  #     POSTGRES_USER: ${DB_USERNAME}
-  #     POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-  #     TZ: Asia/Kolkata
-  #     BACKUP_KEEP_DAYS: 7
-  #     BACKUP_KEEP_WEEKS: 1
-  #     BACKUP_KEEP_MONTHS: 1
-  #     SCHEDULE: "@daily"
-  #     BACKUP_DIR: /db_dumps
-  #     HEALTHCHECK_ENABLED: "true"
-  #   user: ${UID:-1000}:${GID:-1000}
-  #   volumes:
-  #     - type: bind
-  #       source: ${DB_DUMP_LOCATION}/db_dumps
-  #       target: /db_dumps
-  #   depends_on:
-  #     yt-db:
-  #       condition: service_healthy
-  #   restart: always
-  #   networks:
-  #     - revProxy-net
-  #   labels:
-  #     - "com.centurylinklabs.watchtower.enable=true"
-  #     # Autoheal
-  #     - "autoheal.enable=true"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -h yt-db -U ${DB_USERNAME} -d ${DB_NAME}"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
 
   yt-diff:
     # image: purevert/yt-diff:amd64
     image: ghcr.io/sagnikdas53/yt-diff:master
     container_name: yt-diff
     restart: always
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    #   args:
-    #     # This is used to build the frontend in the docker image
-    #     - VITE_BASE_PATH=${BASE_URL}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # This is used to build the frontend in the docker image
+        - VITE_BASE_PATH=${BASE_URL}
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
     depends_on:
@@ -130,11 +91,11 @@ services:
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
     labels:
-      - 'traefik.enable=true'
-      - 'traefik.http.routers.ytdiff.entryPoints=web,websecure'
-      - 'traefik.http.routers.ytdiff.rule=Host(`${HOSTNAME}`) && PathPrefix(`${BASE_URL}`)'
+      - "traefik.enable=true"
+      - "traefik.http.routers.ytdiff.entryPoints=web,websecure"
+      - "traefik.http.routers.ytdiff.rule=Host(`${HOSTNAME}`) && PathPrefix(`${BASE_URL}`)"
       - "traefik.http.services.ytdiff.loadbalancer.server.port=${PORT}"
-      - 'traefik.http.services.ytdiff.loadBalancer.passHostHeader=true'
+      - "traefik.http.services.ytdiff.loadBalancer.passHostHeader=true"
       - "traefik.http.routers.ytdiff.middlewares=http-to-https@docker"
       - "traefik.http.routers.ytdiff.tls=true"
       - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
@@ -143,7 +104,7 @@ services:
       # Autoheal
       - "autoheal.enable=true"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff"]
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff" ]
       interval: 5m
       timeout: 5s
       start_period: 30s
@@ -169,11 +130,11 @@ services:
     networks:
       - revProxy-net
     labels:
-      - 'traefik.enable=true'
-      - 'traefik.http.routers.pgadmin.entryPoints=web,websecure'
-      - 'traefik.http.routers.pgadmin.rule=Host(`${HOSTNAME}`) && PathPrefix(`/pgadmin`)'
+      - "traefik.enable=true"
+      - "traefik.http.routers.pgadmin.entryPoints=web,websecure"
+      - "traefik.http.routers.pgadmin.rule=Host(`${HOSTNAME}`) && PathPrefix(`/pgadmin`)"
       - "traefik.http.services.pgadmin.loadbalancer.server.port=80"
-      - 'traefik.http.services.pgadmin.loadBalancer.passHostHeader=true'
+      - "traefik.http.services.pgadmin.loadBalancer.passHostHeader=true"
       - "traefik.http.routers.pgadmin.middlewares=http-to-https@docker"
       - "traefik.http.routers.pgadmin.tls=true"
       - "traefik.http.routers.pgadmin.tls.certresolver=tailsolver"
@@ -182,7 +143,7 @@ services:
       # Autoheal
       - "autoheal.enable=true"
     healthcheck:
-      test: ["CMD", "wget", "-O", "-", "http://localhost:80/pgadmin/misc/ping"]
+      test: [ "CMD", "wget", "-O", "-", "http://localhost:80/pgadmin/misc/ping" ]
       interval: 30s
       timeout: 10s
       retries: 5
