@@ -71,7 +71,7 @@ const cache_options = (size) => ({
    */
   sizeCalculation: (value, key) => {
     const value_string = JSON.stringify(value);
-    debug(`sizeCalculation for ${key} is ${value_string.length}`);
+    logger.debug(`sizeCalculation for ${key} is ${value_string.length}`);
     return value_string.length; // Size in bytes
   },
   maxSize: size, // Maximum total size of all cache items in bytes
@@ -84,12 +84,12 @@ const cache_options = (size) => ({
    */
   dispose: (key, value, reason) => {
     // Clear sensitive data when an item is removed
-    debug(`Disposing cache item with key: ${key} for reason: ${reason}`);
+    logger.debug(`Disposing cache item with key: ${key} for reason: ${reason}`);
     value = null;
   },
 });
 
-const user_cache = new LRUCache(cache_options(10000));
+const user_cache = new LRUCache(cache_options(1000));
 const ip_cache = new LRUCache(cache_options(1000));
 const secret_key = process.env.SECRET_KEY_FILE
   ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
@@ -119,7 +119,7 @@ let connectedClients = 0;
 // Logging methods
 // The highest log level is trace(ie: shows every call), which is the default
 // info(ie: shows info about each call) is next and then debug(ie: shows debug info about each call)
-const allowed_log_levels = (process.env.LOG_LEVELS || "trace").toLowerCase().trim().split(",");
+const allowed_log_levels = (process.env.LOG_LEVELS || "info").toLowerCase().trim().split(",");
 
 const cached_log_level = allowed_log_levels.includes("trace") ? [true, true, true] :
   allowed_log_levels.includes("info") ? [false, true, true] :
@@ -143,7 +143,8 @@ const orange = color.xterm(208);
 // 83 is greenish
 // 192 is like hay looks soothing TBH
 const trace_color = color.xterm(192);
-// trace < info < debug
+// trace < debug < verbose < info < warn < error
+// The log levels are in increasing order of severity
 /**
  * Logs a trace message if the log level is set to trace.
  *
@@ -157,18 +158,6 @@ const trace = (msg) => {
     );
 };
 exports.trace = trace;
-/**
- * Logs an informational message if the log level is set to info.
- *
- * @param {string} msg - The message to be logged.
- * @return {undefined} This function does not return a value.
- */
-const info = (msg) => {
-  if (cached_log_level[1])
-    console.log(
-      color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
-    );
-};
 /**
  * Logs a debug message if the log level is set to debug.
  *
@@ -194,18 +183,20 @@ const verbose = (msg) => {
     color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
   );
 };
+exports.verbose = verbose;
 /**
- * Logs an error message with a timestamp and the trimmed message.
+ * Logs an informational message if the log level is set to info.
  *
  * @param {string} msg - The message to be logged.
  * @return {undefined} This function does not return a value.
  */
-const err_log = (msg) => {
-  console.error(
-    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
-  );
+const info = (msg) => {
+  if (cached_log_level[1])
+    console.log(
+      color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
+    );
 };
-exports.err_log = err_log;
+exports.info = info;
 /**
  * Logs a warning message with a timestamp and the warning message.
  *
@@ -218,8 +209,87 @@ const warn = (msg) => {
   );
 };
 exports.warn = warn;
+/**
+ * Logs an error message with a timestamp and the trimmed message.
+ *
+ * @param {string} msg - The message to be logged.
+ * @return {undefined} This function does not return a value.
+ */
+const err_log = (msg) => {
+  console.error(
+    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
+  );
+};
+exports.err_log = err_log;
 
-info(`Allowed log level: ${allowed_log_levels}`);
+// Newer Logger implementation
+const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
+const currentLogLevelIndex = logLevels.indexOf(allowed_log_levels);
+
+// Helper function to format logs in Grafana logfmt format
+const logfmt = (level, message, fields = {}) => {
+  // Start with log level and message
+  let logEntry = `level=${level} msg="${message}"`;
+
+  // Add timestamp in ISO format
+  logEntry += ` ts=${new Date().toISOString()}`;
+
+  // Add all other fields
+  for (const [key, value] of Object.entries(fields)) {
+    // Properly format different value types
+    if (typeof value === 'string') {
+      // Escape quotes in strings
+      logEntry += ` ${key}="${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    } else if (value instanceof Error) {
+      // Extract error details
+      logEntry += ` ${key}="${value.message.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${value.stack.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+      }
+    } else if (value === null || value === undefined) {
+      logEntry += ` ${key}=null`;
+    } else {
+      logEntry += ` ${key}=${value}`;
+    }
+  }
+
+  return logEntry;
+};
+// Logger
+const logger = {
+  trace: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("trace")) {
+      console.debug(trace_color(logfmt('trace', message, fields)));
+    }
+  },
+  debug: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
+      console.debug(color.magentaBright(logfmt('debug', message, fields)));
+    }
+  },
+  verbose: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("verbose")) {
+      console.log(color.greenBright(logfmt('verbose', message, fields)));
+    }
+  },
+  info: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("info")) {
+      console.log(color.blueBright(logfmt('info', message, fields)));
+    }
+  },
+  warn: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("warn")) {
+      console.warn(orange(logfmt('warn', message, fields)));
+    }
+  },
+  error: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("error")) {
+      console.error(color.redBright(logfmt('error', message, fields)));
+    }
+  }
+};
+
+logger.info(`Allowed log level: ${allowed_log_levels}`);
 
 if (!fs.existsSync(save_location)) {
   fs.mkdirSync(save_location, { recursive: true });
@@ -236,10 +306,10 @@ const sequelize = new Sequelize({
 
 try {
   sequelize.authenticate().then(() => {
-    info("Connection to database has been established successfully");
+    logger.info("Connection to database has been established successfully");
   });
 } catch (error) {
-  err_log(`Unable to connect to the database: ${error}`);
+  logger.error(`Unable to connect to the database: ${error}`);
 }
 
 // video_url is the primary key of any video
@@ -394,7 +464,7 @@ video_list.hasMany(video_indexer, {
 sequelize
   .sync()
   .then(async () => {
-    info(
+    logger.info(
       "tables exist or are created successfully"
     );
     // Making the unlisted playlist
@@ -408,7 +478,7 @@ sequelize
       },
     });
     if (created) {
-      info(
+      logger.info(
         "Unlisted playlist created successfully with playlist url: "
         + unlistedPlaylist.playlist_url
       );
@@ -417,20 +487,20 @@ sequelize
     const userName = "admin";
     const defaultUser = await users.findOne({ where: { user_name: userName } });
     if (defaultUser === null) {
-      debug("Creating default user");
+      logger.debug("Creating default user");
       const generatedPassword = generate_password();
       const [salt, password] = await hash_password(generatedPassword);
       users.create({ user_name: userName, salt: salt, password: password });
-      info(
+      logger.info(
         "Default user created successfully with user name: "
         + userName + " and password: " + generatedPassword
       );
     } else {
-      debug("Default user already exists");
+      logger.debug("Default user already exists");
     }
   })
   .catch((error) => {
-    err_log(`Unable to create table : ${error}`);
+    logger.error(`Unable to create table : ${error}`);
   });
 
 // sequelize need to start before this can start
@@ -513,7 +583,7 @@ async function url_to_title(body_url) {
       .filter((item) => !not_needed.includes(item))
       .join("");
   } catch (error) {
-    err_log(`${error.message}`);
+    logger.error(`${error.message}`);
     return body_url;
   }
 }
@@ -530,15 +600,15 @@ function fix_common_errors(body_url) {
     }
     // if (/(.*)&t=[0-9s]*$/.test(body_url)) {
     //   body_url = /(.*)&t=[0-9s]*$/.exec(str)[1];
-    //   debug(body_url);
+    //   logger.debug(body_url);
     // }
-    debug(`${body_url} is a youtube link`);
+    logger.debug(`${body_url} is a youtube link`);
   }
   if (body_url.includes("pornhub") && body_url.includes("/model/")) {
     if (!/\/videos\/?$/.test(body_url)) {
       body_url = body_url.replace(/\/$/, "") + "/videos";
     }
-    debug(`${body_url} is a hub channel`);
+    logger.debug(`${body_url} is a hub channel`);
   }
   // TODO: Add checks for other sites
   return body_url;
@@ -553,7 +623,7 @@ exports.fix_common_errors = fix_common_errors;
  * @return {Promise<string[]>} A promise that resolves with an array of strings representing the response from `yt-dlp`.
  */
 async function list_spawner(body_url, start_num, stop_num) {
-  trace(
+  logger.trace(
     `list_spawner: Start: ${start_num}, Stop: ${stop_num}, Url: ${body_url}`
   );
   return new Promise((resolve, reject) => {
@@ -575,14 +645,14 @@ async function list_spawner(body_url, start_num, stop_num) {
     yt_list.stderr.setEncoding("utf8");
     yt_list.stderr.on("data", (data) => {
       // maybe use sockets to send the stderr to the
-      err_log(`stderr: ${data}`);
+      logger.error(`stderr: ${data}`);
     });
     yt_list.on("error", (error) => {
-      err_log(`${error.message}`);
+      logger.error(`${error.message}`);
     });
     yt_list.on("close", (code) => {
       if (code !== 0) {
-        err_log(`yt-dlp returned code: ${code}`);
+        logger.error(`yt-dlp returned code: ${code}`);
       }
       resolve(response.split("\n").filter((line) => line.length > 0));
     });
@@ -604,7 +674,7 @@ async function process_response(
   index,
   is_update_operation
 ) {
-  trace(
+  logger.trace(
     `process_response: Index: ${index}, Url: ${body_url}, Updating Playlist: ${is_update_operation}`
   );
   const init_resp = {
@@ -626,7 +696,7 @@ async function process_response(
       attributes: ["index_in_playlist"],
       limit: 1,
     });
-    debug(`In update operation found last item ${JSON.stringify(last_item)}`);
+    logger.debug(`In update operation found last item ${JSON.stringify(last_item)}`);
     try {
       last_item_index = last_item.index_in_playlist + 1;
     } catch (error) {
@@ -642,7 +712,7 @@ async function process_response(
       const foundItem = await video_list.findOne({
         where: { video_url: vid_url },
       });
-      debug(
+      logger.debug(
         `found item: ${JSON.stringify(
           foundItem
         )} in video_list for url: ${vid_url}`
@@ -659,7 +729,7 @@ async function process_response(
       const foundItem = await video_indexer.findOne({
         where: { video_url: vid_url, playlist_url: playlist_url },
       });
-      debug(
+      logger.debug(
         `found item: ${JSON.stringify(
           foundItem
         )} in video_indexer for url: ${vid_url} and playlist_url ${playlist_url}`
@@ -671,15 +741,15 @@ async function process_response(
     allItemsExistInVideoList.every((item) => item === true) &&
     allItemsExistInVideoIndexer.every((item) => item === true)
   ) {
-    debug("All items already exist in the database.");
+    logger.debug("All items already exist in the database.");
     init_resp["quit_listing"] = true;
     init_resp["count"] = allItemsExistInVideoIndexer.length;
     return init_resp; // Return early if all items exist
   } else {
-    debug(`Videos per list index exist in video_list: ${JSON.stringify(
+    logger.debug(`Videos per list index exist in video_list: ${JSON.stringify(
       allItemsExistInVideoList
     )}`)
-    debug(`Videos per list index exist in video_indexer: ${JSON.stringify(
+    logger.debug(`Videos per list index exist in video_indexer: ${JSON.stringify(
       allItemsExistInVideoIndexer
     )}`);
   }
@@ -709,7 +779,7 @@ async function process_response(
             where: { video_url: vid_url },
             defaults: vid_data,
           });
-          debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          logger.debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
           if (!createdVid) {
             update_vid_entry(foundVid, vid_data);
           }
@@ -723,13 +793,13 @@ async function process_response(
           const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
             where: junction_data,
           });
-          debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          logger.debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
           if (!createdJunction) {
-            debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
+            logger.debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
           }
         }
       } catch (error) {
-        err_log(`${error.message} - ${error.stack}`);
+        logger.error(`${error.message} - ${error.stack}`);
       } finally {
         init_resp["count"]++;
       }
@@ -751,7 +821,7 @@ async function update_vid_entry(found, data) {
   // I have a sneaking suspicion that this
   // will fail when there is any real change
   // in the video, lets see when that happens
-  trace(`update_vid_entry: found: ${JSON.stringify(found)} vs. data: ${JSON.stringify(data)}`);
+  logger.trace(`update_vid_entry: found: ${JSON.stringify(found)} vs. data: ${JSON.stringify(data)}`);
   // trace added here as an exception to check if this ever gets invoked or is just redundant
   if (
     found.video_id !== data.video_id ||
@@ -778,7 +848,7 @@ async function update_vid_entry(found, data) {
         `available: ${found.available} (found) vs. ${data.available} (expected)`
       );
     }
-    warn(
+    logger.warn(
       `Found ${differences.length} difference(s): ${differences.join(", ")}`
     );
     found.id = data.id;
@@ -787,7 +857,7 @@ async function update_vid_entry(found, data) {
     found.available = data.available;
     await found.save();
   } else if (found.downloaded !== data.downloaded) {
-    debug("This property does not need modification");
+    logger.debug("This property does not need modification");
   }
 }
 /**
@@ -800,7 +870,7 @@ async function update_vid_entry(found, data) {
  * seconds have passed.
  */
 async function sleep(sleep_seconds = sleep_time) {
-  debug("Sleeping for " + sleep_seconds + " seconds");
+  logger.debug("Sleeping for " + sleep_seconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleep_seconds * 1000));
 }
 exports.sleep = sleep;
@@ -878,23 +948,23 @@ async function verify_token(req, res, next) {
     const body = await extract_json(req),
       token = body["token"];
     const decoded = jwt.verify(token, secret_key);
-    //verbose(`Decoded token: ${JSON.stringify(decoded)}}`);
+    //logger.verbose(`Decoded token: ${JSON.stringify(decoded)}}`);
     let foundUser = user_cache.get(decoded.id);
     if (!foundUser) {
-      debug(`Checking the database for a user with id ${decoded.id}`);
+      logger.debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
       user_cache.set(decoded.id, foundUser);
     }
-    //verbose(`foundUser: ${JSON.stringify(foundUser)}`)
+    //logger.verbose(`foundUser: ${JSON.stringify(foundUser)}`)
     // Check if the last password change timestamp matches the one in the database for the user
     if (foundUser === null) {
-      err_log("User not found in the database");
+      logger.error("User not found in the database");
       res.writeHead(404, corsHeaders(json_t));
       return res.end(JSON.stringify({ Outcome: "User not found" }));
     }
     let foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
     if (foundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
-      debug(`Checking the database for a user with id ${decoded.id}`);
+      logger.debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
       user_cache.set(decoded.id, foundUser);
       foundUserUpdatedAt = foundUser.updatedAt.toISOString();
@@ -903,14 +973,14 @@ async function verify_token(req, res, next) {
       //debug(`decoded.lastPasswordChangeTime: ${decoded.lastPasswordChangeTime}`);
       // Checking again
       if (foundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
-        err_log(`Token Expired`);
+        logger.error(`Token Expired`);
         res.writeHead(401, corsHeaders(json_t));
         return res.end(JSON.stringify({ Outcome: "Token Expired" }));
       }
     }
     next(body, res);
   } catch (error) {
-    err_log(error);
+    logger.error(error);
     if (error.name === "TokenExpiredError") {
       sock.emit("token-expired")
       res.writeHead(401, corsHeaders(json_t));
@@ -933,7 +1003,7 @@ async function verify_socket(data) {
 
     let foundUser = user_cache.get(decoded.id);
     if (!foundUser) {
-      debug(`Checking the database for a user with id ${decoded.id}`);
+      logger.debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
       user_cache.set(decoded.id, foundUser);
     }
@@ -941,7 +1011,7 @@ async function verify_socket(data) {
     // Check if the last password change timestamp matches the one in the token
     const foundUserUpdatedAt = foundUser.updatedAt.toISOString(); // Convert to UTC ISO string
     if (foundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
-      debug(`Checking the database for a user with id ${decoded.id}`);
+      logger.debug(`Checking the database for a user with id ${decoded.id}`);
       foundUser = await users.findByPk(decoded.id);
       user_cache.set(decoded.id, foundUser);
 
@@ -950,20 +1020,20 @@ async function verify_socket(data) {
 
       // Checking again
       if (updatedFoundUserUpdatedAt !== decoded.lastPasswordChangeTime) {
-        debug(`Token Expired`);
+        logger.debug(`Token Expired`);
         return false;
       }
     }
     return true;
   } catch (error) {
     if (error.name === "JsonWebTokenError") {
-      err_log(`${error.message.split(":")[0]}`);
+      logger.error(`${error.message.split(":")[0]}`);
     }
     else if (error.name === "TokenExpiredError") {
-      err_log(`Token Expired`);
+      logger.error(`Token Expired`);
     }
     else {
-      err_log(error);
+      logger.error(error);
     }
     return false;
   }
@@ -981,19 +1051,19 @@ async function verify_socket(data) {
 async function rate_limiter(req, res, current, next, max_requests_per_ip_in_stdTTL, stdTTL) {
   // const req_clone = req.clone();
   const ipAddress = req.socket.remoteAddress;
-  trace(`Incoming request from ${ipAddress}`);
+  logger.trace(`Incoming request from ${ipAddress}`);
   if (ip_cache.get(ipAddress) >= max_requests_per_ip_in_stdTTL) {
-    debug(`rate limiting ${ipAddress}`);
+    logger.debug(`rate limiting ${ipAddress}`);
     res.writeHead(429, corsHeaders(json_t));
     return res.end(JSON.stringify({ Outcome: "Too many requests" }));
   }
   if (!ip_cache.has(ipAddress)) {
     ip_cache.set(ipAddress, 1, +stdTTL);
-    debug(`adding to ip_cache ${ipAddress}: ${ip_cache.get(ipAddress)}`);
+    logger.debug(`adding to ip_cache ${ipAddress}: ${ip_cache.get(ipAddress)}`);
   }
   else {
     ip_cache.set(ipAddress, ip_cache.get(ipAddress) + 1, +stdTTL);
-    debug(`ip_cache ${ipAddress}: ${ip_cache.get(ipAddress)}`);
+    logger.debug(`ip_cache ${ipAddress}: ${ip_cache.get(ipAddress)}`);
   }
   current(req, res, next);
 }
@@ -1014,23 +1084,23 @@ async function login(req, res) {
       where: { user_name: user_name },
     });
     if (foundUser === null) {
-      verbose(`Issuing token for user ${user_name} failed`);
+      logger.verbose(`Issuing token for user ${user_name} failed`);
       res.writeHead(404, corsHeaders(json_t));
       res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
     } else {
       const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
       if (!passwordMatch) {
-        verbose(`Issuing token for user ${foundUser.user_name} failed`);
+        logger.verbose(`Issuing token for user ${foundUser.user_name} failed`);
         res.writeHead(401, corsHeaders(json_t));
         return res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
       }
       const token = generate_token(foundUser, expiry_time);
-      verbose(`Issued token for user ${foundUser.user_name} expires in ${expiry_time}`);
+      logger.verbose(`Issued token for user ${foundUser.user_name} expires in ${expiry_time}`);
       res.writeHead(202, corsHeaders(json_t));
       return res.end(JSON.stringify({ token: he.escape(token) }));
     }
   } catch (error) {
-    err_log(`Error generating token: ${error.message}`);
+    logger.error(`Error generating token: ${error.message}`);
     res.writeHead(500, corsHeaders(json_t));
     res.end(JSON.stringify({ Outcome: "Internal Server Error" }));
   }
@@ -1045,8 +1115,8 @@ async function login(req, res) {
  * @return {Promise<void>} A promise that resolves when the update is complete.
  */
 async function scheduled_updater() {
-  info(`Scheduled update started at: ${new Date().toLocaleString()}`);
-  info(`Starting the quick update`);
+  logger.info(`Scheduled update started at: ${new Date().toLocaleString()}`);
+  logger.info(`Starting the quick update`);
   //quick update then full update
   quick_updates()
     .then(full_updates())
@@ -1056,8 +1126,8 @@ async function scheduled_updater() {
         id: "None",
       })
     );
-  info(`Scheduled update finished at: ${new Date().toLocaleString()}`);
-  info(`Next scheduled update on ${job.nextDates(1)}`);
+  logger.info(`Scheduled update finished at: ${new Date().toLocaleString()}`);
+  logger.info(`Next scheduled update on ${job.nextDates(1)}`);
 }
 
 /**
@@ -1072,7 +1142,7 @@ async function quick_updates() {
     },
   });
 
-  info(`Fast updating ${playlists["rows"].length} playlists`);
+  logger.info(`Fast updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     let index = -chunk_size_env + 1;
     try {
@@ -1084,11 +1154,11 @@ async function quick_updates() {
         chunk_size_env,
         true
       );
-      trace(`Done processing playlist ${playlist.playlist_url}`);
+      logger.trace(`Done processing playlist ${playlist.playlist_url}`);
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err_log(
+      logger.error(
         `error processing playlist ${playlist.playlist_url}, ${error.message}`
       );
     }
@@ -1106,10 +1176,10 @@ async function full_updates() {
       monitoring_type: "Full",
     },
   });
-  info(`Full updating ${playlists["rows"].length} playlists`);
+  logger.info(`Full updating ${playlists["rows"].length} playlists`);
   for (const playlist of playlists["rows"]) {
     try {
-      info(
+      logger.info(
         `Full updating playlist: ${playlist.title.trim()} being updated fully`
       );
       // Since this is a full update the is_update_operation will be false
@@ -1121,12 +1191,12 @@ async function full_updates() {
         chunk_size_env,
         false
       );
-      info(`Done processing playlist ${playlist.playlist_url}`);
+      logger.info(`Done processing playlist ${playlist.playlist_url}`);
 
       playlist.changed("updatedAt", true);
       await playlist.save();
     } catch (error) {
-      err_log(
+      logger.error(
         `error processing playlist ${playlist.playlist_url}: ${error.message}`
       );
     }
@@ -1149,7 +1219,7 @@ async function download_lister(body, res) {
       play_list_url = body["playListUrl"] !== undefined ? body["playListUrl"] : "None";
     for (const url_item of body["urlList"]) {
       if (!in_download_list.has(url_item)) {
-        debug(`checking for ${url_item} in db`);
+        logger.debug(`checking for ${url_item} in db`);
         const video_item = await video_list.findOne({
           where: { video_url: url_item },
         });
@@ -1162,7 +1232,7 @@ async function download_lister(body, res) {
         } catch (error) {
           if (save_dir !== "") {
             save_dir = "";
-            err_log(`${error.message}`);
+            logger.error(`${error.message}`);
           }
         }
         download_list.push([
@@ -1179,7 +1249,7 @@ async function download_lister(body, res) {
     // This doesn't need escaping as it's consumed interanlly
     res.end(JSON.stringify({ Downloading: download_list }));
   } catch (error) {
-    err_log(`${error.message}`);
+    logger.error(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: he.escape(error.message) }));
@@ -1193,30 +1263,30 @@ async function download_lister(body, res) {
  * @return {Promise} a promise that resolves when all the items have been downloaded
  */
 async function download_sequential(items) {
-  trace(`Downloading ${items.length} videos sequentially`);
+  logger.trace(`Downloading ${items.length} videos sequentially`);
   let count = 1;
   for (const [url_str, title, save_dir, video_id] of items) {
     try {
       // yeah, this needs a join too from the playlists now to get the save directory and stuff
-      trace(`Downloading Video: ${count++}, Url: ${url_str}`);
+      logger.trace(`Downloading Video: ${count++}, Url: ${url_str}`);
       let hold = null;
       // Find a way to check and update it in the db if it is not correct
       let realFileName = null;
       // check if the trim is actually necessary
       const save_path = path_fs.join(save_location, save_dir.trim());
-      debug(`Downloading to path: ${save_path}`);
+      logger.debug(`Downloading to path: ${save_path}`);
       // if save_dir == "",  then save_path == save_location
       if (save_path != save_location && !fs.existsSync(save_path)) {
         fs.mkdirSync(save_path, { recursive: true });
       }
       sock.emit("download-start", { message: "" });
-      // verbose(`executing: yt-dlp ${options.join(" ")} ${save_path} ${url_str}`);
+      // logger.verbose(`executing: yt-dlp ${options.join(" ")} ${save_path} ${url_str}`);
       const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
       yt_dlp.stdout.setEncoding("utf8");
       yt_dlp.stdout.on("data", async (data) => {
         try {
           const dataStr = data.toString().trim(); // Convert buffer to string once
-          // trace(dataStr);
+          // logger.trace(dataStr);
           // Percentage extraction
           const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
           if (percentageMatch !== null) {
@@ -1224,10 +1294,10 @@ async function download_sequential(items) {
             const percentageDiv10 = Math.floor(percentage / 10);
             if (percentageDiv10 === 0 && hold === null) {
               hold = 0;
-              trace(dataStr);
+              logger.trace(dataStr);
             } else if (percentageDiv10 > hold) {
               hold = percentageDiv10;
-              trace(dataStr);
+              logger.trace(dataStr);
             }
             // Send percentage to the frontend
             sock.emit("listing-or-downloading", { percentage: percentage });
@@ -1239,10 +1309,10 @@ async function download_sequential(items) {
             realFileName = fileNameMatch[1]
               .replace(path_fs.extname(fileNameMatch[1]), "")
               .replace(save_path + "/", "").trim();
-            debug(`extracted filename: ${realFileName}, filename from db: ${title}`);
+            logger.debug(`extracted filename: ${realFileName}, filename from db: ${title}`);
           }
         } catch (error) {
-          // err_log(`${data} : ${error.message}`);
+          // logger.error(`${data} : ${error.message}`);
           // this is done so that the toasts do not go crazy
           if (!error instanceof TypeError) {
             sock.emit("error", { message: `${error}` });
@@ -1251,10 +1321,10 @@ async function download_sequential(items) {
       });
       yt_dlp.stderr.setEncoding("utf8");
       yt_dlp.stderr.on("data", (data) => {
-        err_log(`stderr: ${data}`);
+        logger.error(`stderr: ${data}`);
       });
       yt_dlp.on("error", (error) => {
-        err_log(`${error.message}`);
+        logger.error(`${error.message}`);
       });
       yt_dlp.on("close", async (code) => {
         const entity = await video_list.findOne({
@@ -1266,7 +1336,7 @@ async function download_sequential(items) {
             available: true,
             title: (title === video_id || title === "NA") ? (realFileName || title) : title
           };
-          debug(`Update data: ${JSON.stringify(entityProp)}`);
+          logger.debug(`Update data: ${JSON.stringify(entityProp)}`);
           entity.set(entityProp);
           await entity.save();
           const titleForFrontend = entityProp.title;
@@ -1284,9 +1354,9 @@ async function download_sequential(items) {
       });
       // this holds the for loop, preventing the next iteration from happening
       await new Promise((resolve) => yt_dlp.on("close", resolve));
-      trace(`Downloaded ${title} at location ${save_path}`);
+      logger.trace(`Downloaded ${title} at location ${save_path}`);
     } catch (error) {
-      err_log(`${error.message}`);
+      logger.error(`${error.message}`);
     }
   }
 }
@@ -1309,8 +1379,8 @@ async function list_func(body, res) {
     const start_num = body["start"] !== undefined ?
       +body["start"] === 0 ? 1 : +body["start"] : 1, chunk_size = +body["chunk_size"] >= +chunk_size_env ? +body["chunk_size"] : +chunk_size_env, stop_num = +chunk_size + 1, sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false, monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
     let index = 0;
-    //verbose(`body: ${JSON.stringify(body)}`);
-    //verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
+    //logger.verbose(`body: ${JSON.stringify(body)}`);
+    //logger.verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
 
     if (body["url_list"] === undefined) {
       throw new Error("url list is required");
@@ -1318,7 +1388,7 @@ async function list_func(body, res) {
     let url_list = body["url_list"], last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
 
     //debug(`payload: ${JSON.stringify(body)}`);
-    trace(
+    logger.trace(
       `list_func:  url_list: ${url_list}, start_num: ${start_num}, index: ${last_item_index}, ` +
       `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
       `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
@@ -1332,25 +1402,25 @@ async function list_func(body, res) {
       // let index = 0;
       for (const current_url of url_list) {
         //url_list.map(async (current_url, index) => {
-        debug(`current_url: ${current_url}, index: ${index}`);
+        logger.debug(`current_url: ${current_url}, index: ${index}`);
         try {
           const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
           if (done) {
-            debug(`processed current_url: ${current_url}, index: ${index}`);
+            logger.debug(`processed current_url: ${current_url}, index: ${index}`);
           } else if (done instanceof Error) {
-            err_log(`list_func processing error: ${done.message}`);
+            logger.error(`list_func processing error: ${done.message}`);
           } else {
-            debug(`done: ${done}, current_url: ${current_url}, index: ${index}`);
+            logger.debug(`done: ${done}, current_url: ${current_url}, index: ${index}`);
           }
         } catch (error) {
-          err_log(`list_func processing error: ${error.message}`);
+          logger.error(`list_func processing error: ${error.message}`);
         }
         index += 1;
         //});
       }
-      debug("List processing done");
+      logger.debug("List processing done");
     } catch (error) {
-      err_log(`${error.message}`);
+      logger.error(`${error.message}`);
       const status = error.status || 500;
       if (index === 0) {
         res.writeHead(status, corsHeaders(json_t));
@@ -1362,7 +1432,7 @@ async function list_func(body, res) {
       });
     }
   } catch (error) {
-    err_log(`${error.message}`);
+    logger.error(`${error.message}`);
     //const status = error.status || 500;
     //res.writeHead(status, corsHeaders(json_t));
     //res.end(JSON.stringify({ error: he.escape(error.message) }));
@@ -1385,14 +1455,14 @@ async function list_func(body, res) {
  */
 function list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type) {
   let play_list_index = -1, already_indexed = false;
-  trace(`list_init: url: ${current_url}, index: ${index}, start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, monitoring_type: ${monitoring_type}`);
+  logger.trace(`list_init: url: ${current_url}, index: ${index}, start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, monitoring_type: ${monitoring_type}`);
   //try {
   return new Promise(async (resolve, reject) => {
-    trace("Processing url: " + current_url);
+    logger.trace("Processing url: " + current_url);
     current_url = fix_common_errors(current_url);
     if (sleep_before_listing) { await sleep(); }
     const response_list = await list_spawner(current_url, start_num, stop_num);
-    debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
+    logger.debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
     // Checking if the response qualifies as a playlist
     if (response_list.length === 0) {
       reject(new Error("response_list.length is 0"));
@@ -1403,7 +1473,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
           where: { playlist_url: current_url },
         });
         try {
-          trace(
+          logger.trace(
             `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
           );
           already_indexed = true;
@@ -1412,7 +1482,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
           // Resolve the promise with the last item index
           resolve(last_item_index);
         } catch (error) {
-          warn(
+          logger.warn(
             "playlist or channel not encountered earlier, saving in database"
           );
           // Its not an error, but the title extraction,
@@ -1427,7 +1497,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               if (playlist) {
                 await sleep();
                 play_list_index = playlist.playlist_index;
-                trace(
+                logger.trace(
                   `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
                 );
                 // Resolve the promise with the last item index
@@ -1437,7 +1507,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               }
             })
             .catch((error) => {
-              err_log("Error occurred:", error);
+              logger.error("Error occurred:", error);
             });
         }
       } else {
@@ -1453,14 +1523,14 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               playlist_url: current_url,
             },
           });
-          debug("unlisted video entry found: " +
+          logger.debug("unlisted video entry found: " +
             JSON.stringify(video_already_unlisted)
           );
           if (video_already_unlisted !== null) {
-            debug("Video already saved as unlisted");
+            logger.debug("Video already saved as unlisted");
             reject(video_already_unlisted);
           } else {
-            debug("Adding a new video to the unlisted videos list");
+            logger.debug("Adding a new video to the unlisted videos list");
             const last_item = await video_indexer.findOne({
               where: {
                 playlist_url: current_url,
@@ -1479,7 +1549,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
             resolve(last_item_index + 1);
           }
         } catch (error) {
-          err_log(`${error.message}`);
+          logger.error(`${error.message}`);
           const status = error.status || 500;
           if (index === 0) {
             res.writeHead(status, corsHeaders(json_t));
@@ -1494,7 +1564,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
     });
     await play_list_exists.then(
       (last_item_index) => {
-        // debug("last_item_index: " + last_item_index);
+        // logger.debug("last_item_index: " + last_item_index);
         process_response(response_list, current_url, last_item_index, false)
           .then((init_resp) => {
             try {
@@ -1506,7 +1576,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               }
               resolve(true)
             } catch (error) {
-              err_log(`${error.message}`);
+              logger.error(`${error.message}`);
               reject(error);
             }
           })
@@ -1518,7 +1588,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               chunk_size,
               true
             ).then(() => {
-              trace(`Done processing playlist: ${current_url}`);
+              logger.trace(`Done processing playlist: ${current_url}`);
               sock.emit("playlist-done", {
                 message: "done processing playlist or channel",
                 id: current_url === "None" ? body["url_list"][index] : current_url,
@@ -1527,7 +1597,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
           });
       },
       (video_already_unlisted) => {
-        trace("Video already saved as unlisted");
+        logger.trace("Video already saved as unlisted");
         try {
           if (index === 0) {
             res.writeHead(200, corsHeaders(json_t));
@@ -1546,14 +1616,14 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
           });
           resolve(true);
         } catch (error) {
-          err_log(`${error.message}`);
+          logger.error(`${error.message}`);
           reject(error);
         }
       }
     );
   })
   // } catch (error) {
-  //   trace(`Error in list_init: ${error.message}`);
+  //   logger.trace(`Error in list_init: ${error.message}`);
   //   return new Promise((_, reject) => {
   //     // Not really sure what to do here
   //     reject(error);
@@ -1574,7 +1644,7 @@ async function monitoring_type_func(body, res) {
     if (body["url"] === undefined || body["watch"] === undefined) {
       throw new Error("url and watch are required");
     }
-    trace(
+    logger.trace(
       `monitoring_type_func:  url: ${body_url}, monitoring_type: ${monitoring_type}`
     );
     const playlist = await playlist_list.findOne({
@@ -1585,7 +1655,7 @@ async function monitoring_type_func(body, res) {
     res.writeHead(200, corsHeaders(json_t));
     res.end(JSON.stringify({ Outcome: "Success" }));
   } catch (error) {
-    err_log(`error in monitoring_type_func: ${error.message}`);
+    logger.error(`error in monitoring_type_func: ${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: he.escape(error.message) }));
@@ -1616,14 +1686,14 @@ async function list_background(
     start_num = start_num + chunk_size;
     stop_num = stop_num + chunk_size;
     // ideally we can set it to zero but that would get us rate limited by the services
-    trace(
+    logger.trace(
       `list_background: URL: ${body_url}, Chunk: ${chunk_size},` +
       `Start: ${start_num}, Stop: ${stop_num}, Iteration: ${count}`
     );
     //await sleep();
     const response = await list_spawner(body_url, start_num, stop_num);
     if (response.length === 0) {
-      trace(
+      logger.trace(
         `Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`
       );
       break;
@@ -1636,7 +1706,7 @@ async function list_background(
       is_update_operation
     );
     if (quit_listing) {
-      trace(
+      logger.trace(
         `Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`
       );
       break;
@@ -1681,7 +1751,7 @@ async function add_playlist(url_var, monitoring_type_var) {
           title_str = await url_to_title(url_var);
         } catch (error) {
           title_str = url_var;
-          err_log(`${error.message}`);
+          logger.error(`${error.message}`);
         }
       }
       title_str = await string_slicer(title_str, MAX_LENGTH);
@@ -1697,7 +1767,7 @@ async function add_playlist(url_var, monitoring_type_var) {
         },
       });
     } else {
-      err_log("Playlist could not be created");
+      logger.error("Playlist could not be created");
     }
   });
 }
@@ -1719,7 +1789,7 @@ async function playlists_to_table(body, res) {
       query_string = body["query"] !== undefined ? body["query"] : "",
       type = order == 2 ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
       row = sort_with == 3 ? "updatedAt" : "playlist_index";
-    trace(
+    logger.trace(
       `playlists_to_table: Start: ${start_num}, Stop: ${stop_num}, ` +
       `Order: ${order}, Type: ${type}, Query: "${query_string}"`
     );
@@ -1762,7 +1832,7 @@ async function playlists_to_table(body, res) {
         });
     }
   } catch (error) {
-    err_log(`${error.message}`);
+    logger.error(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: he.escape(error.message) }));
@@ -1788,7 +1858,7 @@ async function sublist_to_table(body, res) {
       order_array = sort_downloaded
         ? [video_list, "downloaded", "DESC"]
         : ["index_in_playlist", "ASC"];
-    trace(
+    logger.trace(
       `sublist_to_table:  Start: ${start_num}, Stop: ${stop_num}, ` +
       ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
       `playlist_url: ${playlist_url}`
@@ -1851,10 +1921,10 @@ async function sublist_to_table(body, res) {
           });
       }
     } catch (error) {
-      err_log(`${error.message}`);
+      logger.error(`${error.message}`);
     }
   } catch (error) {
-    err_log(`${error.message}`);
+    logger.error(`${error.message}`);
     const status = error.status || 500;
     res.writeHead(status, corsHeaders(json_t));
     res.end(JSON.stringify({ error: he.escape(error.message) }));
@@ -1954,7 +2024,7 @@ if (process.env.USE_NATIVE_HTTPS === "true") {
       cert: fs.readFileSync(certPath, "utf8")
     };
   } catch (error) {
-    err_log("Error reading secret files:", error);
+    logger.error("Error reading secret files:", error);
     process.exit(1);
   }
 }
@@ -1970,7 +2040,7 @@ const server = http.createServer(server_options, (req, res) => {
         //debug(`Sending ${get} compressed with brotli`);
         resHeaders["Content-Encoding"] = "br";
         res.writeHead(200, resHeaders);
-        //info(`Writing ${get}.br`);
+        //logger.info(`Writing ${get}.br`);
         res.write(staticAssets[get + ".br"].file);
         return res.end();
         //res.write(zlib.gzipSync(staticAssets[get].file));
@@ -1978,7 +2048,7 @@ const server = http.createServer(server_options, (req, res) => {
         //debug(`Sending ${get} compressed with gzip`);
         resHeaders["Content-Encoding"] = "gzip";
         res.writeHead(200, resHeaders);
-        //info(`Writing ${get}.gz`);
+        //logger.info(`Writing ${get}.gz`);
         res.write(staticAssets[get + ".gz"].file);
         return res.end();
         //res.write(zlib.gzipSync(staticAssets[get].file));
@@ -1988,7 +2058,7 @@ const server = http.createServer(server_options, (req, res) => {
         res.write(staticAssets[get].file);
       }
     } catch (error) {
-      //err_log(`${error.message}`);
+      //logger.error(`${error.message}`);
       res.writeHead(404, corsHeaders(html));
       res.write("Not Found");
     }
@@ -2048,18 +2118,18 @@ io.use((socket, next) => {
       next();
     }
     else {
-      //err_log("Invalid socket: " + socket.id);
+      //logger.error("Invalid socket: " + socket.id);
       next(new Error("Invalid socket"));
     }
   }).catch((err) => {
-    err_log(err);
+    logger.error(err);
     next(new Error(err.message));
   });
 });
 
 const sock = io.on("connection", (socket) => {
   if (connectedClients >= MAX_CLIENTS) {
-    info("Rejecting client: " + socket.id);
+    logger.info("Rejecting client: " + socket.id);
     socket.emit("connection-error", "Server full");
     // Disconnect the client
     socket.disconnect(true);
@@ -2069,13 +2139,13 @@ const sock = io.on("connection", (socket) => {
   // Increment the count of connected clients
   socket.emit("init", { message: "Connected", id: socket.id });
   socket.on("acknowledge", ({ data, id }) => {
-    info(`${data} to client id ${id}`);
+    logger.info(`${data} to client id ${id}`);
     connectedClients++;
   });
 
   socket.on("disconnect", () => {
     // Decrement the count of connected clients when a client disconnects
-    info(`Disconnected from client id ${socket.id}`);
+    logger.info(`Disconnected from client id ${socket.id}`);
     connectedClients--;
   });
   return socket;
@@ -2084,21 +2154,21 @@ exports.sock = sock;
 
 server.listen(port, async () => {
   if (process.env.HIDE_PORTS === "true") {
-    info(`Server listening on ${protocol}://${host}${url_base}`);
+    logger.info(`Server listening on ${protocol}://${host}${url_base}`);
   } else {
-    info(`Server listening on ${protocol}://${host}:${port}${url_base}`);
+    logger.info(`Server listening on ${protocol}://${host}:${port}${url_base}`);
   }
   // I do not really know if calling these here is a good idea, but how else can I even do it?
   const start = Date.now();
   await sleep();
   const elapsed = Date.now() - start;
-  info("Sleep duration: " + elapsed / 1000 + " seconds");
-  info(`Next scheduled update is on ${job.nextDates(1)}`);
-  verbose(
+  logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
+  logger.info(`Next scheduled update is on ${job.nextDates(1)}`);
+  logger.verbose(
     `Download Options: yt-dlp ${options.join(" ")} "${save_location.endsWith("/") ? save_location : save_location + "/"
     }{playlist_dir}" "{url}"`
   );
-  verbose(
+  logger.verbose(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
     `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {body_url}`
   );

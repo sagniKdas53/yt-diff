@@ -74,6 +74,7 @@ services:
       - BASE_URL=${BASE_URL}
       - HIDE_PORTS=${HIDE_PORTS}
       - USE_NATIVE_HTTPS=${NATIVE_HTTPS_SUPPORT}
+      - LOG_LEVELS=${LOG_LEVELS}
       # Database configuration
       - DB_HOST=${DB_HOST}
       - DB_USERNAME=${DB_USERNAME}
