@@ -1,0 +1,1214 @@
+{
+	"info": {
+		"_postman_id": "d36579a0-1d91-4882-ae2c-897e40bf8eb9",
+		"name": "yt-diff",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "32814481"
+	},
+	"item": [
+		{
+			"name": "register default user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 201\", function () {",
+							"    pm.expect(pm.response.code).to.equal(201);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required field 'Outcome'\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.have.property('Outcome');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Outcome field should not be empty\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.Outcome).to.exist.and.to.not.be.empty;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type header is 'text/json'\", function () {",
+							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/json');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Outcome field should be a string\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData).to.be.an('object');",
+							"  pm.expect(responseData.Outcome).to.be.a('string');",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const uuid = require('uuid');",
+							"pm.collectionVariables.set(\"user\",\"test-\"+uuid.v4());",
+							"",
+							"pm.collectionVariables.set(\"password\", uuid.v4()+\"@\"+uuid.v4());",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"user_name\": \"{{user}}\",\n    \"password\": \"{{password}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}register",
+					"host": [
+						"{{url_service}}register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "login default user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"",
+							"pm.test(\"Response status code is 202\", function () {",
+							"    pm.expect(pm.response.code).to.equal(202);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.token).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Token is a non-empty string\", function () {",
+							"  const responseData = pm.response.json();",
+							"",
+							"  pm.expect(responseData.token).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Token should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type header is 'text/json'\", function () {",
+							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/json');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response time is less than 200ms\", function () {",
+							"  pm.expect(pm.response.responseTime).to.be.below(200);",
+							"});",
+							"",
+							"// Stores the token in an environment or global variable",
+							"var token = pm.response.json().token;",
+							"pm.collectionVariables.set(\"token\", token);",
+							"",
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"user_name\": \"{{user}}\",\n    \"password\": \"{{password}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}login",
+					"host": [
+						"{{url_service}}login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "register test user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 201\", function () {",
+							"    pm.expect(pm.response.code).to.equal(201);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required field 'Outcome'\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.have.property('Outcome');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Outcome field should not be empty\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.Outcome).to.exist.and.to.not.be.empty;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type header is 'text/json'\", function () {",
+							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/json');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Outcome field should be a string\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData).to.be.an('object');",
+							"  pm.expect(responseData.Outcome).to.be.a('string');",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const uuid = require('uuid');",
+							"pm.collectionVariables.set(\"user\",\"test-\"+uuid.v4());",
+							"",
+							"pm.collectionVariables.set(\"password\", uuid.v4()+\"@\"+uuid.v4());",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"user_name\": \"test-5be7216c-a4af-4019-b384-1c8f74250cec\",\n    \"password\": \"2dc0a5ed-6ebf-456a-a3fd-47d5d6583e61@f35c597d-07f4-402a-9c67-6d63aca0fa99\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}register",
+					"host": [
+						"{{url_service}}register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "login test user",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"",
+							"pm.test(\"Response status code is 202\", function () {",
+							"    pm.expect(pm.response.code).to.equal(202);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.token).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Token is a non-empty string\", function () {",
+							"  const responseData = pm.response.json();",
+							"",
+							"  pm.expect(responseData.token).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Token should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type header is 'text/json'\", function () {",
+							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/json');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response time is less than 200ms\", function () {",
+							"  pm.expect(pm.response.responseTime).to.be.below(200);",
+							"});",
+							"",
+							"// Stores the token in an environment or global variable",
+							"var token = pm.response.json().token;",
+							"pm.collectionVariables.set(\"token\", token);",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"user_name\": \"test-5be7216c-a4af-4019-b384-1c8f74250cec\",\n    \"password\": \"2dc0a5ed-6ebf-456a-a3fd-47d5d6583e61@f35c597d-07f4-402a-9c67-6d63aca0fa99\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}login",
+					"host": [
+						"{{url_service}}login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list playlist",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"    pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.count).to.exist.and.to.be.a('number');",
+							"    pm.expect(responseData.resp_url).to.exist.and.to.be.a('string');",
+							"    pm.expect(responseData.start).to.exist.and.to.be.a('number');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Verify that the count is a non-negative integer\", function () {",
+							"  const responseData = pm.response.json();",
+							"",
+							"  pm.expect(responseData.count).to.be.a('number');",
+							"  pm.expect(responseData.count).to.be.at.least(0);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Verify that resp_url is a non-empty string\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.resp_url).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Verify that start is an integer\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.start).to.be.a('number', \"start should be a number\");",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url_list\": [\"{{test_playlist}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}list",
+					"host": [
+						"{{url_service}}list"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list playlist again",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.count).to.exist;",
+							"    pm.expect(responseData.resp_url).to.exist;",
+							"    pm.expect(responseData.start).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Count is a non-negative integer\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.count).to.exist.and.to.be.a('number');",
+							"  pm.expect(responseData.count).to.be.at.least(0, \"Count should be a non-negative integer\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Resp_url is a non-empty string\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.resp_url).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Start is a non-negative integer\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.start).to.exist.and.to.be.a('number');",
+							"    pm.expect(responseData.start).to.be.at.least(0);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url_list\": [\"{{test_playlist}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}list",
+					"host": [
+						"{{url_service}}list"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list playlist duplicate test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.count).to.exist;",
+							"    pm.expect(responseData.resp_url).to.exist;",
+							"    pm.expect(responseData.start).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Count is a non-negative integer\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.count).to.exist.and.to.be.a('number');",
+							"  pm.expect(responseData.count).to.be.at.least(0, \"Count should be a non-negative integer\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Resp_url is a non-empty string\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.resp_url).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Start is a non-negative integer\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.start).to.exist.and.to.be.a('number');",
+							"    pm.expect(responseData.start).to.be.at.least(0);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url_list\": [\"{{test_playlist_dup_test}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}list",
+					"host": [
+						"{{url_service}}list"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "change watch type",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required field - Outcome\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.Outcome).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Outcome is a non-empty string\", function () {",
+							"    const responseData = pm.response.json();",
+							"",
+							"    pm.expect(responseData.Outcome).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Outcome should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type is set to 'text/json'\", function () {",
+							"  pm.expect(pm.response.headers.get('Content-Type')).to.equal('text/json; charset=utf-8');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response time is less than 500ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(500);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url\": \"{{test_playlist}}\",\n    \"watch\": \"Fast\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}watch",
+					"host": [
+						"{{url_service}}watch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "change watch type duplicate test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required field - Outcome\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.Outcome).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Outcome is a non-empty string\", function () {",
+							"    const responseData = pm.response.json();",
+							"",
+							"    pm.expect(responseData.Outcome).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Outcome should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type is set to 'text/json'\", function () {",
+							"  pm.expect(pm.response.headers.get('Content-Type')).to.equal('text/json; charset=utf-8');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response time is less than 500ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(500);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url\": \"{{test_playlist_dup_test}}\",\n    \"watch\": \"Fast\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}watch",
+					"host": [
+						"{{url_service}}watch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get playlist",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code should be 200\", function () {",
+							"  pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"  const responseData = pm.response.json();",
+							"",
+							"  pm.expect(responseData).to.be.an('object');",
+							"  pm.expect(responseData.count).to.exist;",
+							"  pm.expect(responseData.rows).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Verify that the 'rows' array is present and contains at least one element\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.rows).to.exist.and.to.be.an('array').and.to.have.lengthOf.at.least(1);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Validate playlist_url is a non-empty string\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.rows).to.be.an('array');",
+							"    ",
+							"    responseData.rows.forEach(function(row) {",
+							"        pm.expect(row.playlist_url).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"    });",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"start\": 0,\n    \"stop\": 10,\n    \"sort\": 1,\n    \"order\": 1,\n    \"query\": \"\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}getplay",
+					"host": [
+						"{{url_service}}getplay"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get sublist",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.response.to.have.status(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields - count and rows\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.count).to.exist;",
+							"    pm.expect(responseData.rows).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Count is a non-negative integer\", function () {",
+							"    const responseData = pm.response.json();",
+							"",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.count).to.be.a('number');",
+							"    pm.expect(responseData.count).to.be.at.least(0, \"Count should be non-negative\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Rows is an array\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.rows).to.be.an('array');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response time is less than 500ms\", function () {",
+							"  pm.expect(pm.response.responseTime).to.be.below(500);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"start\": 1,\n    \"stop\": 10,\n    \"sortDownloaded\": false,\n    \"query\": \"\",\n    \"url\": \"{{test_playlist}}\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}getsub",
+					"host": [
+						"{{url_service}}getsub"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list a single video",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"    pm.expect(pm.response.code).to.equal(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required fields\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData).to.have.property('count');",
+							"    pm.expect(responseData).to.have.property('resp_url');",
+							"    pm.expect(responseData).to.have.property('start');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Count is a non-negative integer\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.count).to.exist.and.to.be.a('number');",
+							"  pm.expect(responseData.count).to.be.at.least(0, \"Count should be a non-negative integer\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"resp_url is a non-empty string\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.resp_url).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Start is a non-negative integer\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData).to.be.an('object');",
+							"    pm.expect(responseData.start).to.be.a('number');",
+							"    pm.expect(responseData.start).to.be.at.least(0);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url_list\": [\"{{single_vid}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}list",
+					"host": [
+						"{{url_service}}list"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list a single video again",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.response.to.have.status(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Content-Type is 'text/json'\", function () {",
+							"  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/json\");",
+							"});",
+							"",
+							"",
+							"pm.test(\"Message field is present in the response\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.message).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"Count field is present in the response\", function () {",
+							"  const responseData = pm.response.json();",
+							"",
+							"  pm.expect(responseData.count).to.exist;",
+							"});",
+							"",
+							"",
+							"pm.test(\"The 'resp_url' field is present in the response\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData.resp_url).to.exist;",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url_list\": [\"{{single_vid}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}list",
+					"host": [
+						"{{url_service}}list"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "download a video",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.response.to.have.status(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required field 'Downloading'\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData).to.be.an('object');",
+							"  pm.expect(responseData).to.have.property('Downloading');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Downloading field is an array\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.Downloading).to.be.an('array');",
+							"});",
+							"",
+							"",
+							"pm.test(\"The 'Downloading' array contains at least one element\", function () {",
+							"    const responseData = pm.response.json();",
+							"",
+							"    pm.expect(responseData.Downloading).to.exist.and.to.be.an('array').that.has.lengthOf.at.least(1);",
+							"});",
+							"",
+							"",
+							"// pm.test(\"Element in the 'Downloading' array is a non-empty string\", function () {",
+							"//     const responseData = pm.response.json();",
+							"    ",
+							"//     pm.expect(responseData.Downloading).to.be.an('array');",
+							"//     responseData.Downloading.forEach(function(element) {",
+							"//         pm.expect(element).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"//     });",
+							"// });"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"urlList\": [\n        \"{{single_vid}}\"\n    ],\n    \"playListUrl\": \"None\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}download",
+					"host": [
+						"{{url_service}}download"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "download a video Copy",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Response status code is 200\", function () {",
+							"  pm.response.to.have.status(200);",
+							"});",
+							"",
+							"",
+							"pm.test(\"Response has the required field 'Downloading'\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData).to.be.an('object');",
+							"  pm.expect(responseData).to.have.property('Downloading');",
+							"});",
+							"",
+							"",
+							"pm.test(\"Downloading field is an array\", function () {",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.Downloading).to.be.an('array');",
+							"});",
+							"",
+							"",
+							"pm.test(\"The 'Downloading' array contains at least one element\", function () {",
+							"    const responseData = pm.response.json();",
+							"",
+							"    pm.expect(responseData.Downloading).to.exist.and.to.be.an('array').that.has.lengthOf.at.least(1);",
+							"});",
+							"",
+							"",
+							"// pm.test(\"Element in the 'Downloading' array is a non-empty string\", function () {",
+							"//     const responseData = pm.response.json();",
+							"    ",
+							"//     pm.expect(responseData.Downloading).to.be.an('array');",
+							"//     responseData.Downloading.forEach(function(element) {",
+							"//         pm.expect(element).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Value should not be empty\");",
+							"//     });",
+							"// });"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"urlList\": [\n        \"{{single_vid}}\"\n    ],\n    \"playListUrl\": \"None\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}download",
+					"host": [
+						"{{url_service}}download"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "url_service",
+			"value": "https://ideapad.tail9ece4.ts.net/ytdiff/"
+		},
+		{
+			"key": "single_vid",
+			"value": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+			"type": "string"
+		},
+		{
+			"key": "test_playlist",
+			"value": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj0YkYoOLFmrbhsVWfAjCLZw",
+			"type": "string"
+		},
+		{
+			"key": "test_playlist_dup_test",
+			"value": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj2fQCpmX2zfytLqD2Qv7yZY",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "very.long.string"
+		},
+		{
+			"key": "user",
+			"value": "test-{{$guid}}"
+		},
+		{
+			"key": "password",
+			"value": ""
+		}
+	]
+}
