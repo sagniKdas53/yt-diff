@@ -119,7 +119,7 @@ let connectedClients = 0;
 // Logging methods
 // The highest log level is trace(ie: shows every call), which is the default
 // info(ie: shows info about each call) is next and then debug(ie: shows debug info about each call)
-const allowed_log_levels = (process.env.LOG_LEVELS || "info").toLowerCase().trim().split(",");
+const allowed_log_levels = (process.env.LOG_LEVELS || "trace").toLowerCase().trim().split(",");
 
 const cached_log_level = allowed_log_levels.includes("trace") ? [true, true, true] :
   allowed_log_levels.includes("info") ? [false, true, true] :
@@ -223,8 +223,9 @@ const err_log = (msg) => {
 exports.err_log = err_log;
 
 // Newer Logger implementation
+const allowedLogLevel = (process.env.LOG_LEVELS || "trace").toLowerCase().trim();
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
-const currentLogLevelIndex = logLevels.indexOf(allowed_log_levels);
+const currentLogLevelIndex = logLevels.indexOf(allowedLogLevel);
 
 // Helper function to format logs in Grafana logfmt format
 const logfmt = (level, message, fields = {}) => {
