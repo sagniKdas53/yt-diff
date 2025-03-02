@@ -17,8 +17,8 @@ services:
     image: postgres:16.2-alpine3.19
     # postgres:14.10-alpine3.18
     container_name: yt-db
-    # ports:
-    #   - 5432:5432
+    ports:
+      - 5432:5432
     restart: always
     env_file:
       - .env
@@ -47,12 +47,12 @@ services:
     image: ghcr.io/sagnikdas53/yt-diff:master
     container_name: yt-diff
     restart: always
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # This is used to build the frontend in the docker image
-        - VITE_BASE_PATH=${BASE_URL}
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     # This is used to build the frontend in the docker image
+    #     - VITE_BASE_PATH=${BASE_URL}
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
     depends_on:
