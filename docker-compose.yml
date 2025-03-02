@@ -47,12 +47,12 @@ services:
     image: ghcr.io/sagnikdas53/yt-diff:master
     container_name: yt-diff
     restart: always
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    #   args:
-    #     # This is used to build the frontend in the docker image
-    #     - VITE_BASE_PATH=${BASE_URL}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # This is used to build the frontend in the docker image
+        - VITE_BASE_PATH=${BASE_URL}
     volumes:
       - ${HOST_SAVE_PATH}:/${SAVE_PATH}
     depends_on:
