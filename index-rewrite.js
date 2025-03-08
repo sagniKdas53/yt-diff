@@ -15,11 +15,11 @@ const { Server } = require("socket.io");
 
 // Configuration object
 const config = {
-    // These are formatted correctly
     protocol: process.env.PROTOCOL || "http",
     host: process.env.HOSTNAME || "localhost",
     port: +process.env.PORT || 8888,
-
+    nativeHttps: process.env.USE_NATIVE_HTTPS === "true",
+    hidePorts: process.env.HIDE_PORTS === "true",
     urlBase: process.env.BASE_URL || "/ytdiff",
     db: {
         host: process.env.DB_HOST || "localhost",
@@ -36,7 +36,6 @@ const config = {
         maxAge: +process.env.CACHE_MAX_AGE || 3600,
         reqPerIP: +process.env.MAX_REQUESTS_PER_IP || 10
     },
-    // Format these
     saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
     sleepTime: process.env.SLEEP ?? 3,
     chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
@@ -46,7 +45,6 @@ const config = {
     saveDescription: process.env.SAVE_DESCRIPTION !== "false",
     saveComments: process.env.SAVE_COMMENTS !== "false",
     saveThumbnail: process.env.SAVE_THUMBNAIL !== "false",
-    // These are formatted correctly
     logLevel: (process.env.LOG_LEVELS || "trace").toLowerCase().trim().split(","),
     secretKey: process.env.SECRET_KEY_FILE
         ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
@@ -57,8 +55,36 @@ const config = {
     playlistRegex: /(?:playlist|list=)\b/i,
     maxClients: 10,
     connectedClients: 0,
+    types: {
+        ".png": "image/png",
+        ".js": "text/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".ico": "image/x-icon",
+        ".html": "text/html; charset=utf-8",
+        ".webmanifest": "application/manifest+json",
+        ".xml": "application/xml",
+        ".gz": "application/gzip",
+        ".br": "application/brotli",
+        ".svg": "image/svg+xml",
+        ".json": "application/json; charset=utf-8",
+    }
 };
 
+/**
+ * An array of download options for a YouTube downloader.
+ * The options are conditionally included based on the configuration settings.
+ * 
+ * Options included:
+ * - "--embed-metadata": Always included to embed metadata in the downloaded file.
+ * - "--write-subs": Included if `config.saveSubs` is true, to write subtitles.
+ * - "--write-auto-subs": Included if `config.saveSubs` is true, to write automatic subtitles.
+ * - "--write-description": Included if `config.saveDescription` is true, to write the video description.
+ * - "--write-comments": Included if `config.saveComments` is true, to write the video comments.
+ * - "--write-thumbnail": Included if `config.saveThumbnail` is true, to write the video thumbnail.
+ * - "--paths": Always included to specify the download paths.
+ * 
+ * The array is filtered to remove any empty strings.
+ */
 const downloadOptions = [
     "--embed-metadata",
     config.saveSubs ? "--write-subs" : "",
@@ -129,9 +155,12 @@ const userCache = new LRUCache(cache_options(1000));
 const ipCache = new LRUCache(cache_options(1000));
 
 // Logging
+// TODO: Move these constants to config
 const allowedLogLevel = (process.env.LOG_LEVELS || "trace").toLowerCase().trim();
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
 const currentLogLevelIndex = logLevels.indexOf(allowedLogLevel);
+const orange = color.xterm(208);
+const trace_color = color.xterm(195);
 
 // Helper function to format logs in Grafana logfmt format
 const logfmt = (level, message, fields = {}) => {
@@ -290,7 +319,6 @@ const playlist_list = sequelize.define("playlist_list", {
         allowNull: false,
     },
 });
-exports.playlist_list = playlist_list;
 
 /*  video_url is the foreign keys from video_list,
     playlist_url is foreign key from playlist_list
@@ -335,7 +363,6 @@ const video_indexer = sequelize.define("video_indexer", {
         defaultValue: 0,
     },
 });
-exports.video_indexer = video_indexer;
 
 const users = sequelize.define("users", {
     id: {
@@ -428,9 +455,8 @@ const job = new CronJob(
     true,
     config.timeZone
 );
-job.start();
 
-// Resources Preloading
+// Make sure the save location exists
 if (!fs.existsSync(config.saveLocation)) {
     logger.info("Ensuring save location exists", { save_location: config.saveLocation });
     fs.mkdirSync(config.saveLocation, { recursive: true });
@@ -451,11 +477,6 @@ async function sleep(sleepSeconds = config.sleepTime) {
     return new Promise((resolve) => setTimeout(resolve, sleepSeconds * 1000));
 }
 
-// Start from here
-const json_t = "text/json; charset=utf-8";
-exports.json_t = json_t;
-const html = "text/html; charset=utf-8";
-
 /**
  * Returns CORS headers based on the specified type.
  *
@@ -470,19 +491,6 @@ const corsHeaders = (type) => {
         "Access-Control-Max-Age": 2592000,
         "Content-Type": type,
     };
-};
-exports.corsHeaders = corsHeaders;
-
-const types = {
-    ".png": "image/png",
-    ".js": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".ico": "image/x-icon",
-    ".html": "text/html; charset=utf-8",
-    ".webmanifest": "application/manifest+json",
-    ".xml": "application/xml",
-    ".gz": "application/gzip",
-    ".br": "application/brotli",
 };
 
 /**
@@ -521,7 +529,7 @@ function makeAssets(fileList) {
     fileList.forEach((element) => {
         staticAssets[element.filePath.replace("dist", config.urlBase)] = {
             file: fs.readFileSync(element.filePath),
-            type: types[element.extension],
+            type: config.types[element.extension],
         };
     });
     staticAssets[`${config.urlBase}/`] = staticAssets[`${config.urlBase}/index.html`];
@@ -537,7 +545,7 @@ const filesList = getFiles("dist");
 const staticAssets = makeAssets(filesList);
 let serverOptions = {};
 
-if (process.env.USE_NATIVE_HTTPS === "true") {
+if (config.nativeHttps) {
     const keyPath = process.env.KEY_PATH;
     const certPath = process.env.CERT_PATH;
     try {
@@ -554,12 +562,12 @@ if (process.env.USE_NATIVE_HTTPS === "true") {
 const server = http.createServer(serverOptions, (req, res) => {
     if (req.url.startsWith(config.urlBase) && req.method === "GET") {
         try {
-            const get = req.url; // .replace(config.urlBase, "");
+            const get = req.url;
             const reqEncoding = req.headers["accept-encoding"] || "";
             const resHeaders = corsHeaders(staticAssets[get].type);
-            //debug(`Request Accept-Encoding: [${reqEncoding}]`);
+            //logger.debug(`Request Accept-Encoding: [${reqEncoding}]`);
             if (reqEncoding.includes("br")) {
-                //debug(`Sending ${get} compressed with brotli`);
+                //logger.debug(`Sending ${get} compressed with brotli`);
                 resHeaders["Content-Encoding"] = "br";
                 res.writeHead(200, resHeaders);
                 //logger.info(`Writing ${get}.br`);
@@ -567,7 +575,7 @@ const server = http.createServer(serverOptions, (req, res) => {
                 return res.end();
                 //res.write(zlib.gzipSync(staticAssets[get].file));
             } else if (reqEncoding.includes("gzip")) {
-                //debug(`Sending ${get} compressed with gzip`);
+                //logger.debug(`Sending ${get} compressed with gzip`);
                 resHeaders["Content-Encoding"] = "gzip";
                 res.writeHead(200, resHeaders);
                 //logger.info(`Writing ${get}.gz`);
@@ -575,23 +583,27 @@ const server = http.createServer(serverOptions, (req, res) => {
                 return res.end();
                 //res.write(zlib.gzipSync(staticAssets[get].file));
             } else {
-                //debug(`Sending ${get} uncompressed`);
+                //logger.debug(`Sending ${get} uncompressed`);
                 res.writeHead(200, resHeaders);
                 res.write(staticAssets[get].file);
             }
         } catch (error) {
-            //logger.error(`${error.message}`);
-            res.writeHead(404, corsHeaders(html));
+            logger.error("Error in processing request", {
+                error: error,
+                path: req.url,
+                method: req.method
+            });
+            res.writeHead(404, corsHeaders(config.types[".html"]));
             res.write("Not Found");
         }
         res.end();
     } else if (req.method === "OPTIONS") {
         // necessary for cors
-        res.writeHead(204, corsHeaders(json_t));
+        res.writeHead(204, corsHeaders(config.types[".json"]));
         res.end();
     } else if (req.method === "HEAD") {
         // necessary for health check
-        res.writeHead(204, corsHeaders(json_t));
+        res.writeHead(204, corsHeaders(config.types[".json"]));
         res.end();
     } else if (req.url === config.urlBase + "/list" && req.method === "POST") {
         verifyToken(req, res, listFunc);
@@ -600,23 +612,23 @@ const server = http.createServer(serverOptions, (req, res) => {
     } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
         verifyToken(req, res, monitoringTypeFunc);
     } else if (req.url === config.urlBase + "/getplay" && req.method === "POST") {
-        //rateLimiter(req, res, verifyToken, playlistsToTable);
         verifyToken(req, res, playlistsToTable);
     } else if (req.url === config.urlBase + "/getsub" && req.method === "POST") {
-        //rateLimiter(req, res, verifyToken, sublistToTable);
         verifyToken(req, res, sublistToTable);
     }
     else if (req.url === config.urlBase + "/register" && req.method === "POST") {
-        //register(req, res);
         rateLimiter(req, res, register, (req, res, next) => next(req, res),
             config.cache.reqPerIP, config.cache.maxAge);
     }
     else if (req.url === config.urlBase + "/login" && req.method === "POST") {
-        //login(req, res);
         rateLimiter(req, res, login, (req, res, next) => next(req, res),
             config.cache.reqPerIP, config.cache.maxAge);
     } else {
-        res.writeHead(404, corsHeaders(html));
+        logger.error("Requested Resource couldn't be found", {
+            path: req.url,
+            method: req.method
+        });
+        res.writeHead(404, corsHeaders(config.types[".html"]));
         res.write("Not Found");
         res.end();
     }
@@ -636,22 +648,36 @@ const io = new Server(server, {
 io.use((socket, next) => {
     verifySocket(socket).then((result) => {
         if (result) {
-            //debug("Valid socket: " + socket.id);
+            logger.debug("Valid socket", {
+                id: socket.id,
+                ip: socket.handshake.address,
+            });
             next();
         }
         else {
-            //logger.error("Invalid socket: " + socket.id);
+            logger.error("Invalid socket", {
+                id: socket.id,
+                ip: socket.handshake.address
+            });
             next(new Error("Invalid socket"));
         }
     }).catch((err) => {
-        logger.error(err);
+        logger.error("Error in verifying socket", {
+            id: socket.id,
+            ip: socket.handshake.address,
+            error: err
+        });
         next(new Error(err.message));
     });
 });
 
 const sock = io.on("connection", (socket) => {
     if (config.connectedClients >= config.maxClients) {
-        logger.info("Rejecting client: " + socket.id);
+        logger.info("Rejecting client", {
+            id: socket.id,
+            ip: socket.handshake.address,
+            reason: "Server full",
+        });
         socket.emit("connection-error", "Server full");
         // Disconnect the client
         socket.disconnect(true);
@@ -661,21 +687,27 @@ const sock = io.on("connection", (socket) => {
     // Increment the count of connected clients
     socket.emit("init", { message: "Connected", id: socket.id });
     socket.on("acknowledge", ({ data, id }) => {
-        logger.info(`${data} to client id ${id}`);
+        logger.info(`Acknowledged from client id ${id}`, {
+            id: id,
+            ip: socket.handshake.address,
+            data: data
+        });
         config.connectedClients++;
     });
 
     socket.on("disconnect", () => {
         // Decrement the count of connected clients when a client disconnects
-        logger.info(`Disconnected from client id ${socket.id}`);
+        logger.info(`Disconnected from client id ${socket.id}`, {
+            id: socket.id,
+            ip: socket.handshake.address,
+        });
         config.connectedClients--;
     });
     return socket;
 });
-exports.sock = sock;
 
 server.listen(config.port, async () => {
-    if (process.env.HIDE_PORTS === "true") {
+    if (config.hidePorts) {
         logger.info(`Server listening on ${config.protocol}://${config.host}${config.urlBase}`);
     } else {
         logger.info(`Server listening on ${config.protocol}://${config.host}:${config.port}${config.urlBase}`);
