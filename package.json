@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
-    "devnew": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index-rewrite.js",
+    "new": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index-rewrite.js",
     "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js"
   },
   "repository": {
