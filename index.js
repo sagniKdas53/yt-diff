@@ -26,7 +26,10 @@ const db_pass = process.env.DB_PASSWORD_FILE
   ? fs.readFileSync(process.env.DB_PASSWORD_FILE, "utf8").trim()
   : process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim()
     ? process.env.DB_PASSWORD
-    : "ytd1ff";
+    : new Error("DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set");
+if (db_pass instanceof Error) {
+  throw db_pass;
+}
 
 const save_location = process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/";
 const sleep_time = process.env.SLEEP ?? 3; // Will accept zero seconds, not recommended though.
@@ -117,110 +120,12 @@ const MAX_CLIENTS = 10;
 let connectedClients = 0;
 
 // Logging methods
-// The highest log level is trace(ie: shows every call), which is the default
-// info(ie: shows info about each call) is next and then debug(ie: shows debug info about each call)
-const allowed_log_levels = (process.env.LOG_LEVELS || "trace").toLowerCase().trim().split(",");
-
-const cached_log_level = allowed_log_levels.includes("trace") ? [true, true, true] :
-  allowed_log_levels.includes("info") ? [false, true, true] :
-    allowed_log_levels.includes("debug") ? [false, false, true] : [false, false, false];
-/**
- * Trims the given message and returns the trimmed message. If an error occurs during trimming,
- * the original message is returned.
- *
- * @param {string} msg - The message to be trimmed.
- * @return {string} The trimmed message or the original message if an error occurs.
- */
-const msg_trimmer = (msg) => {
-  try {
-    return msg.trim();
-  } catch (error) {
-    return msg;
-  }
-};
+// The lowest log level is trace(ie: shows every thing), which is the default
 const orange = color.xterm(208);
 // 153 is like sky but very light
 // 83 is greenish
 // 192 is like hay looks soothing TBH
-const trace_color = color.xterm(192);
-// trace < debug < verbose < info < warn < error
-// The log levels are in increasing order of severity
-/**
- * Logs a trace message if the log level is set to trace.
- *
- * @param {string} msg - The message to be logged.
- * @return {undefined} This function does not return a value.
- */
-const trace = (msg) => {
-  if (cached_log_level[0])
-    console.log(
-      trace_color(`[${new Date().toLocaleString()}] TRACE: ${msg}`)
-    );
-};
-exports.trace = trace;
-/**
- * Logs a debug message if the log level is set to debug.
- *
- * @param {string} msg - The message to be logged.
- * @return {undefined} This function does not return a value.
- */
-const debug = (msg) => {
-  if (cached_log_level[2])
-    console.log(
-      color.magentaBright(`[${new Date().toLocaleString()}] DEBUG: ${msg}`)
-    );
-};
-exports.debug = debug;
-/**
- * A description of the entire function.
- *
- * @param {string} msg - The message to be logged
- * @return {undefined} This function does not return a value
- */
-const verbose = (msg) => {
-  // This is just for adding some color to the logs, I don"t use it anywhere meaningful
-  console.log(
-    color.greenBright(`[${new Date().toLocaleString()}] VERBOSE: ${msg}`)
-  );
-};
-exports.verbose = verbose;
-/**
- * Logs an informational message if the log level is set to info.
- *
- * @param {string} msg - The message to be logged.
- * @return {undefined} This function does not return a value.
- */
-const info = (msg) => {
-  if (cached_log_level[1])
-    console.log(
-      color.blueBright(`[${new Date().toLocaleString()}] INFO: ${msg}`)
-    );
-};
-exports.info = info;
-/**
- * Logs a warning message with a timestamp and the warning message.
- *
- * @param {string} msg - The warning message to be logged
- * @return {undefined} This function does not return a value
- */
-const warn = (msg) => {
-  console.log(
-    orange(`[${new Date().toLocaleString()}] WARNING: ${msg}`)
-  );
-};
-exports.warn = warn;
-/**
- * Logs an error message with a timestamp and the trimmed message.
- *
- * @param {string} msg - The message to be logged.
- * @return {undefined} This function does not return a value.
- */
-const err_log = (msg) => {
-  console.error(
-    color.redBright(`[${new Date().toLocaleString()}] ERROR: ${msg_trimmer(msg)}`)
-  );
-};
-exports.err_log = err_log;
+const trace_color = color.xterm(195);
 
 // Newer Logger implementation
 const allowedLogLevel = (process.env.LOG_LEVELS || "trace").toLowerCase().trim();
@@ -290,7 +195,7 @@ const logger = {
   }
 };
 
-logger.info(`Allowed log level: ${allowed_log_levels}`);
+logger.info(`Allowed log level: ${allowedLogLevel}`);
 
 if (!fs.existsSync(save_location)) {
   fs.mkdirSync(save_location, { recursive: true });
