@@ -46,6 +46,8 @@ const config = {
     saveComments: process.env.SAVE_COMMENTS !== "false",
     saveThumbnail: process.env.SAVE_THUMBNAIL !== "false",
     logLevel: (process.env.LOG_LEVELS || "trace").toLowerCase(),
+    maxTitleLength: 255,
+    saltRounds: 10,
     secretKey: process.env.SECRET_KEY_FILE
         ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
         : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
@@ -132,7 +134,7 @@ const cacheOptionsGenerator = (size) => ({
     sizeCalculation: (value, key) => {
         const value_string = JSON.stringify(value);
         logger.debug(`Calculating size of cache item with key: ${key}`,
-            { key: key, value: value_string, size: value_string.length });
+            { key: key, size: value_string.length });
         return value_string.length; // Size in bytes
     },
     maxSize: size, // Maximum total size of all cache items in bytes
@@ -483,7 +485,7 @@ const job = new CronJob(
 
 // Make sure the save location exists
 if (!fs.existsSync(config.saveLocation)) {
-    logger.info("Ensuring save location exists", { save_location: config.saveLocation });
+    logger.info("Ensuring save location exists", { saveLocation: config.saveLocation });
     fs.mkdirSync(config.saveLocation, { recursive: true });
 }
 
@@ -750,7 +752,7 @@ async function processResponse(
                 if (["[Deleted video]", "[Private video]", "[Unavailable video]"].includes(title)) {
                     item_available = false;
                 }
-                const title_processed = await stringSlicer(title === "NA" ? vid_id.trim() : title, MAX_LENGTH);
+                const title_processed = await stringSlicer(title === "NA" ? vid_id.trim() : title, config.maxTitleLength);
                 if (!allItemsExistInVideoList[map_idx]) {
                     const vid_data = {
                         video_id: vid_id,
@@ -872,7 +874,7 @@ async function sleep(sleepSeconds = config.sleepTime) {
  */
 async function hashPassword(password) {
     try {
-        const salt = await bcrypt.genSalt(salt_rounds);
+        const salt = await bcrypt.genSalt(config.saltRounds);
         const hash = await bcrypt.hash(password, salt);
         return [salt, hash];
     } catch (error) {
@@ -890,6 +892,15 @@ async function register(req, res) {
     const body = await extractJson(req),
         user_name = body["user_name"],
         body_password = body["password"];
+    // Reject the request if the body_password is larger than 72 bytes as bcrypt only supports 72 bytes
+    if (Buffer.byteLength(body_password, 'utf8') > 72) {
+        logger.error("Password too long", {
+            user_name: user_name,
+            password_length: Buffer.byteLength(body_password, 'utf8'),
+        });
+        res.writeHead(400, corsHeaders(config.types[".json"]));
+        return res.end(JSON.stringify({ Outcome: "Password too long" }));
+    }
     const foundUser = await users.findOne({
         where: { user_name: user_name },
     });
@@ -921,7 +932,7 @@ function generateToken(user, expiry_time) {
             id: user.id,
             lastPasswordChangeTime: user.updatedAt
         },
-        secretKey, { expiresIn: expiry_time }
+        config.secretKey, { expiresIn: expiry_time }
     );
 }
 /**
@@ -1072,12 +1083,24 @@ async function login(req, res) {
         const foundUser = await users.findOne({
             where: { user_name: user_name },
         });
+        // Reject the request if the body_password is larger than 72 bytes as bcrypt only supports 72 bytes
+        if (Buffer.byteLength(body_password, 'utf8') > 72) {
+            logger.error("Password too long", {
+                user_name: user_name,
+                password_length: Buffer.byteLength(body_password, 'utf8'),
+            });
+            res.writeHead(400, corsHeaders(config.types[".json"]));
+            return res.end(JSON.stringify({ Outcome: "Password too long" }));
+        }
         if (foundUser === null) {
             logger.verbose(`Issuing token for user ${user_name} failed`);
             res.writeHead(404, corsHeaders(config.types[".json"]));
             res.end(JSON.stringify({ Outcome: "Username or password invalid" }));
         } else {
             const passwordMatch = await bcrypt.compare(body_password, foundUser.password);
+            logger.trace(`Password match: ${passwordMatch}`, {
+                user_name: user_name,
+            });
             if (!passwordMatch) {
                 logger.verbose(`Issuing token for user ${foundUser.user_name} failed`);
                 res.writeHead(401, corsHeaders(config.types[".json"]));
@@ -1262,15 +1285,15 @@ async function download_sequential(items) {
             // Find a way to check and update it in the db if it is not correct
             let realFileName = null;
             // check if the trim is actually necessary
-            const save_path = path_fs.join(save_location, save_dir.trim());
+            const save_path = path_fs.join(config.saveLocation, save_dir.trim());
             logger.debug(`Downloading to path: ${save_path}`);
-            // if save_dir == "",  then save_path == save_location
-            if (save_path != save_location && !fs.existsSync(save_path)) {
+            // if save_dir == "",  then save_path == config.saveLocation
+            if (save_path != config.saveLocation && !fs.existsSync(save_path)) {
                 fs.mkdirSync(save_path, { recursive: true });
             }
             sock.emit("download-start", { message: "" });
-            // logger.verbose(`executing: yt-dlp ${options.join(" ")} ${save_path} ${url_str}`);
-            const yt_dlp = spawn("yt-dlp", options.concat([save_path, url_str]));
+            // logger.verbose(`executing: yt-dlp ${downloadOptions.join(" ")} ${save_path} ${url_str}`);
+            const yt_dlp = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
             yt_dlp.stdout.setEncoding("utf8");
             yt_dlp.stdout.on("data", async (data) => {
                 try {
@@ -1742,7 +1765,7 @@ async function add_playlist(url_var, monitoring_type_var) {
                     logger.error(`${error.message}`);
                 }
             }
-            title_str = await stringSlicer(title_str, MAX_LENGTH);
+            title_str = await stringSlicer(title_str, config.maxTitleLength);
             // no need to use found or create syntax here as
             // this is only run the first time a playlist is made
             playlist_list.findOrCreate({
@@ -1777,8 +1800,14 @@ async function playlistsToTable(body, res) {
             type = order == 2 ? "DESC" : "ASC", // 0, 1 it will be ascending else descending
             row = sort_with == 3 ? "updatedAt" : "playlist_index";
         logger.trace(
-            `playlistsToTable: Start: ${start_num}, Stop: ${stop_num}, ` +
-            `Order: ${order}, Type: ${type}, Query: "${query_string}"`
+            `playlistsToTable called`, {
+            start: start_num,
+            stop: stop_num,
+            order: order,
+            query: query_string,
+            type: type,
+            row: row
+        }
         );
         if (query_string == "") {
             playlist_list
@@ -1841,15 +1870,19 @@ async function sublistToTable(body, res) {
             query_string = body["query"] !== undefined ? body["query"] : "",
             sort_downloaded = body["sortDownloaded"] !== undefined ? body["sortDownloaded"] : false,
             // [video_list, "downloaded", "DESC"] shows up as [null,"downloaded","DESC"] in the logs
-            // but don't remove as it work I don't remember why
+            // but removing it causes an errorMissingColumnError: column video_list.downloaded does not exist
             order_array = sort_downloaded
                 ? [video_list, "downloaded", "DESC"]
                 : ["index_in_playlist", "ASC"];
         logger.trace(
-            `sublistToTable:  Start: ${start_num}, Stop: ${stop_num}, ` +
-            ` Query: "${query_string}", Order: ${JSON.stringify(order_array)}, ` +
-            `playlist_url: ${playlist_url}`
-        );
+            `sublistToTable called`, {
+            start: start_num,
+            stop: stop_num,
+            query: query_string,
+            orderFor: sort_downloaded ? "downloaded" : "index_in_playlist",
+            order: sort_downloaded ? "DESC" : "ASC",
+            playlist_url: playlist_url
+        });
         try {
             if (query_string == "") {
                 // video_indexer is not associated to video_list!
