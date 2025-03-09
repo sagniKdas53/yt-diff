@@ -12,6 +12,7 @@ const generator = require('generate-password');
 const he = require('he');
 const { LRUCache } = require('lru-cache');
 const { Server } = require("socket.io");
+const { table } = require("console");
 
 // Configuration object
 const config = {
@@ -1082,9 +1083,6 @@ async function login(req, res) {
             user_name = body["user_name"],
             body_password = body["password"],
             expiry_time = body["expiry_time"] || "31d";
-        const foundUser = await users.findOne({
-            where: { user_name: user_name },
-        });
         // Reject the request if the body_password is larger than 72 bytes as bcrypt only supports 72 bytes
         if (Buffer.byteLength(body_password, 'utf8') > 72) {
             logger.error("Password too long", {
@@ -1094,6 +1092,9 @@ async function login(req, res) {
             res.writeHead(400, corsHeaders(config.types[".json"]));
             return res.end(JSON.stringify({ Outcome: "Password too long" }));
         }
+        const foundUser = await users.findOne({
+            where: { user_name: user_name },
+        });
         if (foundUser === null) {
             logger.verbose(`Issuing token for user ${user_name} failed`);
             res.writeHead(404, corsHeaders(config.types[".json"]));
@@ -1237,6 +1238,14 @@ async function downloadLister(body, res) {
                 const video_item = await video_list.findOne({
                     where: { video_url: url_item },
                 });
+                if (!video_item) {
+                    logger.error(`Video with URL ${url_item} is not indexed`, {
+                        url: url_item,
+                        table: "video_list"
+                    });
+                    res.writeHead(404, corsHeaders(config.types[".json"]));
+                    return res.end(JSON.stringify({ error: `Video with URL ${url_item} is not indexed` }));
+                }
                 let save_dir = "";
                 try {
                     const save_dir_const = await playlist_list.findOne({

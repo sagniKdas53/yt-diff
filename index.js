@@ -807,6 +807,15 @@ async function register(req, res) {
   const body = await extract_json(req),
     user_name = body["user_name"],
     body_password = body["password"];
+  // Reject the request if the body_password is larger than 72 bytes as bcrypt only supports 72 bytes
+  if (Buffer.byteLength(body_password, 'utf8') > 72) {
+    logger.error("Password too long", {
+      user_name: user_name,
+      password_length: Buffer.byteLength(body_password, 'utf8'),
+    });
+    res.writeHead(400, corsHeaders(json_t));
+    return res.end(JSON.stringify({ Outcome: "Password too long" }));
+  }
   const foundUser = await users.findOne({
     where: { user_name: user_name },
   });
@@ -986,6 +995,15 @@ async function login(req, res) {
       user_name = body["user_name"],
       body_password = body["password"],
       expiry_time = body["expiry_time"] || "31d";
+    // Reject the request if the body_password is larger than 72 bytes as bcrypt only supports 72 bytes
+    if (Buffer.byteLength(body_password, 'utf8') > 72) {
+      logger.error("Password too long", {
+        user_name: user_name,
+        password_length: Buffer.byteLength(body_password, 'utf8'),
+      });
+      res.writeHead(400, corsHeaders(json_t));
+      return res.end(JSON.stringify({ Outcome: "Password too long" }));
+    }
     const foundUser = await users.findOne({
       where: { user_name: user_name },
     });
@@ -1129,6 +1147,14 @@ async function download_lister(body, res) {
         const video_item = await video_list.findOne({
           where: { video_url: url_item },
         });
+        if (!video_item) {
+          logger.error(`Video with URL ${url_item} is not indexed`, {
+            url: url_item,
+            table: "video_list"
+          });
+          res.writeHead(404, corsHeaders(json_t));
+          return res.end(JSON.stringify({ error: `Video with URL ${url_item} is not indexed` }));
+        }
         let save_dir = "";
         try {
           const save_dir_const = await playlist_list.findOne({
