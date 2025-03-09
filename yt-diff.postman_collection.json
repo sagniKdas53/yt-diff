@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "d36579a0-1d91-4882-ae2c-897e40bf8eb9",
+		"_postman_id": "9af08b76-985f-43e7-855a-3479b9ace5bf",
 		"name": "yt-diff",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "32814481"
@@ -90,30 +90,28 @@
 			"response": []
 		},
 		{
-			"name": "login default user",
+			"name": "register default user again",
 			"event": [
 				{
 					"listen": "test",
 					"script": {
 						"exec": [
-							"",
-							"pm.test(\"Response status code is 202\", function () {",
-							"    pm.expect(pm.response.code).to.equal(202);",
+							"pm.test(\"Response status code is 409\", function () {",
+							"    pm.expect(pm.response.code).to.equal(409);",
 							"});",
 							"",
 							"",
-							"pm.test(\"Response has the required fields\", function () {",
+							"pm.test(\"Response has the required field 'Outcome'\", function () {",
 							"    const responseData = pm.response.json();",
 							"    ",
-							"    pm.expect(responseData).to.be.an('object');",
-							"    pm.expect(responseData.token).to.exist;",
+							"    pm.expect(responseData).to.have.property('Outcome');",
 							"});",
 							"",
 							"",
-							"pm.test(\"Token is a non-empty string\", function () {",
+							"pm.test(\"Outcome field should not be empty\", function () {",
 							"  const responseData = pm.response.json();",
-							"",
-							"  pm.expect(responseData.token).to.be.a('string').and.to.have.lengthOf.at.least(1, \"Token should not be empty\");",
+							"  ",
+							"  pm.expect(responseData.Outcome).to.exist.and.to.not.be.empty;",
 							"});",
 							"",
 							"",
@@ -122,13 +120,12 @@
 							"});",
 							"",
 							"",
-							"pm.test(\"Response time is less than 200ms\", function () {",
-							"  pm.expect(pm.response.responseTime).to.be.below(200);",
+							"pm.test(\"Outcome field should be a string\", function () {",
+							"  const responseData = pm.response.json();",
+							"  ",
+							"  pm.expect(responseData).to.be.an('object');",
+							"  pm.expect(responseData.Outcome).to.be.a('string');",
 							"});",
-							"",
-							"// Stores the token in an environment or global variable",
-							"var token = pm.response.json().token;",
-							"pm.collectionVariables.set(\"token\", token);",
 							"",
 							""
 						],
@@ -160,12 +157,12 @@
 					}
 				},
 				"url": {
-					"raw": "{{url_service}}/login",
+					"raw": "{{url_service}}/register",
 					"host": [
 						"{{url_service}}"
 					],
 					"path": [
-						"login"
+						"register"
 					]
 				}
 			},
@@ -463,7 +460,7 @@
 						"exec": [
 							"const uuid = require('uuid');",
 							"",
-							"pm.collectionVariables.set(\"password\", uuid.v4()+uuid.v4());"
+							"pm.collectionVariables.set(\"newPassword\", uuid.v4()+uuid.v4());"
 						],
 						"type": "text/javascript",
 						"packages": {}
@@ -475,7 +472,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"user_name\": \"{{user}}\",\n    \"password\": \"{{password}}\"\n}",
+					"raw": "{\n    \"user_name\": \"{{user}}\",\n    \"password\": \"{{newPassword}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -553,7 +550,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"user_name\": \"{{user}}1\",\n    \"password\": \"{{password}}\"\n}",
+					"raw": "{\n    \"user_name\": \"{{user}}New\",\n    \"password\": \"{{password}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -573,165 +570,7 @@
 			"response": []
 		},
 		{
-			"name": "register test user",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test(\"Response status code is 201\", function () {",
-							"    pm.expect(pm.response.code).to.equal(201);",
-							"});",
-							"",
-							"",
-							"pm.test(\"Response has the required field 'Outcome'\", function () {",
-							"    const responseData = pm.response.json();",
-							"    ",
-							"    pm.expect(responseData).to.have.property('Outcome');",
-							"});",
-							"",
-							"",
-							"pm.test(\"Outcome field should not be empty\", function () {",
-							"  const responseData = pm.response.json();",
-							"  ",
-							"  pm.expect(responseData.Outcome).to.exist.and.to.not.be.empty;",
-							"});",
-							"",
-							"",
-							"pm.test(\"Content-Type header is 'application/json; charset=utf-8'\", function () {",
-							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json; charset=utf-8');",
-							"});",
-							"",
-							"",
-							"pm.test(\"Outcome field should be a string\", function () {",
-							"  const responseData = pm.response.json();",
-							"  ",
-							"  pm.expect(responseData).to.be.an('object');",
-							"  pm.expect(responseData.Outcome).to.be.a('string');",
-							"});",
-							"",
-							""
-						],
-						"type": "text/javascript",
-						"packages": {}
-					}
-				},
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							""
-						],
-						"type": "text/javascript",
-						"packages": {}
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"user_name\": \"test-ce9f8068-8d89-4885-a2c8-b72629ee956a\",\n    \"password\": \"f3d716e9-7697-4945-812f-cbef5b36785d0d489da8-bc32-4b82-bb3c-2b738082fa01\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{url_service}}/register",
-					"host": [
-						"{{url_service}}"
-					],
-					"path": [
-						"register"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "register test user again",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test(\"Response status code is 409\", function () {",
-							"    pm.expect(pm.response.code).to.equal(409);",
-							"});",
-							"",
-							"",
-							"pm.test(\"Response has the required field 'Outcome'\", function () {",
-							"    const responseData = pm.response.json();",
-							"    ",
-							"    pm.expect(responseData).to.have.property('Outcome');",
-							"});",
-							"",
-							"",
-							"pm.test(\"Outcome field should not be empty\", function () {",
-							"  const responseData = pm.response.json();",
-							"  ",
-							"  pm.expect(responseData.Outcome).to.exist.and.to.not.be.empty;",
-							"});",
-							"",
-							"",
-							"pm.test(\"Content-Type header is 'application/json; charset=utf-8'\", function () {",
-							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json; charset=utf-8');",
-							"});",
-							"",
-							"",
-							"pm.test(\"Outcome field should be a string\", function () {",
-							"  const responseData = pm.response.json();",
-							"  ",
-							"  pm.expect(responseData).to.be.an('object');",
-							"  pm.expect(responseData.Outcome).to.be.a('string');",
-							"});",
-							"",
-							""
-						],
-						"type": "text/javascript",
-						"packages": {}
-					}
-				},
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							""
-						],
-						"type": "text/javascript",
-						"packages": {}
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"user_name\": \"test-ce9f8068-8d89-4885-a2c8-b72629ee956a\",\n    \"password\": \"f3d716e9-7697-4945-812f-cbef5b36785d0d489da8-bc32-4b82-bb3c-2b738082fa01\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{url_service}}/register",
-					"host": [
-						"{{url_service}}"
-					],
-					"path": [
-						"register"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "login test user",
+			"name": "login default user",
 			"event": [
 				{
 					"listen": "test",
@@ -793,7 +632,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"user_name\": \"test-ce9f8068-8d89-4885-a2c8-b72629ee956a\",\n    \"password\": \"f3d716e9-7697-4945-812f-cbef5b36785d0d489da8-bc32-4b82-bb3c-2b738082fa01\"\n}",
+					"raw": "{\n    \"user_name\": \"{{user}}\",\n    \"password\": \"{{password}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -879,7 +718,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"url_list\": [\"{{test_playlist}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": false,\n    \"token\": \"{{token}}\"\n}",
+					"raw": "{\n    \"url_list\": [\"{{test_playlist}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -966,7 +805,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"url_list\": [\"{{test_playlist}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": false,\n    \"token\": \"{{token}}\"\n}",
+					"raw": "{\n    \"url_list\": [\"{{test_playlist}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1053,7 +892,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"url_list\": [\"{{test_playlist_dup_test}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": false,\n    \"token\": \"{{token}}\"\n}",
+					"raw": "{\n    \"url_list\": [\"{{test_playlist_dup_test}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1203,7 +1042,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"url\": \"{{test_playlist_dup_test}}\",\n    \"watch\": \"Fast\",\n    \"token\": \"{{token}}\"\n}",
+					"raw": "{\n    \"url\": \"{{test_playlist_dup_test}}\",\n    \"watch\": \"Full\",\n    \"token\": \"{{token}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1457,7 +1296,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"url_list\": [\"{{single_vid}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": false,\n    \"token\": \"{{token}}\"\n}",
+					"raw": "{\n    \"url_list\": [\"{{single_vid}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1488,8 +1327,8 @@
 							"});",
 							"",
 							"",
-							"pm.test(\"Content-Type is 'text/json'\", function () {",
-							"  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/json\");",
+							"pm.test(\"Content-Type is 'application/json; charset=utf-8'\", function () {",
+							"  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json; charset=utf-8\");",
 							"});",
 							"",
 							"pm.test(\"Content-Type is set to 'application/json; charset=utf-8'\", function () {",
@@ -1537,7 +1376,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"url_list\": [\"{{single_vid}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": false,\n    \"token\": \"{{token}}\"\n}",
+					"raw": "{\n    \"url_list\": [\"{{single_vid}}\"],\n    \"start\": 0,\n    \"chunk_size\": 10,\n    \"monitoring_type\": \"N/A\",\n    \"sleep\": true,\n    \"token\": \"{{token}}\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1748,7 +1587,7 @@
 	"variable": [
 		{
 			"key": "url_service",
-			"value": "https://ideapad.tail9ece4.ts.net/ytdiff"
+			"value": "http://localhost:8888/ytdiff"
 		},
 		{
 			"key": "single_vid",
@@ -1783,6 +1622,10 @@
 		},
 		{
 			"key": "bigPassword",
+			"value": ""
+		},
+		{
+			"key": "newPassword",
 			"value": ""
 		}
 	]
