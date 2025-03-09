@@ -1562,6 +1562,67 @@
 				}
 			},
 			"response": []
+		},
+		{
+			"name": "download an un indexed video",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Test for status code",
+							"pm.test(\"Status code is 404\", function () {",
+							"    pm.response.to.have.status(404);",
+							"});",
+							"",
+							"// Test for error message property in the response body",
+							"pm.test(\"Error message property exists\", function () {",
+							"    pm.expect(pm.response.json().error).to.exist;",
+							"    pm.expect(pm.response.json().error).to.contain(pm.collectionVariables.get(\"unIndexedVideo\"));",
+							"});",
+							"",
+							"pm.test(\"Content-Type is set to 'application/json; charset=utf-8'\", function () {",
+							"  pm.expect(pm.response.headers.get('Content-Type')).to.equal('application/json; charset=utf-8');",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"urlList\": [\n        \"{{unIndexedVideo}}\"\n    ],\n    \"playListUrl\": \"None\",\n    \"token\": \"{{token}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{url_service}}/download",
+					"host": [
+						"{{url_service}}"
+					],
+					"path": [
+						"download"
+					]
+				}
+			},
+			"response": []
 		}
 	],
 	"event": [
@@ -1614,7 +1675,7 @@
 		},
 		{
 			"key": "password",
-			"value": "{{$guid}}@{{$guid}}"
+			"value": "{{$guid}}{{$guid}}"
 		},
 		{
 			"key": "bigUser",
@@ -1627,6 +1688,11 @@
 		{
 			"key": "newPassword",
 			"value": ""
+		},
+		{
+			"key": "unIndexedVideo",
+			"value": "",
+			"type": "string"
 		}
 	]
 }
