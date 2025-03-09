@@ -132,10 +132,10 @@ const cacheOptionsGenerator = (size) => ({
      * @return {number} The size of the value in bytes.
      */
     sizeCalculation: (value, key) => {
-        const value_string = JSON.stringify(value);
-        logger.debug(`Calculating size of cache item with key: ${key}`,
-            { key: key, size: value_string.length });
-        return value_string.length; // Size in bytes
+        const valueString = JSON.stringify(value);
+        logger.trace(`Calculating size of cache item with key: ${key}`,
+            { key: key, size: valueString.length });
+        return valueString.length; // Size in bytes
     },
     maxSize: size, // Maximum total size of all cache items in bytes
     /**
@@ -147,7 +147,7 @@ const cacheOptionsGenerator = (size) => ({
      */
     dispose: (key, value, reason) => {
         // Clear sensitive data when an item is removed
-        logger.debug(`Disposing cache item with key: ${key}`,
+        logger.trace(`Disposing cache item with key: ${key}`,
             { key: key, value: value, reason: reason }
         );
         value = null;
@@ -213,11 +213,11 @@ const logfmt = (level, message, fields = {}) => {
  * 
  * @example
  * logger.trace('This is a trace message', { additional: 'info' });
- * logger.debug('This is a debug message');
- * logger.verbose('This is a verbose message');
- * logger.info('This is an info message');
- * logger.warn('This is a warning message');
- * logger.error('This is an error message');
+ * logger.debug('This is a debug message', { additional: 'info' });
+ * logger.verbose('This is a verbose message', { additional: 'info' });
+ * logger.info('This is an info message', { additional: 'info' });
+ * logger.warn('This is a warning message', { additional: 'info' });
+ * logger.error('This is an error message', { additional: 'info' });
  */
 const logger = {
     trace: (message, fields = {}) => {
@@ -426,7 +426,7 @@ sequelize
     .then(async () => {
         logger.info(
             "tables exist or are created successfully",
-            { tables: [video_list.name, playlist_list.name, video_indexer.name] }
+            { host: config.db.host, database: config.db.name, tables: [video_list.name, playlist_list.name, video_indexer.name] }
         );
         // Making the unlisted playlist
         const [unlistedPlaylist, created] = await playlist_list.findOrCreate({
@@ -441,23 +441,24 @@ sequelize
         if (created) {
             logger.info(
                 "Unlisted playlist created successfully",
-                { playlist: unlistedPlaylist.name }
+                { host: config.db.host, database: config.db.name, tables: [unlistedPlaylist.name] }
             );
         }
         // Making a default user
         const userName = "admin";
         const defaultUser = await users.findOne({ where: { user_name: userName } });
         if (defaultUser === null) {
-            logger.debug("Creating default user");
+            logger.debug("Creating default user", { userName: userName });
             const generatedPassword = generatePassword();
             const [salt, password] = await hashPassword(generatedPassword);
             users.create({ user_name: userName, salt: salt, password: password });
+            // This happens only once, so it is safe to log the password
             logger.info(
                 "Default user created successfully",
                 { user_name: userName, password: generatedPassword }
             );
         } else {
-            logger.debug("Default user already exists",
+            logger.info("Default user already exists",
                 { user_name: userName }
             );
         }
@@ -474,7 +475,8 @@ const job = new CronJob(
         logger.info("Scheduled update",
             {
                 time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
-                time_zone: config.timeZone
+                timeZone: config.timeZone,
+                nextRun: job.nextDate().toLocaleString("en-US", { timeZone: config.timeZone })
             }
         );
     },
@@ -573,7 +575,7 @@ async function urlToTitle(bodyUrl) {
             .filter((item) => !not_needed.includes(item))
             .join("");
     } catch (error) {
-        logger.error(`${error.message}`);
+        logger.error("Error in urlToTitle", { error: error.message });
         return bodyUrl;
     }
 }
