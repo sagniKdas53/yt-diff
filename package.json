@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
     "new": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index-rewrite.js",
-    "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js"
+    "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js",
+    "test": "newman run --delay-request 1000 yt-diff.postman_collection.json"
   },
   "repository": {
     "type": "git",
@@ -40,6 +41,7 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "csv-parser": "^3.0.0"
+    "csv-parser": "^3.0.0",
+    "newman": "^6.2.1"
   }
 }
