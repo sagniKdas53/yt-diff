@@ -12,7 +12,7 @@ const generator = require('generate-password');
 const he = require('he');
 const { LRUCache } = require('lru-cache');
 const { Server } = require("socket.io");
-const { table } = require("console");
+const { timeStamp } = require("console");
 
 // Configuration object
 const config = {
@@ -69,7 +69,9 @@ const config = {
     ".br": "application/brotli",
     ".svg": "image/svg+xml",
     ".json": "application/json; charset=utf-8",
-  }
+  },
+  maxListings: 1 || +process.env.MAX_LISTING,
+  maxDownloads: 1 || +process.env.MAX_DOWNLOAD,
 };
 
 /**
@@ -120,7 +122,7 @@ if (config.db.password instanceof Error) {
  *   - maxSize: Maximum total size of all cache items in bytes.
  *   - dispose: Function to clear sensitive data when an item is removed.
  */
-const cacheOptionsGenerator = (size) => ({
+const cacheConfig = (size) => ({
   max: config.cache.maxItems, // Maximum number of items to store in the cache
   ttl: config.cache.maxAge * 1000, // Time-to-live for each item in milliseconds
   updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
@@ -155,8 +157,13 @@ const cacheOptionsGenerator = (size) => ({
   },
 });
 
-const userCache = new LRUCache(cacheOptionsGenerator(1000));
-const ipCache = new LRUCache(cacheOptionsGenerator(1000));
+const userCache = new LRUCache(cacheConfig(1000));
+const ipCache = new LRUCache(cacheConfig(1000));
+
+// Process Maps and Handlers
+
+const listProcesses = new Map();
+const downloadProcesses = new Map();
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -616,6 +623,10 @@ async function listSpawner(bodyUrl, start_num, stop_num) {
     { url: bodyUrl, start: start_num, stop: stop_num }
   );
   return new Promise((resolve, reject) => {
+    if (listProcesses.size >= config.maxListings) {
+      logger.info("Max Listing processes spawned", { url: bodyUrl });
+      reject(new Error("Max Listing processes spawned"));
+    }
     const ytList = spawn("yt-dlp", [
       "--playlist-start",
       start_num,
@@ -626,24 +637,41 @@ async function listSpawner(bodyUrl, start_num, stop_num) {
       "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
       bodyUrl,
     ]);
+    listProcesses.set(ytList.pid, {
+      spawnUrl: bodyUrl,
+      spawnTime: Date.now(),
+      spawnType: "list",
+      spawnPid: ytList.pid,
+      spawnStatus: "running",
+      spawnError: null,
+      spawnExitCode: null,
+      spawnedProcess: ytList,
+      lastActivity: Date.now()
+    });
     let response = "";
     ytList.stdout.setEncoding("utf8");
     ytList.stdout.on("data", (data) => {
       response += data;
+      listProcesses.get(ytList.pid).lastActivity = Date.now();
     });
     ytList.stderr.setEncoding("utf8");
     ytList.stderr.on("data", (data) => {
       // maybe use sockets to send the stderr to the
       logger.error(`stderr: ${data}`);
+      listProcesses.get(ytList.pid).lastActivity = Date.now();
     });
     ytList.on("error", (error) => {
       logger.error(`${error.message}`);
+      listProcesses.get(ytList.pid).lastActivity = Date.now();
     });
     ytList.on("close", (code) => {
       if (code !== 0) {
         logger.error(`yt-dlp returned code: ${code}`);
+        listProcesses.get(ytList.pid).spawnStatus = "failed";
+        listProcesses.get(ytList.pid).lastActivity = Date.now();
       }
       resolve(response.split("\n").filter((line) => line.length > 0));
+      listProcesses.delete(ytList.pid);
     });
   });
 }
