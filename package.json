@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
-    "new": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index-rewrite.js",
     "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js",
     "test": "newman run --delay-request 1000 yt-diff.postman_collection.json"
   },
