@@ -33,13 +33,13 @@ const config = {
   },
   cache: {
     maxItems: +process.env.CACHE_MAX_ITEMS || 1000,
-    maxAge: +process.env.CACHE_MAX_AGE || 3600,
+    maxAge: +process.env.CACHE_MAX_AGE || 30, // keep cache for 30 seconds just in testing
     reqPerIP: +process.env.MAX_REQUESTS_PER_IP || 10
   },
   queue: {
     maxListings: +process.env.MAX_LISTINGS || 2,
     maxDownloads: +process.env.MAX_DOWNLOADS || 2,
-    maxAge: +process.env.PROCESS_MAX_AGE || 300,
+    maxAge: +process.env.PROCESS_MAX_AGE || 30, // keep cache for 30 seconds just in testing
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
   sleepTime: process.env.SLEEP ?? 3,
@@ -123,7 +123,7 @@ if (config.db.password instanceof Error) {
  *   - maxSize: Maximum total size of all cache items in bytes.
  *   - dispose: Function to clear sensitive data when an item is removed.
  */
-const cacheConfig = (size) => ({
+const createSecurityCacheConfig = (size) => ({
   max: config.cache.maxItems, // Maximum number of items to store in the cache
   ttl: config.cache.maxAge * 1000, // Time-to-live for each item in milliseconds
   updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
@@ -149,17 +149,19 @@ const cacheConfig = (size) => ({
    * @param {any} value - The value to be disposed of.
    * @param {string} reason - The reason for disposing of the value.
    */
-  dispose: (key, value, reason) => {
+  dispose: (value, key, reason) => {
     // Clear sensitive data when an item is removed
-    logger.trace(`Disposing cache item with key: ${key}`,
-      { key: key, value: value, reason: reason }
-    );
+    logger.trace(`Disposing cache item with key: ${key}`, {
+      key: key,
+      value: JSON.stringify(value),
+      reason: reason
+    });
     value = null;
   },
 });
 
-const userCache = new LRUCache(cacheConfig(1000));
-const ipCache = new LRUCache(cacheConfig(1000));
+const userCache = new LRUCache(createSecurityCacheConfig(1000));
+const ipCache = new LRUCache(createSecurityCacheConfig(1000));
 
 // Process Maps and Handlers
 /**
@@ -207,28 +209,37 @@ const createProcessCacheConfig = (size, maxItems, maxAge) => ({
    * @param {Object} value - Process cache entry
    * @param {string} reason - Reason for disposal
    */
-  dispose: (key, value, reason) => {
+  dispose: (value, key, reason) => {
     try {
       logger.trace(`Disposing cache item with key: ${key}`, {
-        key,
-        value,
-        reason
+        key: key,
+        value: {
+          exitCode: value.exitCode,
+          killed: value.killed,
+          pid: value.pid,
+          spawnargs: value.spawnargs
+        },
+        reason: reason
       });
       // Attempt to kill the process if it's still running
-      if (value.spawnedProcess && !value.spawnedProcess.killed) {
-        try {
-          // Send SIGTERM first for graceful shutdown
-          value.spawnedProcess.kill('SIGTERM');
+      try {
+        if (value.spawnedProcess && value.status === "running") {
+          try {
+            // Send SIGTERM first for graceful shutdown
+            value.spawnedProcess.kill('SIGTERM');
 
-          // If process doesn't exit, send SIGKILL after a short delay
-          setTimeout(() => {
-            if (!value.spawnedProcess.killed) {
-              value.spawnedProcess.kill('SIGKILL');
-            }
-          }, 5000); // 5-second grace period
-        } catch (killError) {
-          logger.error(`Error killing process ${key}: ${killError.message}`);
+            // If process doesn't exit, send SIGKILL after a short delay
+            setTimeout(() => {
+              if (!value.spawnedProcess.killed) {
+                value.spawnedProcess.kill('SIGKILL');
+              }
+            }, 5000); // 5-second grace period
+          } catch (killError) {
+            logger.error(`Error killing process ${key}: ${killError.message}`);
+          }
         }
+      } catch (error) {
+        logger.error(`Error disposing cache item: ${error.message}`);
       }
       // Clear references to help with garbage collection
       value.spawnedProcess = null;
@@ -1558,7 +1569,7 @@ async function download_sequential(items) {
   }
 }
 /**
- * Downloads the given items in parallel with enhanced process tracking
+ * Downloads the given items in parallel with enhanced process tracking using Promise.all
  * 
  * @param {Array} items - Array of items to be downloaded
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
@@ -1567,7 +1578,7 @@ async function download_sequential(items) {
 async function download_parallel(items, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos in parallel (max ${maxConcurrent} concurrent)`);
 
-  // Check existing downloads in the cache to prevent duplicate downloads
+  // Filter out URLs already being downloaded
   const filterUniqueItems = items.filter(item => {
     const url = item[0];
     const existingDownload = Array.from(downloadProcesses.values())
@@ -1579,222 +1590,198 @@ async function download_parallel(items, maxConcurrent = 2) {
 
   logger.trace(`Filtered unique items for download: ${filterUniqueItems.length}`);
 
-  // Use a queue to manage concurrent downloads
-  const downloadQueue = [...filterUniqueItems];
-  const activeDownloads = new Set();
-  const downloadResults = [];
+  // Create a function to download a single item
+  const downloadItem = async (itemToDownload) => {
+    const [url_str, title, save_dir, video_id] = itemToDownload;
 
-  return new Promise((resolveAll, rejectAll) => {
-    const processNextDownload = () => {
-      // If no more items to download and no active downloads, resolve
-      if (downloadQueue.length === 0 && activeDownloads.size === 0) {
-        resolveAll(downloadResults);
-        return;
+    try {
+      // Check again if download is already in progress (race condition prevention)
+      const existingDownload = Array.from(downloadProcesses.values())
+        .find(process => process.url === url_str &&
+          ['running', 'pending'].includes(process.status));
+
+      if (existingDownload) {
+        logger.trace(`Download already in progress for ${url_str}`);
+        return {
+          url: url_str,
+          title: title,
+          status: 'skipped',
+          reason: 'Already downloading'
+        };
       }
 
-      // If we've reached max concurrent downloads, wait
-      if (activeDownloads.size >= maxConcurrent) {
-        return;
+      // Prepare save path
+      const save_path = path_fs.join(config.saveLocation, save_dir.trim());
+      logger.debug(`Downloading to path: ${save_path}`);
+
+      // Create directory if it doesn't exist
+      if (save_path !== config.saveLocation && !fs.existsSync(save_path)) {
+        fs.mkdirSync(save_path, { recursive: true });
       }
 
-      // If there are items to download
-      if (downloadQueue.length > 0) {
-        const itemToDownload = downloadQueue.shift();
-        const [url_str, title, save_dir, video_id] = itemToDownload;
+      // Return a promise that resolves when download is complete
+      return new Promise((resolve, reject) => {
+        let hold = null;
+        let realFileName = null;
 
-        // Start download
-        const downloadPromise = (async () => {
+        sock.emit("download-start", { message: "" });
+
+        const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
+
+        // Track the process in the LRU cache
+        const processEntry = {
+          spawnedProcess: spawnedDownloadProcess,
+          url: url_str,
+          title: title,
+          lastActivity: Date.now(),
+          status: "running"
+        };
+        downloadProcesses.set(spawnedDownloadProcess.pid.toString(), processEntry);
+
+        // Handle stdout
+        spawnedDownloadProcess.stdout.setEncoding("utf8");
+        spawnedDownloadProcess.stdout.on("data", (data) => {
           try {
-            // Prepare save path
-            const save_path = path_fs.join(config.saveLocation, save_dir.trim());
-            logger.debug(`Downloading ${title} to path: ${save_path}`, { url: url_str });
+            const dataStr = data.toString().trim();
 
-            // Create directory if it doesn't exist
-            if (save_path !== config.saveLocation && !fs.existsSync(save_path)) {
-              fs.mkdirSync(save_path, { recursive: true });
+            // Percentage tracking
+            const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
+            if (percentageMatch !== null) {
+              const percentage = parseFloat(percentageMatch[0]);
+              const percentageDiv10 = Math.floor(percentage / 10);
+
+              if (percentageDiv10 === 0 && hold === null) {
+                hold = 0;
+                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
+              } else if (percentageDiv10 > hold) {
+                hold = percentageDiv10;
+                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
+              }
+
+              sock.emit("listing-or-downloading", { percentage: percentage });
             }
 
-            // Check again if download is already in progress
-            const existingDownload = Array.from(downloadProcesses.values())
-              .find(process => process.url === url_str &&
-                ['running', 'pending'].includes(process.status));
-
-            if (existingDownload) {
-              logger.trace(`Download already in progress for ${url_str}`);
-              downloadResults.push({
-                url: url_str,
-                title: title,
-                status: 'skipped',
-                reason: 'Already downloading'
-              });
-              return;
+            // Filename extraction
+            const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
+            if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
+              realFileName = fileNameMatch[1]
+                .replace(path_fs.extname(fileNameMatch[1]), "")
+                .replace(save_path + "/", "")
+                .trim();
+              logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
             }
 
-            // Prepare download process
-            await new Promise((resolve, reject) => {
-              let hold = null;
-              let realFileName = null;
-
-              sock.emit("download-start", { message: "" });
-
-              const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
-
-              // Track the process in the LRU cache
-              const processEntry = {
-                spawnedProcess: spawnedDownloadProcess,
-                url: url_str,
-                title: title,
-                lastActivity: Date.now(),
-                status: "running"
-              };
-              downloadProcesses.set(spawnedDownloadProcess.pid.toString(), processEntry);
-
-              // Handle stdout (similar to download_sequential implementation)
-              spawnedDownloadProcess.stdout.setEncoding("utf8");
-              spawnedDownloadProcess.stdout.on("data", (data) => {
-                try {
-                  const dataStr = data.toString().trim();
-
-                  // Percentage tracking
-                  const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
-                  if (percentageMatch !== null) {
-                    const percentage = parseFloat(percentageMatch[0]);
-                    const percentageDiv10 = Math.floor(percentage / 10);
-
-                    if (percentageDiv10 === 0 && hold === null) {
-                      hold = 0;
-                      logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
-                    } else if (percentageDiv10 > hold) {
-                      hold = percentageDiv10;
-                      logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
-                    }
-
-                    sock.emit("listing-or-downloading", { percentage: percentage });
-                  }
-
-                  // Filename extraction
-                  const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
-                  if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
-                    realFileName = fileNameMatch[1]
-                      .replace(path_fs.extname(fileNameMatch[1]), "")
-                      .replace(save_path + "/", "")
-                      .trim();
-                    logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
-                  }
-
-                  // Update last activity in the cache
-                  const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-                  if (processCache) {
-                    processCache.lastActivity = Date.now();
-                  }
-                } catch (error) {
-                  if (!(error instanceof TypeError)) {
-                    sock.emit("error", { message: `${error}` });
-                  }
-                }
-              });
-
-              // Handle stderr
-              spawnedDownloadProcess.stderr.setEncoding("utf8");
-              spawnedDownloadProcess.stderr.on("data", (data) => {
-                logger.error(`stderr: ${data}`, { pid: spawnedDownloadProcess.pid });
-              });
-
-              // Handle process errors
-              spawnedDownloadProcess.on("error", (error) => {
-                logger.error(`Download process error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-                const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-                if (processCache) {
-                  processCache.status = "failed";
-                }
-                reject(error);
-              });
-
-              // Handle process close
-              spawnedDownloadProcess.on("close", async (code) => {
-                try {
-                  const entity = await video_list.findOne({
-                    where: { video_url: url_str },
-                  });
-
-                  // Update process status in cache
-                  const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-                  if (processCache) {
-                    processCache.status = code === 0 ? "completed" : "failed";
-                  }
-
-                  if (code === 0) {
-                    const entityProp = {
-                      downloaded: true,
-                      available: true,
-                      title: (title === video_id || title === "NA")
-                        ? (realFileName || title)
-                        : title
-                    };
-                    logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
-
-                    entity.set(entityProp);
-                    await entity.save();
-
-                    const titleForFrontend = entityProp.title;
-                    sock.emit("download-done", {
-                      message: titleForFrontend,
-                      url: url_str,
-                      title: titleForFrontend
-                    });
-
-                    downloadResults.push({
-                      url: url_str,
-                      title: title,
-                      status: 'success'
-                    });
-                  } else {
-                    sock.emit("download-failed", {
-                      message: `${entity.title}`,
-                      url: url_str,
-                    });
-
-                    downloadResults.push({
-                      url: url_str,
-                      title: title,
-                      status: 'failed'
-                    });
-                  }
-
-                  resolve();
-                } catch (error) {
-                  logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-                  reject(error);
-                }
-              });
-            });
+            // Update last activity in the cache
+            const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+            if (processCache) {
+              processCache.lastActivity = Date.now();
+            }
           } catch (error) {
-            logger.error(`Parallel download error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-            downloadResults.push({
-              url: url_str,
-              title: title,
-              status: 'failed',
-              error: error.message
-            });
-          } finally {
-            // Remove this download from active set
-            activeDownloads.delete(downloadPromise);
-
-            // Process next download
-            processNextDownload();
+            if (!(error instanceof TypeError)) {
+              sock.emit("error", { message: `${error}` });
+            }
           }
-        })();
+        });
 
-        activeDownloads.add(downloadPromise);
-      }
+        // Handle stderr
+        spawnedDownloadProcess.stderr.setEncoding("utf8");
+        spawnedDownloadProcess.stderr.on("data", (data) => {
+          logger.error(`stderr: ${data}`, { pid: spawnedDownloadProcess.pid });
+        });
 
-      // Continue processing
-      processNextDownload();
-    };
+        // Handle process errors
+        spawnedDownloadProcess.on("error", (error) => {
+          logger.error(`Download process error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
+          const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+          if (processCache) {
+            processCache.status = "failed";
+          }
+          reject(error);
+        });
 
-    // Start initial downloads
-    processNextDownload();
-  });
+        // Handle process close
+        spawnedDownloadProcess.on("close", async (code) => {
+          try {
+            const entity = await video_list.findOne({
+              where: { video_url: url_str },
+            });
+
+            // Update process status in cache
+            const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+            if (processCache) {
+              processCache.status = code === 0 ? "completed" : "failed";
+            }
+
+            if (code === 0) {
+              const entityProp = {
+                downloaded: true,
+                available: true,
+                title: (title === video_id || title === "NA")
+                  ? (realFileName || title)
+                  : title
+              };
+              logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
+
+              entity.set(entityProp);
+              await entity.save();
+
+              const titleForFrontend = entityProp.title;
+              sock.emit("download-done", {
+                message: titleForFrontend,
+                url: url_str,
+                title: titleForFrontend
+              });
+
+              resolve({
+                url: url_str,
+                title: title,
+                status: 'success'
+              });
+            } else {
+              sock.emit("download-failed", {
+                message: `${entity.title}`,
+                url: url_str,
+              });
+
+              resolve({
+                url: url_str,
+                title: title,
+                status: 'failed'
+              });
+            }
+          } catch (error) {
+            logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
+            reject(error);
+          }
+        });
+      });
+    } catch (error) {
+      logger.error(`Parallel download error: ${error.message}`);
+      return {
+        url: url_str,
+        title: title,
+        status: 'failed',
+        error: error.message
+      };
+    }
+  };
+
+  // Use Promise.all with concurrency limit
+  const downloadBatches = [];
+  for (let i = 0; i < filterUniqueItems.length; i += maxConcurrent) {
+    const batch = filterUniqueItems.slice(i, i + maxConcurrent);
+    const batchResults = await Promise.all(batch.map(downloadItem));
+    downloadBatches.push(batchResults);
+  }
+
+  // Process batches sequentially to respect max concurrent limit
+  const finalResults = [];
+  for (const batch of downloadBatches) {
+    const batchResults = batch;
+    finalResults.push(...batchResults);
+  }
+
+  return finalResults;
 }
 // List functions
 /**
