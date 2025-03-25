@@ -58,7 +58,6 @@ const config = {
     : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
       ? process.env.SECRET_KEY.trim()
       : new Error("SECRET_KEY or SECRET_KEY_FILE environment variable must be set"),
-  notNeeded: ["", "pornstar", "model", "videos"],
   maxClients: 10,
   connectedClients: 0,
   types: {
@@ -254,15 +253,6 @@ const downloadProcesses = new LRUCache(
     config.queue.maxAge  // max age in seconds
   )
 );
-
-/**
- * Updates the last activity timestamp for a specific process in the queue.
- *
- * @param {Map} queue - A Map object representing the queue, where the key is the process ID (pid)
- *                      and the value is an object containing process details.
- * @param {string|number} pid - The process ID whose last activity timestamp needs to be updated.
- */
-const keepAlive = (queue, pid) => { queue.get(pid).lastActivity = Date.now(); };
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -1474,10 +1464,10 @@ async function download_sequential(items) {
               const percentageDiv10 = Math.floor(percentage / 10);
               if (percentageDiv10 === 0 && hold === null) {
                 hold = 0;
-                logger.trace(dataStr);
+                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
               } else if (percentageDiv10 > hold) {
                 hold = percentageDiv10;
-                logger.trace(dataStr);
+                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
               }
               sock.emit("listing-or-downloading", { percentage: percentage });
             }
@@ -1485,10 +1475,10 @@ async function download_sequential(items) {
             const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
             if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
               realFileName = fileNameMatch[1]
-                .replace(path.extname(fileNameMatch[1]), "")
+                .replace(path_fs.extname(fileNameMatch[1]), "")
                 .replace(save_path + "/", "")
                 .trim();
-              logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`);
+              logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
             }
             // Update last activity in the cache
             const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
@@ -1534,7 +1524,7 @@ async function download_sequential(items) {
                   ? (realFileName || title)
                   : title
               };
-              logger.debug(`Update data: ${JSON.stringify(entityProp)}`);
+              logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
               entity.set(entityProp);
               await entity.save();
 
@@ -1554,7 +1544,7 @@ async function download_sequential(items) {
             downloadProcesses.delete(spawnedDownloadProcess.pid.toString());
             resolve(spawnedDownloadProcess);
           } catch (error) {
-            logger.error(`Error in download close handler: ${error.message}`);
+            logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
             reject(error);
           }
         });
@@ -1571,10 +1561,10 @@ async function download_sequential(items) {
  * Downloads the given items in parallel with enhanced process tracking
  * 
  * @param {Array} items - Array of items to be downloaded
- * @param {number} [maxConcurrent=3] - Maximum number of concurrent downloads
+ * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
  * @returns {Promise} A promise that resolves when all items have been downloaded
  */
-async function download_parallel(items, maxConcurrent = 3) {
+async function download_parallel(items, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos in parallel (max ${maxConcurrent} concurrent)`);
 
   // Check existing downloads in the cache to prevent duplicate downloads
@@ -1673,10 +1663,10 @@ async function download_parallel(items, maxConcurrent = 3) {
 
                     if (percentageDiv10 === 0 && hold === null) {
                       hold = 0;
-                      logger.trace(dataStr);
+                      logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
                     } else if (percentageDiv10 > hold) {
                       hold = percentageDiv10;
-                      logger.trace(dataStr);
+                      logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
                     }
 
                     sock.emit("listing-or-downloading", { percentage: percentage });
@@ -1686,10 +1676,10 @@ async function download_parallel(items, maxConcurrent = 3) {
                   const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
                   if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
                     realFileName = fileNameMatch[1]
-                      .replace(path.extname(fileNameMatch[1]), "")
+                      .replace(path_fs.extname(fileNameMatch[1]), "")
                       .replace(save_path + "/", "")
                       .trim();
-                    logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`);
+                    logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
                   }
 
                   // Update last activity in the cache
@@ -1707,12 +1697,12 @@ async function download_parallel(items, maxConcurrent = 3) {
               // Handle stderr
               spawnedDownloadProcess.stderr.setEncoding("utf8");
               spawnedDownloadProcess.stderr.on("data", (data) => {
-                logger.error(`stderr: ${data}`);
+                logger.error(`stderr: ${data}`, { pid: spawnedDownloadProcess.pid });
               });
 
               // Handle process errors
               spawnedDownloadProcess.on("error", (error) => {
-                logger.error(`Download process error: ${error.message}`);
+                logger.error(`Download process error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
                 const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
                 if (processCache) {
                   processCache.status = "failed";
@@ -1741,7 +1731,7 @@ async function download_parallel(items, maxConcurrent = 3) {
                         ? (realFileName || title)
                         : title
                     };
-                    logger.debug(`Update data: ${JSON.stringify(entityProp)}`);
+                    logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
 
                     entity.set(entityProp);
                     await entity.save();
@@ -1773,13 +1763,13 @@ async function download_parallel(items, maxConcurrent = 3) {
 
                   resolve();
                 } catch (error) {
-                  logger.error(`Error in download close handler: ${error.message}`);
+                  logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
                   reject(error);
                 }
               });
             });
           } catch (error) {
-            logger.error(`Parallel download error: ${error.message}`);
+            logger.error(`Parallel download error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
             downloadResults.push({
               url: url_str,
               title: title,
