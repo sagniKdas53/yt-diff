@@ -177,6 +177,8 @@ const createProcessCacheConfig = (size, maxItems, maxAge) => ({
   ttl: maxAge * 1000, // Time-to-live for each item in milliseconds
   updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
   updateAgeOnHas: true, // Reset TTL on has() to keep active items longer
+  allowStale: false, // Don't return stale items when expired
+  ttlAutopurge: true, // Enable automatic purging of expired items
   /**
    * Calculate the size of a process cache entry
    * 
@@ -221,26 +223,47 @@ const createProcessCacheConfig = (size, maxItems, maxAge) => ({
         },
         reason: reason
       });
-      // Attempt to kill the process if it's still running
-      try {
-        if (value.spawnedProcess && value.status === "running") {
-          try {
-            // Send SIGTERM first for graceful shutdown
-            value.spawnedProcess.kill('SIGTERM');
 
-            // If process doesn't exit, send SIGKILL after a short delay
-            setTimeout(() => {
+      // Check if process has been inactive for too long
+      const now = Date.now();
+      const inactiveTime = now - value.lastActivity;
+      const isStale = inactiveTime > maxAge * 1000;
+
+      // Attempt to kill the process if it's still running
+      if (value.spawnedProcess && (value.status === "running" || isStale)) {
+        try {
+          logger.warn(`Terminating stale process ${key}`, {
+            pid: value.spawnedProcess.pid,
+            inactiveTime: inactiveTime / 1000,
+            maxAge: maxAge,
+            stale: isStale
+          });
+
+          // Send SIGTERM first for graceful shutdown
+          value.spawnedProcess.kill('SIGTERM');
+
+          // If process doesn't exit, send SIGKILL after a short delay
+          setTimeout(() => {
+            try {
               if (!value.spawnedProcess.killed) {
+                logger.warn(`Force killing process ${key} that didn't respond to SIGTERM`, {
+                  pid: value.spawnedProcess.pid
+                });
                 value.spawnedProcess.kill('SIGKILL');
               }
-            }, 5000); // 5-second grace period
-          } catch (killError) {
-            logger.error(`Error killing process ${key}: ${killError.message}`);
-          }
+            }
+            // Catch TypeError: Cannot read properties of null (reading 'killed') 
+            // As process must have already been killed so it's null
+            catch (typeError) {
+              logger.error(`Error force killing process ${key}: ${typeError.message}`);
+            }
+          }, 5000); // 5-second grace period
+
+        } catch (killError) {
+          logger.error(`Error killing process ${key}: ${killError.message}`);
         }
-      } catch (error) {
-        logger.error(`Error disposing cache item: ${error.message}`);
       }
+
       // Clear references to help with garbage collection
       value.spawnedProcess = null;
     } catch (error) {
@@ -662,11 +685,9 @@ async function extractJson(req) {
  * @param {number} len - The maximum length of the sliced string.
  * @return {Promise<string>} - The sliced string or the original string if it is within the limit.
  */
-async function stringSlicer(str, len) {
+function stringSlicer(str, len) {
   if (str.length > len) {
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    return decoder.decode(encoder.encode(str.slice(0, len)));
+    return str.slice(0, len);
   }
   return str;
 }
@@ -2154,7 +2175,11 @@ async function add_playlist(url_var, monitoring_type_var) {
   });
   if (last_item_index !== null)
     next_item_index = last_item_index.playlist_index + 1;
-  const get_title = spawn("yt-dlp", [
+  if (listProcesses.size >= config.queue.maxListings) {
+    logger.info("Max Listing processes spawned", { url: url_var });
+    return new Error("Max Listing processes spawned");
+  }
+  const getTitleProcess = spawn("yt-dlp", [
     "--playlist-end",
     1,
     "--flat-playlist",
@@ -2162,13 +2187,50 @@ async function add_playlist(url_var, monitoring_type_var) {
     "%(playlist_title)s",
     url_var,
   ]);
-  get_title.stdout.setEncoding("utf8");
-  get_title.stdout.on("data", async (data) => {
+  // Track the process in the LRU cache
+  const processEntry = {
+    spawnType: "list",
+    spawnedProcess: getTitleProcess,
+    lastActivity: Date.now(),
+    spawnStatus: "running"
+  };
+  listProcesses.set(getTitleProcess.pid.toString(), processEntry);
+  getTitleProcess.stdout.setEncoding("utf8");
+  getTitleProcess.stdout.on("data", async (data) => {
     title_str += data;
+    // Update last activity timestamp
+    const processCache = listProcesses.get(getTitleProcess.pid.toString());
+    if (processCache) {
+      processCache.lastActivity = Date.now();
+    }
   });
-  get_title.on("close", async (code) => {
+  getTitleProcess.stderr.setEncoding("utf8");
+  getTitleProcess.stderr.on("data", (data) => {
+    logger.error(`stderr: ${data}`);
+    // Update last activity timestamp
+    const processCache = listProcesses.get(getTitleProcess.pid.toString());
+    if (processCache) {
+      processCache.lastActivity = Date.now();
+    }
+  });
+  getTitleProcess.on("error", (error) => {
+    logger.error(`Error in getTitleProcess: ${error.message}`);
+    // Update last activity timestamp
+    const processCache = listProcesses.get(getTitleProcess.pid.toString());
+    if (processCache) {
+      processCache.spawnStatus = "failed";
+    }
+  });
+  getTitleProcess.on("close", async (code) => {
+    const processCache = listProcesses.get(getTitleProcess.pid.toString());
+    if (code !== 0) {
+      logger.error(`yt-dlp returned non-zero code: ${code}`);
+      if (processCache) {
+        processCache.spawnStatus = "failed";
+      }
+    }
     if (code === 0) {
-      if (title_str == "NA\n") {
+      if (title_str.trim() == "NA") {
         try {
           title_str = await urlToTitle(url_var);
         } catch (error) {
@@ -2176,10 +2238,11 @@ async function add_playlist(url_var, monitoring_type_var) {
           logger.error(`${error.message}`);
         }
       }
-      title_str = await stringSlicer(title_str, config.maxTitleLength);
+      title_str = stringSlicer(title_str, config.maxTitleLength);
+      logger.debug(`Title: ${title_str}`, { url: url_var, pid: getTitleProcess.pid });
       // no need to use found or create syntax here as
       // this is only run the first time a playlist is made
-      playlist_list.findOrCreate({
+      await playlist_list.findOrCreate({
         where: { playlist_url: url_var },
         defaults: {
           title: title_str.trim(),
@@ -2188,8 +2251,21 @@ async function add_playlist(url_var, monitoring_type_var) {
           playlist_index: next_item_index,
         },
       });
+    }
+    logger.error("Playlist could not be created", {
+      url: url_var,
+      code: code,
+    });
+    if (listProcesses.has(getTitleProcess.pid.toString())) {
+      const removed = listProcesses.delete(getTitleProcess.pid.toString());
+      logger.debug(`List process removed from process queue: ${removed}`, {
+        pid: getTitleProcess.pid,
+        code: code
+      });
     } else {
-      logger.error("Playlist could not be created");
+      logger.warn(`Attempted to remove a non-existent process from the queue`, {
+        pid: getTitleProcess.pid
+      });
     }
   });
 }
