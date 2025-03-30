@@ -701,7 +701,7 @@ async function urlToTitle(bodyUrl) {
   try {
     return new URL(bodyUrl).pathname
       .split("/")
-      .filter((item) => !not_needed.includes(item))
+      //.filter((item) => !not_needed.includes(item))
       .join("");
   } catch (error) {
     logger.error("Error in urlToTitle", { error: error.message });
