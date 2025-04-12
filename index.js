@@ -163,131 +163,6 @@ const createSecurityCacheConfig = (size) => ({
 const userCache = new LRUCache(createSecurityCacheConfig(1000));
 const ipCache = new LRUCache(createSecurityCacheConfig(1000));
 
-// Process Maps and Handlers
-/**
- * Enhanced process cache configuration with improved disposal and tracking
- * 
- * @param {number} size - Maximum total size of cache in bytes
- * @param {number} maxItems - Maximum number of items in the cache
- * @param {number} maxAge - Maximum time a process can be inactive before disposal
- * @returns {Object} LRU cache configuration object
- */
-const createProcessCacheConfig = (size, maxItems, maxAge) => ({
-  max: maxItems, // Maximum number of items to store in the cache
-  ttl: maxAge * 1000, // Time-to-live for each item in milliseconds
-  updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
-  updateAgeOnHas: true, // Reset TTL on has() to keep active items longer
-  allowStale: false, // Don't return stale items when expired
-  ttlAutopurge: true, // Enable automatic purging of expired items
-  /**
-   * Calculate the size of a process cache entry
-   * 
-   * @param {Object} value - Process cache entry
-   * @param {string} key - Process ID
-   * @returns {number} Size of the entry in bytes
-   */
-  sizeCalculation: (value, key) => {
-    try {
-      const valueString = JSON.stringify({
-        spawnType: value.spawnType,
-        spawnStatus: value.spawnStatus,
-        lastActivity: value.lastActivity
-      });
-      logger.trace(`Calculating size of cache item with key: ${key}`, {
-        key,
-        size: valueString.length
-      });
-      return valueString.length;
-    } catch (error) {
-      logger.error(`Error calculating cache item size: ${error.message}`);
-      return 0;
-    }
-  },
-  maxSize: size, // Maximum total size of all cache items in bytes
-  /**
-   * Dispose of a process when it's removed from the cache
-   * 
-   * @param {string} key - Process ID
-   * @param {Object} value - Process cache entry
-   * @param {string} reason - Reason for disposal
-   */
-  dispose: (value, key, reason) => {
-    try {
-      logger.trace(`Disposing cache item with key: ${key}`, {
-        key: key,
-        value: {
-          exitCode: value.exitCode,
-          killed: value.killed,
-          pid: value.pid,
-          spawnargs: value.spawnargs
-        },
-        reason: reason
-      });
-
-      // Check if process has been inactive for too long
-      const now = Date.now();
-      const inactiveTime = now - value.lastActivity;
-      const isStale = inactiveTime > maxAge * 1000;
-
-      // Attempt to kill the process if it's still running
-      if (value.spawnedProcess && (value.status === "running" || isStale)) {
-        try {
-          logger.warn(`Terminating stale process ${key}`, {
-            pid: value.spawnedProcess.pid,
-            inactiveTime: inactiveTime / 1000,
-            maxAge: maxAge,
-            stale: isStale
-          });
-
-          // Send SIGTERM first for graceful shutdown
-          value.spawnedProcess.kill('SIGTERM');
-
-          // If process doesn't exit, send SIGKILL after a short delay
-          setTimeout(() => {
-            try {
-              if (!value.spawnedProcess.killed) {
-                logger.warn(`Force killing process ${key} that didn't respond to SIGTERM`, {
-                  pid: value.spawnedProcess.pid
-                });
-                value.spawnedProcess.kill('SIGKILL');
-              }
-            }
-            // Catch TypeError: Cannot read properties of null (reading 'killed') 
-            // As process must have already been killed so it's null
-            catch (typeError) {
-              logger.error(`Error force killing process ${key}: ${typeError.message}`);
-            }
-          }, 5000); // 5-second grace period
-
-        } catch (killError) {
-          logger.error(`Error killing process ${key}: ${killError.message}`);
-        }
-      }
-
-      // Clear references to help with garbage collection
-      value.spawnedProcess = null;
-    } catch (error) {
-      logger.error(`Error in dispose method: ${error.message}`);
-    }
-  }
-});
-
-// Initialize LRU caches with enhanced configuration
-const listProcesses = new LRUCache(
-  createProcessCacheConfig(
-    1000,  // size in bytes
-    config.queue.maxListings,  // max items
-    config.queue.maxAge  // max age in seconds
-  )
-);
-const downloadProcesses = new LRUCache(
-  createProcessCacheConfig(
-    1000,  // size in bytes
-    config.queue.maxDownloads,  // max items
-    config.queue.maxAge  // max age in seconds
-  )
-);
-
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
 const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
@@ -730,6 +605,7 @@ function fixCommonErrors(bodyUrl) {
   // TODO: Add checks for other sites
   return bodyUrl;
 }
+const listProcesses = new Map();
 /**
  * Spawns a child process to run the `yt-dlp` command with the given parameters and returns a promise that resolves with the response.
  *
@@ -1439,7 +1315,7 @@ async function downloadLister(body, res) {
       }
     }
     //download_sequential(download_list);
-    download_parallel(download_list, 2);
+    download_parallel(download_list, config.queue.maxDownloads);
     res.writeHead(200, corsHeaders(config.types[".json"]));
     // This doesn't need escaping as it's consumed interanlly
     res.end(JSON.stringify({ Downloading: download_list }));
@@ -1450,144 +1326,57 @@ async function downloadLister(body, res) {
     res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
-/**
- * Downloads the given items sequentially with enhanced process tracking
- * 
- * @param {Array} items - Array of items to be downloaded
- * @returns {Promise} A promise that resolves when all items have been downloaded
- */
-async function download_sequential(items) {
-  logger.trace(`Downloading ${items.length} videos sequentially`);
-  let count = 1;
-  for (const [url_str, title, save_dir, video_id] of items) {
-    try {
-      logger.trace(`Downloading Video: ${count++}, Url: ${url_str}`);
-      // Prepare save path
-      const save_path = path_fs.join(config.saveLocation, save_dir.trim());
-      logger.debug(`Downloading to path: ${save_path}`);
-      // Create directory if it doesn't exist
-      if (save_path !== config.saveLocation && !fs.existsSync(save_path)) {
-        fs.mkdirSync(save_path, { recursive: true });
-      }
-      // Prepare download process
-      const downloadProcess = await new Promise((resolve, reject) => {
-        let hold = null;
-        let realFileName = null;
-        sock.emit("download-start", { message: "" });
-        const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
-        // Track the process in the LRU cache
-        const processEntry = {
-          spawnedProcess: spawnedDownloadProcess,
-          url: url_str,
-          title: title,
-          lastActivity: Date.now(),
-          status: "running"
-        };
-        downloadProcesses.set(spawnedDownloadProcess.pid.toString(), processEntry);
-        // Handle stdout
-        spawnedDownloadProcess.stdout.setEncoding("utf8");
-        spawnedDownloadProcess.stdout.on("data", (data) => {
-          try {
-            const dataStr = data.toString().trim();
-            // Percentage tracking
-            const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
-            if (percentageMatch !== null) {
-              const percentage = parseFloat(percentageMatch[0]);
-              const percentageDiv10 = Math.floor(percentage / 10);
-              if (percentageDiv10 === 0 && hold === null) {
-                hold = 0;
-                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
-              } else if (percentageDiv10 > hold) {
-                hold = percentageDiv10;
-                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
-              }
-              sock.emit("listing-or-downloading", { percentage: percentage });
-            }
-            // Filename extraction
-            const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
-            if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
-              realFileName = fileNameMatch[1]
-                .replace(path_fs.extname(fileNameMatch[1]), "")
-                .replace(save_path + "/", "")
-                .trim();
-              logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
-            }
-            // Update last activity in the cache
-            const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-            if (processCache) {
-              processCache.lastActivity = Date.now();
-            }
-          } catch (error) {
-            if (!(error instanceof TypeError)) {
-              sock.emit("error", { message: `${error}` });
-            }
-          }
-        });
-
-        // Handle stderr
-        spawnedDownloadProcess.stderr.setEncoding("utf8");
-        spawnedDownloadProcess.stderr.on("data", (data) => {
-          logger.error(`stderr: ${data}`);
-        });
-        // Handle process errors
-        spawnedDownloadProcess.on("error", (error) => {
-          logger.error(`Download process error: ${error.message}`);
-          const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-          if (processCache) {
-            processCache.status = "failed";
-          }
-        });
-        // Handle process close
-        spawnedDownloadProcess.on("close", async (code) => {
-          try {
-            const entity = await video_list.findOne({
-              where: { video_url: url_str },
-            });
-            // Update process status in cache
-            const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-            if (processCache) {
-              processCache.status = code === 0 ? "completed" : "failed";
-            }
-            if (code === 0) {
-              const entityProp = {
-                downloaded: true,
-                available: true,
-                title: (title === video_id || title === "NA")
-                  ? (realFileName || title)
-                  : title
-              };
-              logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
-              entity.set(entityProp);
-              await entity.save();
-
-              const titleForFrontend = entityProp.title;
-              sock.emit("download-done", {
-                message: titleForFrontend,
-                url: url_str,
-                title: titleForFrontend
-              });
+// Download process tracking
+const downloadProcesses = new Map(); // Map to track download processes
+const CLEANUP_INTERVAL_MS = 60 * 1000; // Run cleanup every 1 minute
+const STALL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+function cleanupMap(taskMap) {
+  const now = Date.now();
+  logger.info(`Cleaning up download processes older than ${STALL_TIMEOUT_MS / 1000} seconds`);
+  logger.trace(`Map State: ${getStateFromMap(taskMap)}`);
+  // Iterate through the taskMap and remove completed or stalled tasks
+  for (const [key, task] of taskMap.entries()) {
+    // logger.trace(`Task ${key} State: ${JSON.stringify(task)}`);
+    const { status, lastActivity, spawnTimeStamp } = task;
+    logger.debug(`Checking task ${key}, status=${status}, lastActivity=${lastActivity}, spawnTimeStamp=${spawnTimeStamp}`);
+    if (status === 'completed' || status === 'failed') {
+      logger.debug(`Cleaning up completed task: ${key}`);
+      taskMap.delete(key);
+    } else if (status === 'running' && (now - spawnTimeStamp > STALL_TIMEOUT_MS)) {
+      logger.warn(`Cleaning up stalled task: ${key}`);
+      if (task && typeof task.kill === 'function') {
+        try {
+          task.warn(`Killing stalled process for task ${key} with SIGKILL`);
+          // Attempt to kill the process
+          const killed = task.kill('SIGKILL');
+          if (killed) {
+            logger.info(`Killed stalled process for task ${key}`);
+          } else {
+            logger.warn(`Failed to kill stalled process for task ${key}`);
+            const terminate = task.kill('SIGTERM');
+            logger.info(`Sent SIGTERM to stalled process for task ${key}`);
+            if (terminate) {
+              logger.info(`Terminated stalled process for task ${key}`);
             } else {
-              sock.emit("download-failed", {
-                message: `${entity.title}`,
-                url: url_str,
-              });
+              logger.warn(`Failed to terminate stalled process for task ${key}`);
             }
-            // Remove from download processes cache
-            downloadProcesses.delete(spawnedDownloadProcess.pid.toString());
-            resolve(spawnedDownloadProcess);
-          } catch (error) {
-            logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-            reject(error);
           }
-        });
-      });
-      // Wait for the download to complete before moving to next item
-      await new Promise((resolve) => downloadProcess.on("close", resolve));
-      logger.trace(`Downloaded ${title} at location ${save_path}`);
-    } catch (error) {
-      logger.error(`Download error: ${error.message}`);
+        } catch (err) {
+          logger.error(`Failed to kill process for task ${key}:`, err);
+        }
+      }
+      taskMap.delete(key);
     }
   }
+}
+setInterval(() => cleanupMap(downloadProcesses), CLEANUP_INTERVAL_MS);
+function getStateFromMap(taskMap) {
+  const resultMap = new Map();
+  for (const [key, task] of taskMap.entries()) {
+    logger.debug(`Task ${key} status: ${task.status}`);
+    resultMap.set(key, task.status);
+  }
+  return JSON.stringify(Object.fromEntries(resultMap));
 }
 /**
  * Downloads the given items in parallel with enhanced process tracking using Promise.all
@@ -1611,199 +1400,240 @@ async function download_parallel(items, maxConcurrent = 2) {
 
   logger.trace(`Filtered unique items for download: ${filterUniqueItems.length}`);
 
-  // Create a function to download a single item
-  const downloadItem = async (itemToDownload) => {
-    const [url_str, title, save_dir, video_id] = itemToDownload;
-
-    try {
-      // Check again if download is already in progress (race condition prevention)
-      const existingDownload = Array.from(downloadProcesses.values())
-        .find(process => process.url === url_str &&
-          ['running', 'pending'].includes(process.status));
-
-      if (existingDownload) {
-        logger.trace(`Download already in progress for ${url_str}`);
-        return {
-          url: url_str,
-          title: title,
-          status: 'skipped',
-          reason: 'Already downloading'
-        };
-      }
-
-      // Prepare save path
-      const save_path = path_fs.join(config.saveLocation, save_dir.trim());
-      logger.debug(`Downloading to path: ${save_path}`);
-
-      // Create directory if it doesn't exist
-      if (save_path !== config.saveLocation && !fs.existsSync(save_path)) {
-        fs.mkdirSync(save_path, { recursive: true });
-      }
-
-      // Return a promise that resolves when download is complete
-      return new Promise((resolve, reject) => {
-        let hold = null;
-        let realFileName = null;
-
-        sock.emit("download-start", { message: "" });
-
-        const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
-
-        // Track the process in the LRU cache
-        const processEntry = {
-          spawnedProcess: spawnedDownloadProcess,
-          url: url_str,
-          title: title,
-          lastActivity: Date.now(),
-          status: "running"
-        };
-        downloadProcesses.set(spawnedDownloadProcess.pid.toString(), processEntry);
-
-        // Handle stdout
-        spawnedDownloadProcess.stdout.setEncoding("utf8");
-        spawnedDownloadProcess.stdout.on("data", (data) => {
-          try {
-            const dataStr = data.toString().trim();
-
-            // Percentage tracking
-            const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
-            if (percentageMatch !== null) {
-              const percentage = parseFloat(percentageMatch[0]);
-              const percentageDiv10 = Math.floor(percentage / 10);
-
-              if (percentageDiv10 === 0 && hold === null) {
-                hold = 0;
-                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
-              } else if (percentageDiv10 > hold) {
-                hold = percentageDiv10;
-                logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
-              }
-
-              sock.emit("listing-or-downloading", { percentage: percentage });
-            }
-
-            // Filename extraction
-            const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
-            if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
-              realFileName = fileNameMatch[1]
-                .replace(path_fs.extname(fileNameMatch[1]), "")
-                .replace(save_path + "/", "")
-                .trim();
-              logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
-            }
-
-            // Update last activity in the cache
-            const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-            if (processCache) {
-              processCache.lastActivity = Date.now();
-            }
-          } catch (error) {
-            if (!(error instanceof TypeError)) {
-              sock.emit("error", { message: `${error}` });
-            }
-          }
-        });
-
-        // Handle stderr
-        spawnedDownloadProcess.stderr.setEncoding("utf8");
-        spawnedDownloadProcess.stderr.on("data", (data) => {
-          logger.error(`stderr: ${data}`, { pid: spawnedDownloadProcess.pid });
-        });
-
-        // Handle process errors
-        spawnedDownloadProcess.on("error", (error) => {
-          logger.error(`Download process error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-          const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-          if (processCache) {
-            processCache.status = "failed";
-          }
-          reject(error);
-        });
-
-        // Handle process close
-        spawnedDownloadProcess.on("close", async (code) => {
-          try {
-            const entity = await video_list.findOne({
-              where: { video_url: url_str },
-            });
-
-            // Update process status in cache
-            const processCache = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-            if (processCache) {
-              processCache.status = code === 0 ? "completed" : "failed";
-            }
-
-            if (code === 0) {
-              const entityProp = {
-                downloaded: true,
-                available: true,
-                title: (title === video_id || title === "NA")
-                  ? (realFileName || title)
-                  : title
-              };
-              logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
-
-              entity.set(entityProp);
-              await entity.save();
-
-              const titleForFrontend = entityProp.title;
-              sock.emit("download-done", {
-                message: titleForFrontend,
-                url: url_str,
-                title: titleForFrontend
-              });
-
-              resolve({
-                url: url_str,
-                title: title,
-                status: 'success'
-              });
-            } else {
-              sock.emit("download-failed", {
-                message: `${entity.title}`,
-                url: url_str,
-              });
-
-              resolve({
-                url: url_str,
-                title: title,
-                status: 'failed'
-              });
-            }
-          } catch (error) {
-            logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-            reject(error);
-          }
-        });
-      });
-    } catch (error) {
-      logger.error(`Parallel download error: ${error.message}`);
-      return {
-        url: url_str,
-        title: title,
-        status: 'failed',
-        error: error.message
-      };
-    }
-  };
-
   // Use Promise.all with concurrency limit
-  const downloadBatches = [];
+  var allSuccess = true;
   for (let i = 0; i < filterUniqueItems.length; i += maxConcurrent) {
     const batch = filterUniqueItems.slice(i, i + maxConcurrent);
     const batchResults = await Promise.all(batch.map(downloadItem));
-    downloadBatches.push(batchResults);
+    logger.info(`Batch ${i / maxConcurrent + 1} results: ${JSON.stringify(batchResults)}`);
+    for (const result of batchResults) {
+      if (result.status === 'success') {
+        logger.info(`Downloaded ${result.title} successfully`);
+      } else if (result.status === 'failed') {
+        logger.error(`Failed to download ${result.title}: ${result.error}`);
+        allSuccess = false;
+      }
+    }
   }
 
-  // Process batches sequentially to respect max concurrent limit
-  const finalResults = [];
-  for (const batch of downloadBatches) {
-    const batchResults = batch;
-    finalResults.push(...batchResults);
-  }
-
-  return finalResults;
+  return allSuccess;
 }
+// Create a function to download a single item
+/**
+ * Downloads a video or media item using yt-dlp and manages the download process.
+ * Ensures that no duplicate downloads are initiated and tracks the progress of the download.
+ *
+ * @async
+ * @function downloadItem
+ * @param {Array} itemToDownload - An array containing details of the item to download.
+ * @param {string} itemToDownload[0] - The URL of the video or media to download.
+ * @param {string} itemToDownload[1] - The title of the video or media.
+ * @param {string} itemToDownload[2] - The directory where the file should be saved.
+ * @param {string} itemToDownload[3] - The unique video ID.
+ * @returns {Promise<Object>} A promise that resolves to an object containing the download status and details:
+ * - `url` {string} - The URL of the downloaded item.
+ * - `title` {string} - The title of the downloaded item.
+ * - `status` {string} - The status of the download (`success`, `failed`, or `skipped`).
+ * - `reason` {string} [optional] - The reason for skipping the download (if applicable).
+ * - `error` {string} [optional] - The error message (if applicable).
+ *
+ * @throws {Error} If an error occurs during the download process.
+ *
+ * @example
+ * const item = ["https://example.com/video", "Sample Video", "videos", "12345"];
+ * downloadItem(item)
+ *   .then(result => console.log(result))
+ *   .catch(error => console.error(error));
+ */
+const downloadItem = async (itemToDownload) => {
+  const [url_str, title, save_dir, video_id] = itemToDownload;
+
+  try {
+    // Check again if download is already in progress (race condition prevention)
+    const existingDownload = Array.from(downloadProcesses.values())
+      .find(process => process.url === url_str &&
+        ['running', 'pending'].includes(process.status));
+
+    if (existingDownload) {
+      logger.trace(`Download already in progress for ${url_str}`);
+      return {
+        url: url_str,
+        title: title,
+        status: 'skipped',
+        reason: 'Already downloading'
+      };
+    }
+
+    // Prepare save path
+    const save_path = path_fs.join(config.saveLocation, save_dir.trim());
+    logger.debug(`Downloading to path: ${save_path}`);
+
+    // Create directory if it doesn't exist
+    if (save_path !== config.saveLocation && !fs.existsSync(save_path)) {
+      fs.mkdirSync(save_path, { recursive: true });
+    }
+
+    // Return a promise that resolves when download is complete
+    return new Promise((resolve, reject) => {
+      let hold = null;
+      let realFileName = null;
+
+      sock.emit("download-start", { message: "" });
+
+      const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
+
+      // Track the process in the LRU cache
+      const processEntry = {
+        spawnedProcess: spawnedDownloadProcess,
+        url: url_str,
+        title: title,
+        lastActivity: Date.now(),
+        spawnTimeStamp: Date.now(),
+        status: "running"
+      };
+      downloadProcesses.set(spawnedDownloadProcess.pid.toString(), processEntry);
+
+      // Handle stdout
+      spawnedDownloadProcess.stdout.setEncoding("utf8");
+      spawnedDownloadProcess.stdout.on("data", (data) => {
+        try {
+          const dataStr = data.toString().trim();
+
+          // Percentage tracking
+          const percentageMatch = /(\d{1,3}\.\d)/.exec(dataStr);
+          if (percentageMatch !== null) {
+            const percentage = parseFloat(percentageMatch[0]);
+            const percentageDiv10 = Math.floor(percentage / 10);
+
+            if (percentageDiv10 === 0 && hold === null) {
+              hold = 0;
+              logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
+            } else if (percentageDiv10 > hold) {
+              hold = percentageDiv10;
+              logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
+            }
+
+            sock.emit("listing-or-downloading", { percentage: percentage });
+          }
+
+          // Filename extraction
+          const fileNameMatch = /Destination: (.+)/m.exec(dataStr);
+          if (fileNameMatch && fileNameMatch[1] && realFileName === null) {
+            realFileName = fileNameMatch[1]
+              .replace(path_fs.extname(fileNameMatch[1]), "")
+              .replace(save_path + "/", "")
+              .trim();
+            logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
+          }
+
+          // Update last activity in the cache
+          const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+          if (cachedDownloadObj) {
+            cachedDownloadObj.lastActivity = Date.now();
+          }
+        } catch (error) {
+          if (!(error instanceof TypeError)) {
+            sock.emit("error", { message: `${error}` });
+          }
+        }
+      });
+
+      // Handle stderr
+      spawnedDownloadProcess.stderr.setEncoding("utf8");
+      spawnedDownloadProcess.stderr.on("data", (data) => {
+        logger.error(`stderr: ${data}`, { pid: spawnedDownloadProcess.pid });
+        // Update last activity in the cache
+        const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+        if (cachedDownloadObj) {
+          cachedDownloadObj.lastActivity = Date.now();
+        }
+      });
+
+      // Handle process errors
+      spawnedDownloadProcess.on("error", (error) => {
+        logger.error(`Download process error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
+        // Update last activity in the cache
+        const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+        if (cachedDownloadObj) {
+          cachedDownloadObj.lastActivity = Date.now();
+        }
+        reject(error);
+      });
+
+      // Handle process close
+      spawnedDownloadProcess.on("close", async (code) => {
+        try {
+          const entity = await video_list.findOne({
+            where: { video_url: url_str },
+          });
+
+          // Update last activity in the cache, not needed here
+          // const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
+          // if (cachedDownloadObj) {
+          //   cachedDownloadObj.lastActivity = Date.now();
+          // }
+
+          if (code === 0) {
+            const entityProp = {
+              downloaded: true,
+              available: true,
+              title: (title === video_id || title === "NA")
+                ? (realFileName || title)
+                : title
+            };
+            logger.debug(`Update data: ${JSON.stringify(entityProp)}`, { pid: spawnedDownloadProcess.pid });
+
+            entity.set(entityProp);
+            await entity.save();
+
+            const titleForFrontend = entityProp.title;
+            sock.emit("download-done", {
+              message: titleForFrontend,
+              url: url_str,
+              title: titleForFrontend
+            });
+
+            // Remove from download processes cache
+            downloadProcesses.delete(spawnedDownloadProcess.pid.toString());
+            logger.trace(`Removed process from cache: ${spawnedDownloadProcess.pid}`, { pid: spawnedDownloadProcess.pid });
+
+            // Printing the map state and size for debugging
+            logger.trace(`Map State: ${getStateFromMap(downloadProcesses)}`, { pid: spawnedDownloadProcess.pid });
+            logger.trace(`Map Size: ${downloadProcesses.size}`, { pid: spawnedDownloadProcess.pid });
+
+            resolve({
+              url: url_str,
+              title: title,
+              status: 'success'
+            });
+          } else {
+            sock.emit("download-failed", {
+              message: `${entity.title}`,
+              url: url_str,
+            });
+
+            resolve({
+              url: url_str,
+              title: title,
+              status: 'failed'
+            });
+          }
+        } catch (error) {
+          logger.error(`Error in download close handler: ${error.message}`, { pid: spawnedDownloadProcess.pid });
+          reject(error);
+        }
+      });
+    });
+  } catch (error) {
+    logger.error(`Parallel download error: ${error.message}`);
+    return {
+      url: url_str,
+      title: title,
+      status: 'failed',
+      error: error.message
+    };
+  }
+};
 // List functions
 /**
  * Asynchronously processes a list of URLs, extracts information from each URL, and sends the results to the frontend.
