@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:3fa335765c57a9ef67f62ef33b4411266c576f4dbdd9d5255f5da2ac306e021f
 
 RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
 

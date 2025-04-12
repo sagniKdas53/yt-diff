@@ -40,6 +40,7 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@types/cron": "^2.0.1",
     "csv-parser": "^3.0.0",
     "newman": "^6.2.1"
   }
