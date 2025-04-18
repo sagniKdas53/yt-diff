@@ -39,7 +39,8 @@ const config = {
   queue: {
     maxListings: +process.env.MAX_LISTINGS || 2,
     maxDownloads: +process.env.MAX_DOWNLOADS || 2,
-    maxAge: +process.env.PROCESS_MAX_AGE || 30, // keep cache for 30 seconds just in testing
+    cleanUpInterval: +process.env.CLEANUP_INTERVAL_MS || 1 * 60 * 1000, // 1 minutes
+    maxIdle: +process.env.PROCESS_MAX_AGE || 5 * 60 * 1000, // 5 minutes
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
   sleepTime: process.env.SLEEP ?? 3,
@@ -450,22 +451,17 @@ sequelize
         { host: config.db.host, database: config.db.name, tables: [unlistedPlaylist.name] }
       );
     }
-    // Making a default user
-    const userName = "admin";
-    const defaultUser = await users.findOne({ where: { user_name: userName } });
-    if (defaultUser === null) {
-      logger.debug("Creating default user", { userName: userName });
-      const generatedPassword = generatePassword();
-      const [salt, password] = await hashPassword(generatedPassword);
-      users.create({ user_name: userName, salt: salt, password: password });
-      // This happens only once, so it is safe to log the password
-      logger.info(
-        "Default user created successfully",
-        { user_name: userName, password: generatedPassword }
+    // Replace the existing default user creation code with:
+    const defaultUserCheck = await users.count();
+    if (defaultUserCheck === 0) {
+      logger.warn(
+        "No users exist in the database. Please create a user account.",
+        { setup_required: true }
       );
     } else {
-      logger.info("Default user already exists",
-        { user_name: userName }
+      logger.info(
+        "Users exist in database",
+        { user_count: defaultUserCheck }
       );
     }
   })
@@ -1328,11 +1324,26 @@ async function downloadLister(body, res) {
 }
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
-const CLEANUP_INTERVAL_MS = 60 * 1000; // Run cleanup every 1 minute
-const STALL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+/**
+ * Cleans up tasks in the provided task map based on their status and activity.
+ * 
+ * This function iterates through the `taskMap` and removes tasks that are either
+ * completed, failed, or stalled for longer than the configured maximum idle time.
+ * For stalled tasks, it attempts to terminate their associated processes using
+ * `SIGKILL` or `SIGTERM` signals.
+ * 
+ * @param {Map<string, Object>} taskMap - A map containing task objects, where each key is a task identifier
+ * and the value is an object representing the task. Each task object is expected to have the following properties:
+ *   - {string} status - The current status of the task (e.g., 'completed', 'failed', 'running').
+ *   - {number} lastActivity - The timestamp of the last activity for the task.
+ *   - {number} spawnTimeStamp - The timestamp when the task was spawned.
+ *   - {Function} [kill] - An optional function to terminate the task's process.
+ * 
+ * @throws {Error} Logs errors if process termination fails for stalled tasks.
+ */
 function cleanupMap(taskMap) {
   const now = Date.now();
-  logger.info(`Cleaning up download processes older than ${STALL_TIMEOUT_MS / 1000} seconds`);
+  logger.info(`Cleaning up download processes older than ${config.queue.maxIdle / 1000} seconds`);
   logger.trace(`Map State: ${getStateFromMap(taskMap)}`);
   // Iterate through the taskMap and remove completed or stalled tasks
   for (const [key, task] of taskMap.entries()) {
@@ -1342,18 +1353,22 @@ function cleanupMap(taskMap) {
     if (status === 'completed' || status === 'failed') {
       logger.debug(`Cleaning up completed task: ${key}`);
       taskMap.delete(key);
-    } else if (status === 'running' && (now - spawnTimeStamp > STALL_TIMEOUT_MS)) {
+    } else if (status === 'running' && (now - spawnTimeStamp > config.queue.maxIdle)) {
       logger.warn(`Cleaning up stalled task: ${key}`);
-      if (task && typeof task.kill === 'function') {
+      logger.trace(`Task ${key} last activity: ${lastActivity}`);
+      logger.trace(`Task ${key} spawn time: ${spawnTimeStamp}`);
+      logger.trace(`Task ${key} idle time: ${now - spawnTimeStamp / 1000} seconds`);
+      logger.trace(`Task ${key} has a kill handler? ${typeof task.spawnedProcess.kill}`);
+      if (task && typeof task.spawnedProcess.kill === 'function') {
         try {
           task.warn(`Killing stalled process for task ${key} with SIGKILL`);
           // Attempt to kill the process
-          const killed = task.kill('SIGKILL');
+          const killed = task.spawnedProcess.kill('SIGKILL');
           if (killed) {
             logger.info(`Killed stalled process for task ${key}`);
           } else {
             logger.warn(`Failed to kill stalled process for task ${key}`);
-            const terminate = task.kill('SIGTERM');
+            const terminate = task.spawnedProcess.kill('SIGTERM');
             logger.info(`Sent SIGTERM to stalled process for task ${key}`);
             if (terminate) {
               logger.info(`Terminated stalled process for task ${key}`);
@@ -1369,17 +1384,84 @@ function cleanupMap(taskMap) {
     }
   }
 }
-setInterval(() => cleanupMap(downloadProcesses), CLEANUP_INTERVAL_MS);
+setInterval(() => cleanupMap(downloadProcesses), config.queue.cleanUpInterval);
+/**
+ * Converts a Map of tasks into a JSON string representation of their statuses.
+ *
+ * @param {Map<string, {status: string}>} taskMap - A Map where the key is a task identifier (string)
+ * and the value is an object containing a `status` property (string).
+ * @returns {string} A JSON string representing an object where each key is a task identifier
+ * and the value is the corresponding task's status.
+ */
 function getStateFromMap(taskMap) {
   const resultMap = new Map();
   for (const [key, task] of taskMap.entries()) {
-    logger.debug(`Task ${key} status: ${task.status}`);
+    logger.debug(`Task ${key} with status: ${task.status}`);
+    logger.trace(`Task ${key} with status: ${JSON.stringify(task)}`);
     resultMap.set(key, task.status);
   }
   return JSON.stringify(Object.fromEntries(resultMap));
 }
 /**
- * Downloads the given items in parallel with enhanced process tracking using Promise.all
+ * A semaphore implementation to control the number of concurrent asynchronous operations.
+ * 
+ * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
+ * @property {number} currentConcurrent - The current number of active concurrent operations.
+ * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
+ * 
+ * @method acquire
+ * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
+ * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
+ * 
+ * @method release
+ * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
+ * 
+ * @method setMaxConcurrent
+ * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
+ * operations to start, queued operations are processed.
+ * @param {number} max - The new maximum number of concurrent operations.
+ */
+const DownloadSemaphore = {
+  maxConcurrent: 2,
+  currentConcurrent: 0,
+  queue: [],
+
+  async acquire() {
+    return new Promise(resolve => {
+      if (this.currentConcurrent < this.maxConcurrent) {
+        this.currentConcurrent++;
+        logger.debug(`Semaphore acquired, current concurrent: ${this.currentConcurrent}`);
+        resolve();
+      } else {
+        logger.debug(`Semaphore full, queuing request`);
+        this.queue.push(resolve);
+      }
+    });
+  },
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      logger.debug(`Semaphore released, current concurrent: ${this.currentConcurrent}`);
+      next();
+    } else {
+      logger.debug(`Semaphore released`);
+      this.currentConcurrent--;
+    }
+  },
+
+  setMaxConcurrent(max) {
+    this.maxConcurrent = max;
+    // Check if we can start any queued tasks
+    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
+      const next = this.queue.shift();
+      this.currentConcurrent++;
+      next();
+    }
+  }
+};
+/**
+ * Downloads the given items in parallel with enhanced process tracking using a semaphore for global concurrency control
  * 
  * @param {Array} items - Array of items to be downloaded
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
@@ -1387,6 +1469,9 @@ function getStateFromMap(taskMap) {
  */
 async function download_parallel(items, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos in parallel (max ${maxConcurrent} concurrent)`);
+
+  // Update the semaphore's max concurrent value
+  DownloadSemaphore.setMaxConcurrent(maxConcurrent);
 
   // Filter out URLs already being downloaded
   const filterUniqueItems = items.filter(item => {
@@ -1400,23 +1485,61 @@ async function download_parallel(items, maxConcurrent = 2) {
 
   logger.trace(`Filtered unique items for download: ${filterUniqueItems.length}`);
 
-  // Use Promise.all with concurrency limit
-  var allSuccess = true;
-  for (let i = 0; i < filterUniqueItems.length; i += maxConcurrent) {
-    const batch = filterUniqueItems.slice(i, i + maxConcurrent);
-    const batchResults = await Promise.all(batch.map(downloadItem));
-    logger.info(`Batch ${i / maxConcurrent + 1} results: ${JSON.stringify(batchResults)}`);
-    for (const result of batchResults) {
-      if (result.status === 'success') {
-        logger.info(`Downloaded ${result.title} successfully`);
-      } else if (result.status === 'failed') {
-        logger.error(`Failed to download ${result.title}: ${result.error}`);
-        allSuccess = false;
-      }
+  // Process all items with semaphore control
+  const downloadPromises = filterUniqueItems.map(item =>
+    downloadItemWithSemaphore(item)
+  );
+
+  // Wait for all downloads to complete
+  const results = await Promise.all(downloadPromises);
+
+  // Check for any failures
+  let allSuccess = results.every(result => result.status === 'success');
+
+  // Log results
+  results.forEach(result => {
+    if (result.status === 'success') {
+      logger.info(`Downloaded ${result.title} successfully`);
+    } else if (result.status === 'failed') {
+      logger.error(`Failed to download ${result.title}: ${result.error}`);
     }
-  }
+  });
 
   return allSuccess;
+}
+/**
+ * Wrapper for downloadItem that uses the semaphore to control concurrency
+ */
+async function downloadItemWithSemaphore(item) {
+  logger.trace(`Downloading item with semaphore: ${JSON.stringify(item)}`);
+  // Acquire the semaphore before starting the download
+  await DownloadSemaphore.acquire();
+  try {
+    // Update task status in downloadProcesses to pending
+    const [url_str, title] = item;
+    const pendingEntry = {
+      url: url_str,
+      title: title,
+      lastActivity: Date.now(),
+      spawnTimeStamp: Date.now(),
+      status: "pending"
+    };
+    const pendingKey = `pending_${url_str}_${Date.now()}`;
+    downloadProcesses.set(pendingKey, pendingEntry);
+
+    // Actual download
+    const result = await downloadItem(item, pendingKey);
+
+    // Clean up the pending entry if it's still there
+    if (downloadProcesses.has(pendingKey)) {
+      downloadProcesses.delete(pendingKey);
+    }
+
+    return result;
+  } finally {
+    // Always release the semaphore, even if an error occurred
+    DownloadSemaphore.release();
+  }
 }
 // Create a function to download a single item
 /**
@@ -1430,6 +1553,7 @@ async function download_parallel(items, maxConcurrent = 2) {
  * @param {string} itemToDownload[1] - The title of the video or media.
  * @param {string} itemToDownload[2] - The directory where the file should be saved.
  * @param {string} itemToDownload[3] - The unique video ID.
+ * @param {string} processEntryKey - The key used to track the download process in the `downloadProcesses` map.
  * @returns {Promise<Object>} A promise that resolves to an object containing the download status and details:
  * - `url` {string} - The URL of the downloaded item.
  * - `title` {string} - The title of the downloaded item.
@@ -1445,24 +1569,10 @@ async function download_parallel(items, maxConcurrent = 2) {
  *   .then(result => console.log(result))
  *   .catch(error => console.error(error));
  */
-const downloadItem = async (itemToDownload) => {
+const downloadItem = async (itemToDownload, processEntryKey) => {
   const [url_str, title, save_dir, video_id] = itemToDownload;
 
   try {
-    // Check again if download is already in progress (race condition prevention)
-    const existingDownload = Array.from(downloadProcesses.values())
-      .find(process => process.url === url_str &&
-        ['running', 'pending'].includes(process.status));
-
-    if (existingDownload) {
-      logger.trace(`Download already in progress for ${url_str}`);
-      return {
-        url: url_str,
-        title: title,
-        status: 'skipped',
-        reason: 'Already downloading'
-      };
-    }
 
     // Prepare save path
     const save_path = path_fs.join(config.saveLocation, save_dir.trim());
@@ -1482,16 +1592,17 @@ const downloadItem = async (itemToDownload) => {
 
       const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
 
-      // Track the process in the LRU cache
-      const processEntry = {
-        spawnedProcess: spawnedDownloadProcess,
-        url: url_str,
-        title: title,
-        lastActivity: Date.now(),
-        spawnTimeStamp: Date.now(),
-        status: "running"
-      };
-      downloadProcesses.set(spawnedDownloadProcess.pid.toString(), processEntry);
+      // Track the process for cleanup
+      const processEntry = downloadProcesses.get(processEntryKey);
+      if (processEntry) {
+        processEntry.spawnedProcess = spawnedDownloadProcess;
+        processEntry.status = "running";
+        processEntry.lastActivity = Date.now();
+        downloadProcesses.set(processEntryKey, processEntry);
+      } else {
+        logger.error(`Process entry not found for key: ${processEntryKey}`);
+        return reject(new Error(`Process entry not found for key: ${processEntryKey}`));
+      }
 
       // Handle stdout
       spawnedDownloadProcess.stdout.setEncoding("utf8");
@@ -1526,10 +1637,13 @@ const downloadItem = async (itemToDownload) => {
             logger.debug(`Extracted filename: ${realFileName}, filename from db: ${title}`, { pid: spawnedDownloadProcess.pid });
           }
 
-          // Update last activity in the cache
-          const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-          if (cachedDownloadObj) {
-            cachedDownloadObj.lastActivity = Date.now();
+          // Track the process for cleanup
+          const processEntry = downloadProcesses.get(processEntryKey);
+          if (processEntry) {
+            processEntry.lastActivity = Date.now();
+          } else {
+            logger.error(`Process entry not found for key: ${processEntryKey}`);
+            return reject(new Error(`Process entry not found for key: ${processEntryKey}`));
           }
         } catch (error) {
           if (!(error instanceof TypeError)) {
@@ -1542,20 +1656,26 @@ const downloadItem = async (itemToDownload) => {
       spawnedDownloadProcess.stderr.setEncoding("utf8");
       spawnedDownloadProcess.stderr.on("data", (data) => {
         logger.error(`stderr: ${data}`, { pid: spawnedDownloadProcess.pid });
-        // Update last activity in the cache
-        const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-        if (cachedDownloadObj) {
-          cachedDownloadObj.lastActivity = Date.now();
+        // Track the process for cleanup
+        const processEntry = downloadProcesses.get(processEntryKey);
+        if (processEntry) {
+          processEntry.lastActivity = Date.now();
+        } else {
+          logger.error(`Process entry not found for key: ${processEntryKey}`);
+          return reject(new Error(`Process entry not found for key: ${processEntryKey}`));
         }
       });
 
       // Handle process errors
       spawnedDownloadProcess.on("error", (error) => {
         logger.error(`Download process error: ${error.message}`, { pid: spawnedDownloadProcess.pid });
-        // Update last activity in the cache
-        const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-        if (cachedDownloadObj) {
-          cachedDownloadObj.lastActivity = Date.now();
+        // Track the process for cleanup
+        const processEntry = downloadProcesses.get(processEntryKey);
+        if (processEntry) {
+          processEntry.lastActivity = Date.now();
+        } else {
+          logger.error(`Process entry not found for key: ${processEntryKey}`);
+          return reject(new Error(`Process entry not found for key: ${processEntryKey}`));
         }
         reject(error);
       });
@@ -1566,12 +1686,6 @@ const downloadItem = async (itemToDownload) => {
           const entity = await video_list.findOne({
             where: { video_url: url_str },
           });
-
-          // Update last activity in the cache, not needed here
-          // const cachedDownloadObj = downloadProcesses.get(spawnedDownloadProcess.pid.toString());
-          // if (cachedDownloadObj) {
-          //   cachedDownloadObj.lastActivity = Date.now();
-          // }
 
           if (code === 0) {
             const entityProp = {
@@ -1594,7 +1708,13 @@ const downloadItem = async (itemToDownload) => {
             });
 
             // Remove from download processes cache
-            downloadProcesses.delete(spawnedDownloadProcess.pid.toString());
+            const processEntry = downloadProcesses.has(processEntryKey);
+            if (processEntry) {
+              downloadProcesses.delete(processEntryKey);
+            } else {
+              logger.error(`Process entry not found for key: ${processEntryKey}`);
+              return reject(new Error(`Process entry not found for key: ${processEntryKey}`));
+            }
             logger.trace(`Removed process from cache: ${spawnedDownloadProcess.pid}`, { pid: spawnedDownloadProcess.pid });
 
             // Printing the map state and size for debugging
@@ -1603,7 +1723,7 @@ const downloadItem = async (itemToDownload) => {
 
             resolve({
               url: url_str,
-              title: title,
+              title: titleForFrontend,
               status: 'success'
             });
           } else {
