@@ -74,6 +74,10 @@ const config = {
     ".svg": "image/svg+xml",
     ".json": "application/json; charset=utf-8",
   },
+  registration: {
+    allowed: process.env.ALLOW_REGISTRATION === "true",
+    maxUsers: +(process.env.MAX_USERS || 10)
+  },
 };
 
 /**
@@ -935,6 +939,19 @@ async function hashPassword(password) {
  * @return {Promise<void>} a promise that resolves when the registration process is complete
  */
 async function register(req, res) {
+  // First check if registration is allowed
+  if (!config.registration.allowed) {
+    res.writeHead(403, corsHeaders(config.types[".json"]));
+    return res.end(JSON.stringify({ Outcome: "Registration is disabled" }));
+  }
+
+  // Check user limit
+  const userCount = await users.count();
+  if (userCount >= config.registration.maxUsers) {
+    res.writeHead(403, corsHeaders(config.types[".json"]));
+    return res.end(JSON.stringify({ Outcome: "Maximum number of users reached" }));
+  }
+
   const body = await extractJson(req),
     user_name = body["user_name"],
     body_password = body["password"];
