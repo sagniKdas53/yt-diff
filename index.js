@@ -618,109 +618,6 @@ async function sleep(sleepSeconds = config.sleepTime) {
   logger.debug("Sleeping for " + sleepSeconds + " seconds");
   return new Promise((resolve) => setTimeout(resolve, sleepSeconds * 1000));
 }
-// List process tracking
-const listProcesses = new Map();
-/**
- * A semaphore implementation to control the number of concurrent asynchronous operations.
- * 
- * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
- * @property {number} currentConcurrent - The current number of active concurrent operations.
- * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
- * 
- * @method acquire
- * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
- * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
- * 
- * @method release
- * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
- * 
- * @method setMaxConcurrent
- * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
- * operations to start, queued operations are processed.
- * @param {number} max - The new maximum number of concurrent operations.
- */
-const ListSemaphore = {
-  maxConcurrent: 2,
-  currentConcurrent: 0,
-  queue: [],
-
-  async acquire() {
-    return new Promise(resolve => {
-      if (this.currentConcurrent < this.maxConcurrent) {
-        this.currentConcurrent++;
-        logger.debug(`Semaphore acquired, current concurrent: ${this.currentConcurrent}`);
-        resolve();
-      } else {
-        logger.debug(`Semaphore full, queuing request`);
-        this.queue.push(resolve);
-      }
-    });
-  },
-
-  release() {
-    if (this.queue.length > 0) {
-      const next = this.queue.shift();
-      logger.debug(`Semaphore released, current concurrent: ${this.currentConcurrent}`);
-      next();
-    } else {
-      logger.debug(`Semaphore released`);
-      this.currentConcurrent--;
-    }
-  },
-
-  setMaxConcurrent(max) {
-    this.maxConcurrent = max;
-    // Check if we can start any queued tasks
-    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
-      const next = this.queue.shift();
-      this.currentConcurrent++;
-      next();
-    }
-  }
-};
-// List functions
-/**
- * Asynchronously processes a list of URLs, extracts information from each URL, and sends the results to the frontend.
- *
- * @param {Object} body - An object containing the following properties:
- *   - url_list {Array<string>}: A list of URLs to process.
- *   - start {number} (optional): The starting index of the list to process. Defaults to 1.
- *   - chunk_size {number} (optional): The number of items to process at a time. Defaults to the value of the config.chunkSize variable.
- *   - sleep {boolean} (optional): Whether to wait for a short period of time before processing each URL. Defaults to false.
- *   - monitoring_type {string} (optional): The type of monitoring to perform. Defaults to "N/A".
- * @param {Object} res - The response object to send the results to.
- * @return {Promise<void>} A promise that resolves when the processing is complete.
- */
-async function listFunc(body, res) {
-  try {
-    const startNum = body["start"] !== undefined ?
-      +body["start"] === 0 ? 1 : +body["start"] : 1,
-      chunkSize = +body["chunk_size"] >= +config.chunkSize ? +body["chunk_size"] : +config.chunkSize,
-      stopNum = +chunkSize + 1,
-      sleepBeforeListing = body["sleep"] !== undefined ? body["sleep"] : false,
-      monitoringType = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A",
-      urlList = body["url_list"] !== undefined ?
-        body["url_list"] : [];
-
-    if (urlList.length === 0) {
-      throw new Error("url list is empty");
-    }
-    for (const urlItem of [...new Set(urlList)]) {
-      let index = 0,
-        lastItemIndex = startNum > 0 ? startNum - 1 : 0; // index must start from 0 so startNum needs to subtracted by 1
-      logger.trace(
-        `Processing URL: ${urlItem}`,
-        { url: urlItem, startNum: startNum, chunkSize: chunkSize, stopNum: stopNum, monitoringType: monitoringType }
-      );
-    }
-
-
-  } catch (error) {
-    logger.error(`${error.message}`);
-    res.writeHead(500, corsHeaders(config.types[".json"]));
-    return res.end(JSON.stringify({ Outcome: he.escape(error.message) }));
-  }
-}
 
 //Authentication functions
 /**
@@ -1095,48 +992,47 @@ async function full_updates() {
  */
 async function downloadLister(body, res) {
   try {
-    const download_list = [],
-      play_list_url = body["playListUrl"] !== undefined ?
+    const downloadList = [],
+      playListUrl = body["playListUrl"] !== undefined ?
         body["playListUrl"] : "None",
-      url_list = body["urlList"] !== undefined ?
+      urlList = body["urlList"] !== undefined ?
         body["urlList"] : [];
-    for (const url_item of [...new Set(url_list)]) {
-      logger.debug(`checking for ${url_item} in db`);
+    for (const urlItem of [...new Set(urlList)]) {
+      logger.debug(`checking for ${urlItem} in db`);
       const video_item = await video_list.findOne({
-        where: { video_url: url_item },
+        where: { video_url: urlItem },
       });
       if (!video_item) {
-        logger.error(`Video with URL ${url_item} is not indexed`, {
-          url: url_item,
+        logger.error(`Video with URL ${urlItem} is not indexed`, {
+          url: urlItem,
           table: "video_list"
         });
         res.writeHead(404, corsHeaders(config.types[".json"]));
-        return res.end(JSON.stringify({ error: `Video with URL ${url_item} is not indexed` }));
+        return res.end(JSON.stringify({ error: `Video with URL ${urlItem} is not indexed` }));
       }
-      let save_dir = "";
+      let saveDirectory = "";
       try {
-        const save_dir_const = await playlist_list.findOne({
-          where: { playlist_url: play_list_url },
+        const saveDirectoryConst = await playlist_list.findOne({
+          where: { playlist_url: playListUrl },
         });
-        save_dir = save_dir_const.save_dir;
+        saveDirectory = saveDirectoryConst.save_dir;
       } catch (error) {
-        if (save_dir !== "") {
-          save_dir = "";
+        if (saveDirectory !== "") {
+          saveDirectory = "";
           logger.error(`${error.message}`);
         }
       }
-      download_list.push([
-        url_item,
-        video_item.title,
-        save_dir,
-        video_item.video_id
-      ]);
+      downloadList.push({
+        url: urlItem,
+        title: video_item.title,
+        saveDirectory: saveDirectory,
+        videoId: video_item.videoId
+      });
     }
-    //download_sequential(download_list);
-    download_parallel(download_list, config.queue.maxDownloads);
+    downloadParallel(downloadList, config.queue.maxDownloads);
     res.writeHead(200, corsHeaders(config.types[".json"]));
     // This doesn't need escaping as it's consumed interanlly
-    res.end(JSON.stringify({ Downloading: download_list }));
+    res.end(JSON.stringify({ Downloading: downloadList }));
   } catch (error) {
     logger.error(`${error.message}`);
     const status = error.status || 500;
@@ -1289,7 +1185,7 @@ const DownloadSemaphore = {
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
  * @returns {Promise} A promise that resolves when all items have been downloaded
  */
-async function download_parallel(items, maxConcurrent = 2) {
+async function downloadParallel(items, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos in parallel (max ${maxConcurrent} concurrent)`);
 
   // Update the semaphore's max concurrent value
@@ -1297,7 +1193,7 @@ async function download_parallel(items, maxConcurrent = 2) {
 
   // Filter out URLs already being downloaded
   const filterUniqueItems = items.filter(item => {
-    const url = item[0];
+    const url = item.url;
     const existingDownload = Array.from(downloadProcesses.values())
       .find(process => process.url === url &&
         ['running', 'pending'].includes(process.status));
@@ -1338,15 +1234,16 @@ async function downloadItemWithSemaphore(item) {
   await DownloadSemaphore.acquire();
   try {
     // Update task status in downloadProcesses to pending
-    const [url_str, title] = item;
+    const urlString = item.url,
+      title = item.title;
     const pendingEntry = {
-      url: url_str,
+      url: urlString,
       title: title,
       lastActivity: Date.now(),
       spawnTimeStamp: Date.now(),
       status: "pending"
     };
-    const pendingKey = `pending_${url_str}_${Date.now()}`;
+    const pendingKey = `pending_${urlString}_${Date.now()}`;
     downloadProcesses.set(pendingKey, pendingEntry);
 
     // Actual download
@@ -1370,11 +1267,11 @@ async function downloadItemWithSemaphore(item) {
  *
  * @async
  * @function downloadItem
- * @param {Array} itemToDownload - An array containing details of the item to download.
- * @param {string} itemToDownload[0] - The URL of the video or media to download.
- * @param {string} itemToDownload[1] - The title of the video or media.
- * @param {string} itemToDownload[2] - The directory where the file should be saved.
- * @param {string} itemToDownload[3] - The unique video ID.
+ * @param {Object} itemToDownload - An object containing details of the item to download.
+ * @param {string} itemToDownload.url - The URL of the video or media to download.
+ * @param {string} itemToDownload.title - The title of the video or media.
+ * @param {string} itemToDownload.saveDirectory - The directory where the file should be saved.
+ * @param {string} itemToDownload.videoId - The unique video ID.
  * @param {string} processEntryKey - The key used to track the download process in the `downloadProcesses` map.
  * @returns {Promise<Object>} A promise that resolves to an object containing the download status and details:
  * - `url` {string} - The URL of the downloaded item.
@@ -1386,18 +1283,26 @@ async function downloadItemWithSemaphore(item) {
  * @throws {Error} If an error occurs during the download process.
  *
  * @example
- * const item = ["https://example.com/video", "Sample Video", "videos", "12345"];
- * downloadItem(item)
+ * const item = {
+ *   url: "https://example.com/video",
+ *   title: "Sample Video",
+ *   saveDirectory: "videos",
+ *   videoId: "12345"
+ * };
+ * downloadItem(item, "processKey123")
  *   .then(result => console.log(result))
  *   .catch(error => console.error(error));
  */
 const downloadItem = async (itemToDownload, processEntryKey) => {
-  const [url_str, title, save_dir, video_id] = itemToDownload;
+  const urlString = itemToDownload.url,
+    title = itemToDownload.title,
+    saveDirectory = itemToDownload.saveDirectory,
+    videoId = itemToDownload.videoId;
 
   try {
 
     // Prepare save path
-    const save_path = path_fs.join(config.saveLocation, save_dir.trim());
+    const save_path = path_fs.join(config.saveLocation, saveDirectory.trim());
     logger.debug(`Downloading to path: ${save_path}`);
 
     // Create directory if it doesn't exist
@@ -1412,7 +1317,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
 
       sock.emit("download-start", { message: "" });
 
-      const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
+      const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, urlString]));
 
       // Track the process for cleanup
       const processEntry = downloadProcesses.get(processEntryKey);
@@ -1506,14 +1411,14 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
       spawnedDownloadProcess.on("close", async (code) => {
         try {
           const entity = await video_list.findOne({
-            where: { video_url: url_str },
+            where: { video_url: urlString },
           });
 
           if (code === 0) {
             const entityProp = {
               downloaded: true,
               available: true,
-              title: (title === video_id || title === "NA")
+              title: (title === videoId || title === "NA")
                 ? (realFileName || title)
                 : title
             };
@@ -1525,7 +1430,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
             const titleForFrontend = entityProp.title;
             sock.emit("download-done", {
               message: titleForFrontend,
-              url: url_str,
+              url: urlString,
               title: titleForFrontend
             });
 
@@ -1544,18 +1449,18 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
             logger.trace(`Map Size: ${downloadProcesses.size}`, { pid: spawnedDownloadProcess.pid });
 
             resolve({
-              url: url_str,
+              url: urlString,
               title: titleForFrontend,
               status: 'success'
             });
           } else {
             sock.emit("download-failed", {
               message: `${entity.title}`,
-              url: url_str,
+              url: urlString,
             });
 
             resolve({
-              url: url_str,
+              url: urlString,
               title: title,
               status: 'failed'
             });
@@ -1569,7 +1474,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
   } catch (error) {
     logger.error(`Parallel download error: ${error.message}`);
     return {
-      url: url_str,
+      url: urlString,
       title: title,
       status: 'failed',
       error: error.message
@@ -1607,6 +1512,7 @@ async function monitoringTypeUpdater(body, res) {
     res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
+// TODO: Fix this stupid function
 /**
  * Adds a playlist to the playlist_list table in the database.
  *
@@ -1681,7 +1587,7 @@ async function add_playlist(url_var, monitoring_type_var) {
     if (code === 0) {
       if (title_str.trim() == "NA") {
         try {
-          title_str = await urlToTitle(url_var);
+          title_str = urlToTitle(url_var);
         } catch (error) {
           title_str = url_var;
           logger.error(`${error.message}`);
