@@ -605,7 +605,66 @@ function fixCommonErrors(bodyUrl) {
   // TODO: Add checks for other sites
   return bodyUrl;
 }
+// List process tracking
 const listProcesses = new Map();
+/**
+ * A semaphore implementation to control the number of concurrent asynchronous operations.
+ * 
+ * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
+ * @property {number} currentConcurrent - The current number of active concurrent operations.
+ * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
+ * 
+ * @method acquire
+ * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
+ * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
+ * 
+ * @method release
+ * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
+ * 
+ * @method setMaxConcurrent
+ * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
+ * operations to start, queued operations are processed.
+ * @param {number} max - The new maximum number of concurrent operations.
+ */
+const ListSemaphore = {
+  maxConcurrent: 2,
+  currentConcurrent: 0,
+  queue: [],
+
+  async acquire() {
+    return new Promise(resolve => {
+      if (this.currentConcurrent < this.maxConcurrent) {
+        this.currentConcurrent++;
+        logger.debug(`Semaphore acquired, current concurrent: ${this.currentConcurrent}`);
+        resolve();
+      } else {
+        logger.debug(`Semaphore full, queuing request`);
+        this.queue.push(resolve);
+      }
+    });
+  },
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      logger.debug(`Semaphore released, current concurrent: ${this.currentConcurrent}`);
+      next();
+    } else {
+      logger.debug(`Semaphore released`);
+      this.currentConcurrent--;
+    }
+  },
+
+  setMaxConcurrent(max) {
+    this.maxConcurrent = max;
+    // Check if we can start any queued tasks
+    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
+      const next = this.queue.shift();
+      this.currentConcurrent++;
+      next();
+    }
+  }
+};
 /**
  * Spawns a child process to run the `yt-dlp` command with the given parameters and returns a promise that resolves with the response.
  *
@@ -636,7 +695,7 @@ async function listSpawner(bodyUrl, start_num, stop_num) {
       "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
       bodyUrl
     ]);
-    // Track the process in the LRU cache
+    // Track the process
     const processEntry = {
       spawnType: "list",
       spawnedProcess: spawnedListProcess,
@@ -1784,19 +1843,25 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
  * @param {Object} res - The response object to send the results to.
  * @return {Promise<void>} A promise that resolves when the processing is complete.
  */
-
 async function listFunc(body, res) {
   try {
     const start_num = body["start"] !== undefined ?
-      +body["start"] === 0 ? 1 : +body["start"] : 1, chunk_size = +body["chunk_size"] >= +config.chunkSize ? +body["chunk_size"] : +config.chunkSize, stop_num = +chunk_size + 1, sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false, monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
-    let index = 0;
-    //logger.verbose(`body: ${JSON.stringify(body)}`);
-    //logger.verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
+      +body["start"] === 0 ? 1 : +body["start"] : 1,
+      chunk_size = +body["chunk_size"] >= +config.chunkSize ? +body["chunk_size"] : +config.chunkSize,
+      stop_num = +chunk_size + 1,
+      sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false,
+      monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
 
     if (body["url_list"] === undefined) {
       throw new Error("url list is required");
     }
-    let url_list = body["url_list"], last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
+
+    let url_list = body["url_list"],
+      last_item_index = start_num > 0 ? start_num - 1 : 0, // index must start from 0 so start_num needs to subtracted by 1
+      index = 0;
+
+    // Remove duplicates from the url_list
+    url_list = [...new Set(url_list)];
 
     //debug(`payload: ${JSON.stringify(body)}`);
     logger.trace(
@@ -1804,18 +1869,16 @@ async function listFunc(body, res) {
       `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
       `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
     );
-    // TODO: Convert this to a synchronous function, ie use promises,
-    // return a dummy response to res and then wait for the promise to resolve
-    // one by one, then send the updates to the frontend using sock.emit("playlist-done")
-    // make sure the emits are giving the correct data (ie: url, index) to the frontend
+
     try {
-      // so this didn't work, need to figure out how to make it send requests one by one
-      // let index = 0;
+      // Make this one work with semaphores as well, additionally
+      // need to re-design to make this a non blocking function
+      // listing the first item in the list when the it
       for (const current_url of url_list) {
-        //url_list.map(async (current_url, index) => {
         logger.debug(`current_url: ${current_url}, index: ${index}`);
         try {
-          const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
+          const done = await list_init(current_url, body, index, res, sleep_before_listing,
+            last_item_index, start_num, stop_num, chunk_size, monitoring_type);
           if (done) {
             logger.debug(`processed current_url: ${current_url}, index: ${index}`);
           } else if (done instanceof Error) {
@@ -1827,7 +1890,6 @@ async function listFunc(body, res) {
           logger.error(`listFunc processing error: ${error.message}`);
         }
         index += 1;
-        //});
       }
       logger.debug("List processing done");
     } catch (error) {
@@ -1844,9 +1906,6 @@ async function listFunc(body, res) {
     }
   } catch (error) {
     logger.error(`${error.message}`);
-    //const status = error.status || 500;
-    //res.writeHead(status, corsHeaders(config.types[".json"]));
-    //res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
 /**
@@ -1867,7 +1926,7 @@ async function listFunc(body, res) {
 function list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type) {
   let play_list_index = -1, already_indexed = false;
   logger.trace(`list_init: url: ${current_url}, index: ${index}, start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, monitoring_type: ${monitoring_type}`);
-  //try {
+
   return new Promise(async (resolve, reject) => {
     logger.trace("Processing url: " + current_url);
     current_url = fixCommonErrors(current_url);
@@ -2033,44 +2092,6 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
       }
     );
   })
-  // } catch (error) {
-  //   logger.trace(`Error in list_init: ${error.message}`);
-  //   return new Promise((_, reject) => {
-  //     // Not really sure what to do here
-  //     reject(error);
-  //   })
-  // }
-}
-/**
- * Asynchronously handles monitoring type functionality based on the input body and response.
- *
- * @param {Object} body - The body object containing url and watch parameters.
- * @param {Object} res - The response object for sending the outcome of the monitoring.
- * @return {Promise} A Promise that resolves when the monitoring process is complete.
- */
-async function monitoringTypeUpdater(body, res) {
-  try {
-    const bodyUrl = body["url"],
-      monitoring_type = body["watch"];
-    if (body["url"] === undefined || body["watch"] === undefined) {
-      throw new Error("url and watch are required");
-    }
-    logger.trace(
-      `monitoringTypeUpdater:  url: ${bodyUrl}, monitoring_type: ${monitoring_type}`
-    );
-    const playlist = await playlist_list.findOne({
-      where: { playlist_url: bodyUrl },
-    });
-    playlist.monitoring_type = monitoring_type;
-    await playlist.update({ monitoring_type }, { silent: true });
-    res.writeHead(200, corsHeaders(config.types[".json"]));
-    res.end(JSON.stringify({ Outcome: "Success" }));
-  } catch (error) {
-    logger.error(`error in monitoringTypeUpdater: ${error.message}`);
-    const status = error.status || 500;
-    res.writeHead(status, corsHeaders(config.types[".json"]));
-    res.end(JSON.stringify({ error: he.escape(error.message) }));
-  }
 }
 /**
  * Asynchronously performs a background listing operation.
@@ -2126,6 +2147,37 @@ async function list_background(
   }
 }
 /**
+ * Asynchronously handles monitoring type functionality based on the input body and response.
+ *
+ * @param {Object} body - The body object containing url and watch parameters.
+ * @param {Object} res - The response object for sending the outcome of the monitoring.
+ * @return {Promise} A Promise that resolves when the monitoring process is complete.
+ */
+async function monitoringTypeUpdater(body, res) {
+  try {
+    const bodyUrl = body["url"],
+      monitoring_type = body["watch"];
+    if (body["url"] === undefined || body["watch"] === undefined) {
+      throw new Error("url and watch are required");
+    }
+    logger.trace(
+      `monitoringTypeUpdater:  url: ${bodyUrl}, monitoring_type: ${monitoring_type}`
+    );
+    const playlist = await playlist_list.findOne({
+      where: { playlist_url: bodyUrl },
+    });
+    playlist.monitoring_type = monitoring_type;
+    await playlist.update({ monitoring_type }, { silent: true });
+    res.writeHead(200, corsHeaders(config.types[".json"]));
+    res.end(JSON.stringify({ Outcome: "Success" }));
+  } catch (error) {
+    logger.error(`error in monitoringTypeUpdater: ${error.message}`);
+    const status = error.status || 500;
+    res.writeHead(status, corsHeaders(config.types[".json"]));
+    res.end(JSON.stringify({ error: he.escape(error.message) }));
+  }
+}
+/**
  * Adds a playlist to the playlist_list table in the database.
  *
  * @param {string} url_var - The URL of the playlist.
@@ -2154,7 +2206,7 @@ async function add_playlist(url_var, monitoring_type_var) {
     "%(playlist_title)s",
     url_var,
   ]);
-  // Track the process in the LRU cache
+  // Track the process
   const processEntry = {
     spawnType: "list",
     spawnedProcess: getTitleProcess,
@@ -2237,7 +2289,7 @@ async function add_playlist(url_var, monitoring_type_var) {
   });
 }
 
-// List function that send data to frontend
+// Query function that send data to frontend
 /**
  * Asynchronously processes the playlists data and sends the result to the frontend.
  *
