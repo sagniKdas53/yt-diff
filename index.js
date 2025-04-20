@@ -913,6 +913,12 @@ const listItem = async (itemToList, processEntryKey) => {
 
       if (videoAlreadyUnlisted) {
         logger.debug("Video already saved as unlisted");
+        sock.emit("added-single-video", {
+          videoUrl: videoUrl,
+          playlistUrl: "None",
+          indexofPlaylist: 0,
+          indexOfItemInPlaylist: videoAlreadyUnlisted.index_in_playlist
+        });
         return {
           status: 'skipped',
           title: videoUrl,
@@ -932,11 +938,18 @@ const listItem = async (itemToList, processEntryKey) => {
         const newIndex = lastItem ? lastItem.index_in_playlist + 1 : 0;
         const initResp = await processListingResponse(responseList, "None", newIndex, false);
 
+        logger.debug("Sending new unlisted video to frontend", {
+          videoUrl: videoUrl,
+          playlistUrl: "None",
+          indexofPlaylist: 0,
+          indexOfItemInPlaylist: initResp.start,
+        });
+
         sock.emit("added-single-video", {
           videoUrl: videoUrl,
-          title: initResp.title || urlString,
           playlistUrl: "None",
-          indexInPlaylist: newIndex,
+          indexofPlaylist: 0,
+          indexOfItemInPlaylist: initResp.start,
         });
 
         return {
@@ -1252,7 +1265,7 @@ async function processListingResponse(
             where: { video_url: vid_url },
             defaults: vid_data,
           });
-          logger.debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          logger.trace("Result of video add " + JSON.stringify([foundVid, createdVid]));
           if (!createdVid) {
             updateVideoEntry(foundVid, vid_data);
           }
@@ -1266,9 +1279,9 @@ async function processListingResponse(
           const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
             where: junction_data,
           });
-          logger.debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          logger.trace("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
           if (!createdJunction) {
-            logger.debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
+            logger.trace(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
           }
         }
       } catch (error) {
@@ -1546,102 +1559,7 @@ async function login(req, res) {
   }
 }
 
-// The scheduled updater
-/**
- * Executes a scheduled update by performing a quick update followed by a full update.
- * Emits a "playlist-done" event with a message and id indicating that the update is complete.
- * Logs the start and end time of the update, as well as the next scheduled update time.
- *
- * @return {Promise<void>} A promise that resolves when the update is complete.
- */
-async function scheduledUpdater() {
-  logger.info(`Scheduled update started at: ${new Date().toLocaleString()}`);
-  logger.info(`Starting the quick update`);
-  //quick update then full update
-  quick_updates()
-    .then(full_updates())
-    .then(() =>
-      sock.emit("playlist-done", {
-        message: "done updating playlist or channel",
-        id: "None",
-      })
-    );
-  logger.info(`Scheduled update finished at: ${new Date().toLocaleString()}`);
-  logger.info(`Next scheduled update on ${job.nextDates(1)}`);
-}
-
-/**
- * Executes quick updates for playlists of monitoring_type "Fast".
- *
- * @return {Promise<void>} A promise that resolves when all playlists are updated.
- */
-async function quick_updates() {
-  const playlists = await playlist_list.findAndCountAll({
-    where: {
-      monitoring_type: "Fast",
-    },
-  });
-
-  logger.info(`Fast updating ${playlists["rows"].length} playlists`);
-  for (const playlist of playlists["rows"]) {
-    let index = -config.chunkSize + 1;
-    try {
-      await sleep();
-      await listBackground(
-        playlist.playlist_url,
-        index,
-        index + config.chunkSize,
-        config.chunkSize,
-        true
-      );
-      logger.trace(`Done processing playlist ${playlist.playlist_url}`);
-      playlist.changed("updatedAt", true);
-      await playlist.save();
-    } catch (error) {
-      logger.error(
-        `error processing playlist ${playlist.playlist_url}, ${error.message}`
-      );
-    }
-  }
-}
-// this one needs to be tested more
-/**
- * Asynchronously updates all playlists marked as "Full" by performing a full update on each playlist.
- *
- * @return {Promise<void>} A Promise that resolves when all playlists have been updated.
- */
-async function full_updates() {
-  const playlists = await playlist_list.findAndCountAll({
-    where: {
-      monitoring_type: "Full",
-    },
-  });
-  logger.info(`Full updating ${playlists["rows"].length} playlists`);
-  for (const playlist of playlists["rows"]) {
-    try {
-      logger.info(
-        `Full updating playlist: ${playlist.title.trim()} being updated fully`
-      );
-      // Since this is a full update the addToExistingPlaylist will be false
-      await sleep();
-      await listBackground(
-        playlist.playlist_url,
-        0,
-        config.chunkSize,
-        config.chunkSize,
-        false
-      );
-      logger.info(`Done processing playlist ${playlist.playlist_url}`);
-
-      playlist.changed("updatedAt", true);
-      await playlist.save();
-    } catch (error) {
-      logger.error(
-        `error processing playlist ${playlist.playlist_url}: ${error.message}`
-      );
-    }
-  }
-}
+// Will reimplement update and delete functions later
 
 // Download functions
 /**
