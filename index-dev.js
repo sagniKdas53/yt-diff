@@ -476,6 +476,7 @@ sequelize
 // Scheduler
 const job = new CronJob(
   config.scheduledUpdateStr,
+  // TODO: Fix and enable the scheduled updater
   // scheduledUpdater,
   () => {
     logger.info("Scheduled update",
@@ -498,22 +499,6 @@ if (!fs.existsSync(config.saveLocation)) {
 }
 
 // Utility functions
-/**
- * Generates a random password.
- *
- * @return {string} A 16 character long password.
- */
-function generatePassword() {
-  const password = generator.generate({
-    length: 16,
-    numbers: true,
-    lowercase: true,
-    uppercase: true,
-    symbols: true,
-    strict: true
-  });
-  return password;
-}
 /**
  * Extracts JSON data from a request object.
  *
@@ -605,54 +590,456 @@ function fixCommonErrors(bodyUrl) {
   // TODO: Add checks for other sites
   return bodyUrl;
 }
+/**
+ * Asynchronously pauses the execution of the current code for a specified
+ * number of seconds.
+ *
+ * @param {number} [sleepSeconds=config.sleepTime] - The number of seconds to sleep.
+ * Defaults to the value of the `sleep_time` variable.
+ * @return {Promise<void>} A promise that resolves after the specified number of
+ * seconds have passed.
+ */
+async function sleep(sleepSeconds = config.sleepTime) {
+  logger.debug("Sleeping for " + sleepSeconds + " seconds");
+  return new Promise((resolve) => setTimeout(resolve, sleepSeconds * 1000));
+}
+// List process tracking
 const listProcesses = new Map();
+/**
+ * A semaphore implementation to control the number of concurrent asynchronous operations.
+ * 
+ * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
+ * @property {number} currentConcurrent - The current number of active concurrent operations.
+ * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
+ * 
+ * @method acquire
+ * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
+ * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
+ * 
+ * @method release
+ * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
+ * 
+ * @method setMaxConcurrent
+ * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
+ * operations to start, queued operations are processed.
+ * @param {number} max - The new maximum number of concurrent operations.
+ */
+const ListSemaphore = {
+  maxConcurrent: 1,
+  currentConcurrent: 0,
+  queue: [],
+
+  async acquire() {
+    return new Promise(resolve => {
+      if (this.currentConcurrent < this.maxConcurrent) {
+        this.currentConcurrent++;
+        logger.debug(`Semaphore acquired, current concurrent: ${this.currentConcurrent}`);
+        resolve();
+      } else {
+        logger.debug(`Semaphore full, queuing request`);
+        this.queue.push(resolve);
+      }
+    });
+  },
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      logger.debug(`Semaphore released, current concurrent: ${this.currentConcurrent}`);
+      next();
+    } else {
+      logger.debug(`Semaphore released`);
+      this.currentConcurrent--;
+    }
+  },
+
+  setMaxConcurrent(max) {
+    this.maxConcurrent = max;
+    // Check if we can start any queued tasks
+    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
+      const next = this.queue.shift();
+      this.currentConcurrent++;
+      next();
+    }
+  }
+};
+// List functions
+/**
+ * Asynchronously processes a list of URLs, extracts information from each URL, and sends the results to the frontend.
+ *
+ * @param {Object} body - An object containing the following properties:
+ *   - url_list {Array<string>}: A list of URLs to process.
+ *   - start {number} (optional): The starting index of the list to process. Defaults to 1.
+ *   - chunk_size {number} (optional): The number of items to process at a time. Defaults to the value of the config.chunkSize variable.
+ *   - sleep {boolean} (optional): Whether to wait for a short period of time before processing each URL. Defaults to false.
+ *   - monitoring_type {string} (optional): The type of monitoring to perform. Defaults to "N/A".
+ * @param {Object} res - The response object to send the results to.
+ * @return {Promise<void>} A promise that resolves when the processing is complete.
+ */
+async function listFunc(body, res) {
+  try {
+    const startNum = body["start"] !== undefined ?
+      +body["start"] === 0 ? 1 : +body["start"] : 1,
+      chunkSize = +body["chunk_size"] >= +config.chunkSize ? +body["chunk_size"] : +config.chunkSize,
+      stopNum = +chunkSize + 1,
+      sleepBeforeListing = body["sleep"] !== undefined ? body["sleep"] : false,
+      monitoringType = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A",
+      urlList = body["url_list"] !== undefined ?
+        body["url_list"] : [],
+      lastItemIndex = startNum > 0 ? startNum - 1 : 0,
+      listOfLists = [];
+
+    if (urlList.length === 0) {
+      throw new Error("url list is empty");
+    }
+    for (const urlItem of [...new Set(urlList)]) {
+      logger.debug(
+        `Processing item: ${urlItem}`,
+        {
+          url: urlItem, startNum: startNum, stopNum: stopNum,
+          chunkSize: chunkSize, monitoringType: monitoringType
+        }
+      );
+      listOfLists.push({
+        url: fixCommonErrors(urlItem),
+        startNum: startNum,
+        stopNum: stopNum,
+        chunkSize: chunkSize,
+        sleepBeforeListing: sleepBeforeListing,
+        monitoringType: monitoringType,
+        lastItemIndex: lastItemIndex
+      })
+    }
+    listParallel(listOfLists, config.queue.maxListings);
+    res.writeHead(200, corsHeaders(config.types[".json"]));
+    // This doesn't need escaping as it's consumed interanlly
+    res.end(JSON.stringify({ Listing: listOfLists, maxConcurrent: config.queue.maxListings }));
+  } catch (error) {
+    logger.error(`${error.message}`);
+    res.writeHead(500, corsHeaders(config.types[".json"]));
+    return res.end(JSON.stringify({ Outcome: he.escape(error.message) }));
+  }
+}
+/**
+ * Lists the given items in parallel with enhanced process tracking using a semaphore for global concurrency control
+ * 
+ * @param {Array} items - Array of items to be listed
+ * @param {number} [maxConcurrent=1] - Maximum number of concurrent listings
+ * @returns {Promise} A promise that resolves when all items have been listed
+ */
+async function listParallel(items, maxConcurrent = 1) {
+  logger.trace(`Listing ${items.length} urls in parallel (max ${maxConcurrent} concurrent)`);
+
+  // Update the semaphore's max concurrent value
+  ListSemaphore.setMaxConcurrent(maxConcurrent);
+
+  // Filter out URLs already being listed
+  const filterUniqueItems = items.filter(item => {
+    const url = item.url;
+    const existingListing = Array.from(listProcesses.values())
+      .find(process => process.url === url &&
+        ['running', 'pending'].includes(process.status));
+
+    return !existingListing;
+  });
+
+  logger.trace(`Filtered unique items for listing: ${filterUniqueItems.length}`);
+
+  // Process all items with semaphore control
+  const listPromises = filterUniqueItems.map(item =>
+    listItemWithSemaphore(item)
+  );
+
+  // Wait for all listings to complete
+  const results = await Promise.all(listPromises);
+
+  // Check for any failures
+  let allSuccess = results.every(result => result.status === 'success');
+
+  // Log results
+  results.forEach(result => {
+    if (result.status === 'success') {
+      logger.info(`Listed ${result.url} successfully`);
+    } else if (result.status === 'failed') {
+      logger.error(`Failed to list ${result.url}: ${result.error}`);
+    }
+  });
+
+  return allSuccess;
+}
+/**
+ * Wrapper for listItem that uses the semaphore to control concurrency
+ */
+async function listItemWithSemaphore(item) {
+  logger.trace(`Listing item with semaphore: ${JSON.stringify(item)}`);
+  // Acquire the semaphore before starting the listing
+  await ListSemaphore.acquire();
+  try {
+    // Update task status in listProcesses to pending
+    const urlString = item.url;
+    const pendingEntry = {
+      url: urlString,
+      lastActivity: Date.now(),
+      spawnTimeStamp: Date.now(),
+      status: "pending"
+    };
+    const pendingKey = `pending_${urlString}_${Date.now()}`;
+    listProcesses.set(pendingKey, pendingEntry);
+
+    // Actual listing operation
+    const result = await listItem(item, pendingKey);
+
+    // Clean up the pending entry if it's still there
+    if (listProcesses.has(pendingKey)) {
+      listProcesses.delete(pendingKey);
+    }
+
+    return result;
+  } finally {
+    // Always release the semaphore, even if an error occurred
+    ListSemaphore.release();
+  }
+}
+const listItem = async (itemToList, processEntryKey) => {
+  const urlString = itemToList.url,
+    startNum = itemToList.startNum,
+    stopNum = itemToList.stopNum,
+    chunkSize = itemToList.chunkSize,
+    sleepBeforeListing = itemToList.sleepBeforeListing,
+    monitoringType = itemToList.monitoringType,
+    lastItemIndex = itemToList.lastItemIndex;
+
+  logger.debug(`Listing item: ${urlString}`, {
+    url: urlString,
+    startNum: startNum,
+    stopNum: stopNum,
+    chunkSize: chunkSize,
+    monitoringType: monitoringType,
+    sleepBeforeListing: sleepBeforeListing,
+    lastItemIndex: lastItemIndex
+  });
+
+  try {
+    // Update process status
+    const processEntry = listProcesses.get(processEntryKey);
+    if (processEntry) {
+      processEntry.status = "initializing";
+      processEntry.spawnType = "list";
+      processEntry.spawnedProcess = null;
+      processEntry.lastActivity = Date.now();
+      listProcesses.set(processEntryKey, processEntry);
+    }
+
+    let playListIndex = -1, alreadyIndexed = false, playListTitle = "";
+
+    // Sleep if required before listing
+    if (sleepBeforeListing) {
+      await sleep();
+    }
+
+    // Get initial response list, to see if it's a playlist or single video
+    const responseList = await listSpawner(urlString, startNum, stopNum, processEntryKey);
+    logger.debug(`Response list: ${JSON.stringify(responseList)}, length: ${responseList.length}`);
+
+    if (responseList.length === 0) {
+      throw new Error("Response list is empty");
+    }
+
+    // Check if it's a playlist or single video
+    if (responseList.length > 1 || playlistRegex.test(urlString)) {
+      // Handle playlist case
+      const isAlreadyIndexed = await playlist_list.findOne({
+        where: { playlist_url: urlString }
+      });
+
+      if (isAlreadyIndexed) {
+        logger.trace(`Playlist: ${isAlreadyIndexed.title.trim()} is indexed at ${isAlreadyIndexed.playlist_index}`);
+        alreadyIndexed = true;
+        playListIndex = isAlreadyIndexed.playlist_index;
+        playListTitle = isAlreadyIndexed.title.trim();
+      } else {
+        // Add new playlist
+        logger.warn("Playlist not encountered earlier, saving in database");
+
+        await createPlaylist(urlString, monitoringType);
+        // await sleep();
+
+        const previousPlaylistItem = await playlist_list.findOne({
+          order: [["createdAt", "DESC"]]
+        });
+
+        if (previousPlaylistItem) {
+          playListIndex = previousPlaylistItem.playlist_index;
+          playListTitle = previousPlaylistItem.title.trim();
+          logger.trace(`Previous playlist: ${previousPlaylistItem.title} is indexed at ${previousPlaylistItem.playlist_index}`);
+        } else {
+          throw new Error("Previous playlist not found after creation");
+        }
+      }
+
+      // Process response and start background listing
+      const initResp = await processListingResponse(responseList, urlString, lastItemIndex, false);
+      initResp.prev_playlist_index = playListIndex + 1;
+      initResp.alreadyIndexed = alreadyIndexed;
+
+      sock.emit("added-playlist-videos", {
+        playlistUrl: urlString,
+        monitoringType: monitoringType,
+        indexInPlaylist: playListIndex + 1,
+        lastItemIndex: lastItemIndex,
+        alreadyIndexed: alreadyIndexed
+      });
+
+      // I feel like the listBackground should also be tracked in the spawned processes
+      // and keep track of the last activity so that we can kill it if needed 
+      // const count = listBackground(urlString, startNum, stopNum, chunkSize, true, processEntryKey);
+      // logger.trace(`Done processing playlist: ${urlString}, iterations: ${count}`);
+
+      return {
+        status: 'success',
+        url: urlString,
+        result: initResp
+      };
+
+    } else {
+      // Handle single video case
+      const videoUrl = responseList[0].split("\t")[2];
+      const videoAlreadyUnlisted = await video_indexer.findOne({
+        where: {
+          video_url: videoUrl,
+          playlist_url: "None"
+        }
+      });
+
+      if (videoAlreadyUnlisted) {
+        logger.debug("Video already saved as unlisted");
+        sock.emit("added-single-video", {
+          videoUrl: videoUrl,
+          playlistUrl: "None",
+          indexofPlaylist: 0,
+          indexOfItemInPlaylist: videoAlreadyUnlisted.index_in_playlist
+        });
+        return {
+          status: 'skipped',
+          title: videoUrl,
+          url: urlString,
+          reason: 'already_unlisted'
+        };
+      } else {
+        // Add new unlisted video
+        logger.debug("Adding new video to unlisted videos list");
+        const lastItem = await video_indexer.findOne({
+          where: { playlist_url: "None" },
+          order: [["index_in_playlist", "DESC"]],
+          attributes: ["index_in_playlist"],
+          limit: 1
+        });
+
+        const newIndex = lastItem ? lastItem.index_in_playlist + 1 : 0;
+        const initResp = await processListingResponse(responseList, "None", newIndex, false);
+
+        logger.debug("Sending new unlisted video to frontend", {
+          videoUrl: videoUrl,
+          playlistUrl: "None",
+          indexofPlaylist: 0,
+          indexOfItemInPlaylist: initResp.start,
+        });
+
+        sock.emit("added-single-video", {
+          videoUrl: videoUrl,
+          playlistUrl: "None",
+          indexofPlaylist: 0,
+          indexOfItemInPlaylist: initResp.start,
+        });
+
+        return {
+          status: 'success',
+          title: initResp.title || urlString,
+          url: urlString,
+          result: initResp
+        };
+      }
+    }
+
+  } catch (error) {
+    logger.error(`Error processing item: ${error.message}`, {
+      url: urlString,
+      error: error
+    });
+    return {
+      status: 'failed',
+      url: urlString,
+      error: error.message
+    };
+  } finally {
+    // Clean up process entry
+    if (listProcesses.has(processEntryKey)) {
+      listProcesses.delete(processEntryKey);
+    }
+  }
+};
 /**
  * Spawns a child process to run the `yt-dlp` command with the given parameters and returns a promise that resolves with the response.
  *
- * @param {string} bodyUrl - The URL of the playlist to download.
- * @param {number} start_num - The starting index of the playlist to download.
- * @param {number} stop_num - The ending index of the playlist to download.
+ * @param {string} playlistUrl - The URL of the item for which lister is going to be spawned.
+ * @param {number} startNumber - The starting index of the listing operation.
+ * @param {number} stopNumber - The ending index of the listing operation.
+ * @param {string} processEntryKey - The key to track the spawned process in the listProcesses map.
  * @return {Promise<string[]>} A promise that resolves with an array of strings representing the response from `yt-dlp`.
  */
-async function listSpawner(bodyUrl, start_num, stop_num) {
+async function listSpawner(playlistUrl, startNumber, stopNumber, processEntryKey) {
+  // Check if the process is already running
+  const processEntry = listProcesses.get(processEntryKey);
+  if (processEntry) {
+    if (processEntry.status === "running") {
+      logger.info("Process already running", { url: playlistUrl });
+      return Promise.reject(new Error("Process already running"));
+    } else if (processEntry.status === "failed") {
+      logger.info("Process failed", { url: playlistUrl });
+      return Promise.reject(new Error("Process failed"));
+    }
+  }
+
   logger.trace(`listSpawner called`, {
-    url: bodyUrl,
-    start: start_num,
-    stop: stop_num
+    url: playlistUrl,
+    start: startNumber,
+    stop: stopNumber,
+    processEntryKey: processEntryKey
   });
 
   return new Promise((resolve, reject) => {
     // Check if we've exceeded max listing processes
     if (listProcesses.size >= config.queue.maxListings) {
-      logger.info("Max Listing processes spawned", { url: bodyUrl });
+      logger.info("Max Listing processes spawned", { url: playlistUrl });
       return reject(new Error("Max Listing processes spawned"));
     }
     // Spawn the process
     const spawnedListProcess = spawn("yt-dlp", [
-      "--playlist-start", start_num.toString(),
-      "--playlist-end", stop_num.toString(),
+      "--playlist-start", startNumber.toString(),
+      "--playlist-end", stopNumber.toString(),
       "--flat-playlist",
       "--print",
       "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
-      bodyUrl
+      playlistUrl
     ]);
-    // Track the process in the LRU cache
-    const processEntry = {
-      spawnType: "list",
-      spawnedProcess: spawnedListProcess,
-      lastActivity: Date.now(),
-      spawnStatus: "running"
-    };
-    listProcesses.set(spawnedListProcess.pid.toString(), processEntry);
+    // Track the process
+    if (processEntry) {
+      processEntry.spawnedProcess = spawnedListProcess;
+      processEntry.status = "running";
+      processEntry.lastActivity = Date.now();
+      listProcesses.set(processEntryKey, processEntry);
+    } else {
+      logger.error(`Process entry not found for key: ${processEntryKey}`);
+      return reject(new Error(`Process entry not found for key: ${processEntryKey}`));
+    }
     // Collect response data
     let response = "";
     spawnedListProcess.stdout.setEncoding("utf8");
     spawnedListProcess.stdout.on("data", (data) => {
       response += data;
       // Update last activity timestamp
-      const processCache = listProcesses.get(spawnedListProcess.pid.toString());
-      if (processCache) {
-        processCache.lastActivity = Date.now();
+      if (processEntry) {
+        processEntry.lastActivity = Date.now();
       }
     });
     // Handle stderr
@@ -660,31 +1047,28 @@ async function listSpawner(bodyUrl, start_num, stop_num) {
     spawnedListProcess.stderr.on("data", (data) => {
       logger.error(`stderr: ${data}`);
       // Update last activity timestamp
-      const processCache = listProcesses.get(spawnedListProcess.pid.toString());
-      if (processCache) {
-        processCache.lastActivity = Date.now();
+      if (processEntry) {
+        processEntry.lastActivity = Date.now();
       }
     });
     // Handle spawn errors
     spawnedListProcess.on("error", (error) => {
       logger.error(`Spawn error: ${error.message}`);
-      const processCache = listProcesses.get(spawnedListProcess.pid.toString());
-      if (processCache) {
-        processCache.spawnStatus = "failed";
-        processCache.lastActivity = Date.now();
+      if (processEntry) {
+        processEntry.spawnStatus = "failed";
+        processEntry.lastActivity = Date.now();
       }
     });
     // Handle process close
     spawnedListProcess.on("close", (code) => {
-      const processCache = listProcesses.get(spawnedListProcess.pid.toString());
       if (code !== 0) {
         logger.error(`yt-dlp returned non-zero code: ${code}`);
-        if (processCache) {
-          processCache.spawnStatus = "failed";
+        if (processEntry) {
+          processEntry.spawnStatus = "failed";
         }
       }
       // Remove the process from the cache (this will trigger the dispose method)
-      const removed = listProcesses.delete(spawnedListProcess.pid.toString());
+      const removed = listProcesses.delete(processEntryKey);
       logger.debug(`List process removed from process queue: ${removed}`, {
         pid: spawnedListProcess.pid,
         code: code
@@ -695,38 +1079,104 @@ async function listSpawner(bodyUrl, start_num, stop_num) {
   });
 }
 /**
+ * Asynchronously performs a background listing operation.
+ *
+ * @param {string} playlistUrl - The URL of the playlist.
+ * @param {number} startNumber - The starting index of the playlist.
+ * @param {number} stopNumber - The ending index of the playlist.
+ * @param {number} chunk_size - The size of each chunk to process.
+ * @param {boolean} addToExistingPlaylist - Indicates if the records should be added to the end of an existing playlist.
+ * @param {string} processEntryKey - The key to track the spawned process in the listProcesses map.
+ * @return {undefined}
+ */
+async function listBackground(
+  playlistUrl,
+  startNumber,
+  stopNumber,
+  chunk_size,
+  addToExistingPlaylist,
+  processEntryKey
+) {
+  // yes a playlist on youtube atleast can only be 5000 long  && stopNumber < 5000
+  // let max_size = 5000;
+  // let loop_num = max_size / chunk_size;
+  let count = 0;
+  while (playlistUrl != "None") {
+    startNumber = startNumber + chunk_size;
+    stopNumber = stopNumber + chunk_size;
+    // ideally we can set it to zero but that would get us rate limited by the services
+    logger.trace(
+      `listBackground: URL: ${playlistUrl}, Chunk: ${chunk_size},` +
+      `Start: ${startNumber}, Stop: ${stopNumber}, Iteration: ${count}`
+    );
+    //await sleep();
+    const response = await listSpawner(playlistUrl, startNumber, stopNumber, processEntryKey);
+    if (response.length === 0) {
+      logger.trace(
+        `Listing exited at Start: ${startNumber}, Stop: ${stopNumber}, Iteration ${count}`
+      );
+      break;
+    }
+    // yt-dlp starts counting from 1 for some reason so 1 needs to be subtracted here.
+    const { stopListing } = await processListingResponse(
+      response,
+      playlistUrl,
+      startNumber - 1,
+      addToExistingPlaylist
+    );
+    if (stopListing) {
+      logger.trace(
+        `Listing exited at Start: ${startNumber}, Stop: ${stopNumber}, Iteration ${count}`
+      );
+      break;
+    }
+    count++;
+  }
+  logger.trace(
+    `listBackground: Listing completed for URL: ${playlistUrl}, Iteration: ${count}`
+  );
+  // Update the process entry to indicate completion
+  const processEntry = listProcesses.get(processEntryKey);
+  if (processEntry) {
+    processEntry.status = "completed";
+    processEntry.lastActivity = Date.now();
+    listProcesses.set(processEntryKey, processEntry);
+  }
+  return count;
+}
+/**
  * Processes the response from a list operation and updates the video_list and video_indexer tables.
  *
  * @param {Array} response - The response array containing video information.
- * @param {string} bodyUrl - The URL of the playlist.
+ * @param {string} playlistUrl - The URL of the playlist.
  * @param {number} index - The starting index of the list operation.
- * @param {boolean} isUpdateOperation - Indicates if it is an update operation.
+ * @param {boolean} addToExistingPlaylist - Indicates if the records should be added to the end of an existing playlist.
  * @return {Promise<Object>} - A promise that resolves to an object containing the count of processed items, the response URL, the starting index, and a boolean indicating if listing should be quit.
  */
-async function processResponse(
+async function processListingResponse(
   response,
-  bodyUrl,
+  playlistUrl,
   index,
-  isUpdateOperation
+  addToExistingPlaylist
 ) {
   logger.trace(
-    `processResponse called`,
-    { url: bodyUrl, start: index, update: isUpdateOperation }
+    `processListingResponse called`,
+    { url: playlistUrl, start: index, isUpdate: addToExistingPlaylist }
   );
-  const init_resp = {
+  const initResp = {
     count: 0,
-    resp_url: bodyUrl,
+    resp_url: playlistUrl,
     start: index,
-    quit_listing: false,
+    stopListing: false,
   };
-  sock.emit("listing-or-downloading", { percentage: 101 });
+  // sock.emit("listing-or-downloading", { percentage: 101 });
   // Setting this to zero so that no effect is there in normal runs
   let last_item_index = 0;
-  if (isUpdateOperation) {
+  if (addToExistingPlaylist) {
     // manipulate the index
     const last_item = await video_indexer.findOne({
       where: {
-        playlist_url: bodyUrl,
+        playlist_url: playlistUrl,
       },
       order: [["index_in_playlist", "DESC"]],
       attributes: ["index_in_playlist"],
@@ -761,7 +1211,7 @@ async function processResponse(
     response.map(async (element) => {
       const element_arr = element.split("\t");
       const vid_url = element_arr[2];
-      const playlist_url = bodyUrl; // Assuming bodyUrl refers to the playlist_url
+      const playlist_url = playlistUrl;
       const foundItem = await video_indexer.findOne({
         where: { video_url: vid_url, playlist_url: playlist_url },
       });
@@ -778,16 +1228,16 @@ async function processResponse(
     allItemsExistInVideoIndexer.every((item) => item === true)
   ) {
     logger.debug("All items already exist in the database.");
-    init_resp["quit_listing"] = true;
-    init_resp["count"] = allItemsExistInVideoIndexer.length;
-    return init_resp; // Return early if all items exist
+    initResp["stopListing"] = true;
+    initResp["count"] = allItemsExistInVideoIndexer.length;
+    return initResp; // Return early if all items exist
   } else {
-    logger.debug(`Videos per list index exist in video_list: ${JSON.stringify(
-      allItemsExistInVideoList
-    )}`)
-    logger.debug(`Videos per list index exist in video_indexer: ${JSON.stringify(
-      allItemsExistInVideoIndexer
-    )}`);
+    logger.debug("Videos per list index exist in video_list", {
+      allItemsExistInVideoList: JSON.stringify(allItemsExistInVideoList),
+    });
+    logger.debug("Videos per list index exist in video_indexer", {
+      allItemsExistInVideoIndexer: JSON.stringify(allItemsExistInVideoIndexer),
+    });
   }
   // This is what I was looking for
   await Promise.all(
@@ -815,7 +1265,7 @@ async function processResponse(
             where: { video_url: vid_url },
             defaults: vid_data,
           });
-          logger.debug("Result of video add " + JSON.stringify([foundVid, createdVid]));
+          logger.trace("Result of video add " + JSON.stringify([foundVid, createdVid]));
           if (!createdVid) {
             updateVideoEntry(foundVid, vid_data);
           }
@@ -823,97 +1273,25 @@ async function processResponse(
         if (!allItemsExistInVideoIndexer[map_idx]) {
           const junction_data = {
             video_url: vid_url,
-            playlist_url: bodyUrl,
+            playlist_url: playlistUrl,
             index_in_playlist: index + map_idx + last_item_index,
           };
           const [foundJunction, createdJunction] = await video_indexer.findOrCreate({
             where: junction_data,
           });
-          logger.debug("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
+          logger.trace("Result of video_playlist_index add " + JSON.stringify([foundJunction, createdJunction]));
           if (!createdJunction) {
-            logger.debug(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
+            logger.trace(`Found video_indexer: ${JSON.stringify(foundJunction)}`);
           }
         }
       } catch (error) {
         logger.error(`${error.message} - ${error.stack}`);
       } finally {
-        init_resp["count"]++;
+        initResp["count"]++;
       }
     })
   );
-  return init_resp;
-}
-/**
- * Updates a video entry in the database.
- *
- * @param {Object} found - The found video object.
- * @param {Object} data - The data to update the video with.
- * @return {Promise<void>} - A promise that resolves when the video entry is updated.
- */
-async function updateVideoEntry(found, data) {
-  // The object was found and not created
-  // Does not change the downloaded state
-  // I have a sneaking suspicion that this
-  // will fail when there is any real change
-  // in the video, lets see when that happens
-  logger.trace(`updateVideoEntry called`,
-    { found: found, data: data }
-  );
-  // trace added here as an exception to check if this ever gets invoked or is just redundant
-  if (
-    found.video_id !== data.video_id ||
-    +found.approximate_size !== +data.approximate_size ||
-    found.title !== data.title ||
-    found.available !== data.available
-  ) {
-    const differences = [];
-    if (found.id !== data.id) {
-      differences.push(`id: ${found.id} (found) vs. ${data.id} (expected)`);
-    }
-    if (+found.approximate_size !== +data.approximate_size) {
-      differences.push(
-        `approximate_size: ${found.approximate_size} (found) vs. ${data.approximate_size} (expected)`
-      );
-    }
-    if (found.title !== data.title) {
-      differences.push(
-        `title: ${found.title} (found) vs. ${data.title} (expected)`
-      );
-    }
-    if (found.available !== data.available) {
-      differences.push(
-        `available: ${found.available} (found) vs. ${data.available} (expected)`
-      );
-    }
-    logger.warn(
-      `Found ${differences.length} difference(s)`, {
-      differences: differences,
-    }
-    );
-    found.id = data.id;
-    found.approximate_size = +data.approximate_size;
-    found.title = data.title;
-    found.available = data.available;
-    await found.save();
-  } else if (found.downloaded !== data.downloaded) {
-    logger.debug("This property does not need modification", {
-      found: found.downloaded,
-      data: data.downloaded,
-    });
-  }
-}
-/**
- * Asynchronously pauses the execution of the current code for a specified
- * number of seconds.
- *
- * @param {number} [sleepSeconds=config.sleepTime] - The number of seconds to sleep.
- * Defaults to the value of the `sleep_time` variable.
- * @return {Promise<void>} A promise that resolves after the specified number of
- * seconds have passed.
- */
-async function sleep(sleepSeconds = config.sleepTime) {
-  logger.debug("Sleeping for " + sleepSeconds + " seconds");
-  return new Promise((resolve) => setTimeout(resolve, sleepSeconds * 1000));
+  return initResp;
 }
 //Authentication functions
 /**
@@ -1181,102 +1559,7 @@ async function login(req, res) {
   }
 }
 
-// The scheduled updater
-/**
- * Executes a scheduled update by performing a quick update followed by a full update.
- * Emits a "playlist-done" event with a message and id indicating that the update is complete.
- * Logs the start and end time of the update, as well as the next scheduled update time.
- *
- * @return {Promise<void>} A promise that resolves when the update is complete.
- */
-async function scheduledUpdater() {
-  logger.info(`Scheduled update started at: ${new Date().toLocaleString()}`);
-  logger.info(`Starting the quick update`);
-  //quick update then full update
-  quick_updates()
-    .then(full_updates())
-    .then(() =>
-      sock.emit("playlist-done", {
-        message: "done updating playlist or channel",
-        id: "None",
-      })
-    );
-  logger.info(`Scheduled update finished at: ${new Date().toLocaleString()}`);
-  logger.info(`Next scheduled update on ${job.nextDates(1)}`);
-}
-
-/**
- * Executes quick updates for playlists of monitoring_type "Fast".
- *
- * @return {Promise<void>} A promise that resolves when all playlists are updated.
- */
-async function quick_updates() {
-  const playlists = await playlist_list.findAndCountAll({
-    where: {
-      monitoring_type: "Fast",
-    },
-  });
-
-  logger.info(`Fast updating ${playlists["rows"].length} playlists`);
-  for (const playlist of playlists["rows"]) {
-    let index = -config.chunkSize + 1;
-    try {
-      await sleep();
-      await list_background(
-        playlist.playlist_url,
-        index,
-        index + config.chunkSize,
-        config.chunkSize,
-        true
-      );
-      logger.trace(`Done processing playlist ${playlist.playlist_url}`);
-      playlist.changed("updatedAt", true);
-      await playlist.save();
-    } catch (error) {
-      logger.error(
-        `error processing playlist ${playlist.playlist_url}, ${error.message}`
-      );
-    }
-  }
-}
-// this one needs to be tested more
-/**
- * Asynchronously updates all playlists marked as "Full" by performing a full update on each playlist.
- *
- * @return {Promise<void>} A Promise that resolves when all playlists have been updated.
- */
-async function full_updates() {
-  const playlists = await playlist_list.findAndCountAll({
-    where: {
-      monitoring_type: "Full",
-    },
-  });
-  logger.info(`Full updating ${playlists["rows"].length} playlists`);
-  for (const playlist of playlists["rows"]) {
-    try {
-      logger.info(
-        `Full updating playlist: ${playlist.title.trim()} being updated fully`
-      );
-      // Since this is a full update the isUpdateOperation will be false
-      await sleep();
-      await list_background(
-        playlist.playlist_url,
-        0,
-        config.chunkSize,
-        config.chunkSize,
-        false
-      );
-      logger.info(`Done processing playlist ${playlist.playlist_url}`);
-
-      playlist.changed("updatedAt", true);
-      await playlist.save();
-    } catch (error) {
-      logger.error(
-        `error processing playlist ${playlist.playlist_url}: ${error.message}`
-      );
-    }
-  }
-}
+// Will reimplement update and delete functions later
 
 // Download functions
 /**
@@ -1288,50 +1571,47 @@ async function full_updates() {
  */
 async function downloadLister(body, res) {
   try {
-    const download_list = [],
-      in_download_list = new Set(),
-      // remember to send this from the frontend
-      play_list_url = body["playListUrl"] !== undefined ? body["playListUrl"] : "None";
-    for (const url_item of body["urlList"]) {
-      if (!in_download_list.has(url_item)) {
-        logger.debug(`checking for ${url_item} in db`);
-        const video_item = await video_list.findOne({
-          where: { video_url: url_item },
+    const downloadList = [],
+      playListUrl = body["playListUrl"] !== undefined ?
+        body["playListUrl"] : "None",
+      urlList = body["urlList"] !== undefined ?
+        body["urlList"] : [];
+    for (const urlItem of [...new Set(urlList)]) {
+      logger.debug(`checking for ${urlItem} in db`);
+      const video_item = await video_list.findOne({
+        where: { video_url: urlItem },
+      });
+      if (!video_item) {
+        logger.error(`Video with URL ${urlItem} is not indexed`, {
+          url: urlItem,
+          table: "video_list"
         });
-        if (!video_item) {
-          logger.error(`Video with URL ${url_item} is not indexed`, {
-            url: url_item,
-            table: "video_list"
-          });
-          res.writeHead(404, corsHeaders(config.types[".json"]));
-          return res.end(JSON.stringify({ error: `Video with URL ${url_item} is not indexed` }));
-        }
-        let save_dir = "";
-        try {
-          const save_dir_const = await playlist_list.findOne({
-            where: { playlist_url: play_list_url },
-          });
-          save_dir = save_dir_const.save_dir;
-        } catch (error) {
-          if (save_dir !== "") {
-            save_dir = "";
-            logger.error(`${error.message}`);
-          }
-        }
-        download_list.push([
-          url_item,
-          video_item.title,
-          save_dir,
-          video_item.video_id
-        ]);
-        in_download_list.add(url_item);
+        res.writeHead(404, corsHeaders(config.types[".json"]));
+        return res.end(JSON.stringify({ error: `Video with URL ${urlItem} is not indexed` }));
       }
+      let saveDirectory = "";
+      try {
+        const saveDirectoryConst = await playlist_list.findOne({
+          where: { playlist_url: playListUrl },
+        });
+        saveDirectory = saveDirectoryConst.save_dir;
+      } catch (error) {
+        if (saveDirectory !== "") {
+          saveDirectory = "";
+          logger.error(`${error.message}`);
+        }
+      }
+      downloadList.push({
+        url: urlItem,
+        title: video_item.title,
+        saveDirectory: saveDirectory,
+        videoId: video_item.videoId
+      });
     }
-    //download_sequential(download_list);
-    download_parallel(download_list, config.queue.maxDownloads);
+    downloadParallel(downloadList, config.queue.maxDownloads);
     res.writeHead(200, corsHeaders(config.types[".json"]));
     // This doesn't need escaping as it's consumed interanlly
-    res.end(JSON.stringify({ Downloading: download_list }));
+    res.end(JSON.stringify({ Downloading: downloadList }));
   } catch (error) {
     logger.error(`${error.message}`);
     const status = error.status || 500;
@@ -1484,7 +1764,7 @@ const DownloadSemaphore = {
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
  * @returns {Promise} A promise that resolves when all items have been downloaded
  */
-async function download_parallel(items, maxConcurrent = 2) {
+async function downloadParallel(items, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos in parallel (max ${maxConcurrent} concurrent)`);
 
   // Update the semaphore's max concurrent value
@@ -1492,7 +1772,7 @@ async function download_parallel(items, maxConcurrent = 2) {
 
   // Filter out URLs already being downloaded
   const filterUniqueItems = items.filter(item => {
-    const url = item[0];
+    const url = item.url;
     const existingDownload = Array.from(downloadProcesses.values())
       .find(process => process.url === url &&
         ['running', 'pending'].includes(process.status));
@@ -1533,15 +1813,16 @@ async function downloadItemWithSemaphore(item) {
   await DownloadSemaphore.acquire();
   try {
     // Update task status in downloadProcesses to pending
-    const [url_str, title] = item;
+    const urlString = item.url,
+      title = item.title;
     const pendingEntry = {
-      url: url_str,
+      url: urlString,
       title: title,
       lastActivity: Date.now(),
       spawnTimeStamp: Date.now(),
       status: "pending"
     };
-    const pendingKey = `pending_${url_str}_${Date.now()}`;
+    const pendingKey = `pending_${urlString}_${Date.now()}`;
     downloadProcesses.set(pendingKey, pendingEntry);
 
     // Actual download
@@ -1565,11 +1846,11 @@ async function downloadItemWithSemaphore(item) {
  *
  * @async
  * @function downloadItem
- * @param {Array} itemToDownload - An array containing details of the item to download.
- * @param {string} itemToDownload[0] - The URL of the video or media to download.
- * @param {string} itemToDownload[1] - The title of the video or media.
- * @param {string} itemToDownload[2] - The directory where the file should be saved.
- * @param {string} itemToDownload[3] - The unique video ID.
+ * @param {Object} itemToDownload - An object containing details of the item to download.
+ * @param {string} itemToDownload.url - The URL of the video or media to download.
+ * @param {string} itemToDownload.title - The title of the video or media.
+ * @param {string} itemToDownload.saveDirectory - The directory where the file should be saved.
+ * @param {string} itemToDownload.videoId - The unique video ID.
  * @param {string} processEntryKey - The key used to track the download process in the `downloadProcesses` map.
  * @returns {Promise<Object>} A promise that resolves to an object containing the download status and details:
  * - `url` {string} - The URL of the downloaded item.
@@ -1581,18 +1862,26 @@ async function downloadItemWithSemaphore(item) {
  * @throws {Error} If an error occurs during the download process.
  *
  * @example
- * const item = ["https://example.com/video", "Sample Video", "videos", "12345"];
- * downloadItem(item)
+ * const item = {
+ *   url: "https://example.com/video",
+ *   title: "Sample Video",
+ *   saveDirectory: "videos",
+ *   videoId: "12345"
+ * };
+ * downloadItem(item, "processKey123")
  *   .then(result => console.log(result))
  *   .catch(error => console.error(error));
  */
 const downloadItem = async (itemToDownload, processEntryKey) => {
-  const [url_str, title, save_dir, video_id] = itemToDownload;
+  const urlString = itemToDownload.url,
+    title = itemToDownload.title,
+    saveDirectory = itemToDownload.saveDirectory,
+    videoId = itemToDownload.videoId;
 
   try {
 
     // Prepare save path
-    const save_path = path_fs.join(config.saveLocation, save_dir.trim());
+    const save_path = path_fs.join(config.saveLocation, saveDirectory.trim());
     logger.debug(`Downloading to path: ${save_path}`);
 
     // Create directory if it doesn't exist
@@ -1607,7 +1896,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
 
       sock.emit("download-start", { message: "" });
 
-      const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
+      const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, urlString]));
 
       // Track the process for cleanup
       const processEntry = downloadProcesses.get(processEntryKey);
@@ -1701,14 +1990,14 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
       spawnedDownloadProcess.on("close", async (code) => {
         try {
           const entity = await video_list.findOne({
-            where: { video_url: url_str },
+            where: { video_url: urlString },
           });
 
           if (code === 0) {
             const entityProp = {
               downloaded: true,
               available: true,
-              title: (title === video_id || title === "NA")
+              title: (title === videoId || title === "NA")
                 ? (realFileName || title)
                 : title
             };
@@ -1720,7 +2009,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
             const titleForFrontend = entityProp.title;
             sock.emit("download-done", {
               message: titleForFrontend,
-              url: url_str,
+              url: urlString,
               title: titleForFrontend
             });
 
@@ -1739,18 +2028,18 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
             logger.trace(`Map Size: ${downloadProcesses.size}`, { pid: spawnedDownloadProcess.pid });
 
             resolve({
-              url: url_str,
+              url: urlString,
               title: titleForFrontend,
               status: 'success'
             });
           } else {
             sock.emit("download-failed", {
               message: `${entity.title}`,
-              url: url_str,
+              url: urlString,
             });
 
             resolve({
-              url: url_str,
+              url: urlString,
               title: title,
               status: 'failed'
             });
@@ -1764,283 +2053,13 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
   } catch (error) {
     logger.error(`Parallel download error: ${error.message}`);
     return {
-      url: url_str,
+      url: urlString,
       title: title,
       status: 'failed',
       error: error.message
     };
   }
 };
-// List functions
-/**
- * Asynchronously processes a list of URLs, extracts information from each URL, and sends the results to the frontend.
- *
- * @param {Object} body - An object containing the following properties:
- *   - url_list {Array<string>}: A list of URLs to process.
- *   - start {number} (optional): The starting index of the list to process. Defaults to 1.
- *   - chunk_size {number} (optional): The number of items to process at a time. Defaults to the value of the config.chunkSize variable.
- *   - sleep {boolean} (optional): Whether to wait for a short period of time before processing each URL. Defaults to false.
- *   - monitoring_type {string} (optional): The type of monitoring to perform. Defaults to "N/A".
- * @param {Object} res - The response object to send the results to.
- * @return {Promise<void>} A promise that resolves when the processing is complete.
- */
-
-async function listFunc(body, res) {
-  try {
-    const start_num = body["start"] !== undefined ?
-      +body["start"] === 0 ? 1 : +body["start"] : 1, chunk_size = +body["chunk_size"] >= +config.chunkSize ? +body["chunk_size"] : +config.chunkSize, stop_num = +chunk_size + 1, sleep_before_listing = body["sleep"] !== undefined ? body["sleep"] : false, monitoring_type = body["monitoring_type"] !== undefined ? body["monitoring_type"] : "N/A";
-    let index = 0;
-    //logger.verbose(`body: ${JSON.stringify(body)}`);
-    //logger.verbose(`start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`);
-
-    if (body["url_list"] === undefined) {
-      throw new Error("url list is required");
-    }
-    let url_list = body["url_list"], last_item_index = start_num > 0 ? start_num - 1 : 0; // index must start from 0 so start_num needs to subtracted by 1
-
-    //debug(`payload: ${JSON.stringify(body)}`);
-    logger.trace(
-      `listFunc:  url_list: ${url_list}, start_num: ${start_num}, index: ${last_item_index}, ` +
-      `stop_num: ${stop_num}, chunk_size: ${chunk_size}, ` +
-      `sleep_before_listing: ${sleep_before_listing}, monitoring_type: ${monitoring_type}`
-    );
-    // TODO: Convert this to a synchronous function, ie use promises,
-    // return a dummy response to res and then wait for the promise to resolve
-    // one by one, then send the updates to the frontend using sock.emit("playlist-done")
-    // make sure the emits are giving the correct data (ie: url, index) to the frontend
-    try {
-      // so this didn't work, need to figure out how to make it send requests one by one
-      // let index = 0;
-      for (const current_url of url_list) {
-        //url_list.map(async (current_url, index) => {
-        logger.debug(`current_url: ${current_url}, index: ${index}`);
-        try {
-          const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
-          if (done) {
-            logger.debug(`processed current_url: ${current_url}, index: ${index}`);
-          } else if (done instanceof Error) {
-            logger.error(`listFunc processing error: ${done.message}`);
-          } else {
-            logger.debug(`done: ${done}, current_url: ${current_url}, index: ${index}`);
-          }
-        } catch (error) {
-          logger.error(`listFunc processing error: ${error.message}`);
-        }
-        index += 1;
-        //});
-      }
-      logger.debug("List processing done");
-    } catch (error) {
-      logger.error(`${error.message}`);
-      const status = error.status || 500;
-      if (index === 0) {
-        res.writeHead(status, corsHeaders(config.types[".json"]));
-        res.end(JSON.stringify({ error: he.escape(error.message) }));
-      }
-      sock.emit("playlist-done", {
-        message: "done processing playlist or channel",
-        id: current_url === "None" ? body["url_list"][index] : current_url,
-      });
-    }
-  } catch (error) {
-    logger.error(`${error.message}`);
-    //const status = error.status || 500;
-    //res.writeHead(status, corsHeaders(config.types[".json"]));
-    //res.end(JSON.stringify({ error: he.escape(error.message) }));
-  }
-}
-/**
- * Initializes the list processing for a given URL.
- *
- * @param {string} current_url - The URL to process.
- * @param {Object} body - The request body.
- * @param {number} index - The index of the URL in the list.
- * @param {Object} res - The response object.
- * @param {boolean} sleep_before_listing - Whether to sleep before listing.
- * @param {number} last_item_index - The index of the last item processed.
- * @param {number} start_num - The start number.
- * @param {number} stop_num - The stop number.
- * @param {number} chunk_size - The chunk size.
- * @param {string} monitoring_type - The monitoring type.
- * @return {Promise} A promise that resolves when the list processing is complete.
- */
-function list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type) {
-  let play_list_index = -1, already_indexed = false;
-  logger.trace(`list_init: url: ${current_url}, index: ${index}, start_num: ${start_num}, stop_num: ${stop_num}, chunk_size: ${chunk_size}, monitoring_type: ${monitoring_type}`);
-  //try {
-  return new Promise(async (resolve, reject) => {
-    logger.trace("Processing url: " + current_url);
-    current_url = fixCommonErrors(current_url);
-    if (sleep_before_listing) { await sleep(); }
-    const response_list = await listSpawner(current_url, start_num, stop_num);
-    logger.debug(`response_list: ${JSON.stringify(response_list)}, response_list.length: ${response_list.length}`);
-    // Checking if the response qualifies as a playlist
-    if (response_list.length === 0) {
-      reject(new Error("response_list.length is 0"));
-    }
-    const play_list_exists = new Promise(async (resolve, reject) => {
-      if (response_list.length > 1 || playlistRegex.test(current_url)) {
-        const is_already_indexed = await playlist_list.findOne({
-          where: { playlist_url: current_url },
-        });
-        try {
-          logger.trace(
-            `Playlist: ${is_already_indexed.title.trim()} is indexed at ${is_already_indexed.playlist_index}`
-          );
-          already_indexed = true;
-          // Now that this is obtained setting the playlist index in front end is do able only need to figure out how
-          play_list_index = is_already_indexed.playlist_index;
-          // Resolve the promise with the last item index
-          resolve(last_item_index);
-        } catch (error) {
-          logger.warn(
-            "playlist or channel not encountered earlier, saving in database"
-          );
-          // Its not an error, but the title extraction,
-          // will only be done once the error is raised
-          // then is used to find the index of the previous playlist
-          await add_playlist(current_url, monitoring_type)
-            .then(() => playlist_list.findOne({
-              order: [["createdAt", "DESC"]],
-            })
-            )
-            .then(async (playlist) => {
-              if (playlist) {
-                await sleep();
-                play_list_index = playlist.playlist_index;
-                logger.trace(
-                  `Playlist: ${playlist.title} is indexed at ${playlist.playlist_index}`
-                );
-                // Resolve the promise with the last item index
-                resolve(last_item_index);
-              } else {
-                throw new Error("Playlist not found");
-              }
-            })
-            .catch((error) => {
-              logger.error("Error occurred:", error);
-            });
-        }
-      } else {
-        // This is an unlisted video, since the response does not qualify as a playlist
-        try {
-          current_url = "None";
-          // If the url is determined to be an unlisted video
-          // (i.e: not belonging to a playlist)
-          // then the last unlisted video index is used to increment over.
-          const video_already_unlisted = await video_indexer.findOne({
-            where: {
-              video_url: response_list[0].split("\t")[2],
-              playlist_url: current_url,
-            },
-          });
-          logger.debug("unlisted video entry found: " +
-            JSON.stringify(video_already_unlisted)
-          );
-          if (video_already_unlisted !== null) {
-            logger.debug("Video already saved as unlisted");
-            reject(video_already_unlisted);
-          } else {
-            logger.debug("Adding a new video to the unlisted videos list");
-            const last_item = await video_indexer.findOne({
-              where: {
-                playlist_url: current_url,
-              },
-              order: [["index_in_playlist", "DESC"]],
-              attributes: ["index_in_playlist"],
-              limit: 1,
-            });
-            //debug(JSON.stringify(last_item));
-            try {
-              last_item_index = last_item.index_in_playlist;
-            } catch (error) {
-              // encountered an error if unlisted videos was not initialized
-              last_item_index = 0;
-            }
-            resolve(last_item_index + 1);
-          }
-        } catch (error) {
-          logger.error(`${error.message}`);
-          const status = error.status || 500;
-          if (index === 0) {
-            res.writeHead(status, corsHeaders(config.types[".json"]));
-            res.end(JSON.stringify({ error: he.escape(error.message) }));
-          }
-          sock.emit("playlist-done", {
-            message: "done processing playlist or channel",
-            id: current_url === "None" ? body["url_list"][index] : current_url,
-          });
-        }
-      }
-    });
-    await play_list_exists.then(
-      (last_item_index) => {
-        // logger.debug("last_item_index: " + last_item_index);
-        processResponse(response_list, current_url, last_item_index, false)
-          .then((init_resp) => {
-            try {
-              init_resp["prev_playlist_index"] = play_list_index + 1;
-              init_resp["already_indexed"] = already_indexed;
-              if (index === 0) {
-                res.writeHead(200, corsHeaders(config.types[".json"]));
-                res.end(JSON.stringify(init_resp));
-              }
-              resolve(true)
-            } catch (error) {
-              logger.error(`${error.message}`);
-              reject(error);
-            }
-          })
-          .then(() => {
-            list_background(
-              current_url,
-              start_num,
-              stop_num,
-              chunk_size,
-              true
-            ).then(() => {
-              logger.trace(`Done processing playlist: ${current_url}`);
-              sock.emit("playlist-done", {
-                message: "done processing playlist or channel",
-                id: current_url === "None" ? body["url_list"][index] : current_url,
-              });
-            });
-          });
-      },
-      (video_already_unlisted) => {
-        logger.trace("Video already saved as unlisted");
-        try {
-          if (index === 0) {
-            res.writeHead(200, corsHeaders(config.types[".json"]));
-            res.end(
-              JSON.stringify({
-                message: "Video already saved as unlisted",
-                count: 1,
-                resp_url: current_url,
-                start: video_already_unlisted.index_in_playlist,
-              })
-            );
-          }
-          sock.emit("playlist-done", {
-            message: "done processing playlist or channel",
-            id: current_url === "None" ? body["url_list"][index] : current_url,
-          });
-          resolve(true);
-        } catch (error) {
-          logger.error(`${error.message}`);
-          reject(error);
-        }
-      }
-    );
-  })
-  // } catch (error) {
-  //   logger.trace(`Error in list_init: ${error.message}`);
-  //   return new Promise((_, reject) => {
-  //     // Not really sure what to do here
-  //     reject(error);
-  //   })
-  // }
-}
 /**
  * Asynchronously handles monitoring type functionality based on the input body and response.
  *
@@ -2072,68 +2091,16 @@ async function monitoringTypeUpdater(body, res) {
     res.end(JSON.stringify({ error: he.escape(error.message) }));
   }
 }
-/**
- * Asynchronously performs a background listing operation.
- *
- * @param {string} bodyUrl - The URL of the playlist.
- * @param {number} start_num - The starting index of the playlist.
- * @param {number} stop_num - The ending index of the playlist.
- * @param {number} chunk_size - The size of each chunk to process.
- * @param {boolean} isUpdateOperation - Indicates if the operation is an update.
- * @return {undefined}
- */
-async function list_background(
-  bodyUrl,
-  start_num,
-  stop_num,
-  chunk_size,
-  isUpdateOperation
-) {
-  // yes a playlist on youtube atleast can only be 5000 long  && stop_num < 5000
-  // let max_size = 5000;
-  // let loop_num = max_size / chunk_size;
-  let count = 0;
-  while (bodyUrl != "None") {
-    start_num = start_num + chunk_size;
-    stop_num = stop_num + chunk_size;
-    // ideally we can set it to zero but that would get us rate limited by the services
-    logger.trace(
-      `list_background: URL: ${bodyUrl}, Chunk: ${chunk_size},` +
-      `Start: ${start_num}, Stop: ${stop_num}, Iteration: ${count}`
-    );
-    //await sleep();
-    const response = await listSpawner(bodyUrl, start_num, stop_num);
-    if (response.length === 0) {
-      logger.trace(
-        `Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`
-      );
-      break;
-    }
-    // yt-dlp starts counting from 1 for some reason so 1 needs to be subtracted here.
-    const { quit_listing } = await processResponse(
-      response,
-      bodyUrl,
-      start_num - 1,
-      isUpdateOperation
-    );
-    if (quit_listing) {
-      logger.trace(
-        `Listing exited at Start: ${start_num}, Stop: ${stop_num}, Iteration ${count}`
-      );
-      break;
-    }
-    count++;
-  }
-}
+// TODO: Fix this stupid function
 /**
  * Adds a playlist to the playlist_list table in the database.
  *
- * @param {string} url_var - The URL of the playlist.
- * @param {string} monitoring_type_var - The type of monitoring for the playlist.
+ * @param {string} playlistUrl - The URL of the playlist.
+ * @param {string} monitoringType - The type of monitoring for the playlist.
  * @return {Promise<void>} - A Promise that resolves when the playlist is added.
  */
-async function add_playlist(url_var, monitoring_type_var) {
-  let title_str = "",
+async function createPlaylist(playlistUrl, monitoringType) {
+  let playlistTitle = "",
     next_item_index = 0;
   const last_item_index = await playlist_list.findOne({
     order: [["playlist_index", "DESC"]],
@@ -2142,102 +2109,63 @@ async function add_playlist(url_var, monitoring_type_var) {
   });
   if (last_item_index !== null)
     next_item_index = last_item_index.playlist_index + 1;
-  if (listProcesses.size >= config.queue.maxListings) {
-    logger.info("Max Listing processes spawned", { url: url_var });
-    return new Error("Max Listing processes spawned");
-  }
+
   const getTitleProcess = spawn("yt-dlp", [
     "--playlist-end",
     1,
     "--flat-playlist",
     "--print",
     "%(playlist_title)s",
-    url_var,
+    playlistUrl,
   ]);
-  // Track the process in the LRU cache
-  const processEntry = {
-    spawnType: "list",
-    spawnedProcess: getTitleProcess,
-    lastActivity: Date.now(),
-    spawnStatus: "running"
-  };
-  listProcesses.set(getTitleProcess.pid.toString(), processEntry);
+
   getTitleProcess.stdout.setEncoding("utf8");
   getTitleProcess.stdout.on("data", async (data) => {
-    title_str += data;
-    // Update last activity timestamp
-    const processCache = listProcesses.get(getTitleProcess.pid.toString());
-    if (processCache) {
-      processCache.lastActivity = Date.now();
-    }
+    playlistTitle += data;
   });
   getTitleProcess.stderr.setEncoding("utf8");
   getTitleProcess.stderr.on("data", (data) => {
     logger.error(`stderr: ${data}`);
-    // Update last activity timestamp
-    const processCache = listProcesses.get(getTitleProcess.pid.toString());
-    if (processCache) {
-      processCache.lastActivity = Date.now();
-    }
   });
   getTitleProcess.on("error", (error) => {
     logger.error(`Error in getTitleProcess: ${error.message}`);
-    // Update last activity timestamp
-    const processCache = listProcesses.get(getTitleProcess.pid.toString());
-    if (processCache) {
-      processCache.spawnStatus = "failed";
-    }
   });
   getTitleProcess.on("close", async (code) => {
-    const processCache = listProcesses.get(getTitleProcess.pid.toString());
     if (code !== 0) {
       logger.error(`yt-dlp returned non-zero code: ${code}`);
-      if (processCache) {
-        processCache.spawnStatus = "failed";
-      }
     }
     if (code === 0) {
-      if (title_str.trim() == "NA") {
+      if (playlistTitle.trim() == "NA") {
         try {
-          title_str = await urlToTitle(url_var);
+          playlistTitle = urlToTitle(playlistUrl);
         } catch (error) {
-          title_str = url_var;
+          playlistTitle = playlistUrl;
           logger.error(`${error.message}`);
         }
       }
-      title_str = stringSlicer(title_str, config.maxTitleLength);
-      logger.debug(`Title: ${title_str}`, { url: url_var, pid: getTitleProcess.pid });
+      playlistTitle = stringSlicer(playlistTitle, config.maxTitleLength);
+      logger.debug(`Title: ${playlistTitle.trim()}`, { url: playlistUrl, pid: getTitleProcess.pid });
       // no need to use found or create syntax here as
       // this is only run the first time a playlist is made
-      await playlist_list.findOrCreate({
-        where: { playlist_url: url_var },
+      const newPlaylist = await playlist_list.findOrCreate({
+        where: { playlist_url: playlistUrl },
         defaults: {
-          title: title_str.trim(),
-          monitoring_type: monitoring_type_var,
-          save_dir: title_str.trim(),
+          title: playlistTitle.trim(),
+          monitoring_type: monitoringType,
+          save_dir: playlistTitle.trim(),
           playlist_index: next_item_index,
         },
       });
+      return newPlaylist;
     }
     logger.error("Playlist could not be created", {
-      url: url_var,
+      url: playlistUrl,
       code: code,
     });
-    if (listProcesses.has(getTitleProcess.pid.toString())) {
-      const removed = listProcesses.delete(getTitleProcess.pid.toString());
-      logger.debug(`List process removed from process queue: ${removed}`, {
-        pid: getTitleProcess.pid,
-        code: code
-      });
-    } else {
-      logger.warn(`Attempted to remove a non-existent process from the queue`, {
-        pid: getTitleProcess.pid
-      });
-    }
   });
 }
 
-// List function that send data to frontend
+// Query function that send data to frontend
 /**
  * Asynchronously processes the playlists data and sends the result to the frontend.
  *
