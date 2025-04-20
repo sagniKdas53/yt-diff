@@ -719,7 +719,6 @@ async function processResponse(
     start: index,
     quit_listing: false,
   };
-  sock.emit("listing-or-downloading", { percentage: 101 });
   // Setting this to zero so that no effect is there in normal runs
   let last_item_index = 0;
   if (isUpdateOperation) {
@@ -1045,7 +1044,7 @@ async function verifyToken(req, res, next) {
   } catch (error) {
     logger.error(error);
     if (error.name === "TokenExpiredError") {
-      sock.emit("token-expired")
+      sock.emit("token-expired", { error: error.message });
       res.writeHead(401, corsHeaders(config.types[".json"]));
       return res.end(JSON.stringify({ Outcome: "Token Expired" }));
     }
@@ -1182,101 +1181,7 @@ async function login(req, res) {
 }
 
 // The scheduled updater
-/**
- * Executes a scheduled update by performing a quick update followed by a full update.
- * Emits a "playlist-done" event with a message and id indicating that the update is complete.
- * Logs the start and end time of the update, as well as the next scheduled update time.
- *
- * @return {Promise<void>} A promise that resolves when the update is complete.
- */
-async function scheduledUpdater() {
-  logger.info(`Scheduled update started at: ${new Date().toLocaleString()}`);
-  logger.info(`Starting the quick update`);
-  //quick update then full update
-  quick_updates()
-    .then(full_updates())
-    .then(() =>
-      sock.emit("playlist-done", {
-        message: "done updating playlist or channel",
-        id: "None",
-      })
-    );
-  logger.info(`Scheduled update finished at: ${new Date().toLocaleString()}`);
-  logger.info(`Next scheduled update on ${job.nextDates(1)}`);
-}
-
-/**
- * Executes quick updates for playlists of monitoring_type "Fast".
- *
- * @return {Promise<void>} A promise that resolves when all playlists are updated.
- */
-async function quick_updates() {
-  const playlists = await playlist_list.findAndCountAll({
-    where: {
-      monitoring_type: "Fast",
-    },
-  });
-
-  logger.info(`Fast updating ${playlists["rows"].length} playlists`);
-  for (const playlist of playlists["rows"]) {
-    let index = -config.chunkSize + 1;
-    try {
-      await sleep();
-      await list_background(
-        playlist.playlist_url,
-        index,
-        index + config.chunkSize,
-        config.chunkSize,
-        true
-      );
-      logger.trace(`Done processing playlist ${playlist.playlist_url}`);
-      playlist.changed("updatedAt", true);
-      await playlist.save();
-    } catch (error) {
-      logger.error(
-        `error processing playlist ${playlist.playlist_url}, ${error.message}`
-      );
-    }
-  }
-}
-// this one needs to be tested more
-/**
- * Asynchronously updates all playlists marked as "Full" by performing a full update on each playlist.
- *
- * @return {Promise<void>} A Promise that resolves when all playlists have been updated.
- */
-async function full_updates() {
-  const playlists = await playlist_list.findAndCountAll({
-    where: {
-      monitoring_type: "Full",
-    },
-  });
-  logger.info(`Full updating ${playlists["rows"].length} playlists`);
-  for (const playlist of playlists["rows"]) {
-    try {
-      logger.info(
-        `Full updating playlist: ${playlist.title.trim()} being updated fully`
-      );
-      // Since this is a full update the isUpdateOperation will be false
-      await sleep();
-      await list_background(
-        playlist.playlist_url,
-        0,
-        config.chunkSize,
-        config.chunkSize,
-        false
-      );
-      logger.info(`Done processing playlist ${playlist.playlist_url}`);
-
-      playlist.changed("updatedAt", true);
-      await playlist.save();
-    } catch (error) {
-      logger.error(
-        `error processing playlist ${playlist.playlist_url}: ${error.message}`
-      );
-    }
-  }
-}
+// TODO: Add later
 
 // Download functions
 /**
@@ -1605,7 +1510,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
       let hold = null;
       let realFileName = null;
 
-      sock.emit("download-start", { message: "" });
+      sock.emit("download-started", { percentage: 101 });
 
       const spawnedDownloadProcess = spawn("yt-dlp", downloadOptions.concat([save_path, url_str]));
 
@@ -1641,7 +1546,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
               logger.trace(dataStr, { pid: spawnedDownloadProcess.pid });
             }
 
-            sock.emit("listing-or-downloading", { percentage: percentage });
+            sock.emit("downloading-percent-update", { percentage: percentage });
           }
 
           // Filename extraction
@@ -1719,7 +1624,6 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
 
             const titleForFrontend = entityProp.title;
             sock.emit("download-done", {
-              message: titleForFrontend,
               url: url_str,
               title: titleForFrontend
             });
@@ -1745,7 +1649,7 @@ const downloadItem = async (itemToDownload, processEntryKey) => {
             });
           } else {
             sock.emit("download-failed", {
-              message: `${entity.title}`,
+              title: `${entity.title}`,
               url: url_str,
             });
 
@@ -1806,13 +1710,10 @@ async function listFunc(body, res) {
     );
     // TODO: Convert this to a synchronous function, ie use promises,
     // return a dummy response to res and then wait for the promise to resolve
-    // one by one, then send the updates to the frontend using sock.emit("playlist-done")
+    // one by one, then send the updates to the frontend using sock.emit("listing-done")
     // make sure the emits are giving the correct data (ie: url, index) to the frontend
     try {
-      // so this didn't work, need to figure out how to make it send requests one by one
-      // let index = 0;
       for (const current_url of url_list) {
-        //url_list.map(async (current_url, index) => {
         logger.debug(`current_url: ${current_url}, index: ${index}`);
         try {
           const done = await list_init(current_url, body, index, res, sleep_before_listing, last_item_index, start_num, stop_num, chunk_size, monitoring_type);
@@ -1827,7 +1728,6 @@ async function listFunc(body, res) {
           logger.error(`listFunc processing error: ${error.message}`);
         }
         index += 1;
-        //});
       }
       logger.debug("List processing done");
     } catch (error) {
@@ -1837,9 +1737,9 @@ async function listFunc(body, res) {
         res.writeHead(status, corsHeaders(config.types[".json"]));
         res.end(JSON.stringify({ error: he.escape(error.message) }));
       }
-      sock.emit("playlist-done", {
-        message: "done processing playlist or channel",
-        id: current_url === "None" ? body["url_list"][index] : current_url,
+      sock.emit("listing-failed", {
+        error: error.message,
+        url: current_url === "None" ? body["url_list"][index] : current_url,
       });
     }
   } catch (error) {
@@ -1966,9 +1866,9 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
             res.writeHead(status, corsHeaders(config.types[".json"]));
             res.end(JSON.stringify({ error: he.escape(error.message) }));
           }
-          sock.emit("playlist-done", {
+          sock.emit("listing-done", {
             message: "done processing playlist or channel",
-            id: current_url === "None" ? body["url_list"][index] : current_url,
+            url: current_url === "None" ? body["url_list"][index] : current_url,
           });
         }
       }
@@ -2000,9 +1900,9 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               true
             ).then(() => {
               logger.trace(`Done processing playlist: ${current_url}`);
-              sock.emit("playlist-done", {
+              sock.emit("listing-done", {
                 message: "done processing playlist or channel",
-                id: current_url === "None" ? body["url_list"][index] : current_url,
+                url: current_url === "None" ? body["url_list"][index] : current_url,
               });
             });
           });
@@ -2021,9 +1921,9 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               })
             );
           }
-          sock.emit("playlist-done", {
+          sock.emit("listing-done", {
             message: "done processing playlist or channel",
-            id: current_url === "None" ? body["url_list"][index] : current_url,
+            url: current_url === "None" ? body["url_list"][index] : current_url,
           });
           resolve(true);
         } catch (error) {
