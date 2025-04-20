@@ -1,4 +1,4 @@
-FROM ubuntu:24.10
+FROM debian:stable
 
 RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
 
