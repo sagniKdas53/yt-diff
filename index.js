@@ -1283,7 +1283,7 @@ function cleanupMap(taskMap) {
       logger.trace(`Task ${key} has a kill handler? ${typeof task.spawnedProcess.kill}`);
       if (task && typeof task.spawnedProcess.kill === 'function') {
         try {
-          task.warn(`Killing stalled process for task ${key} with SIGKILL`);
+          logger.warn(`Killing stalled process for task ${key} with SIGKILL`);
           // Attempt to kill the process
           const killed = task.spawnedProcess.kill('SIGKILL');
           if (killed) {
@@ -1299,7 +1299,7 @@ function cleanupMap(taskMap) {
             }
           }
         } catch (err) {
-          logger.error(`Failed to kill process for task ${key}:`, err);
+          logger.error(`Failed to kill process for task ${key}:`, { error: err.message });
         }
       }
       taskMap.delete(key);
@@ -1710,7 +1710,7 @@ async function listFunc(body, res) {
     );
     // TODO: Convert this to a synchronous function, ie use promises,
     // return a dummy response to res and then wait for the promise to resolve
-    // one by one, then send the updates to the frontend using sock.emit("listing-done")
+    // one by one, then send the updates to the frontend using sock.emit("listing done")
     // make sure the emits are giving the correct data (ie: url, index) to the frontend
     try {
       for (const current_url of url_list) {
@@ -1866,8 +1866,8 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
             res.writeHead(status, corsHeaders(config.types[".json"]));
             res.end(JSON.stringify({ error: he.escape(error.message) }));
           }
-          sock.emit("listing-done", {
-            message: "done processing playlist or channel",
+          sock.emit("listing-failed", {
+            message: "failed processing item",
             url: current_url === "None" ? body["url_list"][index] : current_url,
           });
         }
@@ -1899,9 +1899,11 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
               chunk_size,
               true
             ).then(() => {
+              // This is emitted to the frontend when an entire playlist is processed
+              // and not just a single item
               logger.trace(`Done processing playlist: ${current_url}`);
               sock.emit("listing-done", {
-                message: "done processing playlist or channel",
+                message: "done processing playlist entry",
                 url: current_url === "None" ? body["url_list"][index] : current_url,
               });
             });
@@ -1922,7 +1924,7 @@ function list_init(current_url, body, index, res, sleep_before_listing, last_ite
             );
           }
           sock.emit("listing-done", {
-            message: "done processing playlist or channel",
+            message: "done processing for a single video",
             url: current_url === "None" ? body["url_list"][index] : current_url,
           });
           resolve(true);
