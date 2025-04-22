@@ -7,6 +7,10 @@
 1. [ ] Make Listing parallel as well using smaphores
 1. [ ] Update the front-end to have a notification drawer so that when listing happens in parallel the events can be sent over web-sockets so that the user doesn't miss the entire thing
 1. [x] Make the logging logfmt compatible so that it can be used in Loki
+1. [ ] Fix the error message for failed login in front-end
+
+## Very Long Term
+
 1. [ ] Add a mertics endpoint so that metrics can be exposed to Prometheus.
    1. [ ] How long listing and downloading actions take
    1. [ ] Memory and CPU usage of the spawned processes
