@@ -42,7 +42,7 @@ const config = {
     reqPerIP: +process.env.MAX_REQUESTS_PER_IP || 10
   },
   queue: {
-    maxListings: +process.env.MAX_LISTINGS || 2,
+    maxListings: +process.env.MAX_LISTINGS || 1,
     maxDownloads: +process.env.MAX_DOWNLOADS || 2,
     cleanUpInterval: process.env.CLEANUP_INTERVAL || "*/1 * * * *", // every minute
     maxIdle: +process.env.PROCESS_MAX_AGE || 5 * 60 * 1000, // 5 minutes
@@ -1318,12 +1318,12 @@ async function processDownloadRequest(requestBody, response) {
       }
 
       // Add to download queue
-      videosToDownload.push([
-        videoUrl,
-        videoEntry.title,
-        saveDirectory,
-        videoEntry.videoId
-      ]);
+      videosToDownload.push({
+        url: videoUrl,
+        title: videoEntry.title,
+        saveDirectory: saveDirectory,
+        videoId: videoEntry.videoId
+      });
       processedUrls.add(videoUrl);
     }
 
@@ -1355,11 +1355,11 @@ async function processDownloadRequest(requestBody, response) {
 /**
  * Downloads multiple items concurrently with enhanced process tracking and concurrency control
  * 
- * @param {Array<Array<string>>} items - Array of items to download, each containing:
- *   [0]: URL of video
- *   [1]: Title of video  
- *   [2]: Save directory path
- *   [3]: Video ID
+ * @param {Array<Map<string, string>>} items - Array of items to download, each represented as a Map with keys:
+ *   - url: URL of video
+ *   - title: Title of video  
+ *   - saveDirectory: Save directory path
+ *   - videoId: Video ID
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
  * @returns {Promise<boolean>} Resolves to true if all downloads successful
  */
@@ -1371,7 +1371,7 @@ async function downloadItemsConcurrently(items, maxConcurrent = 2) {
 
   // Filter out URLs already being downloaded
   const uniqueItems = items.filter(item => {
-    const videoUrl = item[0];
+    const videoUrl = item.url;
     const existingDownload = Array.from(downloadProcesses.values())
       .find(process => process.url === videoUrl &&
         ['running', 'pending'].includes(process.status));
@@ -1403,11 +1403,11 @@ async function downloadItemsConcurrently(items, maxConcurrent = 2) {
 /**
  * Wrapper function that handles downloading a video item with semaphore-based concurrency control
  *
- * @param {Array} downloadItem - Array containing video details:
- *   [0]: Video URL
- *   [1]: Video title
- *   [2]: Save directory path  
- *   [3]: Video ID
+ * @param {Object} downloadItem - Object containing video details:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - saveDirectory: Save directory path  
+ *   - videoId: Video ID
  * @returns {Promise<Object>} Download result containing:
  *   - url: Video URL
  *   - title: Video title 
@@ -1421,7 +1421,7 @@ async function downloadWithSemaphore(downloadItem) {
   await DownloadSemaphore.acquire();
 
   try {
-    const [videoUrl, videoTitle] = downloadItem;
+    const { url: videoUrl, title: videoTitle } = downloadItem;
 
     // Create pending download entry
     const downloadEntry = {
@@ -1453,11 +1453,11 @@ async function downloadWithSemaphore(downloadItem) {
 /**
  * Downloads a video using yt-dlp with progress tracking and status updates
  *
- * @param {Array} downloadItem - Array containing video details:
- *   [0]: Video URL  
- *   [1]: Video title
- *   [2]: Save directory path
- *   [3]: Video ID
+ * @param {Object} downloadItem - Object containing video details:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - saveDirectory: Save directory path  
+ *   - videoId: Video ID
  * @param {string} processKey - Key to track download process
  * @returns {Promise<Object>} Download result containing:
  *   - url: Video URL
@@ -1466,11 +1466,12 @@ async function downloadWithSemaphore(downloadItem) {
  *   - error?: Error message if failed
  */
 async function executeDownload(downloadItem, processKey) {
-  const [videoUrl, videoTitle, saveDir, videoId] = downloadItem;
+  const { url: videoUrl, title: videoTitle,
+    saveDirectory: saveDirectory, videoId: videoId } = downloadItem;
 
   try {
     // Prepare save path
-    const savePath = path_fs.join(config.saveLocation, saveDir.trim());
+    const savePath = path_fs.join(config.saveLocation, saveDirectory.trim());
     logger.debug(`Downloading to path: ${savePath}`);
 
     // Create directory if needed, good to have
@@ -1649,6 +1650,63 @@ function cleanupProcess(processKey, pid) {
 
 // List functions
 const listProcesses = new Map(); // Map to track listing processes
+/**
+ * A semaphore implementation to control the number of concurrent listing operations.
+ *
+ * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
+ * @property {number} currentConcurrent - The current number of active concurrent operations.
+ * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
+ * 
+ * @method acquire
+ * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
+ * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
+ * 
+ * @method release
+ * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
+ * 
+ * @method setMaxConcurrent
+ * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
+ * operations to start, queued operations are processed.
+ * @param {number} max - The new maximum number of concurrent operations.
+ */
+const ListingSemaphore = {
+  maxConcurrent: config.queue.maxListings,
+  currentConcurrent: 0,
+  queue: [],
+
+  async acquire() {
+    return new Promise(resolve => {
+      if (this.currentConcurrent < this.maxConcurrent) {
+        this.currentConcurrent++;
+        logger.debug(`Listing semaphore acquired, current concurrent: ${this.currentConcurrent}`);
+        resolve();
+      } else {
+        logger.debug(`Listing semaphore full, queuing request`);
+        this.queue.push(resolve);
+      }
+    });
+  },
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      logger.debug(`Listing semaphore released, current concurrent: ${this.currentConcurrent}`);
+      next();
+    } else {
+      logger.debug(`Listing semaphore released`);
+      this.currentConcurrent--;
+    }
+  },
+
+  setMaxConcurrent(max) {
+    this.maxConcurrent = max;
+    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
+      const next = this.queue.shift();
+      this.currentConcurrent++;
+      next();
+    }
+  }
+};
 /**
  * Spawns yt-dlp process to fetch playlist/video information
  *
