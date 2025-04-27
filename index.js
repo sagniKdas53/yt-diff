@@ -96,6 +96,8 @@ const downloadOptions = [
   config.saveThumbnail ? "--write-thumbnail" : "",
   "--paths",
 ].filter(Boolean);
+// Regex needs to be separate
+const playlistRegex = /(?:playlist|list=)\b/i;
 
 // Static content and server configuration
 const MIME_TYPES = {
@@ -1749,11 +1751,14 @@ async function processListingRequest(requestBody, response) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
           continue; // Skip as it's already monitored
         } else if (playlistEntry.monitoringType !== monitoringType) {
+          // If the monitoring type change is Full the reindex the entire playlist,
+          // if it is changed to Fast then update from the last index known
           logger.debug(`Playlist monitoring has changed`, { url: normalizedUrl });
           itemsToList.push({
             url: normalizedUrl,
             type: "playlist",
-            monitoringType: monitoringType,
+            previousMonitoringType: playlistEntry.monitoringType,
+            currentMonitoringType: monitoringType,
             reason: `Monitoring type changed`
           });
         }
@@ -1772,8 +1777,8 @@ async function processListingRequest(requestBody, response) {
           logger.debug(`Video not downloaded yet, updating status`, { url: normalizedUrl });
           itemsToList.push({
             url: normalizedUrl,
-            type: "unlisted",
-            monitoringType: "N/A",
+            type: "undownloaded",
+            currentMonitoringType: "N/A",
             reason: `Video not downloaded yet`
           });
         }
@@ -1785,7 +1790,7 @@ async function processListingRequest(requestBody, response) {
         itemsToList.push({
           url: normalizedUrl,
           type: "undetermined",
-          monitoringType: monitoringType,
+          currentMonitoringType: monitoringType,
           reason: `URL not found in database`
         });
       }
@@ -1874,17 +1879,15 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
     ListingSemaphore.release();
   }
 }
-async function executeListing(item, processKey, chunkSize, shouldSleep) {
-  const { url: videoUrl, type: itemType, monitoringType } = item;
+async function executeListing(item, processKey, chunkSize, shouldSleep, isScheduledUpdate = false) {
+  // itemType should be a variable as it can change based on the result
+  const { url: videoUrl, currentMonitoringType } = item;
+  let itemType = item.type;
   let processedChunks = 0;
   let startIndex = 1;
   let endIndex = chunkSize;
 
   try {
-    // Add playlist to database if needed
-    if (itemType !== "unlisted") {
-      await addPlaylist(videoUrl, monitoringType);
-    }
 
     // Send initial status to frontend
     sock.emit("listing-started", {
@@ -1893,79 +1896,231 @@ async function executeListing(item, processKey, chunkSize, shouldSleep) {
       status: "started"
     });
 
-    while (true) {
-      logger.trace("Processing listing chunk", {
-        url: videoUrl,
-        chunkSize,
-        startIndex,
-        endIndex,
-        iteration: processedChunks
-      });
-
-      // Fetch chunk of items
-      const responseItems = await fetchVideoInformation(videoUrl, startIndex, endIndex);
-
-      // Exit if no more items
-      if (responseItems.length === 0) {
-        logger.debug("No more items found", {
-          url: videoUrl,
-          lastStartIndex: startIndex,
-          lastEndIndex: endIndex,
-          totalChunks: processedChunks
-        });
-        break;
-      }
-
-      // Process chunk items
-      const result = await processVideoInformation(
-        responseItems,
-        videoUrl,
-        startIndex - 1, // yt-dlp starts counting from 1
-        processedChunks > 0 // isUpdate if not first chunk
-      );
-
-      // Update frontend on chunk completion
-      sock.emit("listing-chunk-complete", {
-        url: videoUrl,
-        itemsProcessed: result.count,
-        chunkIndex: processedChunks,
-        startIndex: startIndex
-      });
-
-      // Exit if processing should stop
-      if (result.shouldStopProcessing) {
-        logger.debug("Stopping listing early - all items exist", {
-          url: videoUrl,
-          lastStartIndex: startIndex,
-          totalChunks: processedChunks
-        });
-        break;
-      }
-
-      // Sleep between chunks if requested
-      if (shouldSleep && processedChunks > 0) {
-        await sleep();
-      }
-
-      // Update indices for next iteration
-      startIndex += chunkSize;
-      endIndex += chunkSize;
-      processedChunks++;
-    }
-
-    // Send completion status
-    sock.emit("listing-complete", {
+    /* Video listing logic
+     ------------
+     If the itemType is 'undetermined' then it's a new video or playlist
+     First check one chunk if there are no items returned give an error
+     ------------
+     If only one item is returned it is new add it to the database, update itemType to 'new' and return
+     If it's itemType is 'undownloaded' then it already is in the database update it and return
+     ------------
+     If more than one item is returned then it's a new playlist, 
+     update the itemType to 'playlist' and add it to the database
+     Loop through the items in chunks of chunkSize and index the whole playlist
+     emit each chunk to the frontend
+     ------------
+     If it's a playlist, check if the monitoring type has changed 
+     if it has changed to Full then reindex the entire playlist
+     If it has changed to Fast then update from the last index known
+     emit each chunk to the frontend unless it's a scheduled update
+     ------------
+   */
+    logger.debug("Initiating initial check", {
       url: videoUrl,
-      status: "success",
-      totalChunks: processedChunks
+      chunkSize,
+      startIndex,
+      endIndex
     });
+    // This handles the case where the user is trying to update a playlist
+    if (itemType === "playlist") {
+      if (currentMonitoringType === "Full") {
+        startIndex = 1;
+        endIndex = chunkSize;
+      } else if (currentMonitoringType === "Fast") {
+        // Get the last index of the video of the playlist
+        const lastVideoInPlaylist = await PlaylistVideoMapping.findOne({
+          where: { playlistUrl: videoUrl },
+          order: [["positionInPlaylist", "DESC"]],
+          limit: 1
+        });
+        if (lastVideoInPlaylist) {
+          startIndex = lastVideoInPlaylist.positionInPlaylist + 1;
+          endIndex = startIndex + chunkSize;
+        }
+      }
+    }
+    const responseItems = await fetchVideoInformation(videoUrl, startIndex, endIndex);
+    if (responseItems.length === 0) {
+      logger.debug("No items found in initial check", {
+        url: videoUrl,
+        lastStartIndex: startIndex,
+        lastEndIndex: endIndex
+      });
+      sock.emit("listing-error", {
+        url: videoUrl,
+        error: "No items found"
+      });
+      return {
+        url: videoUrl,
+        title: "Video",
+        status: "failed",
+        error: "No items found"
+      };
+    } else if (responseList.length > 1 || playlistRegex.test(urlString) || itemType === "playlist") {
+      // Check if it's a playlist
+      itemType = "playlist";
+      logger.debug("Multiple found in initial check", {
+        url: videoUrl,
+        lastStartIndex: startIndex,
+        lastEndIndex: endIndex
+      });
 
-    return {
-      url: videoUrl,
-      title: itemType === "playlist" ? "Playlist" : "Video",
-      status: "success"
-    };
+      // Process playlist items
+      const processResult = await processVideoInformation(responseItems, playlistUrl, startIndex, isScheduledUpdate);
+      processedChunks += 1;
 
+      if (processResult.count < chunkSize) {
+        logger.debug("Reached end of playlist", {
+          url: videoUrl,
+          processedChunks,
+          totalItems: responseItems.length
+        });
+        sock.emit("listing-complete", {
+          url: videoUrl,
+          type: itemType,
+          status: "completed",
+          processedChunks
+        });
+        return {
+          url: videoUrl,
+          title: "Playlist",
+          status: "completed",
+          processedChunks
+        };
+      } else {
+        while (true) {
+          // Sleep if requested
+          if (shouldSleep) {
+            await sleep();
+          }
+          // Process next chunk
+          startIndex += chunkSize;
+          endIndex += chunkSize;
+
+          // Fetch next chunk
+          const nextResponseItems = await fetchVideoInformation(videoUrl, startIndex, endIndex);
+          if (nextResponseItems.length === 0) {
+            logger.debug("No items found in next chunk", {
+              url: videoUrl,
+              lastStartIndex: startIndex,
+              lastEndIndex: endIndex
+            });
+            break;
+          }
+
+          // Process next chunk
+          const processResult = await processVideoInformation(nextResponseItems, playlistUrl, startIndex, isScheduledUpdate);
+          processedChunks += 1;
+
+          if (processResult.count < chunkSize) {
+            logger.debug("Reached end of playlist", {
+              url: videoUrl,
+              processedChunks,
+              totalItems: responseItems.length
+            });
+            sock.emit("listing-complete", {
+              url: videoUrl,
+              type: itemType,
+              status: "completed",
+              processedChunks
+            });
+            return {
+              url: videoUrl,
+              title: "Playlist",
+              status: "completed",
+              processedChunks
+            };
+          } else {
+            logger.debug("Processed chunk", {
+              url: videoUrl,
+              processedChunks,
+              totalItems: responseItems.length
+            });
+            sock.emit("listing-chunk-complete", {
+              url: videoUrl,
+              type: itemType,
+              status: "chunk-completed",
+              processedChunks
+            });
+          }
+        }
+      }
+
+    } else if (responseItems.length === 1 || itemType === "undownloaded") {
+      const playlistUrl = "None";
+      logger.debug("Single item found in initial check", {
+        url: videoUrl,
+        lastStartIndex: startIndex,
+        lastEndIndex: endIndex
+      });
+      // Udate the item if it's already in the database
+      if (itemType === "undownloaded") {
+        const itemStateInDatabase = await VideoMetadata.findOne({
+          where: { videoUrl: videoUrl }
+        });
+        if (itemStateInDatabase) {
+          // Update video entry
+          await itemStateInDatabase.update({
+            downloadStatus: true,
+            isAvailable: true,
+            title: itemStateInDatabase.title
+          });
+          sock.emit("listing-single-item-complete", {
+            url: videoUrl,
+            type: "undownloaded",
+            status: "completed"
+          });
+          return {
+            url: videoUrl,
+            title: itemStateInDatabase.title,
+            status: "completed"
+          };
+        } else {
+          logger.error("Video not found in database", { url: videoUrl });
+          sock.emit("listing-error", {
+            url: videoUrl,
+            error: "Video not found in database"
+          });
+          return {
+            url: videoUrl,
+            title: "Video",
+            status: "failed",
+            error: "Video not found in database"
+          };
+        }
+      } else {
+        // Add a new video entry to the playlist "None"
+        // Get the last index of the video of the playlist
+        const lastVideoInPlaylist = await PlaylistVideoMapping.findOne({
+          where: { playlistUrl: playlistUrl },
+          order: [["positionInPlaylist", "DESC"]],
+          limit: 1
+        });
+        if (lastVideoInPlaylist) {
+          startIndex = lastVideoInPlaylist.positionInPlaylist + 1;
+        }
+        const processResult = await processVideoInformation(responseItems, playlistUrl, startIndex, isScheduledUpdate);
+        if (processResult.count === 1) {
+          logger.debug("Single item processed", {
+            url: videoUrl,
+            processedChunks,
+            totalItems: responseItems.length
+          });
+          sock.emit("listing-single-item-complete", {
+            url: videoUrl,
+            type: itemType,
+            status: "completed",
+            processedChunks
+          });
+          return {
+            url: videoUrl,
+            title: "Video",
+            status: "completed",
+            processedChunks
+          };
+        }
+      }
+    }
   } catch (error) {
     logger.error("Listing failed", {
       url: videoUrl,
