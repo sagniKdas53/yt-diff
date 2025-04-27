@@ -10,6 +10,7 @@
 1. [ ] Fix the error message for failed login in front-end
 1. [ ] Make the notifications better, like cliking on them makes them navigable and also add a way to make it scrollable and less ugly to look at.
 1. [ ] Add a dismiss all button to the notification tab.
+1. [ ] Fix the username an user_name problem bettwen DB and frontend
 
 ## Very Long Term
 
