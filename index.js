@@ -565,43 +565,43 @@ const jobs = {
     config.timeZone
   ),
 
-  cleanup: new CronJob(
-    config.queue.cleanUpInterval,
-    () => {
-      logger.debug("Starting scheduled process cleanup");
+  // cleanup: new CronJob(
+  //   config.queue.cleanUpInterval,
+  //   () => {
+  //     logger.debug("Starting scheduled process cleanup");
 
-      // Cleanup download processes
-      const cleanedDownloads = cleanupStaleProcesses(
-        downloadProcesses,
-        {
-          maxIdleTime: config.queue.maxIdle,
-          forceKill: true
-        }
-      );
+  //     // Cleanup download processes
+  //     const cleanedDownloads = cleanupStaleProcesses(
+  //       downloadProcesses,
+  //       {
+  //         maxIdleTime: config.queue.maxIdle,
+  //         forceKill: true
+  //       }
+  //     );
 
-      // Cleanup list processes
-      const cleanedLists = cleanupStaleProcesses(
-        listProcesses,
-        {
-          maxIdleTime: config.queue.maxIdle,
-          forceKill: true
-        }
-      );
+  //     // Cleanup list processes
+  //     const cleanedLists = cleanupStaleProcesses(
+  //       listProcesses,
+  //       {
+  //         maxIdleTime: config.queue.maxIdle,
+  //         forceKill: true
+  //       }
+  //     );
 
-      logger.info("Completed scheduled process cleanup", {
-        cleanedDownloads,
-        cleanedLists,
-        nextRun: jobs.cleanup.nextDate().toLocaleString(
-          {
-            weekday: 'short', month: 'short', day: '2-digit',
-            hour: '2-digit', minute: '2-digit'
-          }, { timeZone: config.timeZone })
-      });
-    },
-    null,
-    true,
-    config.timeZone
-  )
+  //     logger.info("Completed scheduled process cleanup", {
+  //       cleanedDownloads,
+  //       cleanedLists,
+  //       nextRun: jobs.cleanup.nextDate().toLocaleString(
+  //         {
+  //           weekday: 'short', month: 'short', day: '2-digit',
+  //           hour: '2-digit', minute: '2-digit'
+  //         }, { timeZone: config.timeZone })
+  //     });
+  //   },
+  //   null,
+  //   true,
+  //   config.timeZone
+  // )
 };
 
 // Utility functions
@@ -1833,10 +1833,10 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
 
   // Log results
   listingResults.forEach(result => {
-    if (result.status === 'success') {
+    if (result.status === 'completed') {
       logger.info(`Listed ${result.title} successfully`);
     } else {
-      logger.error(`Failed to list ${result.title}: ${result.error}`);
+      logger.error(`Failed to list ${result.title}: ${JSON.stringify(result)}`);
     }
   });
 
@@ -1879,268 +1879,277 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
     ListingSemaphore.release();
   }
 }
+// TODO: Use the processKey to track the listing process in the listProcesses map
+// so that stalled processes can be cleaned up by the cleanup cron job
+/**
+ * Executes the listing process for a given item
+ *
+ * @param {Object} item - The item to list
+ * @param {string} processKey - The key to track the listing process
+ * @param {number} chunkSize - The size of each chunk to process
+ * @param {boolean} shouldSleep - Whether to introduce a delay between processing chunks
+ * @param {boolean} isScheduledUpdate - Indicates if the listing is part of a scheduled update
+ * @returns {Promise<Object>} The result of the listing process
+ */
 async function executeListing(item, processKey, chunkSize, shouldSleep, isScheduledUpdate = false) {
-  // itemType should be a variable as it can change based on the result
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
   let processedChunks = 0;
-  let startIndex = 1;
-  let endIndex = chunkSize;
 
   try {
-
-    // Send initial status to frontend
+    // Send initial status
     sock.emit("listing-started", {
       url: videoUrl,
       type: itemType,
       status: "started"
     });
 
-    /* Video listing logic
-     ------------
-     If the itemType is 'undetermined' then it's a new video or playlist
-     First check one chunk if there are no items returned give an error
-     ------------
-     If only one item is returned it is new add it to the database, update itemType to 'new' and return
-     If it's itemType is 'undownloaded' then it already is in the database update it and return
-     ------------
-     If more than one item is returned then it's a new playlist, 
-     update the itemType to 'playlist' and add it to the database
-     Loop through the items in chunks of chunkSize and index the whole playlist
-     emit each chunk to the frontend
-     ------------
-     If it's a playlist, check if the monitoring type has changed 
-     if it has changed to Full then reindex the entire playlist
-     If it has changed to Fast then update from the last index known
-     emit each chunk to the frontend unless it's a scheduled update
-     ------------
-   */
-    logger.debug("Initiating initial check", {
-      url: videoUrl,
-      chunkSize,
-      startIndex,
-      endIndex
-    });
-    // This handles the case where the user is trying to update a playlist
-    if (itemType === "playlist") {
-      if (currentMonitoringType === "Full") {
-        startIndex = 1;
-        endIndex = chunkSize;
-      } else if (currentMonitoringType === "Fast") {
-        // Get the last index of the video of the playlist
-        const lastVideoInPlaylist = await PlaylistVideoMapping.findOne({
-          where: { playlistUrl: videoUrl },
-          order: [["positionInPlaylist", "DESC"]],
-          limit: 1
-        });
-        if (lastVideoInPlaylist) {
-          startIndex = lastVideoInPlaylist.positionInPlaylist + 1;
-          endIndex = startIndex + chunkSize;
-        }
-      }
-    }
+    // Get initial chunk
+    const { startIndex, endIndex } = await determineInitialRange(itemType, currentMonitoringType, videoUrl, chunkSize);
     const responseItems = await fetchVideoInformation(videoUrl, startIndex, endIndex);
+
     if (responseItems.length === 0) {
-      logger.debug("No items found in initial check", {
-        url: videoUrl,
-        lastStartIndex: startIndex,
-        lastEndIndex: endIndex
+      return handleEmptyResponse(videoUrl);
+    }
+
+    // Handle single video vs playlist
+    const isPlaylist = responseItems.length > 1 || playlistRegex.test(videoUrl) || itemType === "playlist";
+
+    if (isPlaylist) {
+      // Check if the playlist already exists
+      const existingPlaylist = await PlaylistMetadata.findOne({
+        where: { playlistUrl: videoUrl }
       });
-      sock.emit("listing-error", {
-        url: videoUrl,
-        error: "No items found"
-      });
-      return {
-        url: videoUrl,
-        title: "Video",
-        status: "failed",
-        error: "No items found"
-      };
-    } else if (responseList.length > 1 || playlistRegex.test(urlString) || itemType === "playlist") {
-      // Check if it's a playlist
-      itemType = "playlist";
-      logger.debug("Multiple found in initial check", {
-        url: videoUrl,
-        lastStartIndex: startIndex,
-        lastEndIndex: endIndex
-      });
-
-      // Process playlist items
-      const processResult = await processVideoInformation(responseItems, playlistUrl, startIndex, isScheduledUpdate);
-      processedChunks += 1;
-
-      if (processResult.count < chunkSize) {
-        logger.debug("Reached end of playlist", {
-          url: videoUrl,
-          processedChunks,
-          totalItems: responseItems.length
-        });
-        sock.emit("listing-complete", {
-          url: videoUrl,
-          type: itemType,
-          status: "completed",
-          processedChunks
-        });
-        return {
-          url: videoUrl,
-          title: "Playlist",
-          status: "completed",
-          processedChunks
-        };
-      } else {
-        while (true) {
-          // Sleep if requested
-          if (shouldSleep) {
-            await sleep();
-          }
-          // Process next chunk
-          startIndex += chunkSize;
-          endIndex += chunkSize;
-
-          // Fetch next chunk
-          const nextResponseItems = await fetchVideoInformation(videoUrl, startIndex, endIndex);
-          if (nextResponseItems.length === 0) {
-            logger.debug("No items found in next chunk", {
-              url: videoUrl,
-              lastStartIndex: startIndex,
-              lastEndIndex: endIndex
-            });
-            break;
-          }
-
-          // Process next chunk
-          const processResult = await processVideoInformation(nextResponseItems, playlistUrl, startIndex, isScheduledUpdate);
-          processedChunks += 1;
-
-          if (processResult.count < chunkSize) {
-            logger.debug("Reached end of playlist", {
-              url: videoUrl,
-              processedChunks,
-              totalItems: responseItems.length
-            });
-            sock.emit("listing-complete", {
-              url: videoUrl,
-              type: itemType,
-              status: "completed",
-              processedChunks
-            });
-            return {
-              url: videoUrl,
-              title: "Playlist",
-              status: "completed",
-              processedChunks
-            };
-          } else {
-            logger.debug("Processed chunk", {
-              url: videoUrl,
-              processedChunks,
-              totalItems: responseItems.length
-            });
-            sock.emit("listing-chunk-complete", {
-              url: videoUrl,
-              type: itemType,
-              status: "chunk-completed",
-              processedChunks
-            });
-          }
+      if (existingPlaylist) {
+        logger.debug(`Playlist already exists in database`, { url: videoUrl });
+        if (existingPlaylist.monitoringType === currentMonitoringType) {
+          logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: videoUrl });
+          return handleEmptyResponse(videoUrl);
+        } else if (existingPlaylist.monitoringType !== currentMonitoringType) {
+          logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
+          // Update the monitoring type in the database
+          await existingPlaylist.update({ monitoringType: currentMonitoringType });
+          logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
+      } else {
+        // If the playlist doesn't exist, add it to the database
+        logger.debug(`Playlist not found in database, adding to database`, { url: videoUrl });
+        await addPlaylist(videoUrl, currentMonitoringType);
       }
-
-    } else if (responseItems.length === 1 || itemType === "undownloaded") {
-      const playlistUrl = "None";
-      logger.debug("Single item found in initial check", {
-        url: videoUrl,
-        lastStartIndex: startIndex,
-        lastEndIndex: endIndex
+      return await handlePlaylistListing({
+        videoUrl,
+        responseItems,
+        startIndex,
+        chunkSize,
+        shouldSleep,
+        isScheduledUpdate,
+        processedChunks
       });
-      // Udate the item if it's already in the database
-      if (itemType === "undownloaded") {
-        const itemStateInDatabase = await VideoMetadata.findOne({
-          where: { videoUrl: videoUrl }
-        });
-        if (itemStateInDatabase) {
-          // Update video entry
-          await itemStateInDatabase.update({
-            downloadStatus: true,
-            isAvailable: true,
-            title: itemStateInDatabase.title
-          });
-          sock.emit("listing-single-item-complete", {
-            url: videoUrl,
-            type: "undownloaded",
-            status: "completed"
-          });
-          return {
-            url: videoUrl,
-            title: itemStateInDatabase.title,
-            status: "completed"
-          };
-        } else {
-          logger.error("Video not found in database", { url: videoUrl });
-          sock.emit("listing-error", {
-            url: videoUrl,
-            error: "Video not found in database"
-          });
-          return {
-            url: videoUrl,
-            title: "Video",
-            status: "failed",
-            error: "Video not found in database"
-          };
-        }
-      } else {
-        // Add a new video entry to the playlist "None"
-        // Get the last index of the video of the playlist
-        const lastVideoInPlaylist = await PlaylistVideoMapping.findOne({
-          where: { playlistUrl: playlistUrl },
-          order: [["positionInPlaylist", "DESC"]],
-          limit: 1
-        });
-        if (lastVideoInPlaylist) {
-          startIndex = lastVideoInPlaylist.positionInPlaylist + 1;
-        }
-        const processResult = await processVideoInformation(responseItems, playlistUrl, startIndex, isScheduledUpdate);
-        if (processResult.count === 1) {
-          logger.debug("Single item processed", {
-            url: videoUrl,
-            processedChunks,
-            totalItems: responseItems.length
-          });
-          sock.emit("listing-single-item-complete", {
-            url: videoUrl,
-            type: itemType,
-            status: "completed",
-            processedChunks
-          });
-          return {
-            url: videoUrl,
-            title: "Video",
-            status: "completed",
-            processedChunks
-          };
-        }
+    } else {
+      return await handleSingleVideoListing({
+        videoUrl,
+        responseItems,
+        itemType,
+        startIndex,
+        isScheduledUpdate
+      });
+    }
+
+  } catch (error) {
+    return handleListingError(error, videoUrl, itemType);
+  }
+}
+
+// Helper functions for executListing()
+/**
+ * Determines the initial range of indices for processing items in a playlist.
+ *
+ * @param {string} itemType - The type of item being processed (e.g., "playlist").
+ * @param {string} monitoringType - The monitoring mode, either "Full" for full reindexing or "Fast" for incremental updates.
+ * @param {string} playlistUrl - The URL of the playlist being monitored.
+ * @param {number} chunkSize - The size of the chunk to process in each iteration.
+ * @returns {Promise<{startIndex: number, endIndex: number}>} An object containing the start and end indices for processing.
+ */
+async function determineInitialRange(itemType, monitoringType, playlistUrl, chunkSize) {
+  let startIndex = 1;
+  let endIndex = chunkSize;
+  if (itemType === "playlist") {
+    if (monitoringType === "Full") {
+      // Start from beginning for full reindex
+      startIndex = 1;
+    } else if (monitoringType === "Fast") {
+      // Get last known position for incremental update
+      const lastVideo = await PlaylistVideoMapping.findOne({
+        where: { playlistUrl },
+        order: [["positionInPlaylist", "DESC"]],
+        limit: 1
+      });
+      if (lastVideo) {
+        startIndex = lastVideo.positionInPlaylist + 1;
+        endIndex = startIndex + chunkSize;
       }
     }
-  } catch (error) {
-    logger.error("Listing failed", {
-      url: videoUrl,
-      error: error.message,
-      stack: error.stack
-    });
+  }
+  return { startIndex, endIndex };
+}
+/**
+ * Handles the case where no items are found for a given video URL.
+ * Emits a "listing-error" event with the error details and returns an error response object.
+ *
+ * @param {string} videoUrl - The URL of the video for which no items were found.
+ * @returns {Object} An object containing the video URL, a default title, status as "failed",
+ *                   and an error message indicating no items were found.
+ */
+function handleEmptyResponse(videoUrl) {
+  sock.emit("listing-error", {
+    url: videoUrl,
+    error: "No items found"
+  });
 
-    // Send error status to frontend
-    sock.emit("listing-error", {
+  return {
+    url: videoUrl,
+    title: "Video",
+    status: "failed",
+    error: "No items found"
+  };
+}
+/**
+ * Handles the listing of a playlist by processing video information in chunks.
+ *
+ * @async
+ * @function handlePlaylistListing
+ * @param {Object} item - The item containing playlist details.
+ * @param {string} item.videoUrl - The URL of the video or playlist to process.
+ * @param {Array} item.responseItems - The initial set of video information to process.
+ * @param {number} item.startIndex - The starting index for processing video information.
+ * @param {number} item.chunkSize - The size of each chunk to process.
+ * @param {boolean} item.shouldSleep - Whether to introduce a delay between processing chunks.
+ * @param {boolean} item.isScheduledUpdate - Indicates if the processing is part of a scheduled update.
+ * @returns {Promise<void>} Resolves when the playlist listing is complete.
+ */
+async function handlePlaylistListing(item) {
+  const { videoUrl, responseItems, startIndex, chunkSize, shouldSleep, isScheduledUpdate } = item;
+  let processedChunks = item.processedChunks || 0;
+  // Process initial chunk
+  const initialResult = await processVideoInformation(responseItems, videoUrl, startIndex, isScheduledUpdate);
+  processedChunks++;
+  if (initialResult.count < chunkSize) {
+    return completePlaylistListing(videoUrl, processedChunks);
+  }
+  // Process remaining chunks
+  while (true) {
+    if (shouldSleep) await sleep();
+    const nextStartIndex = startIndex + (processedChunks * chunkSize);
+    const nextEndIndex = nextStartIndex + chunkSize;
+    const nextItems = await fetchVideoInformation(videoUrl, nextStartIndex, nextEndIndex);
+    if (nextItems.length === 0) break;
+    const result = await processVideoInformation(nextItems, videoUrl, nextStartIndex, isScheduledUpdate);
+    processedChunks++;
+    if (result.count < chunkSize) {
+      return completePlaylistListing(videoUrl, processedChunks);
+    }
+    emitChunkComplete(videoUrl, processedChunks);
+  }
+  return completePlaylistListing(videoUrl, processedChunks);
+}
+/**
+ * Handles the processing of a single video listing item.
+ *
+ * @async
+ * @function handleSingleVideoListing
+ * @param {Object} item - The video listing item to process.
+ * @param {string} item.videoUrl - The URL of the video.
+ * @param {Array} item.responseItems - The response items containing video information.
+ * @param {string} item.itemType - The type of the item (e.g., "undownloaded").
+ * @param {number} item.startIndex - The starting index for the video in the playlist.
+ * @param {boolean} item.isScheduledUpdate - Indicates if this is a scheduled update.
+ * @returns {Promise<Object|undefined>} A promise that resolves to an object containing the video URL, title, status, and processed chunks if successful, or undefined if no processing is needed.
+ */
+async function handleSingleVideoListing(item) {
+  const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } = item;
+  const playlistUrl = "None";
+  if (itemType === "undownloaded") {
+    return await updateExistingVideo(videoUrl);
+  }
+  // Add new video to "None" playlist
+  const lastVideo = await PlaylistVideoMapping.findOne({
+    where: { playlistUrl },
+    order: [["positionInPlaylist", "DESC"]],
+    attributes: ["positionInPlaylist"],
+    limit: 1
+  });
+  const newStartIndex = lastVideo ? lastVideo.positionInPlaylist + 1 : startIndex;
+  const result = await processVideoInformation(responseItems, playlistUrl, newStartIndex, isScheduledUpdate);
+  if (result.count === 1) {
+    sock.emit("listing-single-item-complete", {
       url: videoUrl,
-      error: error.message
+      type: itemType,
+      status: "completed",
+      processedChunks: 1,
+      seekSubListTo: newStartIndex
     });
-
     return {
       url: videoUrl,
-      title: itemType === "playlist" ? "Playlist" : "Video",
-      status: "failed",
-      error: error.message
+      title: "Video",
+      status: "completed",
+      processedChunks: 1
     };
   }
+}
+/**
+ * Handles errors that occur during the listing process for a video or playlist.
+ *
+ * @param {Error} error - The error object containing details about the failure.
+ * @param {string} videoUrl - The URL of the video or playlist that failed to list.
+ * @param {string} itemType - The type of item being listed, either "playlist" or "video".
+ * @returns {Object} An object containing details about the failed listing, including the URL, title, status, and error message.
+ */
+function handleListingError(error, videoUrl, itemType) {
+  logger.error("Listing failed", {
+    url: videoUrl,
+    error: error.message,
+    stack: error.stack
+  });
+  sock.emit("listing-error", {
+    url: videoUrl,
+    error: error.message
+  });
+  return {
+    url: videoUrl,
+    title: itemType === "playlist" ? "Playlist" : "Video",
+    status: "failed",
+    error: error.message
+  };
+}
+/**
+ * Handles completion of playlist listing process and emits completion events
+ * 
+ * @param {string} videoUrl - URL of the playlist that was processed
+ * @param {number} processedChunks - Number of chunks that were processed
+ * @returns {Object} Object containing url, title, status and processed chunk count
+ */
+function completePlaylistListing(videoUrl, processedChunks) {
+  // Log completion
+  logger.info(`Playlist listing completed`, {
+    url: videoUrl,
+    processedChunks
+  });
+
+  // Emit completion event
+  sock.emit("listing-playlist-complete", {
+    url: videoUrl,
+    type: "playlist",
+    status: "completed",
+    processedChunks
+  });
+
+  // Return completion status
+  return {
+    url: videoUrl,
+    title: "Playlist",
+    status: "completed",
+    processedChunks
+  };
 }
 /**
  * Spawns yt-dlp process to fetch playlist/video information
@@ -2274,6 +2283,8 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
   // Get last processed index for updates
   let lastProcessedIndex = 0;
   if (isUpdate) {
+    logger.debug("Processing update for playlist", { playlistUrl });
+    // Get last processed index from database
     const lastItem = await PlaylistVideoMapping.findOne({
       where: { playlistUrl: playlistUrl },
       order: [["positionInPlaylist", "DESC"]],
@@ -2353,6 +2364,12 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
       }
 
       result.count++;
+      logger.debug("Processed video item", {
+        videoUrl: videoUrl,
+        title: videoData.title,
+        playlistUrl: playlistUrl,
+        index: startIndex + index + lastProcessedIndex
+      });
 
     } catch (error) {
       logger.error("Failed to process video item", {
@@ -2435,7 +2452,7 @@ async function updateVideoMetadata(existingVideo, newData) {
     await existingVideo.save();
     logger.debug("Video metadata updated successfully");
   } else {
-    logger.debug("No video metadata updates needed");
+    logger.trace("No video metadata updates needed");
   }
 }
 /**

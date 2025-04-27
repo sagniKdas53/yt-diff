@@ -113,10 +113,10 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: pgadmin4_container
+    container_name: pgadmin4
     restart: always
-    # ports:
-    #   - "8888:80"
+    ports:
+      - "8686:80"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PG_ADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PG_ADMIN_PASSWORD}
@@ -126,8 +126,6 @@ services:
     depends_on:
       yt-db:
         condition: service_healthy
-    # ports:
-    #   - 8080:8080
     networks:
       - revProxy-net
     labels:
