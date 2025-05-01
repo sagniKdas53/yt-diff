@@ -550,59 +550,57 @@ sequelize
   });
 
 // Scheduler
-const jobs = {
-  update: new CronJob(
-    config.scheduledUpdateStr,
-    () => {
-      logger.info("Scheduled update", {
-        time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
-        timeZone: config.timeZone,
-        nextRun: jobs.update.nextDate().toLocaleString("en-US", { timeZone: config.timeZone })
-      });
-    },
-    null,
-    true,
-    config.timeZone
-  ),
+// const jobs = {
+//   update: new CronJob(
+//     config.scheduledUpdateStr,
+//     () => {
+//       logger.info("Scheduled update", {
+//         time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
+//         timeZone: config.timeZone,
+//         nextRun: jobs.update.nextDate().toLocaleString("en-US", { timeZone: config.timeZone })
+//       });
+//     },
+//     null,
+//     true,
+//     config.timeZone
+//   ),
+//   cleanup: new CronJob(
+//     config.queue.cleanUpInterval,
+//     () => {
+//       logger.debug("Starting scheduled process cleanup");
+//       // Cleanup download processes
+//       const cleanedDownloads = cleanupStaleProcesses(
+//         downloadProcesses,
+//         {
+//           maxIdleTime: config.queue.maxIdle,
+//           forceKill: true
+//         }
+//       );
+//       // Cleanup list processes
+//       const cleanedLists = cleanupStaleProcesses(
+//         listProcesses,
+//         {
+//           maxIdleTime: config.queue.maxIdle,
+//           forceKill: true
+//         }
+//       );
+//       logger.info("Completed scheduled process cleanup", {
+//         cleanedDownloads,
+//         cleanedLists,
+//         nextRun: jobs.cleanup.nextDate().toLocaleString(
+//           {
+//             weekday: 'short', month: 'short', day: '2-digit',
+//             hour: '2-digit', minute: '2-digit'
+//           }, { timeZone: config.timeZone })
+//       });
+//     },
+//     null,
+//     true,
+//     config.timeZone
+//   ),
 
-  // cleanup: new CronJob(
-  //   config.queue.cleanUpInterval,
-  //   () => {
-  //     logger.debug("Starting scheduled process cleanup");
-
-  //     // Cleanup download processes
-  //     const cleanedDownloads = cleanupStaleProcesses(
-  //       downloadProcesses,
-  //       {
-  //         maxIdleTime: config.queue.maxIdle,
-  //         forceKill: true
-  //       }
-  //     );
-
-  //     // Cleanup list processes
-  //     const cleanedLists = cleanupStaleProcesses(
-  //       listProcesses,
-  //       {
-  //         maxIdleTime: config.queue.maxIdle,
-  //         forceKill: true
-  //       }
-  //     );
-
-  //     logger.info("Completed scheduled process cleanup", {
-  //       cleanedDownloads,
-  //       cleanedLists,
-  //       nextRun: jobs.cleanup.nextDate().toLocaleString(
-  //         {
-  //           weekday: 'short', month: 'short', day: '2-digit',
-  //           hour: '2-digit', minute: '2-digit'
-  //         }, { timeZone: config.timeZone })
-  //     });
-  //   },
-  //   null,
-  //   true,
-  //   config.timeZone
-  // )
-};
+//   // TODO: Add a job to replace the LRUCache implementation with one that uses Map and CronJob
+// };
 
 // Utility functions
 /**
@@ -1824,6 +1822,8 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
   ListingSemaphore.setMaxConcurrent(config.queue.maxListings);
 
   // Process all items with semaphore control
+  // TODO: Fix the issue where if two items are added then we are getting
+  // Maximum listing processes reached error and the listing is not done
   const listingResults = await Promise.all(
     items.map(item => listWithSemaphore(item, chunkSize, shouldSleep))
   );
@@ -1845,6 +1845,17 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
 async function listWithSemaphore(item, chunkSize, shouldSleep) {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
+  // Check process limit before acquiring semaphore
+  if (listProcesses.size >= config.queue.maxListings) {
+    logger.info("Maximum listing processes reached", { url: item.url });
+    return {
+      url: item.url,
+      title: "Video",
+      status: "failed",
+      error: "Maximum listing processes reached"
+    };
+  }
+
   // Acquire semaphore before starting listing
   await ListingSemaphore.acquire();
 
@@ -1864,7 +1875,7 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
     const entryKey = `pending_${videoUrl}_${Date.now()}`;
     listProcesses.set(entryKey, listEntry);
 
-    // Execute listing
+    // Execute listing 
     const result = await executeListing(item, entryKey, chunkSize, shouldSleep);
 
     // Cleanup pending entry if still exists
@@ -2048,7 +2059,12 @@ async function handlePlaylistListing(item) {
     if (result.count < chunkSize) {
       return completePlaylistListing(videoUrl, processedChunks);
     }
-    emitChunkComplete(videoUrl, processedChunks);
+    sock.emit("listing-chunk-complete", {
+      url: videoUrl,
+      type: "playlist-chunk",
+      status: "completed",
+      processedChunks
+    });
   }
   return completePlaylistListing(videoUrl, processedChunks);
 }
@@ -2168,12 +2184,6 @@ async function fetchVideoInformation(videoUrl, startIndex, endIndex) {
   });
 
   return new Promise((resolve, reject) => {
-    // Check process limit
-    if (listProcesses.size >= config.queue.maxListings) {
-      logger.info("Maximum listing processes reached", { url: videoUrl });
-      return reject(new Error("Maximum listing processes reached"));
-    }
-
     // Configure process arguments
     const processArgs = [
       "--playlist-start", startIndex.toString(),
@@ -3046,16 +3056,16 @@ server.listen(config.port, async () => {
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
     `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`
   );
-  for (const [name, job] of Object.entries(jobs)) {
-    job.start();
-    logger.info(`Started ${name} job`, {
-      schedule: job.cronTime.source,
-      nextRun: job.nextDate().toLocaleString(
-        {
-          weekday: 'short', month: 'short', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
-        },
-        { timeZone: config.timeZone })
-    });
-  }
+  // for (const [name, job] of Object.entries(jobs)) {
+  //   job.start();
+  //   logger.info(`Started ${name} job`, {
+  //     schedule: job.cronTime.source,
+  //     nextRun: job.nextDate().toLocaleString(
+  //       {
+  //         weekday: 'short', month: 'short', day: '2-digit',
+  //         hour: '2-digit', minute: '2-digit'
+  //       },
+  //       { timeZone: config.timeZone })
+  //   });
+  // } 
 });
