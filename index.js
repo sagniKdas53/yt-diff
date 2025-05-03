@@ -1906,6 +1906,8 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
   let processedChunks = 0;
+  let playlistTitle = "";
+  let seekPlaylistListTo = 0;
 
   try {
     // Send initial status
@@ -1942,10 +1944,13 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
           await existingPlaylist.update({ monitoringType: currentMonitoringType });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
+        playlistTitle = existingPlaylist.title;
       } else {
         // If the playlist doesn't exist, add it to the database
         logger.debug(`Playlist not found in database, adding to database`, { url: videoUrl });
-        await addPlaylist(videoUrl, currentMonitoringType);
+        const newPlaylist = await addPlaylist(videoUrl, currentMonitoringType);
+        playlistTitle = newPlaylist.title;
+        seekPlaylistListTo = newPlaylist.sortOrder;
       }
       return await handlePlaylistListing({
         videoUrl,
@@ -1954,7 +1959,9 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
         chunkSize,
         shouldSleep,
         isScheduledUpdate,
-        processedChunks
+        processedChunks,
+        playlistTitle,
+        seekPlaylistListTo
       });
     } else {
       return await handleSingleVideoListing({
@@ -2036,17 +2043,29 @@ function handleEmptyResponse(videoUrl) {
  * @param {number} item.chunkSize - The size of each chunk to process.
  * @param {boolean} item.shouldSleep - Whether to introduce a delay between processing chunks.
  * @param {boolean} item.isScheduledUpdate - Indicates if the processing is part of a scheduled update.
+ * @param {string} item.playlistTitle - The title of the playlist being processed.
+ * @param {number} item.seekPlaylistListTo - The position in the playlist list to seek to after processing.
  * @returns {Promise<void>} Resolves when the playlist listing is complete.
  */
 async function handlePlaylistListing(item) {
-  const { videoUrl, responseItems, startIndex, chunkSize, shouldSleep, isScheduledUpdate } = item;
+  const { videoUrl, responseItems, startIndex, chunkSize,
+    shouldSleep, isScheduledUpdate, playlistTitle, seekPlaylistListTo } = item;
   let processedChunks = item.processedChunks || 0;
   // Process initial chunk
   const initialResult = await processVideoInformation(responseItems, videoUrl, startIndex, isScheduledUpdate);
   processedChunks++;
   if (initialResult.count < chunkSize) {
-    return completePlaylistListing(videoUrl, processedChunks);
+    return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
   }
+  // This is the first chunk, so we need to emit the event
+  sock.emit("listing-playlist-chunk-complete", {
+    url: videoUrl,
+    type: "playlist-chunk",
+    status: "chunk-completed",
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo
+  });
   // Process remaining chunks
   while (true) {
     if (shouldSleep) await sleep();
@@ -2057,16 +2076,18 @@ async function handlePlaylistListing(item) {
     const result = await processVideoInformation(nextItems, videoUrl, nextStartIndex, isScheduledUpdate);
     processedChunks++;
     if (result.count < chunkSize) {
-      return completePlaylistListing(videoUrl, processedChunks);
+      return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
     }
-    sock.emit("listing-chunk-complete", {
+    sock.emit("listing-playlist-chunk-complete", {
       url: videoUrl,
       type: "playlist-chunk",
-      status: "completed",
-      processedChunks
+      status: "chunk-completed",
+      processedChunks,
+      playlistTitle,
+      seekPlaylistListTo
     });
   }
-  return completePlaylistListing(videoUrl, processedChunks);
+  return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
 }
 /**
  * Handles the processing of a single video listing item.
@@ -2085,7 +2106,14 @@ async function handleSingleVideoListing(item) {
   const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } = item;
   const playlistUrl = "None";
   if (itemType === "undownloaded") {
-    return await updateExistingVideo(videoUrl);
+    // TODO: Add logic to check if the video still available, if not then update accordingly
+    // return await updateExistingVideo(videoUrl);
+    return {
+      url: videoUrl,
+      title: "Video",
+      status: "unchanged",
+      processedChunks: 0
+    }
   }
   // Add new video to "None" playlist
   const lastVideo = await PlaylistVideoMapping.findOne({
@@ -2100,13 +2128,14 @@ async function handleSingleVideoListing(item) {
     sock.emit("listing-single-item-complete", {
       url: videoUrl,
       type: itemType,
+      title: result.title,
       status: "completed",
       processedChunks: 1,
       seekSubListTo: newStartIndex
     });
     return {
       url: videoUrl,
-      title: "Video",
+      title: result.title,
       status: "completed",
       processedChunks: 1
     };
@@ -2142,13 +2171,17 @@ function handleListingError(error, videoUrl, itemType) {
  * 
  * @param {string} videoUrl - URL of the playlist that was processed
  * @param {number} processedChunks - Number of chunks that were processed
+ * @param {string} playlistTitle - Title of the playlist
+ * @param {number} seekPlaylistListTo - Position in the playlist list to seek to
  * @returns {Object} Object containing url, title, status and processed chunk count
  */
-function completePlaylistListing(videoUrl, processedChunks) {
+function completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo) {
   // Log completion
   logger.info(`Playlist listing completed`, {
     url: videoUrl,
-    processedChunks
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo
   });
 
   // Emit completion event
@@ -2156,15 +2189,19 @@ function completePlaylistListing(videoUrl, processedChunks) {
     url: videoUrl,
     type: "playlist",
     status: "completed",
-    processedChunks
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo
   });
 
   // Return completion status
   return {
     url: videoUrl,
-    title: "Playlist",
+    type: "Playlist",
     status: "completed",
-    processedChunks
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo
   };
 }
 /**
@@ -2285,9 +2322,9 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
 
   const result = {
     count: 0,
+    title: "",
     responseUrl: playlistUrl,
     startIndex: startIndex,
-    shouldStopProcessing: false
   };
 
   // Get last processed index for updates
@@ -2332,7 +2369,6 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
 
   if (allExist) {
     logger.debug("All videos already exist in database");
-    result.shouldStopProcessing = true;
     result.count = existingIndexes.length;
     return result;
   }
@@ -2374,6 +2410,7 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
       }
 
       result.count++;
+      result.title = videoData.title;
       logger.debug("Processed video item", {
         videoUrl: videoUrl,
         title: videoData.title,
