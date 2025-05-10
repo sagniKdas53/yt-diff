@@ -813,12 +813,12 @@ async function registerUser(request, response) {
     }
 
     const requestData = await parseRequestJson(request);
-    const { user_name: username, password } = requestData;
+    const { user_name: userName, password } = requestData;
 
     // Validate password length (bcrypt limit is 72 bytes)
     if (Buffer.byteLength(password, 'utf8') > 72) {
       logger.error("Password too long", {
-        username,
+        userName,
         passwordLength: Buffer.byteLength(password, 'utf8')
       });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -830,7 +830,7 @@ async function registerUser(request, response) {
 
     // Check for existing user
     const existingUser = await UserAccount.findOne({
-      where: { username: username }
+      where: { username: userName }
     });
 
     if (existingUser) {
@@ -844,7 +844,7 @@ async function registerUser(request, response) {
     // Create new user
     const [salt, hashedPassword] = await hashPassword(password);
     await UserAccount.create({
-      username: username,
+      username: userName,
       passwordSalt: salt,
       passwordHash: hashedPassword
     });
@@ -1036,7 +1036,7 @@ async function authenticateUser(request, response) {
   try {
     const requestData = await parseRequestJson(request);
     const {
-      user_name: username,
+      userName: userName,
       password,
       expiry_time: expiryTime = "31d"
     } = requestData;
@@ -1044,7 +1044,7 @@ async function authenticateUser(request, response) {
     // Validate password length
     if (Buffer.byteLength(password, 'utf8') > 72) {
       logger.error("Password too long", {
-        username,
+        userName,
         passwordLength: Buffer.byteLength(password, 'utf8')
       });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -1056,11 +1056,11 @@ async function authenticateUser(request, response) {
 
     // Find user
     const user = await UserAccount.findOne({
-      where: { username: username }
+      where: { username: userName }
     });
 
     if (!user) {
-      logger.verbose(`Authentication failed for user ${username}`);
+      logger.verbose(`Authentication failed for user ${userName}`);
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
@@ -1072,7 +1072,7 @@ async function authenticateUser(request, response) {
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isPasswordValid) {
-      logger.verbose(`Authentication failed for user ${username}`);
+      logger.verbose(`Authentication failed for user ${userName}`);
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
@@ -1082,7 +1082,7 @@ async function authenticateUser(request, response) {
 
     // Generate token
     const token = generateAuthToken(user, expiryTime);
-    logger.verbose(`Authentication successful for user ${username}`);
+    logger.verbose(`Authentication successful for user ${userName}`);
 
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
