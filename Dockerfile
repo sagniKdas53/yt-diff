@@ -1,5 +1,6 @@
 # Stage 0: Define global arguments
-ARG TARGETARCH # Automatically set by Docker BuildKit to 'amd64', 'arm64', etc.
+# Automatically set by Docker BuildKit to 'amd64', 'arm64', etc.
+ARG TARGETARCH
 ARG NODE_VERSION=20.11.1
 ARG VITE_BASE_PATH=/ytdiff
 
@@ -29,11 +30,11 @@ RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "fals
     mv ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffmpeg ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffprobe ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffplay /dist/bin/ && \
     # Download PhantomJS (Note: x86_64 only from this source, will be skipped on ARM64)
     if [ "$TARGETARCH" = "amd64" ]; then \
-        wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
-        tar -xf phantomjs.tar.bz2 && \
-        mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
+    wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
+    tar -xf phantomjs.tar.bz2 && \
+    mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
     else \
-        echo "INFO: Skipping PhantomJS for $TARGETARCH as only x86_64 binary is available from the script's original source."; \
+    echo "INFO: Skipping PhantomJS for $TARGETARCH as only x86_64 binary is available from the script's original source."; \
     fi && \
     # Cleanup build dependencies and downloaded files
     cd / && rm -rf /tmp/* && \
@@ -69,8 +70,8 @@ ARG TARGETARCH
 ARG NODE_VERSION
 ARG VITE_BASE_PATH
 
-ENV LANG C.UTF-8
-ENV NODE_ENV production
+ENV LANG=C.UTF-8
+ENV NODE_ENV=production
 ENV OPENSSL_CONF=/dev/null
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
@@ -89,10 +90,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     elif [ "$TARGETARCH" = "arm64" ]; then NODE_ARCH="arm64"; \
     else echo "ERROR: Unsupported TARGETARCH for Node.js: $TARGETARCH"; exit 1; fi && \
     wget "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -O node.tar.xz && \
-    tar -xJf node.tar.xz --strip-components=1 -C /usr/local/bin && \
+    tar -xJf node.tar.xz --strip-components=1 -C /usr/local && \
     rm node.tar.xz && \
+    # Verify npm is installed and working from the manually installed Node.js
+    echo "DEBUG: Checking npm version in final stage after Node.js install:" && \
+    /usr/local/bin/npm --version && \
     # Cleanup build dependencies for Node.js installation and apt cache
-    apt-get purge -y wget xz-utils && \
+    apt-get purge -y xz-utils && \
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
 
@@ -109,7 +113,7 @@ COPY package.json package-lock.json* ./
 COPY index.js ./
 
 # Install backend Node.js dependencies for production
-RUN node /usr/local/bin/node/lib/node_modules/npm/bin/npm-cli.js install --production --ignore-scripts
+RUN npm install --production
 
 # Create a non-root user and group for running the application
 RUN groupadd -r ytdiff --gid=999 && \
