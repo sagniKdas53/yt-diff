@@ -33,6 +33,7 @@ services:
     volumes:
       - ${DB_LOCATION}:/var/lib/postgresql/data
     labels:
+      # Watchtower monitoring
       - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
       - "autoheal.enable=true"
@@ -104,6 +105,8 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
       - "autoheal.enable=true"
+      # Watchtower monitoring
+      - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff" ]
       interval: 5m
@@ -141,6 +144,8 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
       - "autoheal.enable=true"
+      # Watchtower monitoring
+      - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
       test: [ "CMD", "wget", "-O", "-", "http://localhost:80/pgadmin/misc/ping" ]
       interval: 30s
