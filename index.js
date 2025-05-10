@@ -112,6 +112,7 @@ const MIME_TYPES = {
   '.br': 'application/brotli',
   '.svg': 'image/svg+xml',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
 };
 const CORS_ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -2913,6 +2914,7 @@ function makeAssets(fileList) {
   staticAssets[`${config.urlBase}.gz`] = staticAssets[`${config.urlBase}/index.html.gz`];
   staticAssets[`${config.urlBase}/.br`] = staticAssets[`${config.urlBase}/index.html.br`];
   staticAssets[`${config.urlBase}.br`] = staticAssets[`${config.urlBase}/index.html.br`];
+  staticAssets[`${config.urlBase}/ping`] = { file: "pong", type: MIME_TYPES[".txt"] };
   return staticAssets;
 }
 
@@ -2938,18 +2940,29 @@ const server = http.createServer(serverOptions, (req, res) => {
     try {
       const get = req.url;
       const reqEncoding = req.headers["accept-encoding"] || "";
-      const resHeaders = generateCorsHeaders(staticAssets[get].type);
       logger.trace(`Request Recieved`, {
         path: req.url,
         method: req.method,
         encoding: reqEncoding,
       });
-      if (reqEncoding.includes("br")) {
+      // Check if the requested file exists in the static assets
+      if (!staticAssets[get]) {
+        logger.error("Requested Resource couldn't be found", {
+          path: req.url,
+          method: req.method,
+          encoding: reqEncoding,
+        });
+        res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+        res.write("Not Found");
+        return res.end();
+      }
+      const resHeaders = generateCorsHeaders(staticAssets[get].type);
+      if (reqEncoding.includes("br") && staticAssets[get + ".br"]) {
         resHeaders["Content-Encoding"] = "br";
         res.writeHead(200, resHeaders);
         res.write(staticAssets[get + ".br"].file);
         return res.end();
-      } else if (reqEncoding.includes("gzip")) {
+      } else if (reqEncoding.includes("gzip") && staticAssets[get + ".gz"]) {
         resHeaders["Content-Encoding"] = "gzip";
         res.writeHead(200, resHeaders);
         res.write(staticAssets[get + ".gz"].file);

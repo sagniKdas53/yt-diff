@@ -63,8 +63,8 @@ services:
       - revProxy-net
     # expose:
     #   - ${PORT}
-    # ports:
-    #   - ${PORT}:${PORT}
+    ports:
+      - ${PORT}:${PORT}
     secrets:
       - db_password
       - secret_key
@@ -104,11 +104,11 @@ services:
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
       - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
-      - "autoheal.enable=true"
+      # - "autoheal.enable=true"
       # Watchtower monitoring
       - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff" ]
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8888/ytdiff/ping" ]
       interval: 5m
       timeout: 5s
       start_period: 30s
