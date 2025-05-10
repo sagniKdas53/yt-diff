@@ -1,27 +1,119 @@
-ARG ARCH=latest
-
-FROM purevert/node-alpine:${ARCH}
-
+# Stage 0: Define global arguments
+ARG TARGETARCH # Automatically set by Docker BuildKit to 'amd64', 'arm64', etc.
+ARG NODE_VERSION=20.11.1
 ARG VITE_BASE_PATH=/ytdiff
 
+# ---- Stage 1: Prebuilt Binaries Builder (Alpine based) ----
+# This stage downloads/extracts yt-dlp, ffmpeg, and phantomjs
+FROM alpine:3.19 AS prebuilt-binaries-builder
+
+ARG TARGETARCH
+
+# Install essential tools for downloading and extraction using apk
+# Add a note about potential issues with glibc binaries on musl
+RUN apk update && \
+    apk add --no-cache wget ca-certificates tar xz bzip2 && \
+    mkdir -p /dist/bin && \
+    cd /tmp && \
+    # Download yt-dlp
+    YTDLP_URL_SUFFIX="" && \
+    if [ "$TARGETARCH" = "arm64" ]; then YTDLP_URL_SUFFIX="_aarch64"; fi && \
+    wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux${YTDLP_URL_SUFFIX}" -O "/dist/bin/yt-dlp" && \
+    chmod +x "/dist/bin/yt-dlp" && \
+    # Download FFmpeg
+    # WARNING: These FFmpeg builds are likely compiled against glibc and may NOT work on Alpine (musl-based).
+    # Consider using 'apk add ffmpeg' in the final stage for a more Alpine-native solution if these fail.
+    FFMPEG_ARCH_SUFFIX="linux64" && \
+    if [ "$TARGETARCH" = "arm64" ]; then FFMPEG_ARCH_SUFFIX="linuxarm64"; fi && \
+    echo "INFO: Attempting to download FFmpeg builds from yt-dlp/FFmpeg-Builds. These are likely glibc-based and may have compatibility issues on Alpine." && \
+    wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl.tar.xz" -O "ffmpeg.tar.xz" && \
+    tar -xf ffmpeg.tar.xz && \
+    mv ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffmpeg ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffprobe ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffplay /dist/bin/ && \
+    # Download PhantomJS
+    # WARNING: This PhantomJS binary is for x86_64 (amd64) glibc-based systems.
+    # It will NOT work on ARM64 and is highly unlikely to work on Alpine (any architecture).
+    # Consider finding an alternative or removing PhantomJS if it's not strictly amd64/glibc compatible.
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        echo "INFO: Attempting to download PhantomJS (x86_64 glibc binary). This is unlikely to work on Alpine." && \
+        wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
+        tar -xf phantomjs.tar.bz2 && \
+        mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
+    else \
+        echo "INFO: Skipping PhantomJS for $TARGETARCH (binary is x86_64 glibc only and incompatible with Alpine/ARM)."; \
+    fi && \
+    # Cleanup downloaded files
+    cd / && rm -rf /tmp/*
+
+# ---- Stage 2: Frontend Builder (Node Alpine based) ----
+# This stage builds the React frontend using an official Node Alpine image
+FROM node:${NODE_VERSION}-alpine AS frontend-builder
+
+ARG VITE_BASE_PATH
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
-RUN apk add yt-dlp git ffmpeg \
-  && git clone https://github.com/sagniKdas53/yt-diff yt-diff \
-  && mv yt-diff/package.json . \
-  && mv yt-diff/index.js . \
-  && npm install \
-  && rm -rf yt-diff \
-  &&git clone -b material https://github.com/sagniKdas53/yt-diff-react frontend \
-  && cd frontend \
-  && npm install \
-  && npm run build \
-  && cd .. \
-  && rm -rf frontend \
-  && apk del git
+WORKDIR /app
+
+# Install git for cloning the repository
+RUN apk update && \
+    apk add --no-cache git
+
+# Clone the frontend repository, install dependencies, and build
+RUN git clone -b material https://github.com/sagniKdas53/yt-diff-react ./frontend_src
+WORKDIR /app/frontend_src
+RUN npm install
+RUN npm run build
+
+# ---- Stage 3: Final Application Image (Node Alpine based) ----
+FROM node:${NODE_VERSION}-alpine AS final
+
+ARG VITE_BASE_PATH
+
+ENV LANG C.UTF-8
+ENV NODE_ENV production
+# From original Dockerfile, may or may not be needed/effective on Alpine
+ENV OPENSSL_CONF=/dev/null 
+# If your backend Node.js app needs this
+ENV VITE_BASE_PATH=${VITE_BASE_PATH} 
+
+WORKDIR /app
+
+# Install runtime dependencies: tini as an init process.
+# ca-certificates is usually included in the base node alpine image.
+# Add gcompat if you absolutely need to try running glibc binaries (experimental, may not work for all cases)
+# RUN apk add --no-cache tini gcompat
+RUN apk update && \
+    apk add --no-cache tini
+
+# Copy prebuilt binaries from the prebuilt-binaries-builder stage
+# WARNING: Functionality of these copied binaries (especially ffmpeg, phantomjs) on Alpine is NOT guaranteed due to libc differences.
+COPY --from=prebuilt-binaries-builder /dist/bin/yt-dlp /usr/local/bin/
+COPY --from=prebuilt-binaries-builder /dist/bin/ffmpeg /usr/local/bin/
+COPY --from=prebuilt-binaries-builder /dist/bin/ffprobe /usr/local/bin/
+COPY --from=prebuilt-binaries-builder /dist/bin/ffplay /usr/local/bin/
+COPY --from=prebuilt-binaries-builder /dist/bin/phantomjs /usr/local/bin/phantomjs
+
+# Copy built frontend assets from the frontend-builder stage
+# IMPORTANT: Adjust './public' if your Node.js server (index.js) expects frontend assets in a different directory
+COPY --from=frontend-builder /app/frontend_src/dist ./public
+
+# Copy backend application files
+COPY package.json package-lock.json* ./
+COPY index.js ./
+
+# Install backend Node.js dependencies for production
+RUN npm install --production --ignore-scripts
+
+# Create a non-root user and group for running the application
+# Alpine's addgroup/adduser are slightly different
+RUN addgroup -S -g 1000 ytdiff && \
+    adduser -S -u 1000 -G ytdiff -s /sbin/nologin ytdiff && \
+    # Ensure the app directory exists and set ownership
+    mkdir -p /app && chown -R ytdiff:ytdiff /app
+
+USER ytdiff
 
 EXPOSE 8888
 
-USER node
-
+# Use tini as the entrypoint to handle signals and reap zombie processes
+ENTRYPOINT [ "/sbin/tini", "--" ] # tini is often in /sbin on Alpine
 CMD [ "node", "index.js" ]

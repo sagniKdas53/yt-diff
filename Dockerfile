@@ -1,37 +1,126 @@
-FROM debian:stable
-
-RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
-
-RUN echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/00-docker
-
-ENV OPENSSL_CONF=/dev/null
-
-RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get update \
-    && apt-get -y upgrade \
-    && apt-get install -y ca-certificates xz-utils bzip2 wget git -y \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /
-
-COPY package.json /
-
-COPY get-packages.sh /
-
-COPY index.js /
-
+# Stage 0: Define global arguments
+ARG TARGETARCH # Automatically set by Docker BuildKit to 'amd64', 'arm64', etc.
+ARG NODE_VERSION=20.11.1
 ARG VITE_BASE_PATH=/ytdiff
 
+# ---- Stage 1: Prebuilt Binaries Builder ----
+# This stage downloads/extracts yt-dlp, ffmpeg, and phantomjs
+FROM debian:stable-slim AS prebuilt-binaries-builder
+
+ARG TARGETARCH
+
+# Install essential tools for downloading and extraction
+RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras && \
+    DEBIAN_FRONTEND=noninteractive apt-get update && \
+    apt-get -y upgrade && \
+    apt-get install -y wget ca-certificates xz-utils bzip2 --no-install-recommends && \
+    mkdir -p /dist/bin && \
+    cd /tmp && \
+    # Download yt-dlp
+    YTDLP_URL_SUFFIX="" && \
+    if [ "$TARGETARCH" = "arm64" ]; then YTDLP_URL_SUFFIX="_aarch64"; fi && \
+    wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux${YTDLP_URL_SUFFIX}" -O "/dist/bin/yt-dlp" && \
+    chmod +x "/dist/bin/yt-dlp" && \
+    # Download FFmpeg
+    FFMPEG_ARCH_SUFFIX="linux64" && \
+    if [ "$TARGETARCH" = "arm64" ]; then FFMPEG_ARCH_SUFFIX="linuxarm64"; fi && \
+    wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl.tar.xz" -O "ffmpeg.tar.xz" && \
+    tar -xf ffmpeg.tar.xz && \
+    mv ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffmpeg ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffprobe ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffplay /dist/bin/ && \
+    # Download PhantomJS (Note: x86_64 only from this source, will be skipped on ARM64)
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
+        tar -xf phantomjs.tar.bz2 && \
+        mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
+    else \
+        echo "INFO: Skipping PhantomJS for $TARGETARCH as only x86_64 binary is available from the script's original source."; \
+    fi && \
+    # Cleanup build dependencies and downloaded files
+    cd / && rm -rf /tmp/* && \
+    apt-get purge -y wget xz-utils bzip2 && \
+    apt-get autoremove -y --purge && \
+    rm -rf /var/lib/apt/lists/*
+
+# ---- Stage 2: Frontend Builder ----
+# This stage builds the React frontend
+FROM node:${NODE_VERSION}-slim AS frontend-builder
+
+ARG VITE_BASE_PATH
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
-RUN ./get-packages.sh
+WORKDIR /app
 
-RUN apt remove git ca-certificates xz-utils bzip2 -y \
-    && (getent group 1000 || groupadd -g 1000 ytdiff) \
-    && useradd -u 1000 -g ytdiff -s /bin/bash -m ytdiff
+# Install git for cloning the repository
+RUN apt-get update && \
+    apt-get install -y git ca-certificates --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-EXPOSE 8888
+# Clone the frontend repository, install dependencies, and build
+# Assuming the frontend has its own package.json
+RUN git clone -b material https://github.com/sagniKdas53/yt-diff-react ./frontend_src
+WORKDIR /app/frontend_src
+RUN npm install
+RUN npm run build
+
+# ---- Stage 3: Final Application Image ----
+FROM debian:stable-slim AS final
+
+ARG TARGETARCH
+ARG NODE_VERSION
+ARG VITE_BASE_PATH
+
+ENV LANG C.UTF-8
+ENV NODE_ENV production
+ENV OPENSSL_CONF=/dev/null
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+
+WORKDIR /app
+
+# Apply APT settings to avoid recommends/suggests
+RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras
+
+# Install runtime dependencies: ca-certificates for HTTPS, tini as an init process, wget & xz-utils for Node.js download
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
+    apt-get -y upgrade && \
+    apt-get install -y ca-certificates tini wget xz-utils --no-install-recommends && \
+    # Install Node.js runtime
+    NODE_ARCH="" && \
+    if [ "$TARGETARCH" = "amd64" ]; then NODE_ARCH="x64"; \
+    elif [ "$TARGETARCH" = "arm64" ]; then NODE_ARCH="arm64"; \
+    else echo "ERROR: Unsupported TARGETARCH for Node.js: $TARGETARCH"; exit 1; fi && \
+    wget "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -O node.tar.xz && \
+    tar -xJf node.tar.xz --strip-components=1 -C /usr/local/bin && \
+    rm node.tar.xz && \
+    # Cleanup build dependencies for Node.js installation and apt cache
+    apt-get purge -y wget xz-utils && \
+    apt-get autoremove -y --purge && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy prebuilt binaries from the prebuilt-binaries-builder stage to a standard PATH location
+COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
+
+# Copy built frontend assets from the frontend-builder stage
+# IMPORTANT: Adjust './public' if your Node.js server (index.js) expects frontend assets in a different directory (e.g., './frontend/dist' or similar)
+COPY --from=frontend-builder /app/dist ./dist
+
+# Copy backend application files (package.json, package-lock.json if it exists, and index.js)
+# Ensure these files are in the same directory as your Dockerfile when building
+COPY package.json package-lock.json* ./
+COPY index.js ./
+
+# Install backend Node.js dependencies for production
+RUN node /usr/local/bin/node/lib/node_modules/npm/bin/npm-cli.js install --production --ignore-scripts
+
+# Create a non-root user and group for running the application
+RUN groupadd -r ytdiff --gid=999 && \
+    useradd -r -s /bin/false -g ytdiff --uid=999 ytdiff && \
+    # Ensure the app directory exists and set ownership
+    mkdir -p /app && chown -R ytdiff:ytdiff /app
 
 USER ytdiff
 
+EXPOSE 8888
+
+# Use tini as the entrypoint to handle signals and reap zombie processes
+ENTRYPOINT [ "/usr/bin/tini", "--" ]
 CMD [ "node", "index.js" ]
