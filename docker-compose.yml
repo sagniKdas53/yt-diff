@@ -63,8 +63,8 @@ services:
       - revProxy-net
     # expose:
     #   - ${PORT}
-    ports:
-      - ${PORT}:${PORT}
+    # ports:
+      # - ${PORT}:${PORT}
     secrets:
       - db_password
       - secret_key
@@ -104,7 +104,7 @@ services:
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
       - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
-      # - "autoheal.enable=true"
+      - "autoheal.enable=true"
       # Watchtower monitoring
       - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:

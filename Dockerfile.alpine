@@ -1,5 +1,5 @@
 # Stage 0: Define global arguments
-ARG TARGETARCH # Automatically set by Docker BuildKit to 'amd64', 'arm64', etc.
+ARG TARGETARCH
 ARG NODE_VERSION=20.11.1
 ARG VITE_BASE_PATH=/ytdiff
 
@@ -34,12 +34,12 @@ RUN apk update && \
     # It will NOT work on ARM64 and is highly unlikely to work on Alpine (any architecture).
     # Consider finding an alternative or removing PhantomJS if it's not strictly amd64/glibc compatible.
     if [ "$TARGETARCH" = "amd64" ]; then \
-        echo "INFO: Attempting to download PhantomJS (x86_64 glibc binary). This is unlikely to work on Alpine." && \
-        wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
-        tar -xf phantomjs.tar.bz2 && \
-        mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
+    echo "INFO: Attempting to download PhantomJS (x86_64 glibc binary). This is unlikely to work on Alpine." && \
+    wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
+    tar -xf phantomjs.tar.bz2 && \
+    mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
     else \
-        echo "INFO: Skipping PhantomJS for $TARGETARCH (binary is x86_64 glibc only and incompatible with Alpine/ARM)."; \
+    echo "INFO: Skipping PhantomJS for $TARGETARCH (binary is x86_64 glibc only and incompatible with Alpine/ARM)."; \
     fi && \
     # Cleanup downloaded files
     cd / && rm -rf /tmp/*
@@ -55,7 +55,7 @@ WORKDIR /app
 
 # Install git for cloning the repository
 RUN apk update && \
-    apk add --no-cache git
+    apk add --no-cache git ca-certificates
 
 # Clone the frontend repository, install dependencies, and build
 RUN git clone -b material https://github.com/sagniKdas53/yt-diff-react ./frontend_src
@@ -68,8 +68,8 @@ FROM node:${NODE_VERSION}-alpine AS final
 
 ARG VITE_BASE_PATH
 
-ENV LANG C.UTF-8
-ENV NODE_ENV production
+ENV LANG=C.UTF-8
+ENV NODE_ENV=production
 # From original Dockerfile, may or may not be needed/effective on Alpine
 ENV OPENSSL_CONF=/dev/null 
 # If your backend Node.js app needs this
@@ -94,7 +94,7 @@ COPY --from=prebuilt-binaries-builder /dist/bin/phantomjs /usr/local/bin/phantom
 
 # Copy built frontend assets from the frontend-builder stage
 # IMPORTANT: Adjust './public' if your Node.js server (index.js) expects frontend assets in a different directory
-COPY --from=frontend-builder /app/frontend_src/dist ./public
+COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
 COPY package.json package-lock.json* ./
@@ -115,5 +115,5 @@ USER ytdiff
 EXPOSE 8888
 
 # Use tini as the entrypoint to handle signals and reap zombie processes
-ENTRYPOINT [ "/sbin/tini", "--" ] # tini is often in /sbin on Alpine
+ENTRYPOINT [ "/sbin/tini", "--" ]
 CMD [ "node", "index.js" ]
