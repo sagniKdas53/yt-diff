@@ -116,8 +116,11 @@ COPY index.js ./
 RUN npm install --production
 
 # Create a non-root user and group for running the application
-RUN groupadd -r ytdiff --gid=999 && \
-    useradd -r -s /bin/false -g ytdiff --uid=999 ytdiff && \
+RUN groupadd ytdiff --gid=1000 && \
+    useradd -m -s /bin/false -g ytdiff --uid=1000 ytdiff && \
+    # Create cache directory with proper permissions
+    mkdir -p /home/ytdiff/.cache/yt-dlp && \
+    chown -R ytdiff:ytdiff /home/ytdiff && \
     # Ensure the app directory exists and set ownership
     mkdir -p /app && chown -R ytdiff:ytdiff /app
 

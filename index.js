@@ -1979,12 +1979,12 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
   }
 }
 
-// Helper functions for executListing()
+// Helper functions for executeListing()
 /**
  * Determines the initial range of indices for processing items in a playlist.
  *
  * @param {string} itemType - The type of item being processed (e.g., "playlist").
- * @param {string} monitoringType - The monitoring mode, either "Full" for full reindexing or "Fast" for incremental updates.
+ * @param {string} monitoringType - The monitoring mode, either "Full" for full re-indexing or "Fast" for incremental updates.
  * @param {string} playlistUrl - The URL of the playlist being monitored.
  * @param {number} chunkSize - The size of the chunk to process in each iteration.
  * @returns {Promise<{startIndex: number, endIndex: number}>} An object containing the start and end indices for processing.
@@ -2940,7 +2940,7 @@ const server = http.createServer(serverOptions, (req, res) => {
     try {
       const get = req.url;
       const reqEncoding = req.headers["accept-encoding"] || "";
-      logger.trace(`Request Recieved`, {
+      logger.trace(`Request Received`, {
         path: req.url,
         method: req.method,
         encoding: reqEncoding,
