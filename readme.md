@@ -21,7 +21,6 @@ yt-dlp bundled with a node-js server and somewhat usable UI made in react and mu
 
 Populate the .env file with the following variables
 
-
 ### Building the docker image
 
 Amd64:
@@ -29,6 +28,7 @@ Amd64:
 ```bash
 docker build --build-arg VITE_BASE_PATH="/ytdiff" --no-cache -t purevert/yt-diff:amd64 .
 ```
+
 Alpine-amd64:
 
 ```bash
@@ -68,11 +68,14 @@ yt-dlp --embed-metadata --write-subs --write-auto-subs --write-description \
 ### Example
 
 Executing this command will return a list of some of the videos in the playlist
+
 ```bash
 yt-dlp --playlist-start 1 --playlist-end 2 --flat-playlist \
  --print "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize)s\t%(filesize_approx)s" https://www.youtube.com/playlist?list=PL4Oo6H2hGqj0YkYoOLFmrbhsVWfAjCLZw
 ```
+
 Output:
+
 ```log
 Yes... this Voice Line is actually in the game\tK1VVWJrpDgs\thttps://www.youtube.com/watch?v=K1VVWJrpDgs\tNA\tNA
 Yes... this Voice Line is actually in the game\tK1VVWJrpDgs\thttps://www.youtube.com/watch?v=K1VVWJrpDgs\tNA\tNA
@@ -88,7 +91,6 @@ WHERE video_indexers.playlist_url = 'https://www.youtube.com/playlist?list=PL4Oo
 ORDER BY index_in_playlist DESC;
 ```
 
-
 ```sql
 SELECT DISTINCT video_lists.video_url,video_indexers.index_in_playlist,video_lists.title,video_indexers."createdAt",video_indexers."updatedAt"
 FROM video_indexers
@@ -97,6 +99,7 @@ WHERE video_indexers.playlist_url = 'https://www.youtube.com/playlist?list=PLyIw
 ORDER BY video_indexers."updatedAt" DESC
 LIMIT 50
 ```
+
 ### Experimental
 
 Trying out this logging format
@@ -104,7 +107,3 @@ Trying out this logging format
 ```bash
 yt-dlp --progress-template "download:[download] %(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s" https://www.youtube.com/watch?v=K1VVWJrpDgs
 ```
-
-# Curl:
-
-Get a static build form here: https://github.com/moparisthebest/static-curl
