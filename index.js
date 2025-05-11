@@ -78,6 +78,7 @@ const config = {
  * 
  * Options included:
  * - "--embed-metadata": Always included to embed metadata in the downloaded file.
+ * - "--embed-chapters": Always included to embed chapters in the downloaded file.
  * - "--write-subs": Included if `config.saveSubs` is true, to write subtitles.
  * - "--write-auto-subs": Included if `config.saveSubs` is true, to write automatic subtitles.
  * - "--write-description": Included if `config.saveDescription` is true, to write the video description.
@@ -85,10 +86,15 @@ const config = {
  * - "--write-thumbnail": Included if `config.saveThumbnail` is true, to write the video thumbnail.
  * - "--paths": Always included to specify the download paths.
  * 
+ * Options that are supported but not included by default:
+ * - "--embed-thumbnail": This option is not included as it is not be supported for webm formats and can cause conversion to mkv/mp4, which adds time to the process.
+ * - "--embed-subs": This option is not included as embedding subtitles to every video may not be possible depending on the format.
+ * 
  * The array is filtered to remove any empty strings.
  */
 const downloadOptions = [
   "--embed-metadata",
+  "--embed-chapters",
   config.saveSubs ? "--write-subs" : "",
   config.saveSubs ? "--write-auto-subs" : "",
   config.saveDescription ? "--write-description" : "",
