@@ -10,3 +10,4 @@ db_password.txt
 tests/
 secret_key.txt
 backup/
+.vscode/
