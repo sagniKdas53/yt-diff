@@ -56,8 +56,8 @@ RUN npm install --omit=dev
 
 # Create a non-root user and group for running the application
 # Alpine's addgroup/adduser are slightly different
-RUN addgroup -S -g 1001 ytdiff && \
-    adduser -S -u 1001 -G ytdiff -s /sbin/nologin ytdiff && \
+RUN addgroup -S -g 1000 ytdiff && \
+    adduser -S -u 1000 -G ytdiff -s /sbin/nologin ytdiff && \
     # Create cache directory with proper permissions
     mkdir -p /home/ytdiff/.cache/yt-dlp && \
     chown -R ytdiff:ytdiff /home/ytdiff && \
