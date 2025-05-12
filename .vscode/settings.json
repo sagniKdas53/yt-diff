@@ -1,5 +1,7 @@
 {
     "cSpell.words": [
+        "addgroup",
+        "adduser",
         "Autoheal",
         "autoremove",
         "centurylinklabs",
@@ -8,12 +10,14 @@
         "elif",
         "ffplay",
         "ffprobe",
+        "gcompat",
         "getplay",
         "getsub",
         "healthcheck",
         "isready",
         "linuxarm",
         "logfmt",
+        "nologin",
         "noninteractive",
         "pgadmin",
         "phantomjs",
