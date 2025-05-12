@@ -45,17 +45,17 @@ services:
 
   yt-diff:
     # image: purevert/yt-diff:amd64
-    image: ghcr.io/sagnikdas53/yt-diff:master
+    image: ghcr.io/sagnikdas53/yt-diff:alpine
     container_name: yt-diff
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.alpine
       args:
         # This is used to build the frontend in the docker image
         - VITE_BASE_PATH=${BASE_URL}
     volumes:
-      - ${HOST_SAVE_PATH}:/${SAVE_PATH}
+      - ${HOST_SAVE_PATH}:${CONTAINER_SAVE_PATH}
     depends_on:
       yt-db:
         condition: service_healthy
@@ -82,7 +82,7 @@ services:
       - DB_PASSWORD_FILE=/run/secrets/db_password
       - SECRET_KEY_FILE=/run/secrets/secret_key
       # Download configuration
-      - SAVE_PATH=${SAVE_PATH}
+      - SAVE_PATH=${CONTAINER_SAVE_PATH}
       - SLEEP=${SLEEP}
       - CHUNK_SIZE_DEFAULT=${CHUNK_SIZE_DEFAULT}
       - SAVE_SUBTITLES=${SAVE_SUBTITLES}
