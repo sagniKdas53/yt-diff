@@ -45,12 +45,12 @@ services:
 
   yt-diff:
     # image: purevert/yt-diff:amd64
-    image: ghcr.io/sagnikdas53/yt-diff:alpine
+    image: ghcr.io/sagnikdas53/yt-diff:master
     container_name: yt-diff
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile.alpine
+      dockerfile: Dockerfile
       args:
         # This is used to build the frontend in the docker image
         - VITE_BASE_PATH=${BASE_URL}
