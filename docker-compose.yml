@@ -55,7 +55,9 @@ services:
         # This is used to build the frontend in the docker image
         - VITE_BASE_PATH=${BASE_URL}
     volumes:
-      - ${HOST_SAVE_PATH}:${CONTAINER_SAVE_PATH}
+      - type: bind
+        source: ${HOST_SAVE_PATH}
+        target: ${CONTAINER_SAVE_PATH}
     depends_on:
       yt-db:
         condition: service_healthy
@@ -64,7 +66,7 @@ services:
     # expose:
     #   - ${PORT}
     # ports:
-      # - ${PORT}:${PORT}
+    # - ${PORT}:${PORT}
     secrets:
       - db_password
       - secret_key
