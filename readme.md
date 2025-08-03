@@ -1,6 +1,7 @@
 # yt-diff
 
 [![Build](https://github.com/sagniKdas53/yt-diff/actions/workflows/docker-image.yml/badge.svg)](https://github.com/sagniKdas53/yt-diff/actions/workflows/docker-image.yml)
+![Top Lang](https://img.shields.io/github/languages/top/sagniKdas53/yt-diff)
 
 yt-dlp bundled with a node-js server and somewhat usable UI made in react and mui. It's used to download videos from youtube and some other site almost all of the ones supported by yt-dlp.
 
