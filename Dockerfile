@@ -117,7 +117,7 @@ RUN npm install --omit=dev
 
 # Create a non-root user and group for running the application
 RUN groupadd ytdiff --gid=1000 && \
-    adduser --system --shell /bin/false --gid 1000 --uid 1000 --home /home/ytdiff ytdiff && \
+    useradd --system --shell /bin/false --gid 1000 --uid 1000 --home /home/ytdiff ytdiff && \
     # Create cache directory with proper permissions
     mkdir -p /home/ytdiff/.cache/yt-dlp && \
     chown -R ytdiff:ytdiff /home/ytdiff && \
