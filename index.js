@@ -362,6 +362,10 @@ const VideoMetadata = sequelize.define("video_metadata", {
     defaultValue: true,
     comment: "Whether video is still available on platform"
   },
+  absolutePath: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   createdAt: {
     type: DataTypes.DATE,
     allowNull: false
@@ -1534,18 +1538,28 @@ async function executeDownload(downloadItem, processKey) {
             sock.emit("downloading-percent-update", { percentage: percent });
           }
 
-          // Extract actual filename
-          const fileNameMatch = /Destination: (.+)/m.exec(output);
-          if (fileNameMatch?.[1] && !actualFileName) {
-            actualFileName = fileNameMatch[1]
-              .replace(path_fs.extname(fileNameMatch[1]), "")
+          // Extract filename from destination line
+          const fileNameDestMatch = /Destination: (.+)/m.exec(output);
+          if (fileNameDestMatch?.[1] && !actualFileName) {
+            actualFileName = fileNameDestMatch[1]
+              .replace(path_fs.extname(fileNameDestMatch[1]), "")
               .replace(savePath + "/", "")
               .trim();
 
-            logger.debug(`Actual filename: ${actualFileName}, DB title: ${videoTitle}`,
+            logger.debug(`Filename in destination: ${actualFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
 
+          // Check for merger, as this is usually the final filename
+          const mergerFileNameMatch = /\[Merger\] Merging formats into "(.+)"/m.exec(output);
+          if (mergerFileNameMatch?.[1]) {
+            actualFileName = mergerFileNameMatch[1]
+              .replace(path_fs.extname(mergerFileNameMatch[1]), "")
+              .replace(savePath + "/", "")
+              .trim();
+            logger.debug(`Filename in merger: ${actualFileName}, DB title: ${videoTitle}`,
+              { pid: downloadProcess.pid });
+          }
           // Update activity timestamp
           updateProcessActivity(processKey);
 
@@ -1584,7 +1598,8 @@ async function executeDownload(downloadItem, processKey) {
               isAvailable: true,
               title: (videoTitle === videoId || videoTitle === "NA")
                 ? (actualFileName || videoTitle)
-                : videoTitle
+                : videoTitle,
+              absolutePath: path_fs.join(savePath, actualFileName || videoTitle),
             };
 
             logger.debug(`Updating video: ${JSON.stringify(updates)}`,
