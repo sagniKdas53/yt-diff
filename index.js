@@ -824,7 +824,7 @@ async function registerUser(request, response) {
     }
 
     const requestData = await parseRequestJson(request);
-    const { user_name: userName, password } = requestData;
+    const { userName, password } = requestData;
 
     // Validate password length (bcrypt limit is 72 bytes)
     if (Buffer.byteLength(password, 'utf8') > 72) {
@@ -885,8 +885,37 @@ async function registerUser(request, response) {
  */
 async function authenticateRequest(request, response, next) {
   try {
-    const requestData = await parseRequestJson(request);
-    const { token } = requestData;
+    // Try to get token from Authorization header (Bearer) first, fall back to body
+    const authHeader = request.headers && (request.headers.authorization || request.headers.Authorization);
+    let headerToken = null;
+    if (authHeader && typeof authHeader === 'string') {
+      const parts = authHeader.split(' ');
+      if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+        headerToken = parts[1];
+      } else {
+        // If header contains token without scheme, use it directly
+        headerToken = authHeader;
+      }
+    }
+
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request);
+    } catch (err) {
+      // If request is too large, bubble up the error
+      if (err && err.status === 413) {
+        throw err;
+      }
+      // If body is empty or invalid JSON, continue with empty object
+      requestData = {};
+    }
+
+    const token = headerToken || requestData.token;
+
+    if (!token) {
+      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({ status: 'error', message: "Token required" }));
+    }
 
     // Verify token
     const decodedToken = jwt.verify(token, config.secretKey);
@@ -932,7 +961,13 @@ async function authenticateRequest(request, response, next) {
     const message = error.name === "TokenExpiredError" ? "Token expired" : "Authentication failed";
 
     if (error.name === "TokenExpiredError") {
-      sock.emit("token-expired", { error: error.message });
+      if (typeof sock !== 'undefined' && sock && typeof sock.emit === 'function') {
+        try {
+          sock.emit("token-expired", { error: error.message });
+        } catch (e) {
+          logger.warn('Failed to emit token-expired on sock', { error: e.message });
+        }
+      }
     }
 
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
