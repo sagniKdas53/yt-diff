@@ -1114,6 +1114,79 @@ async function authenticateUser(request, response) {
 // Download functions
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
+
+/**
+ * Streams a file to the response given an absolute path.
+ * Expects to be called either as authenticateRequest(req, res, serveFileByPath)
+ * where the first arg will be parsed requestData, or directly as serveFileByPath(requestBody, res).
+ *
+ * Request body shape: { absolutePath: string }
+ */
+async function serveFileByPath(requestBody, response) {
+  try {
+    // If called via authenticateRequest, requestBody will be the parsed JSON object
+    const absolutePath = (requestBody && requestBody.absolutePath) || (requestBody && requestBody.absolute_path) || null;
+
+    if (!absolutePath || typeof absolutePath !== 'string') {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'absolutePath is required' }));
+    }
+
+    // Security: ensure it's an absolute path
+    if (!path_fs.isAbsolute(absolutePath)) {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'absolutePath must be an absolute path' }));
+    }
+
+    // Check file existence and type
+    let stats;
+    try {
+      stats = fs.statSync(absolutePath);
+    } catch (err) {
+      response.writeHead(404, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'File not found' }));
+    }
+
+    if (!stats.isFile()) {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'Path is not a file' }));
+    }
+
+    // Determine content type from extension fallback to application/octet-stream
+    const ext = path_fs.extname(absolutePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+    const headers = generateCorsHeaders(contentType);
+    //headers['Content-Length'] = stats.size;
+    // Use attachment to force download and filename from basename
+    ///headers['Content-Disposition'] = `attachment; filename="${path_fs.basename(absolutePath)}"`;
+
+    response.writeHead(200, headers);
+
+    const stream = fs.createReadStream(absolutePath);
+    stream.on('error', (err) => {
+      logger.error('Error streaming file', { error: err.message, path: absolutePath });
+      // If headers already sent, just destroy. Otherwise return 500 response.
+      try {
+        if (!response.headersSent) {
+          response.writeHead(500, generateCorsHeaders(MIME_TYPES['.json']));
+          response.end(JSON.stringify({ status: 'error', message: 'Error reading file' }));
+        } else {
+          response.destroy();
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
+
+    stream.pipe(response);
+
+  } catch (error) {
+    logger.error('serveFileByPath failed', { error: error.message });
+    response.writeHead(500, generateCorsHeaders(MIME_TYPES['.json']));
+    response.end(JSON.stringify({ status: 'error', message: 'Internal server error' }));
+  }
+}
 /**
  * A semaphore implementation to control the number of concurrent asynchronous operations.
  * 
@@ -3020,6 +3093,9 @@ const server = http.createServer(serverOptions, (req, res) => {
     authenticateRequest(req, res, getPlaylistsForDisplay);
   } else if (req.url === config.urlBase + "/getsub" && req.method === "POST") {
     authenticateRequest(req, res, getPlaylistVideos);
+  }
+  else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
+    authenticateRequest(req, res, serveFileByPath);
   }
   else if (req.url === config.urlBase + "/register" && req.method === "POST") {
     rateLimit(req, res, registerUser, (req, res, next) => next(req, res),
