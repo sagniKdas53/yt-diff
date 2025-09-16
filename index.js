@@ -306,6 +306,22 @@ const logger = {
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
 
+/**
+ * Safely emit socket.io events if socket server is available.
+ * Wraps emit calls in try/catch to avoid crashing the process when socket is not ready.
+ * @param {string} event - Event name
+ * @param {any} payload - Event payload
+ */
+function safeEmit(event, payload) {
+  try {
+    if (typeof sock !== 'undefined' && sock && typeof sock.emit === 'function') {
+      sock.emit(event, payload);
+    }
+  } catch (e) {
+    logger.warn('safeEmit failed', { event, error: e && e.message });
+  }
+}
+
 // Database
 const sequelize = new Sequelize({
   host: config.db.host,
@@ -365,6 +381,7 @@ const VideoMetadata = sequelize.define("video_metadata", {
   absolutePath: {
     type: DataTypes.STRING,
     allowNull: true,
+    comment: "Filesystem path where video is saved, null if not downloaded. Should have the extension."
   },
   createdAt: {
     type: DataTypes.DATE,
@@ -1162,13 +1179,18 @@ async function serveFileByPath(requestBody, response) {
     // If called via authenticateRequest, requestBody will be the parsed JSON object
     const absolutePath = (requestBody && requestBody.absolutePath) || (requestBody && requestBody.absolute_path) || null;
 
+    // Entry log
+    logger.info('serveFileByPath called', { remote: response && response.socket && response.socket.remoteAddress, absolutePath });
+
     if (!absolutePath || typeof absolutePath !== 'string') {
+      logger.warn('serveFileByPath invalid absolutePath', { absolutePath });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
       return response.end(JSON.stringify({ status: 'error', message: 'absolutePath is required' }));
     }
 
     // Security: ensure it's an absolute path
     if (!path_fs.isAbsolute(absolutePath)) {
+      logger.warn('serveFileByPath rejected non-absolute path', { absolutePath });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
       return response.end(JSON.stringify({ status: 'error', message: 'absolutePath must be an absolute path' }));
     }
@@ -1178,11 +1200,13 @@ async function serveFileByPath(requestBody, response) {
     try {
       stats = fs.statSync(absolutePath);
     } catch (err) {
+      logger.warn('serveFileByPath file not found', { absolutePath, error: err.message });
       response.writeHead(404, generateCorsHeaders(MIME_TYPES['.json']));
       return response.end(JSON.stringify({ status: 'error', message: 'File not found' }));
     }
 
     if (!stats.isFile()) {
+      logger.warn('serveFileByPath path is not a file', { absolutePath });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
       return response.end(JSON.stringify({ status: 'error', message: 'Path is not a file' }));
     }
@@ -1192,13 +1216,27 @@ async function serveFileByPath(requestBody, response) {
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
     const headers = generateCorsHeaders(contentType);
-    //headers['Content-Length'] = stats.size;
-    // Use attachment to force download and filename from basename
-    ///headers['Content-Disposition'] = `attachment; filename="${path_fs.basename(absolutePath)}"`;
+    // Optionally set content length when available
+    try {
+      if (typeof stats.size === 'number') headers['Content-Length'] = stats.size;
+    } catch (e) {
+      logger.debug('Could not set Content-Length', { error: e && e.message });
+    }
+
+    // If you want the browser to download the file instead of displaying it,
+    // headers['Content-Disposition'] = `attachment; filename="${path_fs.basename(absolutePath)}"`;
+
+    logger.info('serveFileByPath streaming file', { absolutePath, contentType, size: stats.size });
 
     response.writeHead(200, headers);
 
     const stream = fs.createReadStream(absolutePath);
+    stream.on('open', () => {
+      logger.debug('serveFileByPath stream opened', { path: absolutePath });
+    });
+    stream.on('end', () => {
+      logger.debug('serveFileByPath stream ended', { path: absolutePath });
+    });
     stream.on('error', (err) => {
       logger.error('Error streaming file', { error: err.message, path: absolutePath });
       // If headers already sent, just destroy. Otherwise return 500 response.
@@ -1210,7 +1248,7 @@ async function serveFileByPath(requestBody, response) {
           response.destroy();
         }
       } catch (e) {
-        // ignore
+        logger.error('serveFileByPath stream error handling failed', { error: e && e.message });
       }
     });
 
@@ -1604,7 +1642,7 @@ async function executeDownload(downloadItem, processKey) {
       let actualFileName = null;
 
       // Notify frontend of download start
-      sock.emit("download-started", { percentage: 101 });
+      safeEmit("download-started", { percentage: 101 });
 
       // Spawn download process
       const downloadProcess = spawn("yt-dlp", downloadOptions.concat([savePath, videoUrl]));
@@ -1643,29 +1681,24 @@ async function executeDownload(downloadItem, processKey) {
 
             // Emit progress update to frontend
             // TODO: Check if this is needed, as when multiple downloads are running this does not work properly
-            sock.emit("downloading-percent-update", { percentage: percent });
+            safeEmit("downloading-percent-update", { percentage: percent });
           }
 
-          // Extract filename from destination line
+          // Extract filename from destination line (keep extension)
           const fileNameDestMatch = /Destination: (.+)/m.exec(output);
           if (fileNameDestMatch?.[1] && !actualFileName) {
-            actualFileName = fileNameDestMatch[1]
-              .replace(path_fs.extname(fileNameDestMatch[1]), "")
-              .replace(savePath + "/", "")
-              .trim();
-
-            logger.debug(`Filename in destination: ${actualFileName}, DB title: ${videoTitle}`,
+            const fullDest = fileNameDestMatch[1].trim();
+            actualFileName = path_fs.basename(fullDest);
+            logger.debug(`Filename in destination: ${fullDest}, basename: ${actualFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
 
-          // Check for merger, as this is usually the final filename
+          // Check for merger, as this is usually the final filename (keep extension)
           const mergerFileNameMatch = /\[Merger\] Merging formats into "(.+)"/m.exec(output);
           if (mergerFileNameMatch?.[1]) {
-            actualFileName = mergerFileNameMatch[1]
-              .replace(path_fs.extname(mergerFileNameMatch[1]), "")
-              .replace(savePath + "/", "")
-              .trim();
-            logger.debug(`Filename in merger: ${actualFileName}, DB title: ${videoTitle}`,
+            const fullMerger = mergerFileNameMatch[1].trim();
+            actualFileName = path_fs.basename(fullMerger);
+            logger.debug(`Filename in merger: ${fullMerger}, basename: ${actualFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
           // Update activity timestamp
@@ -1673,7 +1706,7 @@ async function executeDownload(downloadItem, processKey) {
 
         } catch (error) {
           if (!(error instanceof TypeError)) {
-            sock.emit("error", { message: error.message });
+            safeEmit("error", { message: error.message });
           }
         }
       });
@@ -1707,7 +1740,22 @@ async function executeDownload(downloadItem, processKey) {
               title: (videoTitle === videoId || videoTitle === "NA")
                 ? (actualFileName || videoTitle)
                 : videoTitle,
-              absolutePath: path_fs.join(savePath, actualFileName || videoTitle),
+              // Determine final filename with extension
+              absolutePath: (function () {
+                if (actualFileName) {
+                  return path_fs.join(savePath, actualFileName);
+                }
+                // Fallback: try to find a file in savePath that matches videoTitle prefix
+                try {
+                  const files = fs.readdirSync(savePath);
+                  const match = files.find(f => f.indexOf(videoTitle) === 0 || f.indexOf(videoId) !== -1);
+                  if (match) return path_fs.join(savePath, match);
+                } catch (e) {
+                  logger.debug('Could not read savePath for fallback filename', { savePath, error: e && e.message });
+                }
+                // As last resort, join savePath and videoTitle (no extension)
+                return path_fs.join(savePath, videoTitle);
+              })(),
             };
 
             logger.debug(`Updating video: ${JSON.stringify(updates)}`,
@@ -1716,7 +1764,7 @@ async function executeDownload(downloadItem, processKey) {
             await videoEntry.update(updates);
 
             // Notify frontend
-            sock.emit("download-done", {
+            safeEmit("download-done", {
               url: videoUrl,
               title: updates.title
             });
@@ -1732,7 +1780,7 @@ async function executeDownload(downloadItem, processKey) {
 
           } else {
             // Handle download failure
-            sock.emit("download-failed", {
+            safeEmit("download-failed", {
               title: videoEntry.title,
               url: videoUrl
             });
@@ -2041,7 +2089,7 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
 
   try {
     // Send initial status
-    sock.emit("listing-started", {
+    safeEmit("listing-started", {
       url: videoUrl,
       type: itemType,
       status: "started"
@@ -2149,7 +2197,7 @@ async function determineInitialRange(itemType, monitoringType, playlistUrl, chun
  *                   and an error message indicating no items were found.
  */
 function handleEmptyResponse(videoUrl) {
-  sock.emit("listing-error", {
+  safeEmit("listing-error", {
     url: videoUrl,
     error: "No items found"
   });
@@ -2188,7 +2236,7 @@ async function handlePlaylistListing(item) {
     return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
   }
   // This is the first chunk, so we need to emit the event
-  sock.emit("listing-playlist-chunk-complete", {
+  safeEmit("listing-playlist-chunk-complete", {
     url: videoUrl,
     type: "playlist-chunk",
     status: "chunk-completed",
@@ -2208,7 +2256,7 @@ async function handlePlaylistListing(item) {
     if (result.count < chunkSize) {
       return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
     }
-    sock.emit("listing-playlist-chunk-complete", {
+    safeEmit("listing-playlist-chunk-complete", {
       url: videoUrl,
       type: "playlist-chunk",
       status: "chunk-completed",
@@ -2255,7 +2303,7 @@ async function handleSingleVideoListing(item) {
   const newStartIndex = lastVideo ? lastVideo.positionInPlaylist + 1 : startIndex;
   const result = await processVideoInformation(responseItems, playlistUrl, newStartIndex, isScheduledUpdate);
   if (result.count === 1) {
-    sock.emit("listing-single-item-complete", {
+    safeEmit("listing-single-item-complete", {
       url: videoUrl,
       type: itemType,
       title: result.title,
@@ -2285,7 +2333,7 @@ function handleListingError(error, videoUrl, itemType) {
     error: error.message,
     stack: error.stack
   });
-  sock.emit("listing-error", {
+  safeEmit("listing-error", {
     url: videoUrl,
     error: error.message
   });
@@ -2315,7 +2363,7 @@ function completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekP
   });
 
   // Emit completion event
-  sock.emit("listing-playlist-complete", {
+  safeEmit("listing-playlist-complete", {
     url: videoUrl,
     type: "playlist",
     status: "completed",
@@ -2933,7 +2981,8 @@ async function getPlaylistVideos(requestBody, response) {
           "videoId",
           "videoUrl",
           "downloadStatus",
-          "isAvailable"
+          "isAvailable",
+          "absolutePath",
         ],
         model: VideoMetadata,
         ...(searchQuery && {
