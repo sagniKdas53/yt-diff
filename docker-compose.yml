@@ -102,7 +102,6 @@ services:
       - "traefik.http.routers.ytdiff.tls=true"
       - "traefik.http.routers.ytdiff.tls.certresolver=tailsolver"
       - "traefik.http.routers.ytdiff.tls.domains[0].main=${HOSTNAME}"
-      - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
       - "autoheal.enable=true"
       # Watchtower monitoring
@@ -141,7 +140,6 @@ services:
       - "traefik.http.routers.pgadmin.tls=true"
       - "traefik.http.routers.pgadmin.tls.certresolver=tailsolver"
       - "traefik.http.routers.pgadmin.tls.domains[0].main=${HOSTNAME}"
-      - "com.centurylinklabs.watchtower.enable=true"
       # Autoheal
       - "autoheal.enable=true"
       # Watchtower monitoring
