@@ -3180,8 +3180,7 @@ const server = http.createServer(serverOptions, (req, res) => {
     authenticateRequest(req, res, getPlaylistsForDisplay);
   } else if (req.url === config.urlBase + "/getsub" && req.method === "POST") {
     authenticateRequest(req, res, getPlaylistVideos);
-  }
-  else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
+  } else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
     authenticateRequest(req, res, serveFileByPath);
   }
   else if (req.url === config.urlBase + "/register" && req.method === "POST") {
