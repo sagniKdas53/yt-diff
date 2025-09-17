@@ -1177,6 +1177,16 @@ const downloadProcesses = new Map(); // Map to track download processes
  * Request body shape: { absolutePath: string }
  */
 async function serveFileByPath(requestBody, response) {
+  // Guard for single concurrent file stream: if another /getfile is active, reject with 429
+  // We use a simple in-memory flag because file streaming is short-lived and this service
+  // is single-process. This prevents multiple heavy file streams at once.
+  if (serveFileByPath._active) {
+    logger.warn('serveFileByPath rejected due to active transfer', { absolutePath: (requestBody && (requestBody.absolutePath || requestBody.absolute_path)) });
+    response.writeHead(429, generateCorsHeaders(MIME_TYPES['.json']));
+    return response.end(JSON.stringify({ status: 'error', message: 'Too many requests: only one file transfer allowed at a time' }));
+  }
+  // Ensure flag cleared on finish or error
+  const clearActive = () => { try { serveFileByPath._active = false; } catch (e) { /* ignore */ } };
   try {
     // If called via authenticateRequest, requestBody will be the parsed JSON object
     const absolutePath = (requestBody && requestBody.absolutePath) || (requestBody && requestBody.absolute_path) || null;
@@ -1230,6 +1240,15 @@ async function serveFileByPath(requestBody, response) {
 
     logger.info('serveFileByPath streaming file', { absolutePath, contentType, size: stats.size });
 
+    // Double-check active state right before starting the stream to avoid reserving the slot
+    if (serveFileByPath._active) {
+      logger.warn('serveFileByPath rejected due to active transfer at stream start', { absolutePath });
+      response.writeHead(429, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'Too many requests: only one file transfer allowed at a time' }));
+    }
+    // Mark active now that the file is validated and we're about to stream
+    serveFileByPath._active = true;
+
     response.writeHead(200, headers);
 
     const stream = fs.createReadStream(absolutePath);
@@ -1238,9 +1257,16 @@ async function serveFileByPath(requestBody, response) {
     });
     stream.on('end', () => {
       logger.debug('serveFileByPath stream ended', { path: absolutePath });
+      clearActive();
+    });
+    stream.on('close', () => {
+      // 'close' can be emitted after client disconnects
+      logger.debug('serveFileByPath stream closed', { path: absolutePath });
+      clearActive();
     });
     stream.on('error', (err) => {
       logger.error('Error streaming file', { error: err.message, path: absolutePath });
+      clearActive();
       // If headers already sent, just destroy. Otherwise return 500 response.
       try {
         if (!response.headersSent) {
@@ -1254,10 +1280,18 @@ async function serveFileByPath(requestBody, response) {
       }
     });
 
+    // If client aborts connection, clear the active flag
+    response.on('close', () => {
+      logger.debug('Response closed by client during file transfer', { path: absolutePath });
+      try { stream.destroy(); } catch (e) { /* ignore */ }
+      clearActive();
+    });
+
     stream.pipe(response);
 
   } catch (error) {
     logger.error('serveFileByPath failed', { error: error.message });
+    clearActive();
     response.writeHead(500, generateCorsHeaders(MIME_TYPES['.json']));
     response.end(JSON.stringify({ status: 'error', message: 'Internal server error' }));
   }
