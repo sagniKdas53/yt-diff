@@ -1768,7 +1768,8 @@ async function executeDownload(downloadItem, processKey) {
             // Notify frontend
             safeEmit("download-done", {
               url: videoUrl,
-              title: updates.title
+              title: updates.title,
+              absolutePath: updates.absolutePath
             });
 
             // Cleanup process entry
