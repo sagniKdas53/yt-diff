@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
-    "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js",
-    "test": "newman run --delay-request 1000 yt-diff.postman_collection.json"
+    "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js"
   },
   "repository": {
     "type": "git",
@@ -15,7 +14,10 @@
   "keywords": [
     "database",
     "yt-dlp",
-    "watchdog"
+    "video",
+    "download",
+    "youtube",
+    "monitor"
   ],
   "author": "Sagnik Das",
   "license": "ISC",
