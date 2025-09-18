@@ -378,10 +378,10 @@ const VideoMetadata = sequelize.define("video_metadata", {
     defaultValue: true,
     comment: "Whether video is still available on platform"
   },
-  absolutePath: {
+  fileName: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: "Filesystem path where video is saved, null if not downloaded. Should have the extension."
+    comment: "Name of the file on disk, should have the extension. null if not downloaded."
   },
   createdAt: {
     type: DataTypes.DATE,
@@ -1192,8 +1192,10 @@ async function serveFileByPath(requestBody, response) {
   // Guard for single concurrent file stream: if another /getfile is active, reject with 429
   // We use a simple in-memory flag because file streaming is short-lived and this service
   // is single-process. This prevents multiple heavy file streams at once.
+  // TODO: Sometimes steams hang and never close, causing the flag to remain set.
+  // Implement a timeout or more robust tracking to clear stale active states.
   if (serveFileByPath._active) {
-    logger.warn('serveFileByPath rejected due to active transfer', { absolutePath: (requestBody && (requestBody.absolutePath || requestBody.absolute_path)) });
+    logger.warn('serveFileByPath rejected due to active transfer', { fileName: (requestBody && requestBody.fileName) });
     response.writeHead(429, generateCorsHeaders(MIME_TYPES['.json']));
     return response.end(JSON.stringify({ status: 'error', message: 'Too many requests: only one file transfer allowed at a time' }));
   }
@@ -1230,7 +1232,7 @@ async function serveFileByPath(requestBody, response) {
     if (!absolutePath || typeof absolutePath !== 'string') {
       logger.warn('serveFileByPath invalid absolutePath', { absolutePath });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-      return response.end(JSON.stringify({ status: 'error', message: 'absolutePath is required' }));
+      return response.end(JSON.stringify({ status: 'error', message: 'absolutePath could not be resolved from input' }));
     }
 
     // Security: ensure it's an absolute path
@@ -1810,20 +1812,20 @@ async function executeDownload(downloadItem, processKey) {
                 ? (actualFileName || videoTitle)
                 : videoTitle,
               // Determine final filename with extension
-              absolutePath: (function () {
+              fileName: (function () {
                 if (actualFileName) {
-                  return path_fs.join(savePath, actualFileName);
+                  return path_fs.basename(actualFileName || "");
                 }
                 // Fallback: try to find a file in savePath that matches videoTitle prefix
                 try {
                   const files = fs.readdirSync(savePath);
                   const match = files.find(f => f.indexOf(videoTitle) === 0 || f.indexOf(videoId) !== -1);
-                  if (match) return path_fs.join(savePath, match);
+                  if (match) return path_fs.basename(match);
                 } catch (e) {
                   logger.debug('Could not read savePath for fallback filename', { savePath, error: e && e.message });
                 }
                 // As last resort, join savePath and videoTitle (no extension)
-                return path_fs.join(savePath, videoTitle);
+                return path_fs.basename(videoTitle);
               })(),
             };
 
@@ -1832,10 +1834,31 @@ async function executeDownload(downloadItem, processKey) {
 
             await videoEntry.update(updates);
 
-            // Notify frontend: send saveDirectory and fileName instead of full absolutePath
+            // Notify frontend: send saveDirectory and fileName
             try {
-              const fileName = path_fs.basename(updates.absolutePath || "");
-              const saveDir = path_fs.relative(path_fs.resolve(config.saveLocation), path_fs.dirname(updates.absolutePath || config.saveLocation));
+              const fileName = updates.fileName;
+              // Compute the save directory relative to configured saveLocation.
+              // Normalize '.' (same directory) to empty string so callers receive "" when
+              // the file is directly in the save root.
+              let saveDir = path_fs.relative(
+                path_fs.resolve(config.saveLocation),
+                path_fs.dirname(updates.fileName || config.saveLocation)
+              );
+              // TODO: Check if these many adjustments are needed, or if path_fs.relative is sufficient
+              if (saveDir.equals(saveDirectory.trim())) {
+                logger.debug(`Computed saveDir matches expected saveDirectory`, { saveDir, saveDirectory });
+              } else {
+                logger.debug(`Computed saveDir differs from expected saveDirectory`, {
+                  saveDir, saveDirectory
+                });
+                if (saveDir === path_fs.sep || saveDir === '.') saveDir = '';
+                if (saveDir.startsWith(path_fs.sep)) {
+                  saveDir = saveDir.slice(1);
+                }
+                if (saveDir.endsWith(path_fs.sep)) {
+                  saveDir = saveDir.slice(0, -1);
+                }
+              }
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
@@ -1847,7 +1870,8 @@ async function executeDownload(downloadItem, processKey) {
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
-                absolutePath: updates.absolutePath
+                fileName: updates.fileName,
+                saveDirectory: ""
               });
             }
 
@@ -3064,7 +3088,7 @@ async function getPlaylistVideos(requestBody, response) {
           "videoUrl",
           "downloadStatus",
           "isAvailable",
-          "absolutePath",
+          "fileName",
         ],
         model: VideoMetadata,
         ...(searchQuery && {
@@ -3082,7 +3106,7 @@ async function getPlaylistVideos(requestBody, response) {
     // Execute query
     const results = await PlaylistVideoMapping.findAndCountAll(queryOptions);
 
-    // Sanitize results: replace absolutePath with fileName and include playlist saveDirectory
+    // Fetch playlist save directory
     let playlistSaveDir = "";
     try {
       const playlist = await PlaylistMetadata.findOne({ where: { playlistUrl } });
@@ -3095,8 +3119,8 @@ async function getPlaylistVideos(requestBody, response) {
       const vm = row.video_metadatum || {};
       let fileName = null;
       try {
-        if (vm.absolutePath && typeof vm.absolutePath === 'string') {
-          fileName = path_fs.basename(vm.absolutePath);
+        if (vm.fileName && typeof vm.fileName === 'string') {
+          fileName = vm.fileName;
         }
       } catch (e) {
         fileName = null;
