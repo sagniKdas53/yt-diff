@@ -1177,7 +1177,16 @@ const downloadProcesses = new Map(); // Map to track download processes
  * Expects to be called either as authenticateRequest(req, res, serveFileByPath)
  * where the first arg will be parsed requestData, or directly as serveFileByPath(requestBody, res).
  *
- * Request body shape: { absolutePath: string }
+ * Request body shape: { saveDirectory: string, fileName: string }
+ * 
+ * Returns 400 if path is not absolute or invalid
+ * Returns 404 if file not found
+ * Returns 429 if another file transfer is active
+ * Streams file with appropriate Content-Type header if found and valid
+ * 
+ * @param {Object} requestBody - Parsed JSON body from request
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when file transfer completes or fails
  */
 async function serveFileByPath(requestBody, response) {
   // Guard for single concurrent file stream: if another /getfile is active, reject with 429
@@ -1192,13 +1201,10 @@ async function serveFileByPath(requestBody, response) {
   const clearActive = () => { try { serveFileByPath._active = false; } catch (e) { /* ignore */ } };
   try {
     // If called via authenticateRequest, requestBody will be the parsed JSON object
-    // Backwards compatible: accept { absolutePath } OR the new safer inputs { saveDirectory, fileName }
     let absolutePath = null;
-    if (requestBody && (requestBody.absolutePath || requestBody.absolute_path)) {
-      absolutePath = requestBody.absolutePath || requestBody.absolute_path;
-    } else if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
+    if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
       const saveDirectory = requestBody.saveDirectory || "";
-      const fileName = requestBody.fileName || requestBody.file_name;
+      const fileName = requestBody.fileName;
       if (!fileName || typeof fileName !== 'string') {
         logger.warn('serveFileByPath invalid fileName', { saveDirectory, fileName });
         response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
@@ -3108,12 +3114,11 @@ async function getPlaylistVideos(requestBody, response) {
       return {
         positionInPlaylist: row.positionInPlaylist,
         playlistUrl: row.playlistUrl,
-        video_metadatum: safeVideoMeta,
-        saveDirectory: playlistSaveDir
+        video_metadatum: safeVideoMeta
       };
     });
 
-    const safeResult = { count: results.count, rows: safeRows };
+    const safeResult = { count: results.count, rows: safeRows, saveDirectory: playlistSaveDir };
 
     // Send response
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
