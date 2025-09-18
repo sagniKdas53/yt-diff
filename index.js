@@ -2,7 +2,7 @@
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const { spawn } = require("child_process");
 const color = require("cli-color");
-const CronJob = require("cron").CronJob;
+// const CronJob = require("cron").CronJob;
 const fs = require("fs");
 const http = require("http");
 const path_fs = require("path");
@@ -579,22 +579,26 @@ sequelize
 
 // Scheduler
 const jobs = {
-  update: new CronJob(
-    config.scheduledUpdateStr,
-    () => {
-      logger.info("Scheduled update", {
-        time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
-        timeZone: config.timeZone,
-        nextRun: jobs.update.nextDate().toLocaleString("en-US", { timeZone: config.timeZone })
-      });
-
-    },
-    null,
-    true,
-    config.timeZone
-  )
+  // TODO: 
+  // 1. Implement scheduled updates to check playlists for new videos
+  // 2. Add a job to replace the LRUCache implementation with one that uses Map and CronJob
+  // 3. Add a job to clean up stale download/list processes periodically
 };
 // const jobs = {
+//    update: new CronJob(
+//      config.scheduledUpdateStr,
+//      () => {
+//        logger.info("Scheduled update", {
+//          time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
+//          timeZone: config.timeZone,
+//          nextRun: jobs.update.nextDate().toLocaleString("en-US", { timeZone: config.timeZone })
+//        });
+//
+//      },
+//      null,
+//      true,
+//      config.timeZone
+//    ),
 //   cleanup: new CronJob(
 //     config.queue.cleanUpInterval,
 //     () => {
@@ -630,7 +634,6 @@ const jobs = {
 //     config.timeZone
 //   ),
 // };
-// TODO: Add a job to replace the LRUCache implementation with one that uses Map and CronJob
 
 // Utility functions
 /**
