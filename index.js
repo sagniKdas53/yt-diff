@@ -1192,7 +1192,31 @@ async function serveFileByPath(requestBody, response) {
   const clearActive = () => { try { serveFileByPath._active = false; } catch (e) { /* ignore */ } };
   try {
     // If called via authenticateRequest, requestBody will be the parsed JSON object
-    const absolutePath = (requestBody && requestBody.absolutePath) || (requestBody && requestBody.absolute_path) || null;
+    // Backwards compatible: accept { absolutePath } OR the new safer inputs { saveDirectory, fileName }
+    let absolutePath = null;
+    if (requestBody && (requestBody.absolutePath || requestBody.absolute_path)) {
+      absolutePath = requestBody.absolutePath || requestBody.absolute_path;
+    } else if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
+      const saveDirectory = requestBody.saveDirectory || "";
+      const fileName = requestBody.fileName || requestBody.file_name;
+      if (!fileName || typeof fileName !== 'string') {
+        logger.warn('serveFileByPath invalid fileName', { saveDirectory, fileName });
+        response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+        return response.end(JSON.stringify({ status: 'error', message: 'fileName is required' }));
+      }
+
+      // Construct the absolute path using configured saveLocation. Use path_fs.join and
+      // then verify that the resolved path is within config.saveLocation to avoid traversal.
+      const joined = path_fs.join(config.saveLocation, saveDirectory || '', fileName);
+      const resolved = path_fs.resolve(joined);
+      const saveRoot = path_fs.resolve(config.saveLocation);
+      if (!resolved.startsWith(saveRoot)) {
+        logger.warn('serveFileByPath attempted path traversal', { saveDirectory, fileName, resolved });
+        response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+        return response.end(JSON.stringify({ status: 'error', message: 'Invalid file path' }));
+      }
+      absolutePath = resolved;
+    }
 
     // Entry log
     logger.info('serveFileByPath called', { remote: response && response.socket && response.socket.remoteAddress, absolutePath });
@@ -1204,7 +1228,7 @@ async function serveFileByPath(requestBody, response) {
     }
 
     // Security: ensure it's an absolute path
-    if (!path_fs.isAbsolute(absolutePath)) {
+    if (!absolutePath || !path_fs.isAbsolute(absolutePath)) {
       logger.warn('serveFileByPath rejected non-absolute path', { absolutePath });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
       return response.end(JSON.stringify({ status: 'error', message: 'absolutePath must be an absolute path' }));
@@ -1802,12 +1826,24 @@ async function executeDownload(downloadItem, processKey) {
 
             await videoEntry.update(updates);
 
-            // Notify frontend
-            safeEmit("download-done", {
-              url: videoUrl,
-              title: updates.title,
-              absolutePath: updates.absolutePath
-            });
+            // Notify frontend: send saveDirectory and fileName instead of full absolutePath
+            try {
+              const fileName = path_fs.basename(updates.absolutePath || "");
+              const saveDir = path_fs.relative(path_fs.resolve(config.saveLocation), path_fs.dirname(updates.absolutePath || config.saveLocation));
+              safeEmit("download-done", {
+                url: videoUrl,
+                title: updates.title,
+                fileName: fileName,
+                saveDirectory: saveDir
+              });
+            } catch (e) {
+              // Fallback to previous behavior if something goes wrong
+              safeEmit("download-done", {
+                url: videoUrl,
+                title: updates.title,
+                absolutePath: updates.absolutePath
+              });
+            }
 
             // Cleanup process entry
             cleanupProcess(processKey, downloadProcess.pid);
@@ -3040,9 +3076,48 @@ async function getPlaylistVideos(requestBody, response) {
     // Execute query
     const results = await PlaylistVideoMapping.findAndCountAll(queryOptions);
 
+    // Sanitize results: replace absolutePath with fileName and include playlist saveDirectory
+    let playlistSaveDir = "";
+    try {
+      const playlist = await PlaylistMetadata.findOne({ where: { playlistUrl } });
+      playlistSaveDir = playlist?.saveDirectory ?? "";
+    } catch (err) {
+      logger.warn('Could not fetch playlist saveDirectory', { playlistUrl, error: err.message });
+    }
+
+    const safeRows = results.rows.map((row) => {
+      const vm = row.video_metadatum || {};
+      let fileName = null;
+      try {
+        if (vm.absolutePath && typeof vm.absolutePath === 'string') {
+          fileName = path_fs.basename(vm.absolutePath);
+        }
+      } catch (e) {
+        fileName = null;
+      }
+      // Build a sanitized video_metadatum to return to client
+      const safeVideoMeta = {
+        title: vm.title,
+        videoId: vm.videoId,
+        videoUrl: vm.videoUrl,
+        downloadStatus: vm.downloadStatus,
+        isAvailable: vm.isAvailable,
+        fileName: fileName
+      };
+
+      return {
+        positionInPlaylist: row.positionInPlaylist,
+        playlistUrl: row.playlistUrl,
+        video_metadatum: safeVideoMeta,
+        saveDirectory: playlistSaveDir
+      };
+    });
+
+    const safeResult = { count: results.count, rows: safeRows };
+
     // Send response
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-    response.end(JSON.stringify(results));
+    response.end(JSON.stringify(safeResult));
 
   } catch (error) {
     logger.error("Failed to fetch playlist videos", {
