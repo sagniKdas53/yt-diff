@@ -654,38 +654,46 @@ async function parseRequestJson(request) {
       // Check request size
       if (requestBody.length > maxRequestSize) {
         logger.warn("Request exceeded size limit", {
-          ip: request.connection.remoteAddress,
+          ip: request.socket.remoteAddress,
           url: request.url,
           size: requestBody.length,
           method: request.method
         });
 
-        request.connection.destroy();
-        reject({
-          status: 413,
-          message: "Request Too Large"
-        });
+        request.destroy();
+        reject({ status: 413, message: "Request Too Large" });
       }
     });
 
     request.on("end", () => {
+      if (requestBody.length === 0) {
+        logger.warn("Empty request body", {
+          ip: request.socket.remoteAddress,
+          url: request.url,
+          method: request.method
+        });
+
+        reject({ status: 400, message: "Empty Request Body" });
+        return;
+      }
+
       try {
         const parsedData = JSON.parse(requestBody);
         resolve(parsedData);
       } catch (error) {
         logger.error("Failed to parse JSON", {
-          ip: request.connection.remoteAddress,
+          ip: request.socket.remoteAddress,
           url: request.url,
           size: requestBody.length,
           method: request.method,
           error: error.message
         });
 
-        reject({
-          status: 400,
-          message: "Invalid JSON"
-        });
+        reject({ status: 400, message: "Invalid JSON" });
       }
+    });
+    request.on("error", (err) => {
+      reject({ status: 500, message: "Request stream error", error: err.message });
     });
   });
 }
@@ -844,8 +852,17 @@ async function registerUser(request, response) {
         message: "Maximum number of users reached"
       }));
     }
-
-    const requestData = await parseRequestJson(request);
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request);
+    } catch (error) {
+      logger.error("Failed to parse request JSON", { error: error.message });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: 'error',
+        message: `${error.message || "Invalid request"}`
+      }));
+    }
     const { userName, password } = requestData;
 
     // Validate password length (bcrypt limit is 72 bytes)
@@ -898,6 +915,48 @@ async function registerUser(request, response) {
   }
 }
 /**
+ * Checks if user registration is allowed based on current settings
+ * 
+ * @param {*} request Request object to read any parameters
+ * @param {*} response Response object to send result
+ * @returns {Promise<void>} Resolves with registration status
+ */
+async function isRegistrationAllowed(request, response) {
+  var allow = true;
+  if (!config.registration.allowed) {
+    allow = false;
+  }
+  let requestData = {};
+  try {
+    requestData = await parseRequestJson(request);
+  } catch (err) {
+    logger.error("Failed to parse request JSON", { error: err.message });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      status: 'error',
+      message: `${err.message || "Invalid request"}`
+    }));
+  }
+  const { sendStats } = requestData || { sendStats: false };
+  const userCount = await UserAccount.count();
+  if (userCount >= config.registration.maxUsers) {
+    allow = false;
+  }
+  if (sendStats === true) {
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      registrationAllowed: allow,
+      currentUsers: userCount,
+      maxUsers: config.registration.maxUsers
+    }));
+  } else {
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      registrationAllowed: allow
+    }));
+  }
+}
+/**
  * Middleware to verify JWT tokens and check user authentication
  *
  * @param {Object} request - HTTP request object
@@ -920,19 +979,7 @@ async function authenticateRequest(request, response, next) {
       }
     }
 
-    let requestData = {};
-    try {
-      requestData = await parseRequestJson(request);
-    } catch (err) {
-      // If request is too large, bubble up the error
-      if (err && err.status === 413) {
-        throw err;
-      }
-      // If body is empty or invalid JSON, continue with empty object
-      requestData = {};
-    }
-
-    const token = headerToken;// || requestData.token;
+    const token = headerToken;
 
     if (!token) {
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -973,6 +1020,17 @@ async function authenticateRequest(request, response, next) {
       }));
     }
 
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request);
+    } catch (error) {
+      logger.error("Failed to parse request JSON", { error: error.message });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: 'error',
+        message: `${error.message || "Invalid request"}`
+      }));
+    }
     // Continue to next middleware
     next(requestData, response);
 
@@ -1102,9 +1160,30 @@ async function rateLimit(
  */
 async function authenticateUser(request, response) {
   try {
-    const requestData = await parseRequestJson(request);
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request);
+    } catch (error) {
+      logger.error("Failed to parse request JSON", { error: error.message });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: 'error',
+        message: `${error.message || "Invalid request"}`
+      }));
+    }
+
+    // Extract and validate fields
+    if (!requestData.userName || !requestData.password) {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: 'error',
+        message: "userName and password are required"
+      }));
+    }
+
+    // Destructure with defaults
     const {
-      userName: userName,
+      userName,
       password,
       expiry_time: expiryTime = "31d"
     } = requestData;
@@ -3323,13 +3402,14 @@ const server = http.createServer(serverOptions, (req, res) => {
     authenticateRequest(req, res, getPlaylistVideos);
   } else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
     authenticateRequest(req, res, serveFileByPath);
-  }
-  else if (req.url === config.urlBase + "/register" && req.method === "POST") {
+  } else if (req.url === config.urlBase + "/register" && req.method === "POST") {
     rateLimit(req, res, registerUser, (req, res, next) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
-  }
-  else if (req.url === config.urlBase + "/login" && req.method === "POST") {
+  } else if (req.url === config.urlBase + "/login" && req.method === "POST") {
     rateLimit(req, res, authenticateUser, (req, res, next) => next(req, res),
+      config.cache.reqPerIP, config.cache.maxAge);
+  } else if (req.url === config.urlBase + "/isregallowed" && req.method === "POST") {
+    rateLimit(req, res, isRegistrationAllowed, (req, res, next) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
   } else {
     logger.error("Requested Resource couldn't be found", {
