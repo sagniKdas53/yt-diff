@@ -5,6 +5,7 @@ const color = require("cli-color");
 // const CronJob = require("cron").CronJob;
 const fs = require("fs");
 const http = require("http");
+const https = require("https");
 const path_fs = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -17,14 +18,14 @@ const config = {
   protocol: process.env.PROTOCOL || "http",
   host: process.env.HOSTNAME || "localhost",
   port: +process.env.PORT || 8888,
-  nativeHttps: process.env.USE_NATIVE_HTTPS === "true",
+  nativeHttps: process.env.USE_NATIVE_HTTPS === "true" || false,
   hidePorts: process.env.HIDE_PORTS === "true",
   defaultCORSMaxAge: 2592000, // 30 days
   urlBase: process.env.BASE_URL || "/ytdiff",
   ssl: {
-    key: process.env.SSL_KEY,
-    cert: process.env.SSL_CERT,
-    passphrase: process.env.SSL_PASSPHRASE,
+    key: process.env.SSL_KEY || null,
+    cert: process.env.SSL_CERT || null,
+    passphrase: process.env.SSL_PASSPHRASE || null,
   },
   db: {
     host: process.env.DB_HOST || "localhost",
@@ -49,7 +50,7 @@ const config = {
   },
   registration: {
     allowed: process.env.ALLOW_REGISTRATION === "false" ? false : true,
-    maxUsers: +(process.env.MAX_USERS || 10)
+    maxUsers: +(process.env.MAX_USERS || 15)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
   sleepTime: process.env.SLEEP ?? 3,
@@ -3322,21 +3323,39 @@ function makeAssets(fileList) {
 const filesList = getFiles("dist");
 const staticAssets = makeAssets(filesList);
 let serverOptions = {};
+let serverObj = null;
 
 if (config.nativeHttps) {
   try {
     serverOptions = {
       key: fs.readFileSync(config.ssl.key, "utf8"),
       cert: fs.readFileSync(config.ssl.cert, "utf8"),
+      // If passphrase is not set, don't include it in options
       ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase })
     };
   } catch (error) {
-    logger.error("Error reading SSL certificate files:", error);
+    logger.error("Error reading SSL key and/or certificate files:", error);
     process.exit(1);
   }
+  if (config.ssl.passphrase) {
+    logger.info("SSL passphrase is set");
+  }
+  if (config.protocol === "http") {
+    logger.warn("Protocol is set to HTTP but nativeHttps is enabled. Overriding protocol to HTTPS.");
+    config.protocol = "https";
+  }
+  logger.info("Starting server in HTTPS mode");
+  serverObj = https;
+} else {
+  if (config.protocol === "https") {
+    logger.warn("Protocol is set to HTTPS but nativeHttps is disabled. Overriding protocol to HTTP.");
+    config.protocol = "http";
+  }
+  logger.info("Starting server in HTTP mode");
+  serverObj = http;
 }
 
-const server = http.createServer(serverOptions, (req, res) => {
+const server = serverObj.createServer(serverOptions, (req, res) => {
   if (req.url.startsWith(config.urlBase) && req.method === "GET") {
     try {
       const get = req.url;

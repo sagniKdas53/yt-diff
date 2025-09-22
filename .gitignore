@@ -5,6 +5,7 @@ yt-data/
 logs/
 dist/
 letsencrypt/
+ssl/
 update.log
 db_password.txt
 tests/
