@@ -1,7 +1,7 @@
 # Stage 0: Define global arguments
 # Automatically set by Docker BuildKit to 'amd64', 'arm64', etc.
 ARG TARGETARCH
-ARG NODE_VERSION=20.11.1
+ARG NODE_VERSION=22.20.0
 ARG VITE_BASE_PATH=/ytdiff
 
 # ---- Stage 1: Prebuilt Binaries Builder ----
