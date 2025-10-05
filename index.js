@@ -53,6 +53,7 @@ const config = {
     maxUsers: +(process.env.MAX_USERS || 15)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
+  cookiesFile: process.env.COOKIES_FILE || "cookies-all.txt",
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
   scheduledUpdateStr: process.env.UPDATE_SCHEDULED || "*/30 * * * *",
@@ -1795,6 +1796,19 @@ async function executeDownload(downloadItem, processKey) {
       // Notify frontend of download start
       safeEmit("download-started", { percentage: 101 });
 
+      // Check and add cookies file for x.com
+      if (config.cookiesFile && fs.existsSync(config.cookiesFile) && videoUrl.includes('x.com')) {
+        logger.debug(`Using cookies file: ${config.cookiesFile}`);
+        const end = downloadOptions.pop();
+        downloadOptions.push(`--cookies`, config.cookiesFile);
+        downloadOptions.push(end);
+      }
+
+      logger.debug(`Starting download for ${videoUrl}`, {
+        url: videoTitle,
+        savePath,
+        fullCommand: `yt-dlp ${downloadOptions.join(' ')} ${savePath} ${videoUrl}`
+      });
       // Spawn download process
       const downloadProcess = spawn("yt-dlp", downloadOptions.concat([savePath, videoUrl]));
 
@@ -2595,6 +2609,22 @@ async function fetchVideoInformation(videoUrl, startIndex, endIndex) {
       videoUrl
     ];
 
+    // This is a test, will probably be better to filter
+    // for site and then apply cookies on a per site basis
+    // but for now just check for x.com links as that's the real pain in the ass
+    if (config.cookiesFile && fs.existsSync(config.cookiesFile) && videoUrl.includes('x.com')) {
+      processArgs.unshift("--cookies", config.cookiesFile);
+    }
+
+    // Quote arguments with spaces
+    const fullCommand = [
+      "yt-dlp",
+      ...processArgs.map(arg => (/\s/.test(arg) ? `"${arg}"` : arg)) // quote args with spaces
+    ].join(" ");
+    logger.debug(`Starting listing for ${videoUrl}`, {
+      url: videoUrl,
+      fullCommand
+    });
     // Spawn process
     const listProcess = spawn("yt-dlp", processArgs);
 
@@ -2964,6 +2994,10 @@ async function addPlaylist(playlistUrl, monitoringType) {
     throw new Error("Maximum listing processes reached");
   }
 
+  logger.debug("Trying to get playlist title", {
+    url: playlistUrl,
+    fullCommand: `yt-dlp --playlist-end 1 --flat-playlist --print %(playlist_title)s ${playlistUrl}`,
+  });
   // Spawn process to get playlist title
   const titleProcess = spawn("yt-dlp", [
     "--playlist-end", "1",

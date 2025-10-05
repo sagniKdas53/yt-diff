@@ -12,3 +12,4 @@ tests/
 secret_key.txt
 backup/
 .vscode/
+cookies*
