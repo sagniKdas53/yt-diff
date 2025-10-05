@@ -2613,17 +2613,20 @@ async function fetchVideoInformation(videoUrl, startIndex, endIndex) {
     // for site and then apply cookies on a per site basis
     // but for now just check for x.com links as that's the real pain in the ass
     if (config.cookiesFile && fs.existsSync(config.cookiesFile) && videoUrl.includes('x.com')) {
-      processArgs.unshift("--cookies", config.cookiesFile);
+      logger.debug(`Using cookies file: ${config.cookiesFile}`);
+      const end = processArgs.pop();
+      processArgs.push(`--cookies`, config.cookiesFile);
+      processArgs.push(end);
     }
 
     // Quote arguments with spaces
-    const fullCommand = [
+    const fullCommandString = [
       "yt-dlp",
       ...processArgs.map(arg => (/\s/.test(arg) ? `"${arg}"` : arg)) // quote args with spaces
     ].join(" ");
     logger.debug(`Starting listing for ${videoUrl}`, {
       url: videoUrl,
-      fullCommand
+      fullCommand: fullCommandString
     });
     // Spawn process
     const listProcess = spawn("yt-dlp", processArgs);
@@ -2994,17 +2997,25 @@ async function addPlaylist(playlistUrl, monitoringType) {
     throw new Error("Maximum listing processes reached");
   }
 
-  logger.debug("Trying to get playlist title", {
-    url: playlistUrl,
-    fullCommand: `yt-dlp --playlist-end 1 --flat-playlist --print %(playlist_title)s ${playlistUrl}`,
-  });
-  // Spawn process to get playlist title
-  const titleProcess = spawn("yt-dlp", [
+  const processArgs = [
     "--playlist-end", "1",
     "--flat-playlist",
     "--print", "%(playlist_title)s",
     playlistUrl
-  ]);
+  ];
+  if (config.cookiesFile && fs.existsSync(config.cookiesFile) && playlistUrl.includes('x.com')) {
+    processArgs.unshift("--cookies", config.cookiesFile);
+  }
+  const fullCommandString = [
+    "yt-dlp",
+    ...processArgs.map(arg => (/\s/.test(arg) ? `"${arg}"` : arg)) // quote args with spaces
+  ].join(" ");
+  logger.debug("Trying to get playlist title", {
+    url: playlistUrl,
+    fullCommand: fullCommandString
+  });
+  // Spawn process to get playlist title
+  const titleProcess = spawn("yt-dlp", processArgs);
 
   return new Promise((resolve, reject) => {
     // Handle stdout
