@@ -7,6 +7,8 @@ secrets:
     file: db_password.txt
   secret_key:
     file: secret_key.txt
+  cookie_secret:
+    file: cookie_secret.txt
 
 volumes:
   pgadmin-data:
@@ -61,13 +63,14 @@ services:
         condition: service_healthy
     networks:
       - revProxy-net
-    # expose:
-    #   - ${PORT}
-    # ports:
+      # expose:
+      #   - ${PORT}
+      # ports:
       # - ${PORT}:${PORT}
     secrets:
       - db_password
       - secret_key
+      - cookie_secret
     environment:
       - PROTOCOL=${PROTOCOL}
       - HOSTNAME=${HOSTNAME}
@@ -89,6 +92,7 @@ services:
       - SAVE_DESCRIPTION=${SAVE_DESCRIPTION}
       - SAVE_COMMENTS=${SAVE_COMMENTS}
       - SAVE_THUMBNAIL=${SAVE_THUMBNAIL}
+      - COOKIE_SECRET_FILE=/run/secrets/cookie_secret
       # Update configuration
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}

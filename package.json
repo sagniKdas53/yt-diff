@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
-    "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node index.js",
-    "https": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROTOCOL=https USE_NATIVE_HTTPS=true SSL_KEY='./ssl/selfsigned.key' SSL_CERT='./ssl/selfsigned.crt' node index.js"
+    "run": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watchindex.js",
+    "https": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROTOCOL=https USE_NATIVE_HTTPS=true SSL_KEY='./ssl/selfsigned.key' SSL_CERT='./ssl/selfsigned.crt' node --watch index.js",
+    "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt node --watch index.js"
   },
   "repository": {
     "type": "git",

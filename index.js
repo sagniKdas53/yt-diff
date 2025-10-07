@@ -53,7 +53,8 @@ const config = {
     maxUsers: +(process.env.MAX_USERS || 15)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
-  cookiesFile: process.env.COOKIES_FILE || "cookies-all.txt",
+  cookiesFile: process.env.COOKIES_FILE ? process.env.COOKIES_FILE :
+    process.env.COOKIE_SECRET_FILE ? process.env.COOKIE_SECRET_FILE : null,
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
   scheduledUpdateStr: process.env.UPDATE_SCHEDULED || "*/30 * * * *",
