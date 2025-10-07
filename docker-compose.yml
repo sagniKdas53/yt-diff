@@ -7,8 +7,6 @@ secrets:
     file: db_password.txt
   secret_key:
     file: secret_key.txt
-  cookie_secret:
-    file: cookie_secret.txt
 
 volumes:
   pgadmin-data:
@@ -57,7 +55,14 @@ services:
         # This is used to build the frontend in the docker image
         - VITE_BASE_PATH=${BASE_URL}
     volumes:
-      - ${HOST_SAVE_PATH}:${CONTAINER_SAVE_PATH}
+      - type: bind
+        source: ${HOST_SAVE_PATH}
+        target: ${CONTAINER_SAVE_PATH}
+        read_only: false
+      - type: bind
+        source: ${HOST_COOKIES_FILE}
+        target: ${CONTAINER_COOKIES_FILE}
+        read_only: false # yt-dlp needs to write to this file, otherwise it fails
     depends_on:
       yt-db:
         condition: service_healthy
@@ -70,7 +75,6 @@ services:
     secrets:
       - db_password
       - secret_key
-      - cookie_secret
     environment:
       - PROTOCOL=${PROTOCOL}
       - HOSTNAME=${HOSTNAME}
@@ -92,7 +96,8 @@ services:
       - SAVE_DESCRIPTION=${SAVE_DESCRIPTION}
       - SAVE_COMMENTS=${SAVE_COMMENTS}
       - SAVE_THUMBNAIL=${SAVE_THUMBNAIL}
-      - COOKIE_SECRET_FILE=/run/secrets/cookie_secret
+      - COOKIES_FILE=${CONTAINER_COOKIES_FILE}
+      - MAX_USERS=${MAX_USERS}
       # Update configuration
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}

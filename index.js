@@ -50,11 +50,10 @@ const config = {
   },
   registration: {
     allowed: process.env.ALLOW_REGISTRATION === "false" ? false : true,
-    maxUsers: +(process.env.MAX_USERS || 15)
+    maxUsers: +(process.env.MAX_USERS || 10)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
-  cookiesFile: process.env.COOKIES_FILE ? process.env.COOKIES_FILE :
-    process.env.COOKIE_SECRET_FILE ? process.env.COOKIE_SECRET_FILE : null,
+  cookiesFile: process.env.COOKIES_FILE ? process.env.COOKIES_FILE : null,
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
   scheduledUpdateStr: process.env.UPDATE_SCHEDULED || "*/30 * * * *",
