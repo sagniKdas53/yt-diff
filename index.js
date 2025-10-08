@@ -1797,7 +1797,16 @@ async function executeDownload(downloadItem, processKey) {
       safeEmit("download-started", { percentage: 101 });
 
       // Check and add cookies file for x.com
-      if (config.cookiesFile && fs.existsSync(config.cookiesFile) && videoUrl.includes('x.com')) {
+      let hostname = "";
+      try {
+        hostname = (new URL(videoUrl)).hostname;
+      } catch (e) {
+        logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: e.message });
+      }
+      // Only match x.com or its subdomains (e.g. foo.x.com)
+      const allowedXHost = 'x.com';
+      const isAllowedXCom = hostname === allowedXHost || hostname.endsWith('.' + allowedXHost);
+      if (config.cookiesFile && fs.existsSync(config.cookiesFile) && isAllowedXCom) {
         logger.debug(`Using cookies file: ${config.cookiesFile}`);
         const end = downloadOptions.pop();
         downloadOptions.push(`--cookies`, config.cookiesFile);
