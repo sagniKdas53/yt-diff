@@ -53,7 +53,10 @@ const config = {
     maxUsers: +(process.env.MAX_USERS || 10)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
-  cookiesFile: process.env.COOKIES_FILE ? process.env.COOKIES_FILE : null,
+  cookiesFile: process.env.COOKIES_FILE
+    ? fs.existsSync(process.env.COOKIES_FILE)
+      ? process.env.COOKIES_FILE : new Error(`Cookies file not found: ${process.env.COOKIES_FILE}`)
+    : false,
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
   scheduledUpdateStr: process.env.UPDATE_SCHEDULED || "*/30 * * * *",
@@ -141,6 +144,11 @@ if (config.secretKey instanceof Error) {
 }
 if (config.db.password instanceof Error) {
   throw config.db.password;
+}
+if (config.cookiesFile instanceof Error) {
+  const error = config.cookiesFile;
+  config.cookiesFile = false;
+  throw error;
 }
 if (!fs.existsSync(config.saveLocation)) {
   logger.info("Save location doesn't exists", { saveLocation: config.saveLocation });
@@ -788,6 +796,24 @@ async function truncateText(text, maxLength) {
   const truncated = text.slice(0, maxLength);
   logger.debug(`Truncated text from ${text.length} to ${truncated.length} characters`);
   return truncated;
+}
+/**
+ * Checks if the given video URL belongs to x.com or any of its subdomains.
+ *
+ * @param {string} videoUrl - The URL of the video to check.
+ * @returns {boolean} True if the URL's hostname is x.com or a subdomain of x.com, false otherwise.
+ */
+function isSiteXDotCom(videoUrl) {
+  let hostname = "";
+  try {
+    hostname = (new URL(videoUrl)).hostname;
+  } catch (e) {
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: e.message });
+  }
+  // Only match x.com or its subdomains (e.g. foo.x.com)
+  const allowedXHost = 'x.com';
+  const isAllowedXCom = hostname === allowedXHost || hostname.endsWith('.' + allowedXHost);
+  return isAllowedXCom;
 }
 
 //Authentication functions
@@ -1796,17 +1822,8 @@ async function executeDownload(downloadItem, processKey) {
       // Notify frontend of download start
       safeEmit("download-started", { percentage: 101 });
 
-      // Check and add cookies file for x.com
-      let hostname = "";
-      try {
-        hostname = (new URL(videoUrl)).hostname;
-      } catch (e) {
-        logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: e.message });
-      }
-      // Only match x.com or its subdomains (e.g. foo.x.com)
-      const allowedXHost = 'x.com';
-      const isAllowedXCom = hostname === allowedXHost || hostname.endsWith('.' + allowedXHost);
-      if (config.cookiesFile && fs.existsSync(config.cookiesFile) && isAllowedXCom) {
+      // Check and add cookies file for x.com if configured
+      if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
         logger.debug(`Using cookies file: ${config.cookiesFile}`);
         const end = downloadOptions.pop();
         downloadOptions.push(`--cookies`, config.cookiesFile);
@@ -2621,7 +2638,7 @@ async function fetchVideoInformation(videoUrl, startIndex, endIndex) {
     // This is a test, will probably be better to filter
     // for site and then apply cookies on a per site basis
     // but for now just check for x.com links as that's the real pain in the ass
-    if (config.cookiesFile && fs.existsSync(config.cookiesFile) && videoUrl.includes('x.com')) {
+    if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
       logger.debug(`Using cookies file: ${config.cookiesFile}`);
       const end = processArgs.pop();
       processArgs.push(`--cookies`, config.cookiesFile);
@@ -3012,7 +3029,13 @@ async function addPlaylist(playlistUrl, monitoringType) {
     "--print", "%(playlist_title)s",
     playlistUrl
   ];
-  if (config.cookiesFile && fs.existsSync(config.cookiesFile) && playlistUrl.includes('x.com')) {
+  // Playlist are not something that exists on x.com but a post can have 
+  // multiple videos so we need to use cookies for those links,
+  // The listed videos will all have the same link with a different id
+  // which this code can't handle yet, you will get only one item in the
+  // playlist generated from it (hopefully the first one) but downloading that
+  // will make yt-dlp get the rest of the items in the post, check the folder.
+  if (config.cookiesFile && isSiteXDotCom(playlistUrl)) {
     processArgs.unshift("--cookies", config.cookiesFile);
   }
   const fullCommandString = [
