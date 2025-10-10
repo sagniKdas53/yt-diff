@@ -105,7 +105,6 @@ const downloadOptions = [
   config.saveDescription ? "--write-description" : "",
   config.saveComments ? "--write-comments" : "",
   config.saveThumbnail ? "--write-thumbnail" : "",
-  "--paths",
 ].filter(Boolean);
 // Regex needs to be separate
 const playlistRegex = /(?:playlist|list=)\b/i;
@@ -1818,6 +1817,7 @@ async function executeDownload(downloadItem, processKey) {
     return new Promise((resolve, reject) => {
       let progressPercent = null;
       let actualFileName = null;
+      const processArgs = [...downloadOptions]; // Clone options array 
 
       // Notify frontend of download start
       safeEmit("download-started", { percentage: 101 });
@@ -1825,18 +1825,16 @@ async function executeDownload(downloadItem, processKey) {
       // Check and add cookies file for x.com if configured
       if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
         logger.debug(`Using cookies file: ${config.cookiesFile}`);
-        const end = downloadOptions.pop();
-        downloadOptions.push(`--cookies`, config.cookiesFile);
-        downloadOptions.push(end);
+        processArgs.unshift(`--cookies`, config.cookiesFile);
       }
 
       logger.debug(`Starting download for ${videoUrl}`, {
         url: videoTitle,
         savePath,
-        fullCommand: `yt-dlp ${downloadOptions.join(' ')} ${savePath} ${videoUrl}`
+        fullCommand: `yt-dlp ${processArgs.join(' ')} --paths ${savePath} ${videoUrl}`
       });
       // Spawn download process
-      const downloadProcess = spawn("yt-dlp", downloadOptions.concat([savePath, videoUrl]));
+      const downloadProcess = spawn("yt-dlp", processArgs.concat(["--paths", savePath, videoUrl]));
 
       // Update process tracking
       const processEntry = downloadProcesses.get(processKey);
@@ -2640,9 +2638,7 @@ async function fetchVideoInformation(videoUrl, startIndex, endIndex) {
     // but for now just check for x.com links as that's the real pain in the ass
     if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
       logger.debug(`Using cookies file: ${config.cookiesFile}`);
-      const end = processArgs.pop();
-      processArgs.push(`--cookies`, config.cookiesFile);
-      processArgs.push(end);
+      processArgs.unshift(`--cookies`, config.cookiesFile);
     }
 
     // Quote arguments with spaces
@@ -3036,6 +3032,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
   // playlist generated from it (hopefully the first one) but downloading that
   // will make yt-dlp get the rest of the items in the post, check the folder.
   if (config.cookiesFile && isSiteXDotCom(playlistUrl)) {
+    logger.debug(`Using cookies file: ${config.cookiesFile}`);
     processArgs.unshift("--cookies", config.cookiesFile);
   }
   const fullCommandString = [
