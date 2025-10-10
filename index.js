@@ -50,7 +50,7 @@ const config = {
   },
   registration: {
     allowed: process.env.ALLOW_REGISTRATION === "false" ? false : true,
-    maxUsers: +(process.env.MAX_USERS || 10)
+    maxUsers: +(process.env.MAX_USERS || 15)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
   cookiesFile: process.env.COOKIES_FILE
@@ -68,6 +68,7 @@ const config = {
   restrictFilenames: process.env.RESTRICT_FILENAMES !== "false",
   maxFileNameLength: +process.env.MAX_FILENAME_LENGTH || NaN, // No truncation by default
   logLevel: (process.env.LOG_LEVELS || "trace").toLowerCase(),
+  logDisableColors: process.env.NO_COLOR === "true",
   maxTitleLength: 255,
   saltRounds: 10,
   secretKey: process.env.SECRET_KEY_FILE
@@ -231,6 +232,9 @@ const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
 const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
 const orange = color.xterm(208);
 const honeyDew = color.xterm(194);
+if (config.logDisableColors || !process.stdout.isTTY) {
+  color.enabled = false;
+}
 
 /**
  * Formats a log entry in logfmt style.
@@ -243,23 +247,27 @@ const honeyDew = color.xterm(194);
  * @returns {string} The formatted log entry.
  */
 const logfmt = (level, message, fields = {}) => {
-  // Start with log level and message
-  let logEntry = `level=${level} msg="${message}"`;
-
-  // Add timestamp in ISO format
+  let logEntry = `level=${level} msg="${message
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, '\\n')}"`;
   logEntry += ` ts=${new Date().toISOString()}`;
-
-  // Add all other fields
   for (const [key, value] of Object.entries(fields)) {
-    // Properly format different value types
     if (typeof value === 'string') {
-      // Escape quotes in strings
-      logEntry += ` ${key}="${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      logEntry += ` ${key}="${value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, '\\n')}"`;
     } else if (value instanceof Error) {
-      // Extract error details
-      logEntry += ` ${key}="${value.message.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      logEntry += ` ${key}="${value.message
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, '\\n')}"`;
       if (value.stack) {
-        logEntry += ` ${key}_stack="${value.stack.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+        logEntry += ` ${key}_stack="${value.stack
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, '\\n')}"`;
       }
     } else if (value === null || value === undefined) {
       logEntry += ` ${key}=null`;
@@ -267,7 +275,6 @@ const logfmt = (level, message, fields = {}) => {
       logEntry += ` ${key}=${value}`;
     }
   }
-
   return logEntry;
 };
 /**
