@@ -1817,7 +1817,8 @@ async function executeDownload(downloadItem, processKey) {
     return new Promise((resolve, reject) => {
       let progressPercent = null;
       let actualFileName = null;
-      const processArgs = [...downloadOptions]; // Clone options array 
+      // Prepare final parameters
+      const processArgs = ["--paths", savePath, videoUrl];
 
       // Notify frontend of download start
       safeEmit("download-started", { percentage: 101 });
@@ -1825,16 +1826,17 @@ async function executeDownload(downloadItem, processKey) {
       // Check and add cookies file for x.com if configured
       if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
         logger.debug(`Using cookies file: ${config.cookiesFile}`);
+        // Add cookies file to process args
         processArgs.unshift(`--cookies`, config.cookiesFile);
       }
 
       logger.debug(`Starting download for ${videoUrl}`, {
         url: videoTitle,
         savePath,
-        fullCommand: `yt-dlp ${processArgs.join(' ')} --paths ${savePath} ${videoUrl}`
+        fullCommand: `yt-dlp ${downloadOptions.join(' ')} ${processArgs.join(' ')}`,
       });
-      // Spawn download process
-      const downloadProcess = spawn("yt-dlp", processArgs.concat(["--paths", savePath, videoUrl]));
+      // Spawn download process, by assembling full args
+      const downloadProcess = spawn("yt-dlp", downloadOptions.concat(processArgs));
 
       // Update process tracking
       const processEntry = downloadProcesses.get(processKey);
@@ -3596,7 +3598,7 @@ server.listen(config.port, async () => {
   const elapsed = Date.now() - start;
   logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
   logger.verbose(
-    `Download Options: yt-dlp ${downloadOptions.join(" ")} "${config.saveLocation.endsWith("/") ? config.saveLocation : config.saveLocation + "/"}` +
+    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${config.saveLocation.endsWith("/") ? config.saveLocation : config.saveLocation + "/"}` +
     `{playlist_dir}" "{url}"`
   );
   logger.verbose(
