@@ -290,7 +290,6 @@ const logfmt = (level, message, fields = {}) => {
  * @example
  * logger.trace('This is a trace message', { additional: 'info' });
  * logger.debug('This is a debug message', { additional: 'info' });
- * logger.verbose('This is a verbose message', { additional: 'info' });
  * logger.info('This is an info message', { additional: 'info' });
  * logger.warn('This is a warning message', { additional: 'info' });
  * logger.error('This is an error message', { additional: 'info' });
@@ -304,11 +303,6 @@ const logger = {
   debug: (message, fields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
       console.debug(color.magentaBright(logfmt('debug', message, fields)));
-    }
-  },
-  verbose: (message, fields = {}) => {
-    if (currentLogLevelIndex <= logLevels.indexOf("verbose")) {
-      console.log(color.greenBright(logfmt('verbose', message, fields)));
     }
   },
   info: (message, fields = {}) => {
@@ -1249,7 +1243,7 @@ async function authenticateUser(request, response) {
     });
 
     if (!user) {
-      logger.verbose(`Authentication failed for user ${userName}`);
+      logger.warn(`Authentication failed for user ${userName}`);
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
@@ -1261,7 +1255,7 @@ async function authenticateUser(request, response) {
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isPasswordValid) {
-      logger.verbose(`Authentication failed for user ${userName}`);
+      logger.warn(`Authentication failed for user ${userName}`);
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
@@ -1271,7 +1265,7 @@ async function authenticateUser(request, response) {
 
     // Generate token
     const token = generateAuthToken(user, expiryTime);
-    logger.verbose(`Authentication successful for user ${userName}`);
+    logger.info(`Authentication successful for user ${userName}`);
 
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
@@ -3612,11 +3606,11 @@ server.listen(config.port, async () => {
   await sleep(config.sleepTime);
   const elapsed = Date.now() - start;
   logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
-  logger.verbose(
+  logger.debug(
     `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${config.saveLocation.endsWith("/") ? config.saveLocation : config.saveLocation + "/"}` +
     `{playlist_dir}" "{url}"`
   );
-  logger.verbose(
+  logger.debug(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
     `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`
   );
