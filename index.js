@@ -65,6 +65,8 @@ const config = {
   saveDescription: process.env.SAVE_DESCRIPTION !== "false",
   saveComments: process.env.SAVE_COMMENTS !== "false",
   saveThumbnail: process.env.SAVE_THUMBNAIL !== "false",
+  restrictFilenames: process.env.RESTRICT_FILENAMES !== "false",
+  maxFileNameLength: +process.env.MAX_FILENAME_LENGTH || NaN, // No truncation by default
   logLevel: (process.env.LOG_LEVELS || "trace").toLowerCase(),
   maxTitleLength: 255,
   saltRounds: 10,
@@ -105,7 +107,13 @@ const downloadOptions = [
   config.saveDescription ? "--write-description" : "",
   config.saveComments ? "--write-comments" : "",
   config.saveThumbnail ? "--write-thumbnail" : "",
+  config.restrictFilenames ? "--restrict-filenames" : "",
 ].filter(Boolean);
+// Check if file name length limit is set and valid
+if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
+  downloadOptions.push(`--trim-filenames`);
+  downloadOptions.push(`${config.maxFileNameLength}`);
+}
 // Regex needs to be separate
 const playlistRegex = /(?:playlist|list=)\b/i;
 
