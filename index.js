@@ -38,8 +38,8 @@ const config = {
         : new Error("DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set"),
   },
   cache: {
-    maxItems: +process.env.CACHE_MAX_ITEMS || 1000,
-    maxAge: +process.env.CACHE_MAX_AGE || 30, // keep cache for 30 seconds just in testing
+    maxItems: +process.env.CACHE_MAX_ITEMS || 100,
+    maxAge: +process.env.CACHE_MAX_AGE || 3600, // keep cache for 1 hour
     reqPerIP: +process.env.MAX_REQUESTS_PER_IP || 10
   },
   queue: {
@@ -187,9 +187,9 @@ if (!fs.existsSync(config.saveLocation)) {
  *   - maxSize: Maximum total size of all cache items in bytes.
  *   - dispose: Function to clear sensitive data when an item is removed.
  */
-const createSecurityCacheConfig = (size) => ({
-  max: config.cache.maxItems, // Maximum number of items to store in the cache
-  ttl: config.cache.maxAge * 1000, // Time-to-live for each item in milliseconds
+const createSecurityCacheConfig = (maxBytes, maxItems, ttl) => ({
+  max: maxItems, // Maximum number of items to store in the cache
+  ttl: ttl * 1000, // Time-to-live for each item in milliseconds
   updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
   updateAgeOnHas: true, // Reset TTL on has() to keep active items longer
   /**
@@ -205,7 +205,7 @@ const createSecurityCacheConfig = (size) => ({
       { key: key, size: valueString.length });
     return valueString.length; // Size in bytes
   },
-  maxSize: size, // Maximum total size of all cache items in bytes
+  maxSize: maxBytes, // Maximum total size of all cache items in bytes
   /**
    * Clear sensitive data when an item is removed.
    *
@@ -224,8 +224,9 @@ const createSecurityCacheConfig = (size) => ({
   },
 });
 
-const userCache = new LRUCache(createSecurityCacheConfig(1000));
-const ipCache = new LRUCache(createSecurityCacheConfig(1000));
+const userCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB per user
+const ipCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB per IP
+const signedUrlCache = new LRUCache(createSecurityCacheConfig(10 * 1024, config.cache.maxItems, config.cache.maxAge)); // 10KB for signed URLs
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -1446,6 +1447,62 @@ async function serveFileByPath(requestBody, response) {
     response.end(JSON.stringify({ status: 'error', message: 'Internal server error' }));
   }
 }
+async function makeSignedUrl(requestBody, response) {
+  let absolutePath = null;
+  if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
+    const saveDirectory = requestBody.saveDirectory || "";
+    const fileName = requestBody.fileName;
+    if (!fileName || typeof fileName !== 'string') {
+      logger.warn('serveFileByPath invalid fileName', { saveDirectory, fileName });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'fileName is required' }));
+    }
+
+    // Construct the absolute path using configured saveLocation. Use path_fs.join and
+    // then verify that the resolved path is within config.saveLocation to avoid traversal.
+    const joined = path_fs.join(config.saveLocation, saveDirectory || '', fileName);
+    const resolved = path_fs.resolve(joined);
+    const saveRoot = path_fs.resolve(config.saveLocation);
+    if (!resolved.startsWith(saveRoot)) {
+      logger.warn('serveFileByPath attempted path traversal', { saveDirectory, fileName, resolved });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'Invalid file path' }));
+    }
+    absolutePath = resolved;
+  } else {
+    logger.warn('makeSignedUrl missing parameters', { requestBody });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+    return response.end(JSON.stringify({ status: 'error', message: 'saveDirectory and fileName are required' }));
+  }
+  // Now I need to make a uuid, store the absolutePath in memory with the uuid as key
+  // add it to a new LRU cache with the expiry as an hour
+  // when a get request comes in with the uuid and token, look it up in the cache
+  // if found, serve the file (and delete the cache entry, or not, depending on if we want one-time use)
+  // if not found, return 404
+  const signedUrlId = crypto.randomUUID();
+  signedUrlCache.set(signedUrlId, { filePath: absolutePath, mimeType: "application/octet-stream" }, config.cache.maxAge);
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
+  response.end(JSON.stringify({ status: 'success', signedUrlId: signedUrlId }));
+}
+async function serveFileBySignedUrl(requestBody, response) {
+  if (!requestBody || !requestBody.signedUrlId || typeof requestBody.signedUrlId !== 'string') {
+    logger.warn('serveFileBySignedUrl missing signedUrlId', { requestBody });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+    return response.end(JSON.stringify({ status: 'error', message: 'signedUrlId is required' }));
+  }
+  const signedUrlId = requestBody.signedUrlId;
+  const entry = signedUrlCache.get(signedUrlId);
+  if (!entry) {
+    logger.warn('serveFileBySignedUrl invalid or expired signedUrlId', { signedUrlId });
+    response.writeHead(404, generateCorsHeaders(MIME_TYPES['.json']));
+    return response.end(JSON.stringify({ status: 'error', message: 'Invalid or expired signedUrlId' }));
+  }
+  const absolutePath = entry.filePath;
+  // Invalidate the signed URL after one use
+  signedUrlCache.del(signedUrlId);
+  // Now serve the file at absolutePath
+  return serveFileByPath({ fileName: path_fs.basename(absolutePath), saveDirectory: path_fs.relative(config.saveLocation, path_fs.dirname(absolutePath)) }, response);
+}
 /**
  * A semaphore implementation to control the number of concurrent asynchronous operations.
  * 
@@ -2160,6 +2217,7 @@ async function processListingRequest(requestBody, response) {
         logger.debug(`Playlist found in database`, { url: normalizedUrl });
         if (playlistEntry.monitoringType === monitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
+          safeEmit("playlist-skipped", { message: `Playlist ${playlistEntry.title} is already being monitored with type ${monitoringType}, skipping.` });
           continue; // Skip as it's already monitored
         } else if (playlistEntry.monitoringType !== monitoringType) {
           // If the monitoring type change is Full the reindex the entire playlist,
@@ -3450,7 +3508,61 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
         method: req.method,
         encoding: reqEncoding,
       });
-      // Check if the requested file exists in the static assets
+      // Check if the request is for a file from the signedUrlCache
+      const urlParams = new URLSearchParams(req.url.split("?")[1]);
+      if (urlParams.has("fileId")) {
+        const fileId = urlParams.get("fileId");
+        // If fileId is present, try to serve from signedUrlCache
+        if (signedUrlCache.has(fileId)) {
+          const signedEntry = signedUrlCache.get(fileId);
+          // Serve the file from the signed URL cache
+          logger.info("Serving file from signed URL cache", { path: req.url });
+          // Check if the entry has expired
+          if (Date.now() > signedEntry.expiry) {
+            logger.warn("Signed URL has expired", { path: req.url });
+            signedUrlCache.delete(fileId);
+            res.writeHead(403, generateCorsHeaders(MIME_TYPES[".html"]));
+            res.write("Signed URL has expired");
+            return res.end();
+          } else {
+            logger.debug("Serving signed file", { fileId, filePath: signedEntry.filePath });
+            const originalName = path_fs.basename(signedEntry.filePath);
+            // Remove potentially dangerous characters
+            const safeName = originalName.replace(/[\r\n"']/g, '');
+            // RFC 5987 encoding for non-ASCII filenames
+            const encodedName = encodeURIComponent(safeName);
+            // Stream the file to the response
+            res.writeHead(200, {
+              ...generateCorsHeaders(signedEntry.mimeType),
+              // The filename needs to be sanitized to prevent header injection
+              'Content-Disposition': `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
+              'Content-Length': fs.statSync(signedEntry.filePath).size
+            });
+            const readStream = fs.createReadStream(signedEntry.filePath);
+            readStream.pipe(res);
+            readStream.on('error', (err) => {
+              logger.error("Error reading signed file", { error: err.message, fileId });
+              if (!res.headersSent) {
+                res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
+              }
+              res.end("Error reading file");
+            });
+            readStream.on('end', () => {
+              logger.debug("Finished streaming signed file", { fileId });
+            });
+            // Note: Do not delete the entry here to allow multiple downloads within expiry
+            // If you want single-use URLs, uncomment the next line
+            // signedUrlCache.delete(fileId);
+            return;
+            // If you want to just return the file path instead of streaming
+            // (not recommended for large files or production use)
+            // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
+            // res.write(signedEntry.filePath);
+            // return res.end();
+          }
+        }
+      }
+      // Check if the GET request is for a static asset
       if (!staticAssets[get]) {
         logger.error("Requested Resource couldn't be found", {
           path: req.url,
@@ -3505,7 +3617,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
   } else if (req.url === config.urlBase + "/getsub" && req.method === "POST") {
     authenticateRequest(req, res, getPlaylistVideos);
   } else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
-    authenticateRequest(req, res, serveFileByPath);
+    authenticateRequest(req, res, makeSignedUrl);
   } else if (req.url === config.urlBase + "/register" && req.method === "POST") {
     rateLimit(req, res, registerUser, (req, res, next) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
