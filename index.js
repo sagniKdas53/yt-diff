@@ -1447,6 +1447,37 @@ async function serveFileByPath(requestBody, response) {
     response.end(JSON.stringify({ status: 'error', message: 'Internal server error' }));
   }
 }
+/**
+ * Create a time-limited, signed identifier for serving a file and write the result to the HTTP response.
+ *
+ * Validations and behavior:
+ * - Expects a requestBody with at least `fileName` (string). `saveDirectory` is optional.
+ * - Validates `fileName` is a non-empty string; responds with 400 if missing/invalid.
+ * - Joins `config.saveLocation`, `saveDirectory` and `fileName` using path_fs.join, resolves the result,
+ *   and verifies the resolved path is inside the configured save root (path traversal protection).
+ *   If the resolved path is outside the save root, responds with 400.
+ * - On success, generates a UUID (via crypto.randomUUID()), computes an expiry timestamp (Date.now() + config.cache.maxAge * 1000),
+ *   and stores an entry in `signedUrlCache` with key = UUID and value = { filePath, mimeType, expiry }.
+ *   The cache entry is stored with a TTL equal to `config.cache.maxAge` (the code treats this value as seconds).
+ * - Responds with 200 and a JSON body: { status: 'success', signedUrlId, expiry } where `expiry` is an epoch timestamp in milliseconds.
+ *
+ * Side effects:
+ * - Writes HTTP headers and body to the provided `response` (uses response.writeHead and response.end).
+ * - Emits warnings via `logger.warn` on invalid input or path traversal attempts.
+ * - Mutates `signedUrlCache` by inserting the signed URL mapping.
+ *
+ * Notes:
+ * - The function is async and resolves after writing to the response, but it handles error responses itself (no exceptions propagated).
+ * - Default MIME type for the cached entry is "application/octet-stream".
+ * - The implementation relies on external symbols: config, path_fs, signedUrlCache, logger, generateCorsHeaders, MIME_TYPES, crypto.
+ *
+ * @async
+ * @param {Object} requestBody - Parsed request payload.
+ * @param {string} [requestBody.saveDirectory] - Optional subdirectory (relative to config.saveLocation) containing the file.
+ * @param {string} requestBody.fileName - Name of the file to serve; must be a non-empty string.
+ * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body.
+ * @returns {Promise<void>} Resolves after sending the HTTP response. On success sends JSON with { status, signedUrlId, expiry }. On error sends a 400 JSON error.
+ */
 async function makeSignedUrl(requestBody, response) {
   let absolutePath = null;
   if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
@@ -1480,28 +1511,10 @@ async function makeSignedUrl(requestBody, response) {
   // if found, serve the file (and delete the cache entry, or not, depending on if we want one-time use)
   // if not found, return 404
   const signedUrlId = crypto.randomUUID();
-  signedUrlCache.set(signedUrlId, { filePath: absolutePath, mimeType: "application/octet-stream" }, config.cache.maxAge);
+  const expiry = Date.now() + config.cache.maxAge * 1000;
+  signedUrlCache.set(signedUrlId, { filePath: absolutePath, mimeType: "application/octet-stream", expiry }, config.cache.maxAge);
   response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
-  response.end(JSON.stringify({ status: 'success', signedUrlId: signedUrlId }));
-}
-async function serveFileBySignedUrl(requestBody, response) {
-  if (!requestBody || !requestBody.signedUrlId || typeof requestBody.signedUrlId !== 'string') {
-    logger.warn('serveFileBySignedUrl missing signedUrlId', { requestBody });
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-    return response.end(JSON.stringify({ status: 'error', message: 'signedUrlId is required' }));
-  }
-  const signedUrlId = requestBody.signedUrlId;
-  const entry = signedUrlCache.get(signedUrlId);
-  if (!entry) {
-    logger.warn('serveFileBySignedUrl invalid or expired signedUrlId', { signedUrlId });
-    response.writeHead(404, generateCorsHeaders(MIME_TYPES['.json']));
-    return response.end(JSON.stringify({ status: 'error', message: 'Invalid or expired signedUrlId' }));
-  }
-  const absolutePath = entry.filePath;
-  // Invalidate the signed URL after one use
-  signedUrlCache.del(signedUrlId);
-  // Now serve the file at absolutePath
-  return serveFileByPath({ fileName: path_fs.basename(absolutePath), saveDirectory: path_fs.relative(config.saveLocation, path_fs.dirname(absolutePath)) }, response);
+  response.end(JSON.stringify({ status: 'success', signedUrlId: signedUrlId, expiry }));
 }
 /**
  * A semaphore implementation to control the number of concurrent asynchronous operations.
@@ -2217,7 +2230,9 @@ async function processListingRequest(requestBody, response) {
         logger.debug(`Playlist found in database`, { url: normalizedUrl });
         if (playlistEntry.monitoringType === monitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
-          safeEmit("playlist-skipped", { message: `Playlist ${playlistEntry.title} is already being monitored with type ${monitoringType}, skipping.` });
+          safeEmit("playlist-skipped", {
+            message: `Playlist ${playlistEntry.title} is already being monitored with type ${monitoringType}, skipping.`
+          });
           continue; // Skip as it's already monitored
         } else if (playlistEntry.monitoringType !== monitoringType) {
           // If the monitoring type change is Full the reindex the entire playlist,
@@ -3531,28 +3546,33 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
             const safeName = originalName.replace(/[\r\n"']/g, '');
             // RFC 5987 encoding for non-ASCII filenames
             const encodedName = encodeURIComponent(safeName);
-            // Stream the file to the response
-            res.writeHead(200, {
-              ...generateCorsHeaders(signedEntry.mimeType),
-              // The filename needs to be sanitized to prevent header injection
-              'Content-Disposition': `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
-              'Content-Length': fs.statSync(signedEntry.filePath).size
-            });
-            const readStream = fs.createReadStream(signedEntry.filePath);
-            readStream.pipe(res);
-            readStream.on('error', (err) => {
-              logger.error("Error reading signed file", { error: err.message, fileId });
-              if (!res.headersSent) {
-                res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
-              }
+            fs.promises.stat(signedEntry.filePath).then(stats => {
+              res.writeHead(200, {
+                ...generateCorsHeaders(signedEntry.mimeType),
+                // The filename needs to be sanitized to prevent header injection
+                'Content-Disposition': `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
+                'Content-Length': stats.size
+              });
+              const readStream = fs.createReadStream(signedEntry.filePath);
+              readStream.pipe(res);
+              readStream.on('error', (err) => {
+                logger.error("Error reading signed file", { error: err.message, fileId });
+                if (!res.headersSent) {
+                  res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
+                }
+                res.end("Error reading file");
+              });
+              readStream.on('end', () => {
+                logger.debug("Finished streaming signed file", { fileId });
+              });
+              // Note: Do not delete the entry here to allow multiple downloads within expiry
+              // If you want single-use URLs, uncomment the next line
+              // signedUrlCache.delete(fileId);
+            }).catch(err => {
+              logger.error("Error getting file stats", { error: err.message, fileId });
+              res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
               res.end("Error reading file");
             });
-            readStream.on('end', () => {
-              logger.debug("Finished streaming signed file", { fileId });
-            });
-            // Note: Do not delete the entry here to allow multiple downloads within expiry
-            // If you want single-use URLs, uncomment the next line
-            // signedUrlCache.delete(fileId);
             return;
             // If you want to just return the file path instead of streaming
             // (not recommended for large files or production use)
