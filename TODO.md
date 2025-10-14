@@ -1,26 +1,13 @@
 # Todo
 
 1. [ ] Split this giant script into smaller blocks, and then import functions so that it's more manageable.
-1. [x] Make a global config object that can be used to better encapsulate the functionality of this project.
-1. [x] Implement a global process limit and queue so that spawned processes can be kept in control and then killed when they go wrong [They often do]
-1. [x] Implement download_background_parallel()
-1. [x] Make Listing parallel as well using semaphores {Priority}
-1. [x] Update the front-end to have a notification drawer so that when listing happens in parallel the events can be sent over web-sockets so that the user doesn't miss the entire thing
-1. [x] Make the logging logfmt compatible so that it can be used in Loki
-1. [ ] Fix the error message for failed login in front-end
-1. [ ] Make the notifications better, like clicking on them makes them navigable and also add a way to make it scrollable and less ugly to look at.
-1. [ ] Add a dismiss all button to the notification tab.
-1. [x] Fix the username an user_name problem between DB and frontend
-1. [ ] Return 11 or chunkSize+1 elements so that the pagination is activated
-1. [ ] Fix the issue where after the full playlist is listed the sub list is going all the way to the end. This also happens sometimes when the querying is done (Probably need better clearing of indexes/pages in subList) [issue #35](https://github.com/sagniKdas53/yt-diff/issues/35)
-1. [ ] Add ws handlers for the events where playlist listing doesn't change so the listing is skipped (in these cases the indeterminate is not changes so the loading effect persists, making it look like something is happening when it isn't)
-1. [ ] Add the scheduled updater back.
-
-## Very Long Term
-
-1. [ ] Add a metrics endpoint so that metrics can be exposed to Prometheus.
-   1. [ ] How long listing and downloading actions take
-   1. [ ] Memory and CPU usage of the spawned processes
-   1. [ ] Number of times a endpoint is hit
-   1. [ ] Number of auth requests both failed and successful along side with IP addresses
-   1. [ ] Status of the different caches used in the script
+2. [ ] Add a delete API for playlists and videos
+   1. [ ] make sure that there is a distinction that we can delete a playlist and the videos in it separately or together
+3. [ ] Add a way to sync metadata from the disk to the video_metadata table like say use the filename to glob the subs file(.vtt), the thumbnail and the description and then mark that the data has been synced
+4. [ ] Find a way to test out the cleanup CronJob, since most things don't get stuck and even if they do they keep working on the back this is hard to test, the only thing that works is downloading [Me at the zoo](https://www.youtube.com/watch?v=jNQXAC9IVRw) don't know how to simulate listing getting stuck
+   1. [x] Download Cleanup
+   2. [ ] Listing Cleanup
+5. [ ] Also in the same way need to add a menu to each item so that we do context action on them like fetch the thumbnail, download the file, get the subtitle and also delete the file from disk (and mark as undownloaded, so that we can download again)
+6. [ ] Add an exception for x.com posts being treated as playlists (even if a post has multiple videos we can't list them as their IDs are same and this breaks listing so the best way is to make them a single unlisted item, when downloaded by yt-dlp we will get all the items anyway)
+7. [ ] Fix the docker image, we need pip so that we can install yt-dlp from pip and also add the [recommended packages](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#dependencies)
+8. [ ] Fix [#35](https://github.com/sagniKdas53/yt-diff/issues/35)
