@@ -12,11 +12,10 @@ yt-dlp bundled with a node-js server and somewhat usable UI made in react and mu
 - Node.js
 - Docker Compose or Docker to use postgres (Can be installed on system directly)
 - Linux (Not tested on Windows)
-- yt-dlp (Installed with `pip install yt-dlp`)
+- yt-dlp (Installed with `python3 -m pip install -U "yt-dlp[default]"`)
 - yt-diff (this project)
 - ffmpeg (optional)
 - Watchtower (optional)
-- phantomjs (optional)
 
 ## How to use?
 
