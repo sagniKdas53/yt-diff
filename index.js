@@ -3557,9 +3557,11 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
     authenticateRequest(req, res, processListingRequest);
   } else if (req.url === config.urlBase + "/download" && req.method === "POST") {
     authenticateRequest(req, res, processDownloadRequest);
-  } else if (req.url === config.urlBase + "/delete" && req.method === "POST") {
-    authenticateRequest(req, res, processDeleteRequest);
-  } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
+  }
+  // else if (req.url === config.urlBase + "/delete" && req.method === "POST") {
+  //   authenticateRequest(req, res, processDeleteRequest);
+  // } 
+  else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
     authenticateRequest(req, res, updatePlaylistMonitoring);
   } else if (req.url === config.urlBase + "/getplay" && req.method === "POST") {
     authenticateRequest(req, res, getPlaylistsForDisplay);
