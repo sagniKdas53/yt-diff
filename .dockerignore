@@ -4,3 +4,9 @@ migration-scripts/*.sql
 yt-data/
 dist/
 logs/
+frontend/
+venv/
+ssl/
+.git/
+.vscode/
+.github/

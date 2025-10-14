@@ -1,15 +1,9 @@
 node_modules/
-migration-scripts/*.csv
-migration-scripts/*.sql
-yt-data/
+venv/
 logs/
 dist/
-letsencrypt/
 ssl/
-update.log
+*.log
 db_password.txt
-tests/
 secret_key.txt
-backup/
-.vscode/
 cookie_secret.txt
