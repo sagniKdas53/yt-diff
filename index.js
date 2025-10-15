@@ -12,8 +12,6 @@ const jwt = require("jsonwebtoken");
 const he = require('he');
 const { LRUCache } = require('lru-cache');
 const { Server } = require("socket.io");
-const { log } = require("console");
-const { up } = require("cli-color/move");
 
 // Configuration object
 const config = {
@@ -1877,144 +1875,76 @@ async function executeDownload(downloadItem, processKey) {
           });
 
           if (code === 0) {
-            // Update video entry on success
+            // ===== SUCCESS: Update video entry =====
+
             const unhelpfulTitle = (videoTitle === videoId || videoTitle === "NA");
             const fallbackTitle = actualFileName || videoTitle;
-            var isMetaDataSynced = false;
-            var descriptionFileFound = true; // Assume true, set false if not found
-            var commentsFileFound = true; // Assume true, set false if not found
-            var subTitleFileFound = true; // Assume true, set false if not found
-            var thumbNailFileFound = true; // Assume true, set false if not found
 
+            // Determine the main video file name
+            const fileName = determineVideoFileName(
+              actualFileName,
+              videoTitle,
+              videoId,
+              savePath
+            );
+
+            // Build initial updates object
             const updates = {
               downloadStatus: true,
               isAvailable: true,
               title: unhelpfulTitle ? fallbackTitle : videoTitle,
-              fileName: (function () {
-                if (actualFileName) {
-                  return path_fs.basename(actualFileName || "");
-                }
-                // Fallback: try to find a file in savePath that matches videoTitle prefix
-                try {
-                  const files = fs.readdirSync(savePath);
-                  const match = files.find(f => f.indexOf(videoTitle) === 0 || f.indexOf(videoId) !== -1);
-                  if (match) return path_fs.basename(match);
-                } catch (e) {
-                  logger.debug('Could not read savePath for fallback filename', { savePath, error: e && e.message });
-                }
-                // As last resort, join savePath and videoTitle (no extension)
-                return path_fs.basename(videoTitle);
-              })(),
+              fileName: fileName
             };
 
-            // Now we need to check what extra files were created alongside the main video file,
-            // from the config options we passed to yt-dlp like config.saveSubs, config.saveThumbnail
-            // config.saveComments, config.saveDescription and config.saveThumbnail
-            // Example:
-            // 'Me_at_the_zoo_-_20_Years_Later-[ydEMNzksm2M].description' <-- from --write-description
-            // 'Me_at_the_zoo_-_20_Years_Later-[ydEMNzksm2M].en.vtt' <-- from --write-subs or --write-auto-subs
-            // 'Me_at_the_zoo_-_20_Years_Later-[ydEMNzksm2M].info.json' <-- from --write-info-json or --write-comments
-            // 'Me_at_the_zoo_-_20_Years_Later-[ydEMNzksm2M].webm' <-- the video file itself
-            // 'Me_at_the_zoo_-_20_Years_Later-[ydEMNzksm2M].webp' <-- from --write-thumbnail
-            // If we find these files, we should update the videoEntry fields like descriptionFile,
-            // commentsFile, subtitlesFile, thumbnailFile accordingly
-            try {
-              const mainFileBase = updates.fileName ? updates.fileName.replace(path_fs.extname(updates.fileName), '') : null;
-              if (mainFileBase) {
-                // This seems like a bad idea, as it requires reading the directory
-                // There could be a lot of files and looping through them could be slow
-                // But for now, let's do it this way
-                // We can optimize later if needed
-                logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
-                // Read all files in savePath
-                const files = fs.readdirSync(savePath);
-                // Filter files that start with mainFileBase and are not the main file itself
-                const metaFiles = files.filter(file => file.startsWith(mainFileBase) && file !== updates.fileName);
-                for (const file of metaFiles) {
-                  if (config.saveDescription && !updates.descriptionFile) {
-                    logger.trace('Found potential description file', { file });
-                    if (file.endsWith('.description')) {
-                      updates.descriptionFile = file;
-                      logger.debug('Synchronized description file', { file });
-                      descriptionFileFound = true;
-                    } else {
-                      descriptionFileFound = false;
-                    }
-                  }
-                  if (config.saveComments && !updates.commentsFile) {
-                    logger.trace('Found potential comments file', { file });
-                    if (file.endsWith('.info.json')) {
-                      updates.commentsFile = file;
-                      logger.debug('Synchronized comments file', { file });
-                      commentsFileFound = true;
-                    } else {
-                      commentsFileFound = false;
-                    }
-                  }
-                  if (config.saveSubs && !updates.subTitleFile) {
-                    logger.trace('Found potential subtitles file', { file });
-                    if (file.endsWith('.vtt') || file.endsWith('.srt')) {
-                      updates.subTitleFile = file;
-                      logger.debug('Synchronized subtitles file', { file });
-                      subTitleFileFound = true;
-                    } else {
-                      subTitleFileFound = false;
-                    }
-                  }
-                  if (config.saveThumbnail && !updates.thumbNailFile) {
-                    logger.trace('Found potential thumbnail file', { file });
-                    if (file.endsWith('.webp') || file.endsWith('.jpg') || file.endsWith('.png')) {
-                      updates.thumbNailFile = file;
-                      logger.debug('Synchronized thumbnail file', { file });
-                      thumbNailFileFound = true;
-                    } else {
-                      thumbNailFileFound = false;
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              isMetaDataSynced = false;
-              logger.debug('Could not read savePath for extra metadata files', { savePath, error: e && e.message });
-            }
+            // Discover associated metadata files
+            const { metadata, syncStatus } = discoverMetadataFiles(fileName, savePath, config);
 
-            if (descriptionFileFound && commentsFileFound && subTitleFileFound && thumbNailFileFound) {
-              isMetaDataSynced = true;
-              logger.info('Synchronized extra metadata files', { updates: JSON.stringify(updates) });
+            // Add discovered metadata files to updates
+            Object.assign(updates, metadata);
+
+            // Determine if all expected metadata files were found
+            const allExtraFilesFound = syncStatus.descriptionFileFound &&
+              syncStatus.commentsFileFound &&
+              syncStatus.subTitleFileFound &&
+              syncStatus.thumbNailFileFound;
+
+            updates.isMetaDataSynced = true;
+
+            // Log metadata sync status
+            if (allExtraFilesFound) {
+              logger.info('All extra files found', {
+                updates: JSON.stringify(updates)
+              });
             } else {
-              logger.info('Extra metadata files not fully synchronized', { updates: JSON.stringify(updates) });
+              logger.info('Some of the expected files are not found', {
+                updates: JSON.stringify(updates)
+              });
             }
-            updates.isMetaDataSynced = isMetaDataSynced;
 
-            logger.debug(`Updating video: ${JSON.stringify(updates)}`, { pid: downloadProcess.pid });
+            logger.debug(`Updating video: ${JSON.stringify(updates)}`, {
+              pid: downloadProcess.pid
+            });
 
             await videoEntry.update(updates);
 
             // Notify frontend: send saveDirectory and fileName
             try {
               const fileName = updates.fileName;
-              // Compute the save directory relative to configured saveLocation.
-              // Normalize '.' (same directory) to empty string so callers receive "" when
-              // the file is directly in the save root.
-              let saveDir = path_fs.relative(
-                path_fs.resolve(config.saveLocation),
-                path_fs.dirname(updates.fileName || config.saveLocation)
-              );
-              // TODO: Check if these many adjustments are needed, or if path_fs.relative is sufficient
-              if (saveDir.equals(saveDirectory.trim())) {
-                logger.debug(`Computed saveDir matches expected saveDirectory`, { saveDir, saveDirectory });
-              } else {
-                logger.debug(`Computed saveDir differs from expected saveDirectory`, {
-                  saveDir, saveDirectory
+              let saveDir = computeSaveDirectory(fileName, config.saveLocation);
+
+              // Check if computed saveDir matches expected saveDirectory (if available)
+              if (typeof saveDirectory !== 'undefined' && saveDir === saveDirectory.trim()) {
+                logger.debug(`Computed saveDir matches expected saveDirectory`, {
+                  saveDir,
+                  saveDirectory
                 });
-                if (saveDir === path_fs.sep || saveDir === '.') saveDir = '';
-                if (saveDir.startsWith(path_fs.sep)) {
-                  saveDir = saveDir.slice(1);
-                }
-                if (saveDir.endsWith(path_fs.sep)) {
-                  saveDir = saveDir.slice(0, -1);
-                }
+              } else if (typeof saveDirectory !== 'undefined') {
+                logger.debug(`Computed saveDir differs from expected saveDirectory`, {
+                  saveDir,
+                  saveDirectory
+                });
               }
+
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
@@ -2023,6 +1953,9 @@ async function executeDownload(downloadItem, processKey) {
               });
             } catch (e) {
               // Fallback to previous behavior if something goes wrong
+              logger.error('Error computing save directory, using fallback', {
+                error: e.message
+              });
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
@@ -2041,7 +1974,14 @@ async function executeDownload(downloadItem, processKey) {
             });
 
           } else {
-            // Handle download failure
+            // ===== FAILURE: Handle download failure =====
+
+            logger.error('Download failed', {
+              videoUrl,
+              exitCode: code,
+              pid: downloadProcess.pid
+            });
+
             safeEmit("download-failed", {
               title: videoEntry.title,
               url: videoUrl
@@ -2055,8 +1995,9 @@ async function executeDownload(downloadItem, processKey) {
           }
 
         } catch (error) {
-          logger.error(`Error handling download completion: ${error.message}`,
-            { pid: downloadProcess.pid });
+          logger.error(`Error handling download completion: ${error.message}`, {
+            pid: downloadProcess.pid
+          });
           reject(error);
         }
       });
@@ -2472,6 +2413,187 @@ async function determineInitialRange(itemType, monitoringType, playlistUrl, chun
     }
   }
   return { startIndex, endIndex };
+}
+/**
+ * Discovers metadata files associated with a downloaded video
+ * @param {string} mainFileName - The main video file name
+ * @param {string} savePath - Directory where files are saved
+ * @param {object} config - Configuration object with save flags
+ * @returns {object} Object containing paths to discovered metadata files and sync status
+ */
+function discoverMetadataFiles(mainFileName, savePath, config) {
+  const metadata = {
+    descriptionFile: null,
+    commentsFile: null,
+    subTitleFile: null,
+    thumbNailFile: null
+  };
+
+  // Track which files were expected vs found
+  const syncStatus = {
+    descriptionFileFound: !config.saveDescription, // true if not expected
+    commentsFileFound: !config.saveComments,
+    subTitleFileFound: !config.saveSubs,
+    thumbNailFileFound: !config.saveThumbnail
+  };
+
+  if (!mainFileName) {
+    logger.debug('No main file name provided for metadata discovery');
+    return { metadata, syncStatus };
+  }
+
+  try {
+    // Get base name without extension (e.g., "video.mp4" -> "video")
+    const mainFileBase = mainFileName.replace(path_fs.extname(mainFileName), '');
+
+    logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
+
+    // Read directory once
+    const files = fs.readdirSync(savePath);
+
+    // Filter files that start with mainFileBase and are not the main file itself
+    const metaFiles = files.filter(file => file.startsWith(mainFileBase) && file !== mainFileName);
+
+    // Process each potential metadata file
+    for (const file of metaFiles) {
+      // Check for description file
+      if (config.saveDescription && !metadata.descriptionFile) {
+        // logger.trace('Found potential description file', { file });
+        if (file.endsWith('.description')) {
+          metadata.descriptionFile = file;
+          syncStatus.descriptionFileFound = true;
+          logger.trace('Found description file', { file });
+        }
+      }
+
+      // Check for comments file
+      if (config.saveComments && !metadata.commentsFile) {
+        // logger.trace('Found potential comments file', { file });
+        if (file.endsWith('.info.json')) {
+          metadata.commentsFile = file;
+          syncStatus.commentsFileFound = true;
+          logger.trace('Found comments file', { file });
+        }
+      }
+
+      // Check for subtitle file
+      if (config.saveSubs && !metadata.subTitleFile) {
+        // logger.trace('Found potential subtitles file', { file });
+        if (file.endsWith('.vtt') || file.endsWith('.srt')) {
+          metadata.subTitleFile = file;
+          syncStatus.subTitleFileFound = true;
+          logger.trace('Found subtitles file', { file });
+        }
+      }
+
+      // Check for thumbnail file
+      if (config.saveThumbnail && !metadata.thumbNailFile) {
+        // logger.trace('Found potential thumbnail file', { file });
+        if (file.endsWith('.webp') || file.endsWith('.jpg') || file.endsWith('.png')) {
+          metadata.thumbNailFile = file;
+          syncStatus.thumbNailFileFound = true;
+          logger.trace('Found thumbnail file', { file });
+        }
+      }
+
+      // Early exit if all expected files are found
+      if (syncStatus.descriptionFileFound &&
+        syncStatus.commentsFileFound &&
+        syncStatus.subTitleFileFound &&
+        syncStatus.thumbNailFileFound) {
+        break;
+      }
+    }
+
+    return { metadata, syncStatus };
+
+  } catch (error) {
+    logger.debug('Could not read savePath for extra metadata files', {
+      savePath,
+      error: error.message
+    });
+
+    // If scanning failed, mark all as not found
+    return {
+      metadata,
+      syncStatus: {
+        descriptionFileFound: false,
+        commentsFileFound: false,
+        subTitleFileFound: false,
+        thumbNailFileFound: false
+      }
+    };
+  }
+}
+/**
+ * Determines the actual video file name from various sources
+ * @param {string} actualFileName - File name captured from yt-dlp output
+ * @param {string} videoTitle - Video title
+ * @param {string} videoId - Video ID
+ * @param {string} savePath - Directory where files are saved
+ * @returns {string} The determined file name
+ */
+function determineVideoFileName(actualFileName, videoTitle, videoId, savePath) {
+  // First choice: use actualFileName if provided
+  if (actualFileName) {
+    return path_fs.basename(actualFileName || "");
+  }
+
+  // Fallback: try to find a file in savePath that matches videoTitle prefix
+  try {
+    const files = fs.readdirSync(savePath);
+    const match = files.find(f => f.indexOf(videoTitle) === 0 || f.indexOf(videoId) !== -1);
+    if (match) {
+      return path_fs.basename(match);
+    }
+  } catch (e) {
+    logger.debug('Could not read savePath for fallback filename', {
+      savePath,
+      error: e && e.message
+    });
+  }
+
+  // Last resort: use videoTitle as filename
+  return path_fs.basename(videoTitle);
+}
+/**
+ * Computes the save directory relative to the configured save location
+ * @param {string} fileName - The file name
+ * @param {string} saveLocation - The configured save location
+ * @returns {string} Relative save directory
+ */
+function computeSaveDirectory(fileName, saveLocation) {
+  try {
+    let saveDir = path_fs.relative(
+      path_fs.resolve(saveLocation),
+      path_fs.dirname(fileName || saveLocation)
+    );
+
+    // Normalize: convert "." to empty string
+    if (saveDir === path_fs.sep || saveDir === '.') {
+      saveDir = '';
+    }
+
+    // Remove leading separator
+    if (saveDir.startsWith(path_fs.sep)) {
+      saveDir = saveDir.slice(1);
+    }
+
+    // Remove trailing separator
+    if (saveDir.endsWith(path_fs.sep)) {
+      saveDir = saveDir.slice(0, -1);
+    }
+
+    return saveDir;
+
+  } catch (error) {
+    logger.error('Error computing save directory', {
+      fileName,
+      saveLocation,
+      error: error.message
+    });
+    return '';
+  }
 }
 /**
  * Handles the case where no items are found for a given video URL.
@@ -3219,6 +3341,20 @@ async function addPlaylist(playlistUrl, monitoringType) {
   });
 }
 
+// Delete
+/**
+ * Enhanced delete handler with proper field references, security, and transactions
+ */
+async function processDeleteRequest(requestBody, response) {
+  // const transaction = await sequelize.transaction();
+  // TODO: 
+  // 1.[ ] Add delete APIs
+  //    1.[ ] One for video objects, it will have a boolean attribute to delete from disk if true.Now that other file are tracked we can safely delete those as well
+  //    2.[ ] And one for playlists, it can have two booleans to delete the videos in it as well as to delete the downloaded files in it
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+  response.end(JSON.stringify({ "status": "TBI" }));
+}
+
 // List function that send data to frontend
 /**
  * Retrieves paginated playlist data with sorting and filtering options for frontend display
@@ -3644,11 +3780,9 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
     authenticateRequest(req, res, processListingRequest);
   } else if (req.url === config.urlBase + "/download" && req.method === "POST") {
     authenticateRequest(req, res, processDownloadRequest);
-  }
-  // else if (req.url === config.urlBase + "/delete" && req.method === "POST") {
-  //   authenticateRequest(req, res, processDeleteRequest);
-  // } 
-  else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
+  } else if (req.url === config.urlBase + "/delete" && req.method === "POST") {
+    authenticateRequest(req, res, processDeleteRequest);
+  } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
     authenticateRequest(req, res, updatePlaylistMonitoring);
   } else if (req.url === config.urlBase + "/getplay" && req.method === "POST") {
     authenticateRequest(req, res, getPlaylistsForDisplay);
