@@ -1780,7 +1780,7 @@ async function executeDownload(downloadItem, processKey) {
 
     return new Promise((resolve, reject) => {
       let progressPercent = null;
-      let actualFileName = null;
+      let capturedFileName = null;
       // Prepare final parameters
       const processArgs = ["--paths", savePath, videoUrl];
 
@@ -1841,10 +1841,10 @@ async function executeDownload(downloadItem, processKey) {
 
           // Extract filename from destination line (keep extension)
           const fileNameDestMatch = /Destination: (.+)/m.exec(output);
-          if (fileNameDestMatch?.[1] && !actualFileName) {
+          if (fileNameDestMatch?.[1] && !capturedFileName) {
             const fullDest = fileNameDestMatch[1].trim();
-            actualFileName = path_fs.basename(fullDest);
-            logger.debug(`Filename in destination: ${fullDest}, basename: ${actualFileName}, DB title: ${videoTitle}`,
+            capturedFileName = path_fs.basename(fullDest);
+            logger.debug(`Filename in destination: ${fullDest}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
 
@@ -1852,8 +1852,8 @@ async function executeDownload(downloadItem, processKey) {
           const mergerFileNameMatch = /\[Merger\] Merging formats into "(.+)"/m.exec(output);
           if (mergerFileNameMatch?.[1]) {
             const fullMerger = mergerFileNameMatch[1].trim();
-            actualFileName = path_fs.basename(fullMerger);
-            logger.debug(`Filename in merger: ${fullMerger}, basename: ${actualFileName}, DB title: ${videoTitle}`,
+            capturedFileName = path_fs.basename(fullMerger);
+            logger.debug(`Filename in merger: ${fullMerger}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
           // Update activity timestamp
@@ -1891,32 +1891,24 @@ async function executeDownload(downloadItem, processKey) {
             // ===== SUCCESS: Update video entry =====
 
             const unhelpfulTitle = (videoTitle === videoId || videoTitle === "NA");
-            const fallbackTitle = actualFileName || videoTitle;
-
-            // Determine the main video file name
-            const fileName = determineVideoFileName(
-              actualFileName,
-              videoTitle,
-              videoId,
-              savePath
-            );
+            const fallbackTitle = capturedFileName || videoTitle;
 
             // Build initial updates object
             const updates = {
               downloadStatus: true,
               isAvailable: true,
               title: unhelpfulTitle ? fallbackTitle : videoTitle,
-              fileName: fileName
             };
 
             // Discover associated metadata files
-            const { metadata, syncStatus } = discoverMetadataFiles(fileName, savePath, config);
+            const { metadata, syncStatus } = discoverFiles(capturedFileName, savePath, config);
 
             // Add discovered metadata files to updates
             Object.assign(updates, metadata);
 
             // Determine if all expected metadata files were found
-            const allExtraFilesFound = syncStatus.descriptionFileFound &&
+            const allExtraFilesFound = syncStatus.videoFileFound &&
+              syncStatus.descriptionFileFound &&
               syncStatus.commentsFileFound &&
               syncStatus.subTitleFileFound &&
               syncStatus.thumbNailFileFound;
@@ -2434,8 +2426,9 @@ async function determineInitialRange(itemType, monitoringType, playlistUrl, chun
  * @param {object} config - Configuration object with save flags
  * @returns {object} Object containing paths to discovered metadata files and sync status
  */
-function discoverMetadataFiles(mainFileName, savePath, config) {
+function discoverFiles(mainFileName, savePath, config) {
   const metadata = {
+    fileName: null,
     descriptionFile: null,
     commentsFile: null,
     subTitleFile: null,
@@ -2444,6 +2437,7 @@ function discoverMetadataFiles(mainFileName, savePath, config) {
 
   // Track which files were expected vs found
   const syncStatus = {
+    videoFileFound: false, // we need to at least find this file
     descriptionFileFound: !config.saveDescription, // true if not expected
     commentsFileFound: !config.saveComments,
     subTitleFileFound: !config.saveSubs,
@@ -2465,10 +2459,27 @@ function discoverMetadataFiles(mainFileName, savePath, config) {
     const files = fs.readdirSync(savePath);
 
     // Filter files that start with mainFileBase and are not the main file itself
-    const metaFiles = files.filter(file => file.startsWith(mainFileBase) && file !== mainFileName);
+    const metaFiles = files.filter(file => file.startsWith(mainFileBase));
 
     // Process each potential metadata file
     for (const file of metaFiles) {
+      // Check for the video file itself
+      if (!metadata.fileName) {
+        if (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv') ||
+          file.endsWith('.avi') || file.endsWith('.mov') || file.endsWith('.webm') ||
+          file.endsWith('.flv') || file.endsWith('.m4v') // There has to be a better way
+        ) {
+          // Since all other files are almost always going to known formats, maybe we should
+          // do optimistic searches using the mainFileBase to look for the files and if we don't
+          // find them only then do the readdirSync and the subsequent loop and match
+          // also guessing that the generated video file will have these extensions is
+          // stupid, we should first match the rest of the files and 
+          metadata.fileName = file;
+          syncStatus.videoFileFound = true;
+          logger.trace('Found video file', { file });
+        }
+      }
+
       // Check for description file
       if (config.saveDescription && !metadata.descriptionFile) {
         // logger.trace('Found potential description file', { file });
@@ -2502,7 +2513,9 @@ function discoverMetadataFiles(mainFileName, savePath, config) {
       // Check for thumbnail file
       if (config.saveThumbnail && !metadata.thumbNailFile) {
         // logger.trace('Found potential thumbnail file', { file });
-        if (file.endsWith('.webp') || file.endsWith('.jpg') || file.endsWith('.png')) {
+        if (file.endsWith('.webp') || file.endsWith('.jpg') ||
+          file.endsWith('.jpeg') || file.endsWith('.png')
+        ) {
           metadata.thumbNailFile = file;
           syncStatus.thumbNailFileFound = true;
           logger.trace('Found thumbnail file', { file });
@@ -2510,7 +2523,8 @@ function discoverMetadataFiles(mainFileName, savePath, config) {
       }
 
       // Early exit if all expected files are found
-      if (syncStatus.descriptionFileFound &&
+      if (syncStatus.videoFileFound &&
+        syncStatus.descriptionFileFound &&
         syncStatus.commentsFileFound &&
         syncStatus.subTitleFileFound &&
         syncStatus.thumbNailFileFound) {
@@ -2530,6 +2544,7 @@ function discoverMetadataFiles(mainFileName, savePath, config) {
     return {
       metadata,
       syncStatus: {
+        videoFileFound: false,
         descriptionFileFound: false,
         commentsFileFound: false,
         subTitleFileFound: false,
@@ -2537,37 +2552,6 @@ function discoverMetadataFiles(mainFileName, savePath, config) {
       }
     };
   }
-}
-/**
- * Determines the actual video file name from various sources
- * @param {string} actualFileName - File name captured from yt-dlp output
- * @param {string} videoTitle - Video title
- * @param {string} videoId - Video ID
- * @param {string} savePath - Directory where files are saved
- * @returns {string} The determined file name
- */
-function determineVideoFileName(actualFileName, videoTitle, videoId, savePath) {
-  // First choice: use actualFileName if provided
-  if (actualFileName) {
-    return path_fs.basename(actualFileName || "");
-  }
-
-  // Fallback: try to find a file in savePath that matches videoTitle prefix
-  try {
-    const files = fs.readdirSync(savePath);
-    const match = files.find(f => f.indexOf(videoTitle) === 0 || f.indexOf(videoId) !== -1);
-    if (match) {
-      return path_fs.basename(match);
-    }
-  } catch (e) {
-    logger.debug('Could not read savePath for fallback filename', {
-      savePath,
-      error: e && e.message
-    });
-  }
-
-  // Last resort: use videoTitle as filename
-  return path_fs.basename(videoTitle);
 }
 /**
  * Computes the save directory relative to the configured save location
