@@ -1370,12 +1370,23 @@ async function makeSignedUrl(requestBody, response) {
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
       return response.end(JSON.stringify({ status: 'error', message: 'Invalid file path' }));
     }
-    absolutePath = resolved;
+    logger.debug(`Resolved Path ${resolved}`, {
+      joined,
+      resolved,
+      saveRoot
+    })
+    if (fs.existsSync(resolved))
+      absolutePath = resolved;
+    else {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'error', message: 'File could not be found' }));
+    }
   } else {
     logger.warn('makeSignedUrl missing parameters', { requestBody });
     response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
     return response.end(JSON.stringify({ status: 'error', message: 'saveDirectory and fileName are required' }));
   }
+
   // Now I need to make a uuid, store the absolutePath in memory with the uuid as key
   // add it to a new LRU cache with the expiry as an hour
   // when a get request comes in with the uuid and token, look it up in the cache
@@ -1756,8 +1767,10 @@ async function executeDownload(downloadItem, processKey) {
     saveDirectory: saveDirectory, videoId: videoId } = downloadItem;
 
   try {
+    // Trim the saveDirectory just as a precaution
+    const saveDirectoryTrimmed = saveDirectory.trim();
     // Prepare save path
-    const savePath = path_fs.join(config.saveLocation, saveDirectory.trim());
+    const savePath = path_fs.join(config.saveLocation, saveDirectoryTrimmed);
     logger.debug(`Downloading to path: ${savePath}`);
 
     // Create directory if needed, good to have
@@ -1930,7 +1943,8 @@ async function executeDownload(downloadItem, processKey) {
             // Notify frontend: send saveDirectory and fileName
             try {
               const fileName = updates.fileName;
-              let saveDir = computeSaveDirectory(fileName, config.saveLocation);
+              // TODO: Test this later
+              let saveDir = computeSaveDirectory(fileName, savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
               if (typeof saveDirectory !== 'undefined' && saveDir === saveDirectory.trim()) {
