@@ -1943,8 +1943,7 @@ async function executeDownload(downloadItem, processKey) {
             // Notify frontend: send saveDirectory and fileName
             try {
               const fileName = updates.fileName;
-              // TODO: Test this later
-              let saveDir = computeSaveDirectory(fileName, savePath);
+              let saveDir = computeSaveDirectory(savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
               if (typeof saveDirectory !== 'undefined' && saveDir === saveDirectory.trim()) {
@@ -2572,15 +2571,14 @@ function determineVideoFileName(actualFileName, videoTitle, videoId, savePath) {
 }
 /**
  * Computes the save directory relative to the configured save location
- * @param {string} fileName - The file name
- * @param {string} saveLocation - The configured save location
+ * @param {string} savePath - The configured save location
  * @returns {string} Relative save directory
  */
-function computeSaveDirectory(fileName, saveLocation) {
+function computeSaveDirectory(savePath) {
   try {
     let saveDir = path_fs.relative(
-      path_fs.resolve(saveLocation),
-      path_fs.dirname(fileName || saveLocation)
+      path_fs.resolve(config.saveLocation),
+      path_fs.resolve(savePath)
     );
 
     // Normalize: convert "." to empty string
