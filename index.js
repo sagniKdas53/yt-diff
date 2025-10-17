@@ -2437,8 +2437,8 @@ function discoverFiles(mainFileName, savePath, config) {
 
   // Track which files were expected vs found
   const syncStatus = {
-    videoFileFound: false, // we need to at least find this file
-    descriptionFileFound: !config.saveDescription, // true if not expected
+    videoFileFound: false,
+    descriptionFileFound: !config.saveDescription,
     commentsFileFound: !config.saveComments,
     subTitleFileFound: !config.saveSubs,
     thumbNailFileFound: !config.saveThumbnail
@@ -2450,85 +2450,105 @@ function discoverFiles(mainFileName, savePath, config) {
   }
 
   try {
-    // Get base name without extension (e.g., "video.mp4" -> "video")
     const mainFileBase = mainFileName.replace(path_fs.extname(mainFileName), '');
-
     logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
 
-    // Read directory once
-    const files = fs.readdirSync(savePath);
+    // Define extension patterns for each file type
+    const patterns = {
+      video: ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v'],
+      description: ['.description'],
+      comments: ['.info.json'],
+      subtitle: ['.vtt', '.srt'], // There can be languages too
+      thumbnail: ['.webp', '.jpg', '.jpeg', '.png']
+    };
 
-    // Filter files that start with mainFileBase and are not the main file itself
-    const metaFiles = files.filter(file => file.startsWith(mainFileBase));
+    // Optimistically check for known file patterns first
+    const checkFile = (baseName, extensions) => {
+      for (const ext of extensions) {
+        const filePath = path_fs.join(savePath, baseName + ext);
+        if (fs.existsSync(filePath)) {
+          return baseName + ext;
+        }
+      }
+      return null;
+    };
 
-    // Process each potential metadata file
-    for (const file of metaFiles) {
-      // Check for the video file itself
-      if (!metadata.fileName) {
-        if (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv') ||
-          file.endsWith('.avi') || file.endsWith('.mov') || file.endsWith('.webm') ||
-          file.endsWith('.flv') || file.endsWith('.m4v') // There has to be a better way
-        ) {
-          // Since all other files are almost always going to known formats, maybe we should
-          // do optimistic searches using the mainFileBase to look for the files and if we don't
-          // find them only then do the readdirSync and the subsequent loop and match
-          // also guessing that the generated video file will have these extensions is
-          // stupid, we should first match the rest of the files and 
+    // Try to find each metadata file optimistically
+    if (config.saveDescription) {
+      const found = checkFile(mainFileBase, patterns.description);
+      if (found) {
+        metadata.descriptionFile = found;
+        syncStatus.descriptionFileFound = true;
+        logger.trace('Found description file', { file: found });
+      }
+    }
+
+    if (config.saveComments) {
+      const found = checkFile(mainFileBase, patterns.comments);
+      if (found) {
+        metadata.commentsFile = found;
+        syncStatus.commentsFileFound = true;
+        logger.trace('Found comments file', { file: found });
+      }
+    }
+
+    if (config.saveSubs) {
+      // Try common subtitle patterns: baseName.ext and baseName.lang.ext
+      const commonLanguages = ['en', 'fr', 'de', 'es', 'it', 'pt', 'ru', 'ja', 'zh', 'ko'];
+      const subtitlePatterns = [
+        ...patterns.subtitle, // Direct patterns: baseName.vtt, baseName.srt
+        ...commonLanguages.flatMap(lang =>
+          patterns.subtitle.map(ext => `.${lang}${ext}`)
+        ) // Language patterns: baseName.en.vtt, baseName.fr.srt, etc.
+      ];
+
+      const found = checkFile(mainFileBase, subtitlePatterns);
+      if (found) {
+        metadata.subTitleFile = found;
+        syncStatus.subTitleFileFound = true;
+        logger.trace('Found subtitles file', { file: found });
+      }
+    }
+
+    if (config.saveThumbnail) {
+      const found = checkFile(mainFileBase, patterns.thumbnail);
+      if (found) {
+        metadata.thumbNailFile = found;
+        syncStatus.thumbNailFileFound = true;
+        logger.trace('Found thumbnail file', { file: found });
+      }
+    }
+
+    // Find video file - check common extensions first, then fallback to directory scan
+    const videoFile = checkFile(mainFileBase, patterns.video);
+    if (videoFile) {
+      metadata.fileName = videoFile;
+      syncStatus.videoFileFound = true;
+      logger.trace('Found video file', { file: videoFile });
+    } else {
+      // Fallback: scan directory for video file with unknown extension
+      logger.trace('Video file not found with common extensions, scanning directory');
+      const files = fs.readdirSync(savePath);
+
+      // Filter out only the ones we need
+      const filesOfInterest = files.filter(file => file.startsWith(mainFileBase));
+
+      // Look for the video file - any file starting with mainFileBase that isn't a known metadata file
+      const knownMetadataExts = [
+        ...patterns.description,
+        ...patterns.comments,
+        ...patterns.subtitle,
+        ...patterns.thumbnail
+      ];
+
+      for (const file of filesOfInterest) {
+        // If it's not a known metadata extension, assume it's the video file
+        if (!knownMetadataExts.some(metaExt => file.endsWith(metaExt))) {
           metadata.fileName = file;
           syncStatus.videoFileFound = true;
           logger.trace('Found video file', { file });
+          break;
         }
-      }
-
-      // Check for description file
-      if (config.saveDescription && !metadata.descriptionFile) {
-        // logger.trace('Found potential description file', { file });
-        if (file.endsWith('.description')) {
-          metadata.descriptionFile = file;
-          syncStatus.descriptionFileFound = true;
-          logger.trace('Found description file', { file });
-        }
-      }
-
-      // Check for comments file
-      if (config.saveComments && !metadata.commentsFile) {
-        // logger.trace('Found potential comments file', { file });
-        if (file.endsWith('.info.json')) {
-          metadata.commentsFile = file;
-          syncStatus.commentsFileFound = true;
-          logger.trace('Found comments file', { file });
-        }
-      }
-
-      // Check for subtitle file
-      if (config.saveSubs && !metadata.subTitleFile) {
-        // logger.trace('Found potential subtitles file', { file });
-        if (file.endsWith('.vtt') || file.endsWith('.srt')) {
-          metadata.subTitleFile = file;
-          syncStatus.subTitleFileFound = true;
-          logger.trace('Found subtitles file', { file });
-        }
-      }
-
-      // Check for thumbnail file
-      if (config.saveThumbnail && !metadata.thumbNailFile) {
-        // logger.trace('Found potential thumbnail file', { file });
-        if (file.endsWith('.webp') || file.endsWith('.jpg') ||
-          file.endsWith('.jpeg') || file.endsWith('.png')
-        ) {
-          metadata.thumbNailFile = file;
-          syncStatus.thumbNailFileFound = true;
-          logger.trace('Found thumbnail file', { file });
-        }
-      }
-
-      // Early exit if all expected files are found
-      if (syncStatus.videoFileFound &&
-        syncStatus.descriptionFileFound &&
-        syncStatus.commentsFileFound &&
-        syncStatus.subTitleFileFound &&
-        syncStatus.thumbNailFileFound) {
-        break;
       }
     }
 
@@ -2540,7 +2560,6 @@ function discoverFiles(mainFileName, savePath, config) {
       error: error.message
     });
 
-    // If scanning failed, mark all as not found
     return {
       metadata,
       syncStatus: {
