@@ -1316,8 +1316,6 @@ async function authenticateUser(request, response) {
 }
 
 // Download functions
-// Download process tracking
-const downloadProcesses = new Map(); // Map to track download processes
 /**
  * Create a time-limited, signed identifier for serving a file and write the result to the HTTP response.
  *
@@ -1398,6 +1396,8 @@ async function makeSignedUrl(requestBody, response) {
   response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
   response.end(JSON.stringify({ status: 'success', signedUrlId: signedUrlId, expiry }));
 }
+// Download process tracking
+const downloadProcesses = new Map(); // Map to track download processes
 /**
  * A semaphore implementation to control the number of concurrent asynchronous operations.
  * 
@@ -2450,7 +2450,8 @@ function discoverFiles(mainFileName, savePath, config) {
   }
 
   try {
-    const mainFileBase = mainFileName.replace(path_fs.extname(mainFileName), '');
+    const mainFileExt = path_fs.extname(mainFileName).toLowerCase();
+    const mainFileBase = mainFileName.replace(mainFileExt, '');
     logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
 
     // Define extension patterns for each file type
@@ -2519,6 +2520,11 @@ function discoverFiles(mainFileName, savePath, config) {
       }
     }
 
+    // Check if the initially found file extension was for the video
+    if (mainFileExt && patterns.video.includes(mainFileExt)) {
+      // This way the likely hood of finding it in the first iteration is very high
+      patterns.video = [mainFileExt, ...patterns.video.filter(ext => ext !== mainFileExt)];
+    }
     // Find video file - check common extensions first, then fallback to directory scan
     const videoFile = checkFile(mainFileBase, patterns.video);
     if (videoFile) {
