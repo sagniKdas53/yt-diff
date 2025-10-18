@@ -3358,14 +3358,27 @@ async function addPlaylist(playlistUrl, monitoringType) {
 
 // Delete
 /**
- * Enhanced delete handler with proper field references, security, and transactions
+ * Delete Videos Function
  */
 async function processDeleteRequest(requestBody, response) {
-  // const transaction = await sequelize.transaction();
-  // TODO: 
-  // 1.[ ] Add delete APIs
-  //    1.[ ] One for video objects, it will have a boolean attribute to delete from disk if true.Now that other file are tracked we can safely delete those as well
-  //    2.[ ] And one for playlists, it can have two booleans to delete the videos in it as well as to delete the downloaded files in it
+  // The requestBody can contain a list of videoUrls (Primary key of VideoMetadata)
+  // and a playListUrl (the one from the context it's being loaded into)
+  // and 3 booleans deleteVideosInAllPlaylists, deletePlaylist and cleanUp
+  // if deleteVideosInAllPlaylists is false (default) find the ids (Primary key of PlaylistVideoMapping)
+  // where the videoUrl and playListUrl is same (references), if true just delete all the mappings
+  // (i.e.: Delete where ever the videoUrl is same, this is a bad idea because if cleanUp is true we
+  // won't be able to delete it on other places where it may have been downloaded too)
+  // lastly if cleanUp is true use the various files tracked in
+  // VideoMetadata for the videoUrl and delete them in the disk
+  // So, we should be able to say if the same video exists in multiple playlists
+  // 1. delete it one (and delete the files) {deleteVideosInAllPlaylists: false, cleanUp: true}
+  // 2. delete it everywhere (from the db, but files may linger in dirs of playlists that are not the current one)
+  // {deleteVideosInAllPlaylists: true, cleanUp: true}, not accounting for cleanUp false as it's simple just db ops
+  // =========================================================================
+  // If the videoUrls is empty and a playListUrl is provided with deletePlaylist as true then delete the playlist in DB
+  // if cleanUp is true in this request then delete all entries in PlaylistVideoMapping with playListUrl
+  // For the sake of my sanity let's not delete the files in playlist dir (as it will be too difficult)
+  // Also need to figure out how to sync sort order? Removing sortOrder and using createdAt seems like the way to go
   response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
   response.end(JSON.stringify({ "status": "TBI" }));
 }
