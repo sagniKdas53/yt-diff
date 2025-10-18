@@ -3474,7 +3474,7 @@ async function processDeleteRequest(requestBody, response) {
           response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
           return response.end(JSON.stringify({
             "message": `Playlist ${playlist.title} deleted, references not removed`,
-            "cleanUp": false,
+            "cleanUp": cleanUp, // should be false
             "deletePlaylist": deletePlaylist,
             "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist
           }));
@@ -3490,8 +3490,17 @@ async function processDeleteRequest(requestBody, response) {
         await transaction.commit();
 
         if (cleanUp) {
-          fs.rmSync(playlist.saveDirectory, { recursive: true, force: true });
-          message += " and cleaned up playlist directory";
+          try {
+            fs.rmSync(playlist.saveDirectory, { recursive: true, force: true });
+            logger.debug("Playlist directory cleaned up", { saveDirectory: playlist.saveDirectory });
+            message += " and cleaned up playlist directory";
+          } catch (error) {
+            logger.error("Failed to clean up playlist directory", {
+              saveDirectory: playlist.saveDirectory,
+              error: error.message
+            });
+            message += " but failed to clean up playlist directory";
+          }
         }
         response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
         return response.end(JSON.stringify({
@@ -3503,20 +3512,65 @@ async function processDeleteRequest(requestBody, response) {
       // Next up where we only delete selected videos using videoUrls from 
       // PlaylistVideoMapping where playListUrl is same
       const deleted = [];
+      const failed = [];
       for (const videoUrl of videoUrls) {
         await PlaylistVideoMapping.destroy({ where: { videoUrl, playlistUrl: playListUrl }, transaction });
         deleted.push(videoUrl);
         if (cleanUp) {
           const video = await VideoMetadata.findByPk(videoUrl);
-          for (const f of [video.fileName, video.thumbNailFile, video.subTitleFile, video.commentsFile, video.descriptionFile]) {
-            if (f) fs.rmSync(path.join(playlist.saveDirectory, f), { force: true });
+          // Note the video is not deleted from database
+          if (!video) {
+            logger.warn("Video not found", { videoUrl });
+            failed.push(videoUrl);
+            continue;
           }
+          if (!video.downloadStatus) {
+            logger.warn("Video not downloaded", { videoUrl });
+            failed.push(videoUrl);
+            continue;
+          }
+          const filesToRemove = {
+            "fileName": video.fileName,
+            "thumbNailFile": video.thumbNailFile,
+            "subTitleFile": video.subTitleFile,
+            "commentsFile": video.commentsFile,
+            "descriptionFile": video.descriptionFile
+          };
+          logger.debug("Removing files", { videoUrl, filesToRemove: JSON.stringify(filesToRemove) });
+          // If a particular file is null it never exists so no need to remove it
+          for (const [key, value] of Object.entries(filesToRemove)) {
+            if (value) {
+              try {
+                // we need to construct the path to the file and delete it
+                const filePath = path_fs.join(config.saveLocation, playlist.saveDirectory, value);
+                logger.debug("Removing file", { videoUrl, key, value, filePath });
+                fs.unlinkSync(filePath);
+                logger.debug("Removed file", { videoUrl, key, value, filePath });
+                filesToRemove[key] = null;
+              } catch (error) {
+                logger.error("Failed to remove file", { videoUrl, key, value, error });
+                failed.push(videoUrl);
+              }
+            }
+          }
+          // update the video downloadStatus, fileName, thumbNailFile, subTitleFile, commentsFile, descriptionFile to null
+          // if all files are removed, then update downloadStatus to false and also mark the rest of the fields as null
+          if (Object.values(filesToRemove).every((value) => value === null)) {
+            video.downloadStatus = false;
+            video.fileName = null;
+            video.thumbNailFile = null;
+            video.subTitleFile = null;
+            video.commentsFile = null;
+            video.descriptionFile = null;
+          }
+          await video.save({ transaction });
         }
       }
       await transaction.commit();
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         "message": `Deleted ${deleted.length} references to playlist ${playlist.title}`,
+        "failed": failed,
         "cleanUp": cleanUp,
         "deletePlaylist": deletePlaylist,
         "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist
