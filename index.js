@@ -3379,30 +3379,101 @@ async function addPlaylist(playlistUrl, monitoringType) {
 }
 
 // Delete
-/**
- * Delete Videos Function
- */
+
 async function processDeleteRequest(requestBody, response) {
-  // The requestBody can contain a list of videoUrls (Primary key of VideoMetadata)
-  // and a playListUrl (the one from the context it's being loaded into)
-  // and 3 booleans deleteVideosInAllPlaylists, deletePlaylist and cleanUp
-  // if deleteVideosInAllPlaylists is false (default) find the ids (Primary key of PlaylistVideoMapping)
-  // where the videoUrl and playListUrl is same (references), if true just delete all the mappings
-  // (i.e.: Delete where ever the videoUrl is same, this is a bad idea because if cleanUp is true we
-  // won't be able to delete it on other places where it may have been downloaded too)
-  // lastly if cleanUp is true use the various files tracked in
-  // VideoMetadata for the videoUrl and delete them in the disk
-  // So, we should be able to say if the same video exists in multiple playlists
-  // 1. delete it one (and delete the files) {deleteVideosInAllPlaylists: false, cleanUp: true}
-  // 2. delete it everywhere (from the db, but files may linger in dirs of playlists that are not the current one)
-  // {deleteVideosInAllPlaylists: true, cleanUp: true}, not accounting for cleanUp false as it's simple just db ops
-  // =========================================================================
-  // If the videoUrls is empty and a playListUrl is provided with deletePlaylist as true then delete the playlist in DB
-  // if cleanUp is true in this request then delete all entries in PlaylistVideoMapping with playListUrl
-  // For the sake of my sanity let's not delete the files in playlist dir (as it will be too difficult)
-  // Also need to figure out how to sync sort order? Removing sortOrder and using createdAt seems like the way to go
-  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-  response.end(JSON.stringify({ "status": "TBI" }));
+  try {
+    logger.debug("Received request", { "requestBody": JSON.stringify(requestBody) });
+    const videoUrls = requestBody.videoUrls || []; // Non essential
+    const playListUrl = requestBody.playListUrl || ""; // Essential
+    const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist || false;
+    const deletePlaylist = requestBody.deletePlaylist || false;
+    const cleanUp = requestBody.cleanUp || false;
+    logger.debug("After parsing request", {
+      playListUrl, videoUrls, deleteAllVideosInPlaylist, deletePlaylist, cleanUp
+    });;
+    if (!playListUrl) {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({ "status": "error", "message": "Need a playListUrl" }));
+    }
+    if (!Array.isArray(videoUrls)) {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({ "status": "error", "message": "videoUrls is must be an array" }));
+    }
+    const playlist = await PlaylistMetadata.findByPk(playListUrl);
+    if (!playlist) {
+      response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({ "status": "error", "message": "playlist is not found" }));
+    }
+    const transaction = await sequelize.transaction();
+    try {
+      // Starting actual clean up
+      // This is the case where only playListUrl is present, and the videoUrls is empty
+      if (!videoUrls.length) {
+        if (!deleteAllVideosInPlaylist) {
+          if (deletePlaylist) await playlist.destroy({ transaction });
+          await transaction.commit();
+          response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+          return response.end(JSON.stringify({
+            "message": `Playlist ${playlist.title} deleted, references not removed`,
+            "cleanUp": false,
+            "deletePlaylist": deletePlaylist,
+            "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist
+          }));
+        }
+
+        // Delete all mappings (i.e. deleteAllVideosInPlaylist is true) + optionally playlist
+        await PlaylistVideoMapping.destroy({ where: { playlistUrl: playListUrl }, transaction });
+        let message = `Removed references to playlist ${playlist.title}`;
+        if (deletePlaylist) {
+          await playlist.destroy({ transaction });
+          message += " and deleted playlist";
+        }
+        await transaction.commit();
+
+        if (cleanUp) {
+          fs.rmSync(playlist.saveDirectory, { recursive: true, force: true });
+          message += " and cleaned up playlist directory";
+        }
+        response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+        return response.end(JSON.stringify({
+          "message": message, "cleanUp": cleanUp,
+          "deletePlaylist": deletePlaylist,
+          "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist
+        }));
+      }
+      // Next up where we only delete selected videos using videoUrls from 
+      // PlaylistVideoMapping where playListUrl is same
+      const deleted = [];
+      for (const videoUrl of videoUrls) {
+        await PlaylistVideoMapping.destroy({ where: { videoUrl, playlistUrl: playListUrl }, transaction });
+        deleted.push(videoUrl);
+        if (cleanUp) {
+          const video = await VideoMetadata.findByPk(videoUrl);
+          for (const f of [video.fileName, video.thumbNailFile, video.subTitleFile, video.commentsFile, video.descriptionFile]) {
+            if (f) fs.rmSync(path.join(playlist.saveDirectory, f), { force: true });
+          }
+        }
+      }
+      await transaction.commit();
+      response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        "message": `Deleted ${deleted.length} references to playlist ${playlist.title}`,
+        "cleanUp": cleanUp,
+        "deletePlaylist": deletePlaylist,
+        "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist
+      }))
+    } catch (error) {
+      await transaction.rollback();
+      logger.error(`Deletion failed with error ${error.message}`, {
+        playListUrl, videoUrls, deleteAllVideosInPlaylist, deletePlaylist, cleanUp
+      });
+      response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({ "status": "error", "message": error.message }));
+    }
+  } catch (error) {
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({ "status": "error", "message": error.message }));
+  }
 }
 
 // List function that send data to frontend
