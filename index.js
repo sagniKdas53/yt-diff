@@ -2035,6 +2035,11 @@ async function executeDownload(downloadItem, processKey) {
   }
 }
 // Helper function to update process activity timestamp
+/**
+ * Updates the last activity timestamp of a process entry
+ *
+ * @param {string} processKey - Key of the process entry to update
+ */
 function updateProcessActivity(processKey) {
   const processEntry = downloadProcesses.get(processKey);
   if (processEntry) {
@@ -2042,6 +2047,11 @@ function updateProcessActivity(processKey) {
   }
 }
 // Helper function to cleanup process entry
+/**
+ * Removes a process entry from the download processes map
+ * @param {string} processKey - Key of the process entry to remove
+ * @param {number} pid - Process ID of the process to remove
+ */
 function cleanupProcess(processKey, pid) {
   if (downloadProcesses.has(processKey)) {
     downloadProcesses.delete(processKey);
@@ -2110,6 +2120,17 @@ const ListingSemaphore = {
     }
   }
 };
+/**
+ * Processes a list of URLs and initiates listing operations for undownloaded videos and unmonitored playlists.
+ *
+ * @param {Object} requestBody - The request parameters
+ * @param {Array<string>} requestBody.urlList - Array of URLs to process
+ * @param {number} [requestBody.chunkSize=config.chunkSize] - Maximum number of concurrent listing operations
+ * @param {boolean} [requestBody.sleep=false] - If true, the listing process will sleep between each chunk
+ * @param {string} [requestBody.monitoringType="N/A"] - Monitoring type to apply to the playlist or video
+ * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body
+ * @returns {Promise<void>} Resolves when listing processes are started
+ */
 async function processListingRequest(requestBody, response) {
   try {
     // Validate required parameters
@@ -2220,6 +2241,18 @@ async function processListingRequest(requestBody, response) {
     });
   }
 }
+/**
+ * Lists a given array of items concurrently, controlling the number of concurrent listing operations using a semaphore.
+ * 
+ * @param {Array<Object>} items - Array of items to list, each containing properties:
+ *   - url: URL of video or playlist
+ *   - type: Type of item (video, playlist, undownloaded, undetermined)
+ *   - currentMonitoringType: Current monitoring type of the item
+ *   - reason: Reason for the item being added to the list
+ * @param {number} chunkSize - Maximum number of concurrent listing operations
+ * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
+ * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
+ */
 async function listItemsConcurrently(items, chunkSize, shouldSleep) {
   logger.trace(`Listing ${items.length} items concurrently (chunk size: ${chunkSize})`);
 
@@ -2247,6 +2280,21 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
 
   return allSuccessful;
 }
+/**
+ * Lists a single item with semaphore control to prevent excessive concurrent listing operations.
+ * 
+ * @param {Object} item - Item to list containing properties:
+ *   - url: URL of video or playlist
+ *   - type: Type of item (video, playlist, undownloaded, undetermined)
+ *   - monitoringType: Current monitoring type of the item
+ * @param {number} chunkSize - Maximum number of concurrent listing operations
+ * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
+ * @returns {Promise<Object>} Listing result containing:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - status: 'success' | 'failed'
+ *   - error?: Error message if failed
+ */
 async function listWithSemaphore(item, chunkSize, shouldSleep) {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
@@ -3379,7 +3427,18 @@ async function addPlaylist(playlistUrl, monitoringType) {
 }
 
 // Delete
-
+/**
+ * Handles deletion of playlist and video references
+ *
+ * @param {Object} requestBody - Body of the request containing parameters
+ * @param {string} requestBody.playListUrl - URL of the playlist to delete (essential)
+ * @param {string[]} requestBody.videoUrls - Array of video URLs to delete (non essential)
+ * @param {boolean} requestBody.deleteAllVideosInPlaylist - Whether to delete all videos in the playlist
+ * @param {boolean} requestBody.deletePlaylist - Whether to delete the playlist itself
+ * @param {boolean} requestBody.cleanUp - Whether to clean up the playlist directory
+ * @param {http.ServerResponse} response - HTTP response object
+ * @returns {Promise<void>} Resolves when deletion is complete
+ */
 async function processDeleteRequest(requestBody, response) {
   try {
     logger.debug("Received request", { "requestBody": JSON.stringify(requestBody) });
