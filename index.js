@@ -1325,6 +1325,7 @@ async function authenticateUser(request, response) {
  * - Joins `config.saveLocation`, `saveDirectory` and `fileName` using path_fs.join, resolves the result,
  *   and verifies the resolved path is inside the configured save root (path traversal protection).
  *   If the resolved path is outside the save root, responds with 400.
+ * - Checks if a valid (non-expired) signed URL already exists for this file path. If found, reuses it.
  * - On success, generates a UUID (via crypto.randomUUID()), computes an expiry timestamp (Date.now() + config.cache.maxAge * 1000),
  *   and stores an entry in `signedUrlCache` with key = UUID and value = { filePath, mimeType, expiry }.
  *   The cache entry is stored with a TTL equal to `config.cache.maxAge` (the code treats this value as seconds).
@@ -1385,11 +1386,26 @@ async function makeSignedUrl(requestBody, response) {
     return response.end(JSON.stringify({ status: 'error', message: 'saveDirectory and fileName are required' }));
   }
 
-  // Now I need to make a uuid, store the absolutePath in memory with the uuid as key
-  // add it to a new LRU cache with the expiry as an hour
-  // when a get request comes in with the uuid and token, look it up in the cache
-  // if found, serve the file (and delete the cache entry, or not, depending on if we want one-time use)
-  // if not found, return 404
+  // Check if a valid signed URL already exists for this file path
+  const now = Date.now();
+  for (const [existingId, cacheEntry] of signedUrlCache.entries()) {
+    if (cacheEntry.filePath === absolutePath && cacheEntry.expiry > now) {
+      // Extend the expiry for the existing entry
+      const newExpiry = Date.now() + config.cache.maxAge * 1000;
+      cacheEntry.expiry = newExpiry;
+      signedUrlCache.set(existingId, cacheEntry, config.cache.maxAge);
+
+      logger.debug('Reusing existing signed URL with extended expiry', {
+        signedUrlId: existingId,
+        filePath: absolutePath,
+        newExpiry
+      });
+      response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
+      return response.end(JSON.stringify({ status: 'success', signedUrlId: existingId, expiry: newExpiry }));
+    }
+  }
+
+  // No valid entry found, create a new one
   const signedUrlId = crypto.randomUUID();
   const expiry = Date.now() + config.cache.maxAge * 1000;
   signedUrlCache.set(signedUrlId, { filePath: absolutePath, mimeType: "application/octet-stream", expiry }, config.cache.maxAge);
