@@ -3437,6 +3437,8 @@ async function addPlaylist(playlistUrl, monitoringType) {
  * @param {boolean} requestBody.deleteAllVideosInPlaylist - Whether to delete all videos in the playlist
  * @param {boolean} requestBody.deletePlaylist - Whether to delete the playlist itself
  * @param {boolean} requestBody.cleanUp - Whether to clean up the playlist directory
+ * @param {boolean} requestBody.deleteVideoMappings - Whether to delete the downloaded files and leave the playlist or video in the DB
+ * @param {boolean} requestBody.deleteVideos - Whether to delete the videos from VideoMetadata table
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
