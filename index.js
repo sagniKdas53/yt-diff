@@ -12,6 +12,7 @@ const jwt = require("jsonwebtoken");
 const he = require('he');
 const { LRUCache } = require('lru-cache');
 const { Server } = require("socket.io");
+const { log } = require("console");
 
 // Configuration object
 const config = {
@@ -3442,24 +3443,26 @@ async function addPlaylist(playlistUrl, monitoringType) {
 async function processDeleteRequest(requestBody, response) {
   try {
     logger.debug("Received request", { "requestBody": JSON.stringify(requestBody) });
-    const videoUrls = requestBody.videoUrls || []; // Non essential
-    const playListUrl = requestBody.playListUrl || ""; // Essential
-    const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist || false;
-    const deletePlaylist = requestBody.deletePlaylist || false;
-    const cleanUp = requestBody.cleanUp || false;
-    logger.debug("After parsing request", {
-      playListUrl, videoUrls, deleteAllVideosInPlaylist, deletePlaylist, cleanUp
-    });;
+    const videoUrls = requestBody.videoUrls || []; // Non essential - can be empty, but must be an array
+    const playListUrl = requestBody.playListUrl || ""; // Essential - can't be empty
+    const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist || false; // Only needed for playlist ops
+    const deletePlaylist = requestBody.deletePlaylist || false; // Only needed for playlist ops
+    const cleanUp = requestBody.cleanUp || false; // Can work for both playlist and video ops
+    const deleteVideoMappings = requestBody.deleteVideoMappings || false; // Can be used to just delete the downloaded files and leave the playlist or video in the DB
+    const deleteVideos = requestBody.deleteVideos || false; // Can be used to videos from VideoMetadata table
     if (!playListUrl) {
+      logger.error("Need a playListUrl", { "requestBody": JSON.stringify(requestBody) });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({ "status": "error", "message": "Need a playListUrl" }));
     }
     if (!Array.isArray(videoUrls)) {
+      logger.error("videoUrls is must be an array", { "requestBody": JSON.stringify(requestBody) });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({ "status": "error", "message": "videoUrls is must be an array" }));
     }
     const playlist = await PlaylistMetadata.findByPk(playListUrl);
     if (!playlist) {
+      logger.error("playlist is not found", { "requestBody": JSON.stringify(requestBody) });
       response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({ "status": "error", "message": "playlist is not found" }));
     }
@@ -3468,7 +3471,10 @@ async function processDeleteRequest(requestBody, response) {
       // Starting actual clean up
       // This is the case where only playListUrl is present, and the videoUrls is empty
       if (!videoUrls.length) {
+        logger.debug("Deleting playlist", { videoUrls, playListUrl, deleteAllVideosInPlaylist, deletePlaylist, cleanUp });
+        // Delete all mappings (i.e. deleteAllVideosInPlaylist is true) + optionally playlist
         if (!deleteAllVideosInPlaylist) {
+          // Delete playlist
           if (deletePlaylist) await playlist.destroy({ transaction });
           await transaction.commit();
           response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -3514,7 +3520,6 @@ async function processDeleteRequest(requestBody, response) {
       const deleted = [];
       const failed = [];
       for (const videoUrl of videoUrls) {
-        await PlaylistVideoMapping.destroy({ where: { videoUrl, playlistUrl: playListUrl }, transaction });
         deleted.push(videoUrl);
         if (cleanUp) {
           const video = await VideoMetadata.findByPk(videoUrl);
@@ -3536,7 +3541,7 @@ async function processDeleteRequest(requestBody, response) {
             "commentsFile": video.commentsFile,
             "descriptionFile": video.descriptionFile
           };
-          logger.debug("Removing files", { videoUrl, filesToRemove: JSON.stringify(filesToRemove) });
+          logger.debug("Removing files for video", { videoUrl, filesToRemove: JSON.stringify(filesToRemove) });
           // If a particular file is null it never exists so no need to remove it
           for (const [key, value] of Object.entries(filesToRemove)) {
             if (value) {
@@ -3550,6 +3555,7 @@ async function processDeleteRequest(requestBody, response) {
               } catch (error) {
                 logger.error("Failed to remove file", { videoUrl, key, value, error });
                 failed.push(videoUrl);
+                deleted.pop();
               }
             }
           }
@@ -3562,8 +3568,13 @@ async function processDeleteRequest(requestBody, response) {
             video.subTitleFile = null;
             video.commentsFile = null;
             video.descriptionFile = null;
+            // Remove the mapping only if every file is removed
+            if (deleteVideoMappings) await PlaylistVideoMapping.destroy({ where: { videoUrl, playlistUrl: playListUrl }, transaction });
           }
-          await video.save({ transaction });
+          // If deleteVideos is true, delete the video
+          if (deleteVideos) await video.destroy({ transaction });
+          // Else Save how many files were removed and save the video
+          else await video.save({ transaction });
         }
       }
       await transaction.commit();
