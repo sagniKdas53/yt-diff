@@ -6,13 +6,12 @@ const CronJob = require("cron").CronJob;
 const fs = require("fs");
 const http = require("http");
 const https = require("https");
-const path_fs = require("path");
+const path = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const he = require('he');
 const { LRUCache } = require('lru-cache');
 const { Server } = require("socket.io");
-const { log } = require("console");
 
 // Configuration object
 const config = {
@@ -1362,9 +1361,9 @@ async function makeSignedUrl(requestBody, response) {
 
     // Construct the absolute path using configured saveLocation. Use path_fs.join and
     // then verify that the resolved path is within config.saveLocation to avoid traversal.
-    const joined = path_fs.join(config.saveLocation, saveDirectory || '', fileName);
-    const resolved = path_fs.resolve(joined);
-    const saveRoot = path_fs.resolve(config.saveLocation);
+    const joined = path.join(config.saveLocation, saveDirectory || '', fileName);
+    const resolved = path.resolve(joined);
+    const saveRoot = path.resolve(config.saveLocation);
     if (!resolved.startsWith(saveRoot)) {
       logger.warn('serveFileByPath attempted path traversal', { saveDirectory, fileName, resolved });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
@@ -1787,7 +1786,7 @@ async function executeDownload(downloadItem, processKey) {
     // Trim the saveDirectory just as a precaution
     const saveDirectoryTrimmed = saveDirectory.trim();
     // Prepare save path
-    const savePath = path_fs.join(config.saveLocation, saveDirectoryTrimmed);
+    const savePath = path.join(config.saveLocation, saveDirectoryTrimmed);
     logger.debug(`Downloading to path: ${savePath}`);
 
     // Create directory if needed, good to have
@@ -1860,7 +1859,7 @@ async function executeDownload(downloadItem, processKey) {
           const fileNameDestMatch = /Destination: (.+)/m.exec(output);
           if (fileNameDestMatch?.[1] && !capturedFileName) {
             const fullDest = fileNameDestMatch[1].trim();
-            capturedFileName = path_fs.basename(fullDest);
+            capturedFileName = path.basename(fullDest);
             logger.debug(`Filename in destination: ${fullDest}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
@@ -1869,7 +1868,7 @@ async function executeDownload(downloadItem, processKey) {
           const mergerFileNameMatch = /\[Merger\] Merging formats into "(.+)"/m.exec(output);
           if (mergerFileNameMatch?.[1]) {
             const fullMerger = mergerFileNameMatch[1].trim();
-            capturedFileName = path_fs.basename(fullMerger);
+            capturedFileName = path.basename(fullMerger);
             logger.debug(`Filename in merger: ${fullMerger}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
@@ -2515,7 +2514,7 @@ function discoverFiles(mainFileName, savePath, config) {
   }
 
   try {
-    const mainFileExt = path_fs.extname(mainFileName).toLowerCase();
+    const mainFileExt = path.extname(mainFileName).toLowerCase();
     const mainFileBase = mainFileName.replace(mainFileExt, '');
     logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
 
@@ -2531,7 +2530,7 @@ function discoverFiles(mainFileName, savePath, config) {
     // Optimistically check for known file patterns first
     const checkFile = (baseName, extensions) => {
       for (const ext of extensions) {
-        const filePath = path_fs.join(savePath, baseName + ext);
+        const filePath = path.join(savePath, baseName + ext);
         if (fs.existsSync(filePath)) {
           return baseName + ext;
         }
@@ -2650,23 +2649,23 @@ function discoverFiles(mainFileName, savePath, config) {
  */
 function computeSaveDirectory(savePath) {
   try {
-    let saveDir = path_fs.relative(
-      path_fs.resolve(config.saveLocation),
-      path_fs.resolve(savePath)
+    let saveDir = path.relative(
+      path.resolve(config.saveLocation),
+      path.resolve(savePath)
     );
 
     // Normalize: convert "." to empty string
-    if (saveDir === path_fs.sep || saveDir === '.') {
+    if (saveDir === path.sep || saveDir === '.') {
       saveDir = '';
     }
 
     // Remove leading separator
-    if (saveDir.startsWith(path_fs.sep)) {
+    if (saveDir.startsWith(path.sep)) {
       saveDir = saveDir.slice(1);
     }
 
     // Remove trailing separator
-    if (saveDir.endsWith(path_fs.sep)) {
+    if (saveDir.endsWith(path.sep)) {
       saveDir = saveDir.slice(0, -1);
     }
 
@@ -3438,7 +3437,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
  * @param {boolean} requestBody.deletePlaylist - Whether to delete the playlist itself
  * @param {boolean} requestBody.cleanUp - Whether to clean up the playlist directory
  * @param {boolean} requestBody.deleteVideoMappings - Whether to delete the downloaded files and leave the playlist or video in the DB
- * @param {boolean} requestBody.deleteVideos - Whether to delete the videos from VideoMetadata table
+ * @param {boolean} requestBody.deleteVideosInDB - Whether to delete the videos from VideoMetadata table
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
@@ -3451,7 +3450,7 @@ async function processDeleteRequest(requestBody, response) {
     const deletePlaylist = requestBody.deletePlaylist || false; // Only needed for playlist ops
     const cleanUp = requestBody.cleanUp || false; // Can work for both playlist and video ops
     const deleteVideoMappings = requestBody.deleteVideoMappings || false; // Can be used to just delete the downloaded files and leave the playlist or video in the DB
-    const deleteVideos = requestBody.deleteVideos || false; // Can be used to videos from VideoMetadata table
+    const deleteVideosInDB = requestBody.deleteVideosInDB || false; // Can be used to videos from VideoMetadata table
     if (!playListUrl) {
       logger.error("Need a playListUrl", { "requestBody": JSON.stringify(requestBody) });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -3549,7 +3548,7 @@ async function processDeleteRequest(requestBody, response) {
             if (value) {
               try {
                 // we need to construct the path to the file and delete it
-                const filePath = path_fs.join(config.saveLocation, playlist.saveDirectory, value);
+                const filePath = path.join(config.saveLocation, playlist.saveDirectory, value);
                 logger.debug("Removing file", { videoUrl, key, value, filePath });
                 fs.unlinkSync(filePath);
                 logger.debug("Removed file", { videoUrl, key, value, filePath });
@@ -3574,7 +3573,7 @@ async function processDeleteRequest(requestBody, response) {
             if (deleteVideoMappings) await PlaylistVideoMapping.destroy({ where: { videoUrl, playlistUrl: playListUrl }, transaction });
           }
           // If deleteVideos is true, delete the video
-          if (deleteVideos) await video.destroy({ transaction });
+          if (deleteVideosInDB) await video.destroy({ transaction });
           // Else Save how many files were removed and save the video
           else await video.save({ transaction });
         }
@@ -3837,8 +3836,8 @@ function getFiles(dir) {
   let fileList = [];
 
   files.forEach((file) => {
-    const filePath = path_fs.join(dir, file);
-    const extension = path_fs.extname(filePath);
+    const filePath = path.join(dir, file);
+    const extension = path.extname(filePath);
     const stat = fs.statSync(filePath);
 
     if (stat.isDirectory()) {
@@ -3916,7 +3915,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
       const get = req.url;
       const reqEncoding = req.headers["accept-encoding"] || "";
       logger.trace(`Request Received`, {
-        path: req.url,
+        url: req.url,
         method: req.method,
         encoding: reqEncoding,
       });
@@ -3928,17 +3927,17 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
         if (signedUrlCache.has(fileId)) {
           const signedEntry = signedUrlCache.get(fileId);
           // Serve the file from the signed URL cache
-          logger.info("Serving file from signed URL cache", { path: req.url });
+          logger.info("Serving file from signed URL cache", { url: req.url });
           // Check if the entry has expired
           if (Date.now() > signedEntry.expiry) {
-            logger.warn("Signed URL has expired", { path: req.url });
+            logger.warn("Signed URL has expired", { url: req.url });
             signedUrlCache.delete(fileId);
             res.writeHead(403, generateCorsHeaders(MIME_TYPES[".html"]));
             res.write("Signed URL has expired");
             return res.end();
           } else {
             logger.debug("Serving signed file", { fileId, filePath: signedEntry.filePath });
-            const originalName = path_fs.basename(signedEntry.filePath);
+            const originalName = path.basename(signedEntry.filePath);
             // Remove potentially dangerous characters
             const safeName = originalName.replace(/[\r\n"']/g, '');
             // RFC 5987 encoding for non-ASCII filenames
@@ -3982,7 +3981,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
       // Check if the GET request is for a static asset
       if (!staticAssets[get]) {
         logger.error("Requested Resource couldn't be found", {
-          path: req.url,
+          url: req.url,
           method: req.method,
           encoding: reqEncoding,
         });
@@ -4007,7 +4006,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
       }
     } catch (error) {
       logger.error("Error in processing request", {
-        path: req.url,
+        url: req.url,
         method: req.method,
         error: error,
       });
@@ -4048,7 +4047,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
       config.cache.reqPerIP, config.cache.maxAge);
   } else {
     logger.error("Requested Resource couldn't be found", {
-      path: req.url,
+      url: req.url,
       method: req.method
     });
     res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
