@@ -3493,7 +3493,9 @@ async function processDeletePlaylistRequest(requestBody, response) {
       // Clean up directory if requested (after transaction commits)
       if (cleanUp) {
         try {
-          fs.rmSync(playlist.saveDirectory, { recursive: true, force: true });
+          const playListDir = path.join(config.saveLocation, playlist.saveDirectory);
+          logger.debug("Cleaning up playlist directory", { saveDirectory: playlist.saveDirectory, absolutePath: playListDir });
+          fs.rmSync(playListDir, { recursive: true, force: true });
           logger.debug("Playlist directory cleaned up", { saveDirectory: playlist.saveDirectory });
           message += " and cleaned up playlist directory";
         } catch (error) {
