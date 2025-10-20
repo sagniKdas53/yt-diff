@@ -1950,6 +1950,10 @@ async function executeDownload(downloadItem, processKey) {
             // Notify frontend: send saveDirectory and fileName
             try {
               const fileName = updates.fileName;
+              const thumbNailFile = updates.thumbNailFile;
+              const subTitleFile = updates.subTitleFile;
+              const descriptionFile = updates.descriptionFile;
+              const isMetaDataSynced = updates.isMetaDataSynced;
               let saveDir = computeSaveDirectory(savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
@@ -1969,7 +1973,11 @@ async function executeDownload(downloadItem, processKey) {
                 url: videoUrl,
                 title: updates.title,
                 fileName: fileName,
-                saveDirectory: saveDir
+                saveDirectory: saveDir,
+                isMetaDataSynced: isMetaDataSynced,
+                thumbNailFile: thumbNailFile,
+                subTitleFile: subTitleFile,
+                descriptionFile: descriptionFile
               });
             } catch (e) {
               // Fallback to previous behavior if something goes wrong
@@ -3828,6 +3836,10 @@ async function getPlaylistVideos(requestBody, response) {
           "downloadStatus",
           "isAvailable",
           "fileName",
+          "thumbNailFile",
+          "subTitleFile",
+          "descriptionFile",
+          "isMetaDataSynced",
         ],
         model: VideoMetadata,
         ...(searchQuery && {
@@ -3871,7 +3883,11 @@ async function getPlaylistVideos(requestBody, response) {
         videoUrl: vm.videoUrl,
         downloadStatus: vm.downloadStatus,
         isAvailable: vm.isAvailable,
-        fileName: fileName
+        fileName: vm.fileName,
+        thumbNailFile: vm.thumbNailFile,
+        subTitleFile: vm.subTitleFile,
+        descriptionFile: vm.descriptionFile,
+        isMetaDataSynced: vm.isMetaDataSynced
       };
 
       return {
