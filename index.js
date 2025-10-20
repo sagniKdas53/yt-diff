@@ -1,5 +1,5 @@
 "use strict";
-const { Sequelize, DataTypes, Op, json } = require("sequelize");
+const { Sequelize, DataTypes, Op } = require("sequelize");
 const { spawn } = require("child_process");
 const color = require("cli-color");
 const CronJob = require("cron").CronJob;
@@ -626,7 +626,6 @@ sequelize
 const jobs = {
   // TODO: 
   // 1. Implement scheduled updates to check playlists for new videos
-  // 2. Add a job to replace the LRUCache implementation with one that uses Map and CronJob
   cleanup: new CronJob(
     config.queue.cleanUpInterval,
     () => {
@@ -2260,8 +2259,8 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
   ListingSemaphore.setMaxConcurrent(config.queue.maxListings);
 
   // Process all items with semaphore control
-  // TODO: Fix the issue where if two items are added then we are getting
-  // Maximum listing processes reached error and the listing is not done
+  // TODO: Fix the issue where if send playlists (since they take long time) 
+  // the semaphore behavior is not consistent, sometimes it gets un-tracked
   const listingResults = await Promise.all(
     items.map(item => listWithSemaphore(item, chunkSize, shouldSleep))
   );
@@ -2349,7 +2348,6 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
     ListingSemaphore.release();
   }
 }
-// TODO: Use the processKey to track the listing process in the listProcesses map
 // so that stalled processes can be cleaned up by the cleanup cron job
 /**
  * Executes the listing process for a given item
@@ -2785,7 +2783,8 @@ async function handleSingleVideoListing(item) {
   const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } = item;
   const playlistUrl = "None";
   if (itemType === "undownloaded") {
-    // TODO: Add logic to check if the video still available, if not then update accordingly
+    // TODO: Add logic to check if the video still available, 
+    // if not then update accordingly
     // return await updateExistingVideo(videoUrl);
     return {
       url: videoUrl,
@@ -3509,8 +3508,6 @@ async function processDeletePlaylistRequest(requestBody, response) {
         }));
       }
 
-      await transaction.commit();
-
       // Clean up directory if requested (after transaction commits)
       if (cleanUp) {
         try {
@@ -3528,6 +3525,8 @@ async function processDeletePlaylistRequest(requestBody, response) {
         }
       }
 
+      // Commit transaction
+      await transaction.commit();
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         "message": message,
@@ -3903,7 +3902,6 @@ async function getPlaylistVideos(requestBody, response) {
 }
 
 // Functions to run the server
-// TODO: Update these as well
 /**
  * Generates CORS headers with content type
  *
