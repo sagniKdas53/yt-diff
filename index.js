@@ -3452,6 +3452,11 @@ async function processDeletePlaylistRequest(requestBody, response) {
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({ "status": "error", "message": "Need a playListUrl" }));
     }
+    if (playListUrl === "None") {
+      logger.error("Cannot delete the default playlist", { "requestBody": JSON.stringify(requestBody) });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({ "status": "error", "message": "Cannot delete the default playlist" }));
+    }
 
     const playlist = await PlaylistMetadata.findByPk(playListUrl);
     if (!playlist) {
@@ -3472,8 +3477,24 @@ async function processDeletePlaylistRequest(requestBody, response) {
 
       // Delete the playlist itself if requested
       if (deletePlaylist) {
+        // Save sortOrder of deleted playlist
+        const deletedSortOrder = playlist.sortOrder;
+        // Delete playlist
         await playlist.destroy({ transaction });
         message += message ? " and deleted playlist" : `Deleted playlist ${playlist.title}`;
+
+        // Update sortOrder for all playlists that came after the deleted one
+        await PlaylistMetadata.decrement(
+          'sortOrder',
+          {
+            by: 1,
+            where: {
+              sortOrder: { [sequelize.Sequelize.Op.gt]: deletedSortOrder }
+            },
+            transaction
+          }
+        );
+        logger.debug("Updated sortOrder for playlists after deleted playlist", { deletedSortOrder });
       }
 
       // If neither action was requested, just return a message
