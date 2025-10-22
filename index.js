@@ -1916,7 +1916,7 @@ async function executeDownload(downloadItem, processKey) {
             };
 
             // Discover associated metadata files
-            const { metadata, syncStatus } = discoverFiles(capturedFileName, savePath, config);
+            const { metadata, syncStatus } = discoverFiles(capturedFileName, savePath, videoEntry);
 
             // Add discovered metadata files to updates
             Object.assign(updates, metadata);
@@ -2263,6 +2263,12 @@ async function processListingRequest(requestBody, response) {
 async function listItemsConcurrently(items, chunkSize, shouldSleep) {
   logger.trace(`Listing ${items.length} items concurrently (chunk size: ${chunkSize})`);
 
+  // If no items to list, return
+  if (items.length === 0) {
+    logger.trace("No items to list");
+    return true;
+  }
+
   // Update the semaphore's max concurrent value
   ListingSemaphore.setMaxConcurrent(config.queue.maxListings);
 
@@ -2493,10 +2499,10 @@ async function determineInitialRange(itemType, monitoringType, playlistUrl, chun
  * Discovers metadata files associated with a downloaded video
  * @param {string} mainFileName - The main video file name
  * @param {string} savePath - Directory where files are saved
- * @param {object} config - Configuration object with save flags
+ * @param {object} videoEntry - The video entry in the database
  * @returns {object} Object containing paths to discovered metadata files and sync status
  */
-function discoverFiles(mainFileName, savePath, config) {
+function discoverFiles(mainFileName, savePath, videoEntry) {
   const metadata = {
     fileName: null,
     descriptionFile: null,
@@ -2514,9 +2520,17 @@ function discoverFiles(mainFileName, savePath, config) {
     thumbNailFileFound: !config.saveThumbnail
   };
 
+  // If a file is being re-downloaded/updated, mainFileName will be null
   if (!mainFileName) {
     logger.debug('No main file name provided for metadata discovery');
-    return { metadata, syncStatus };
+    // Check if video is already downloaded, and if it has a download status as true
+    if (videoEntry && videoEntry.downloadStatus) {
+      mainFileName = videoEntry.fileName;
+      logger.debug('Using main file name from database', { mainFileName });
+    } else {
+      logger.debug('No main file name found in database');
+      return { metadata, syncStatus };
+    }
   }
 
   try {
