@@ -12,6 +12,9 @@ const jwt = require("jsonwebtoken");
 const he = require('he');
 const { LRUCache } = require('lru-cache');
 const { Server } = require("socket.io");
+const { pipeline } = require('stream');
+const { promisify } = require('util');
+const pipelineAsync = promisify(pipeline);
 
 // Configuration object
 const config = {
@@ -4085,39 +4088,89 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
             res.write("Signed URL has expired");
             return res.end();
           } else {
+            // Improved streaming for large files: Range support, pipeline, backpressure
             logger.trace("Serving signed file", { fileId, filePath: signedEntry.filePath });
-            const originalName = path.basename(signedEntry.filePath);
-            // Remove potentially dangerous characters
-            const safeName = originalName.replace(/[\r\n"']/g, '');
-            // RFC 5987 encoding for non-ASCII filenames
-            const encodedName = encodeURIComponent(safeName);
-            fs.promises.stat(signedEntry.filePath).then(stats => {
-              res.writeHead(200, {
-                ...generateCorsHeaders(signedEntry.mimeType),
-                // The filename needs to be sanitized to prevent header injection
-                'Content-Disposition': `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
-                'Content-Length': stats.size
-              });
-              const readStream = fs.createReadStream(signedEntry.filePath);
-              readStream.pipe(res);
-              readStream.on('error', (err) => {
-                logger.error("Error reading signed file", { error: err.message, fileId });
+            (async () => {
+              try {
+                const stats = await fs.promises.stat(signedEntry.filePath);
+                const total = stats.size;
+
+                const originalName = path.basename(signedEntry.filePath || '');
+                // Remove potentially dangerous characters
+                const safeName = originalName.replace(/[\r\n"]/g, '');
+                // ASCII fallback for older clients
+                const fallbackName = safeName.replace(/[^\x20-\x7E]/g, '_');
+                const encodedName = encodeURIComponent(safeName);
+
+                const contentType = signedEntry.mimeType || MIME_TYPES[path.extname(safeName)] || 'application/octet-stream';
+                // Common headers (CORS + content-type + disposition + accept-ranges)
+                const cors = generateCorsHeaders(contentType);
+                Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Content-Disposition', `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`);
+                res.setHeader('Accept-Ranges', 'bytes');
+
+                // Parse Range header
+                const range = req.headers.range;
+                let start = 0;
+                let end = total - 1;
+                let statusCode = 200;
+                if (range) {
+                  const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+                  if (m) {
+                    if (m[1]) start = parseInt(m[1], 10);
+                    if (m[2]) end = parseInt(m[2], 10);
+                    // Validate
+                    if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end > total - 1) {
+                      res.writeHead(416, { 'Content-Range': `bytes */${total}` });
+                      return res.end();
+                    }
+                    statusCode = 206;
+                    res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+                  }
+                }
+
+                const chunkSize = end - start + 1;
+                res.setHeader('Content-Length', String(chunkSize));
+                res.writeHead(statusCode);
+
+                const readStream = fs.createReadStream(signedEntry.filePath, {
+                  start,
+                  end,
+                  // Larger buffer for fewer syscall's on big files (tune as needed)
+                  highWaterMark: 1024 * 1024,
+                });
+
+                const onClose = () => {
+                  // Destroy the stream if client disconnects
+                  try { readStream.destroy(); } catch (e) { }
+                };
+                req.on('close', onClose);
+                req.on('aborted', onClose);
+
+                try {
+                  // Use pipeline to forward errors and handle backpressure
+                  await pipelineAsync(readStream, res);
+                  logger.trace("Finished streaming signed file", { fileId });
+                } catch (err) {
+                  logger.error("Error during streaming signed file", { error: err && err.message, fileId });
+                  if (!res.headersSent) {
+                    res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
+                  }
+                  try { res.end('Error reading file'); } catch (e) { }
+                } finally {
+                  req.removeListener('close', onClose);
+                  req.removeListener('aborted', onClose);
+                  // Note: keep signedUrlCache entry to allow multiple downloads within expiry
+                }
+              } catch (err) {
+                logger.error("Error getting file stats", { error: err.message, fileId });
                 if (!res.headersSent) {
-                  res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
+                  res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
                 }
                 res.end("Error reading file");
-              });
-              readStream.on('end', () => {
-                logger.trace("Finished streaming signed file", { fileId });
-              });
-              // Note: Do not delete the entry here to allow multiple downloads within expiry
-              // If you want single-use URLs, uncomment the next line
-              // signedUrlCache.delete(fileId);
-            }).catch(err => {
-              logger.error("Error getting file stats", { error: err.message, fileId });
-              res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
-              res.end("Error reading file");
-            });
+              }
+            })();
             return;
             // If you want to just return the file path instead of streaming
             // (not recommended for large files or production use)
