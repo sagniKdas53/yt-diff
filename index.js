@@ -226,7 +226,7 @@ const createSecurityCacheConfig = (maxBytes, maxItems, ttl) => ({
 
 const userCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB per user
 const ipCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB per IP
-const signedUrlCache = new LRUCache(createSecurityCacheConfig(10 * 1024, config.cache.maxItems, config.cache.maxAge)); // 10KB for signed URLs
+const signedUrlCache = new LRUCache(createSecurityCacheConfig(1024 * 1024, config.cache.maxItems, config.cache.maxAge)); // 1MB for signed URLs
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -2283,13 +2283,20 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
   const allSuccessful = listingResults.every(result => result.status === 'success');
 
   // Log results
-  listingResults.forEach(result => {
-    if (result.status === 'completed') {
-      logger.info(`Listed ${result.title} successfully`);
-    } else {
-      logger.error(`Failed to list ${result.title}: ${JSON.stringify(result)}`);
-    }
-  });
+  try {
+    listingResults.forEach(result => {
+      if (result.status === 'completed') {
+        logger.info(`Listed ${result.title} successfully`);
+      } else {
+        logger.error(`Failed to list ${result.title}: ${JSON.stringify(result)}`);
+      }
+    });
+  } catch (error) {
+    logger.error("Failed to log listing results", {
+      error: error.message,
+      stack: error.stack
+    });
+  }
 
   return allSuccessful;
 }
