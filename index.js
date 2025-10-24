@@ -224,8 +224,8 @@ const createSecurityCacheConfig = (maxBytes, maxItems, ttl) => ({
   },
 });
 
-const userCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB per user
-const ipCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB per IP
+const userCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB for users
+const ipCache = new LRUCache(createSecurityCacheConfig(1024 * 10, config.cache.maxItems, config.cache.maxAge)); // 10KB for IPs
 const signedUrlCache = new LRUCache(createSecurityCacheConfig(1024 * 1024, config.cache.maxItems, config.cache.maxAge)); // 1MB for signed URLs
 
 // Logging
@@ -3475,6 +3475,10 @@ async function processDeletePlaylistRequest(requestBody, response) {
     const deletePlaylist = requestBody.deletePlaylist || false;
     const cleanUp = requestBody.cleanUp || false;
 
+    // Test
+    //response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    //return response.end(JSON.stringify({ "status": "test", "message": playListUrl }));
+
     if (!playListUrl) {
       logger.error("Need a playListUrl", { "requestBody": JSON.stringify(requestBody) });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -3599,6 +3603,10 @@ async function processDeleteVideosRequest(requestBody, response) {
     const cleanUp = requestBody.cleanUp || false;
     const deleteVideoMappings = requestBody.deleteVideoMappings || false;
     const deleteVideosInDB = requestBody.deleteVideosInDB || false;
+
+    // Test
+    //response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    //return response.end(JSON.stringify({ "status": "test", "message": videoUrls }));
 
     if (!playListUrl) {
       logger.error("Need a playListUrl", { "requestBody": JSON.stringify(requestBody) });
@@ -4077,7 +4085,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
             res.write("Signed URL has expired");
             return res.end();
           } else {
-            logger.debug("Serving signed file", { fileId, filePath: signedEntry.filePath });
+            logger.trace("Serving signed file", { fileId, filePath: signedEntry.filePath });
             const originalName = path.basename(signedEntry.filePath);
             // Remove potentially dangerous characters
             const safeName = originalName.replace(/[\r\n"']/g, '');
@@ -4100,7 +4108,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
                 res.end("Error reading file");
               });
               readStream.on('end', () => {
-                logger.debug("Finished streaming signed file", { fileId });
+                logger.trace("Finished streaming signed file", { fileId });
               });
               // Note: Do not delete the entry here to allow multiple downloads within expiry
               // If you want single-use URLs, uncomment the next line
