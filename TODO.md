@@ -13,4 +13,5 @@
    2. [ ] Listing Cleanup - Can't replicate
 8. [x] Add an exception for x.com posts being treated as playlists (even if a post has multiple videos we can't list them as their IDs are same and this breaks listing so the best way is to make them a single unlisted item, when downloaded by yt-dlp we will get all the items anyway)
 9. [ ] Fix the docker image, we need pip so that we can install yt-dlp from pip and also add the [recommended packages](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#dependencies)
-10. [ ] Fix [#35](https://github.com/sagniKdas53/yt-diff/issues/35), from my initial tests it looks like the page switching mechanism on the front-end is broken
+10. [ ] Fix [#35](https://github.com/sagniKdas53/yt-diff/issues/35), from my initial tests it looks like the page switching mechanism on the front-end is broken (I think I have a fix for this but haven't tested it yet)
+11. [ ] Need to add deno because soon we will need it for youtube extractors, see [yt-dlp#14404](https://github.com/yt-dlp/yt-dlp/issues/14404)
