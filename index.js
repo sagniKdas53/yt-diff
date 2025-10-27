@@ -114,9 +114,9 @@ const downloadOptions = [
   config.saveThumbnail ? "--write-thumbnail" : "",
   config.restrictFilenames ? "--restrict-filenames" : "",
   "-P", "temp:/tmp",
-  "-o", "%(id)s.%(ext)s",
+  "-o", config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
   "--print", "before_dl:\"title:%(title)s[%(id)s]\"",
-  "--print", "post_process:\"fileName:%(id)s.%(ext)s\"",
+  "--print", config.restrictFilenames ? "post_process:\"fileName:%(id)s.%(ext)s\"" : "post_process:\"fileName:%(title)s[%(id)s].%(ext)s\"",
   "--progress-template", "download-title:%(info.id)s-%(progress.eta)s"
 ].filter(Boolean);
 // Check if file name length limit is set and valid
