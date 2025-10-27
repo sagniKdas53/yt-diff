@@ -104,6 +104,7 @@ const config = {
  * The array is filtered to remove any empty strings.
  */
 const downloadOptions = [
+  "--progress",
   "--embed-metadata",
   "--embed-chapters",
   config.saveSubs ? "--write-subs" : "",
@@ -112,6 +113,11 @@ const downloadOptions = [
   config.saveComments ? "--write-comments" : "",
   config.saveThumbnail ? "--write-thumbnail" : "",
   config.restrictFilenames ? "--restrict-filenames" : "",
+  "-P", "temp:/tmp",
+  "-o", "%(id)s.%(ext)s",
+  "--print", "before_dl:\"title:%(title)s[%(id)s]\"",
+  "--print", "post_process:\"fileName:%(id)s.%(ext)s\"",
+  "--progress-template", "download-title:%(info.id)s-%(progress.eta)s"
 ].filter(Boolean);
 // Check if file name length limit is set and valid
 if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
@@ -1798,9 +1804,10 @@ async function executeDownload(downloadItem, processKey) {
 
     return new Promise((resolve, reject) => {
       let progressPercent = null;
+      let capturedTitle = null;
       let capturedFileName = null;
       // Prepare final parameters
-      const processArgs = ["--paths", savePath, videoUrl];
+      const processArgs = ["-P", "home:" + savePath, videoUrl];
 
       // Notify frontend of download start
       safeEmit("download-started", { percentage: 101 });
@@ -1857,21 +1864,19 @@ async function executeDownload(downloadItem, processKey) {
             safeEmit("downloading-percent-update", { percentage: percent });
           }
 
-          // Extract filename from destination line (keep extension)
-          const fileNameDestMatch = /Destination: (.+)/m.exec(output);
-          if (fileNameDestMatch?.[1] && !capturedFileName) {
-            const fullDest = fileNameDestMatch[1].trim();
-            capturedFileName = path.basename(fullDest);
-            logger.debug(`Filename in destination: ${fullDest}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
-              { pid: downloadProcess.pid });
+          // Extract the title, no extension
+          const itemTitle = /title:(.+)/m.exec(output);
+          if (itemTitle?.[1] && !capturedFileName) {
+            capturedTitle = itemTitle[1].trim()
+            logger.debug(`Video Title from process ${capturedTitle}`, { pid: downloadProcess.pid });
           }
 
-          // Check for merger, as this is usually the final filename (keep extension)
-          const mergerFileNameMatch = /\[Merger\] Merging formats into "(.+)"/m.exec(output);
-          if (mergerFileNameMatch?.[1]) {
-            const fullMerger = mergerFileNameMatch[1].trim();
-            capturedFileName = path.basename(fullMerger);
-            logger.debug(`Filename in merger: ${fullMerger}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
+          // Get the final file name (only the video) from that we can get the rest
+          const fileNameInDest = /fileName:(.+)"/m.exec(output);
+          if (fileNameInDest?.[1]) {
+            const finalFileName = fileNameInDest[1].trim();
+            capturedFileName = path.basename(finalFileName);
+            logger.debug(`Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid });
           }
           // Update activity timestamp
@@ -1909,7 +1914,7 @@ async function executeDownload(downloadItem, processKey) {
             // ===== SUCCESS: Update video entry =====
 
             const unhelpfulTitle = (videoTitle === videoId || videoTitle === "NA");
-            const fallbackTitle = capturedFileName || videoTitle;
+            const fallbackTitle = capturedTitle || videoTitle;
 
             // Build initial updates object
             const updates = {
