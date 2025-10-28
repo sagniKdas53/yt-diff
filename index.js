@@ -115,7 +115,7 @@ const downloadOptions = [
   config.restrictFilenames ? "--restrict-filenames" : "",
   "-P", "temp:/tmp",
   "-o", config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
-  "--print", "before_dl:title:%(title)s[%(id)s]",
+  "--print", "before_dl:title:%(title)s [%(id)s]",
   "--print", config.restrictFilenames ? "post_process:\"fileName:%(id)s.%(ext)s\"" : "post_process:\"fileName:%(title)s[%(id)s].%(ext)s\"",
   "--progress-template", "download-title:%(info.id)s-%(progress.eta)s"
 ].filter(Boolean);
@@ -2416,6 +2416,14 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
     });
     const responseItems = await fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunks, processKey);
 
+    logger.debug(`Got items from listing chunk`, {
+      itemCount: responseItems.length,
+      url: videoUrl,
+      startIndex,
+      endIndex,
+      processedChunks
+    });
+
     if (responseItems.length === 0) {
       return handleEmptyResponse(videoUrl);
     }
@@ -3059,7 +3067,12 @@ async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunk
       });
 
       // Return filtered results
-      resolve(responseData.split("\n").filter(line => line.length > 0));
+      const items = responseData
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      // Items will always be an array, so no checks needed here
+      return resolve(items);
     });
   });
 }
