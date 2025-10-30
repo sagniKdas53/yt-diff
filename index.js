@@ -484,7 +484,12 @@ const PlaylistMetadata = sequelize.define("playlist_metadata", {
   updatedAt: {
     type: DataTypes.DATE,
     allowNull: false
-  }
+  },
+  lastUpdatedByScheduler: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    comment: "Timestamp of the last update made by the scheduler, default value is createdAt"
+  },
 });
 
 /**
@@ -2446,7 +2451,10 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
         } else if (existingPlaylist.monitoringType !== currentMonitoringType) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           // Update the monitoring type in the database
-          await existingPlaylist.update({ monitoringType: currentMonitoringType });
+          await existingPlaylist.update({
+            monitoringType: currentMonitoringType,
+            lastUpdatedByScheduler: Date.now()
+          });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
         playlistTitle = existingPlaylist.title;
@@ -3443,7 +3451,8 @@ async function addPlaylist(playlistUrl, monitoringType) {
           url: playlistUrl,
           pid: titleProcess.pid,
           code: code,
-          monitoringType: monitoringType
+          monitoringType: monitoringType,
+          lastUpdatedByScheduler: Date.now()
         });
 
         // Create playlist entry
@@ -3454,7 +3463,8 @@ async function addPlaylist(playlistUrl, monitoringType) {
             monitoringType: monitoringType,
             saveDirectory: playlistTitle.trim(),
             // Order in which playlists are displayed or Index
-            sortOrder: nextPlaylistIndex
+            sortOrder: nextPlaylistIndex,
+            lastUpdatedByScheduler: Date.now()
           }
         });
 
@@ -3789,7 +3799,7 @@ async function getPlaylistsForDisplay(requestBody, response) {
 
     // Determine sort settings
     const sortDirection = sortOrder === 2 ? "DESC" : "ASC";
-    const sortBy = sortColumn === 3 ? "updatedAt" : "sortOrder";
+    const sortBy = sortColumn === 3 ? "lastUpdatedByScheduler" : "createdAt";
 
     logger.trace(
       `Fetching playlists for display`, {
@@ -3852,7 +3862,7 @@ async function getPlaylistsForDisplay(requestBody, response) {
  * @returns {Promise<void>} Resolves when video data is sent to frontend
  * @throws {Error} If database query fails
  */
-async function getPlaylistVideos(requestBody, response) {
+async function getSubListVideos(requestBody, response) {
   try {
     // Extract and validate parameters
     const playlistUrl = requestBody.url ?? "None";
@@ -3861,7 +3871,10 @@ async function getPlaylistVideos(requestBody, response) {
     const searchQuery = requestBody.query ?? "";
     const sortByDownloaded = requestBody.sortDownloaded ?? false;
 
-    // Determine sort order
+    // Determine sort order - Explanation:
+    // If sorting by download status, we sort by VideoMetadata.downloadStatus DESC
+    // (downloaded videos first, with the most recently downloaded videos first).
+    // Otherwise, we sort by positionInPlaylist ASC in whatever order they were added.
     const sortOrder = sortByDownloaded
       ? [VideoMetadata, "downloadStatus", "DESC"]
       : ["positionInPlaylist", "ASC"];
@@ -4253,7 +4266,7 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
   } else if (req.url === config.urlBase + "/delplay" && req.method === "POST") {
     authenticateRequest(req, res, processDeletePlaylistRequest);
   } else if (req.url === config.urlBase + "/getsub" && req.method === "POST") {
-    authenticateRequest(req, res, getPlaylistVideos);
+    authenticateRequest(req, res, getSubListVideos);
   } else if (req.url === config.urlBase + "/delsub" && req.method === "POST") {
     authenticateRequest(req, res, processDeleteVideosRequest);
   } else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
