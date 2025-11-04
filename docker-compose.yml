@@ -123,6 +123,33 @@ services:
       start_period: 30s
       retries: 3
 
+  pgbackups:
+    container_name: pgbackups
+    user: postgres:postgres
+    image: prodrigestivill/postgres-backup-local
+    restart: always
+    volumes:
+      - /home/sagnik/MEGAsync/Databases/yt-db:/backups
+    links:
+      - yt-db
+    depends_on:
+      - yt-db
+    secrets:
+      - db_password
+    networks:
+      - revProxy-net
+    environment:
+      - BACKUP_ON_START=TRUE
+      - POSTGRES_HOST=yt-db
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+      - POSTGRES_EXTRA_OPTS=-Z1 --schema=public --blobs
+      - SCHEDULE=@daily
+      - BACKUP_ON_START=TRUE
+      - BACKUP_KEEP_DAYS=7
+      - HEALTHCHECK_PORT=8080
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin4
