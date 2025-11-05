@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-11-05T15:33:12.562Z",
+  "dryRun": false,
+  "files": [
+    {
+      "videoId": "y6LfDaFl4yE",
+      "title": "Varesa Pulls",
+      "playlistUrl": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3UAKUxzmLj7EhNh6YoYccf",
+      "saveDirectory": "/home/sagnik/Videos/yt-dlp/todo",
+      "plannedRenames": {
+        "main": [],
+        "metadata": []
+      },
+      "success": true,
+      "error": null
+    },
+    {
+      "videoId": "eraxGPVNxYU",
+      "title": "Imaginium Theater 🎭 first time",
+      "playlistUrl": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3UAKUxzmLj7EhNh6YoYccf",
+      "saveDirectory": "/home/sagnik/Videos/yt-dlp/todo",
+      "plannedRenames": {
+        "main": [],
+        "metadata": []
+      },
+      "success": true,
+      "error": null
+    },
+    {
+      "videoId": "KUQfxxAP5rM",
+      "title": "Cyclical Farming",
+      "playlistUrl": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3UAKUxzmLj7EhNh6YoYccf",
+      "saveDirectory": "/home/sagnik/Videos/yt-dlp/todo",
+      "plannedRenames": {
+        "main": [],
+        "metadata": []
+      },
+      "success": true,
+      "error": null
+    }
+  ]
+}

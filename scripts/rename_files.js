@@ -25,6 +25,18 @@ for (const arg of args) {
   if (arg === '--dry-run') dryRun = true;
 }
 if (!playlistUrl) usageAndExit('Missing --playlist parameter');
+let resultsFile = null;
+for (const arg of args) {
+  if (arg.startsWith('--results-file=')) {
+    resultsFile = arg.split('=')[1];
+  }
+}
+// If no results file specified, create a timestamped one
+if (!resultsFile) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '').split('T');
+  resultsFile = `renaming_${timestamp[0]}_${timestamp[1].slice(0, 6)}.json`;
+}
+console.log(`Results will be saved to: ${resultsFile}`);
 
 // DB and save path defaults mirrored from index.js
 const DB_HOST = process.env.DB_HOST || 'localhost';
@@ -78,6 +90,13 @@ const PlaylistMetadata = sequelize.define('playlist_metadata', {
 
 // Associate for convenience
 PlaylistVideoMapping.belongsTo(VideoMetadata, { foreignKey: 'videoUrl', targetKey: 'videoUrl' });
+
+// Track detailed results for JSON output
+const results = {
+  timestamp: new Date().toISOString(),
+  dryRun: dryRun,
+  files: []
+};
 
 function sanitizeFilename(name, maxLen = 240) {
   if (!name) return '';
@@ -209,7 +228,6 @@ async function processPlaylist(playlist) {
       newBase = `${sanitizedTitle}`;
     }
     const newMainFilename = `${newBase}${ext}`;
-    const newMainPath = path.join(saveDir, newMainFilename);
 
     // Find metadata files which start with oldBase (e.g., id.description, id.comments, id.vtt, id.jpg)
     const metadataCandidates = allFiles.filter(f => {
@@ -238,6 +256,20 @@ async function processPlaylist(playlist) {
     for (const item of plannedMeta) console.log((dryRun ? '[DRY] ' : '[DO ]') + ` ${item.from} -> ${item.to}`);
     for (const item of plannedMain) console.log((dryRun ? '[DRY] ' : '[DO ]') + ` ${item.from} -> ${item.to}`);
 
+    // Track this file in results
+    const fileEntry = {
+      videoId: videoId,
+      title: title,
+      playlistUrl: playlist.playlistUrl,
+      saveDirectory: saveDir,
+      plannedRenames: {
+        main: plannedMain,
+        metadata: plannedMeta
+      },
+      success: false,
+      error: null
+    };
+
     if (!dryRun) {
       // perform renames and update DB
       try {
@@ -248,6 +280,8 @@ async function processPlaylist(playlist) {
           const dst = path.join(saveDir, item.to);
           if (!fs.existsSync(src)) {
             console.warn('Source missing, skipping metadata:', src);
+            fileEntry.success = false;
+            fileEntry.error = 'Source missing';
             continue;
           }
           let finalDst = dst;
@@ -313,10 +347,11 @@ async function processPlaylist(playlist) {
         console.error('Failed to rename/update for', videoId, e.message);
       }
     }
+    fileEntry.success = true;
+    results.files.push(fileEntry);
   }
 
-  console.log('\nCompleted.');
-  process.exit(0);
+  console.log('\nCompleted operations for playlist:', playlist.title || playlist.playlistUrl);
 }
 
 async function run() {
@@ -342,6 +377,14 @@ async function run() {
   }
 
   console.log('All done.');
+  console.log('Writing results...');
+  try {
+    await fs.promises.writeFile(resultsFile, JSON.stringify(results, null, 2));
+    console.log(`\nResults saved to: ${resultsFile}`);
+  } catch (e) {
+    console.error('Failed to save results:', e.message);
+    stats.errors++;
+  }
   process.exit(0);
 }
 
