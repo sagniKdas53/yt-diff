@@ -12,6 +12,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 function usageAndExit(msg) {
   if (msg) console.error(msg);
   console.log('\nUsage: node scripts/rename_files.js --playlist="<playlistUrl>" [--dry-run]');
+  console.log('       Use --playlist="*" to process all playlists');
   process.exit(msg ? 1 : 0);
 }
 
@@ -92,8 +93,12 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function findPlaylist(playlistUrl) {
-  return PlaylistMetadata.findOne({ where: { playlistUrl } });
+async function findPlaylists(playlistUrl) {
+  if (playlistUrl === '*') {
+    return PlaylistMetadata.findAll();
+  }
+  const playlist = await PlaylistMetadata.findOne({ where: { playlistUrl } });
+  return playlist ? [playlist] : [];
 }
 
 async function findMappingsForPlaylist(playlistUrl) {
@@ -109,31 +114,20 @@ async function ensureDir(dir) {
   }
 }
 
-async function run() {
-  try {
-    await sequelize.authenticate();
-  } catch (e) {
-    console.error('DB connect failed:', e.message);
-    process.exit(2);
-  }
-
-  const playlist = await findPlaylist(playlistUrl);
-  if (!playlist) {
-    console.error('Playlist not found in DB:', playlistUrl);
-    process.exit(3);
-  }
+async function processPlaylist(playlist) {
+  console.log(`\nProcessing playlist: ${playlist.title || playlist.playlistUrl}`);
 
   // compute full save directory
   const saveDir = playlist.saveDirectory && playlist.saveDirectory.length ? path.join(SAVE_PATH, playlist.saveDirectory) : SAVE_PATH;
   if (!await ensureDir(saveDir)) {
     console.error('Save directory not accessible:', saveDir);
-    process.exit(4);
+    return;
   }
 
-  const mappings = await findMappingsForPlaylist(playlistUrl);
+  const mappings = await findMappingsForPlaylist(playlist.playlistUrl);
   if (!mappings || mappings.length === 0) {
-    console.log('No videos found for playlist', playlistUrl);
-    process.exit(0);
+    console.log('No videos found for playlist', playlist.playlistUrl);
+    return;
   }
 
   console.log(`Found ${mappings.length} mapping(s) for playlist. Dry-run: ${dryRun}`);
