@@ -129,7 +129,9 @@ services:
     image: prodrigestivill/postgres-backup-local
     restart: always
     volumes:
-      - /home/sagnik/MEGAsync/Databases/yt-db:/backups
+      - type: bind
+        source: ${BACKUP_LOCATION}
+        target: /backups
     links:
       - yt-db
     depends_on:
