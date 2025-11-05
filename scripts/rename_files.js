@@ -21,7 +21,7 @@ const args = process.argv.slice(2);
 let playlistUrl = null;
 let dryRun = false;
 for (const arg of args) {
-  if (arg.startsWith('--playlist=')) playlistUrl = arg.split('=')[1];
+  if (arg.startsWith('--playlist=')) playlistUrl = arg.split('=').slice(1).join('=');
   if (arg === '--dry-run') dryRun = true;
 }
 if (!playlistUrl) usageAndExit('Missing --playlist parameter');
@@ -87,10 +87,6 @@ function sanitizeFilename(name, maxLen = 240) {
   const collapsed = replaced.replace(/\s+/g, ' ').trim();
   if (collapsed.length <= maxLen) return collapsed;
   return collapsed.slice(0, maxLen).trim();
-}
-
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function findPlaylists(playlistUrl) {
@@ -320,6 +316,32 @@ async function processPlaylist(playlist) {
   }
 
   console.log('\nCompleted.');
+  process.exit(0);
+}
+
+async function run() {
+  try {
+    await sequelize.authenticate();
+  } catch (e) {
+    console.error('Unable to connect to DB:', e.message);
+    process.exit(2);
+  }
+
+  if (playlistUrl === '*') {
+    console.log('Processing all playlists');
+  } else {
+    console.log('Processing playlist:', playlistUrl);
+  }
+  const playlists = await findPlaylists(playlistUrl);
+  if (!playlists || playlists.length === 0) {
+    console.error('No playlists found in DB');
+    process.exit(1);
+  }
+  for (const pl of playlists) {
+    await processPlaylist(pl);
+  }
+
+  console.log('All done.');
   process.exit(0);
 }
 
