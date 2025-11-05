@@ -66,6 +66,13 @@ async function moveToTrash(filePath) {
     }
 }
 
+// Track detailed results for JSON output
+const results = {
+    timestamp: new Date().toISOString(),
+    dryRun: dryRun,
+    files: []
+};
+
 async function run() {
     try {
         await sequelize.authenticate();
@@ -86,12 +93,7 @@ async function run() {
         }
     }
 
-    // Track detailed results for JSON output
-    const results = {
-        timestamp: new Date().toISOString(),
-        dryRun: dryRun,
-        files: []
-    };
+
 }
 
 // DB and save path defaults mirrored from index.js
@@ -187,6 +189,11 @@ async function run() {
     const playlists = await PlaylistMetadata.findAll({
         attributes: ['saveDirectory']
     });
+
+    console.log(`Found ${playlists.length} playlists in DB`);
+    for (const pl of playlists) {
+        console.log(` - ${pl.saveDirectory}`);
+    }
 
     // Build set of directories to scan
     const scanDirs = new Set([SAVE_PATH]);
