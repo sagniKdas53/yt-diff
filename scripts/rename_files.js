@@ -176,8 +176,33 @@ async function run() {
       }
     }
 
+    // read directory once (we may have already done this above when searching)
+    const allFiles = await fs.promises.readdir(saveDir);
+
     if (!currentFilePath) {
-      console.warn(`Main file for video ${videoId} not found in ${saveDir}. Skipping.`);
+      // try to find file starting with videoId
+      const match = allFiles.find(f => {
+        const parsed = path.parse(f);
+        return parsed.name === videoId || parsed.name.startsWith(videoId + ' ') || parsed.name.startsWith(videoId + '.');
+      });
+      if (match) {
+        currentFileName = match;
+        currentFilePath = path.join(saveDir, match);
+      }
+    }
+
+    // Determine if any files exist for this video (main or metadata). If none, mark as not downloaded.
+    const anyFilesForVideo = allFiles.some(f => {
+      const p = path.parse(f);
+      return p.name === (v.fileName ? path.parse(v.fileName).name : videoId) || p.name.startsWith((v.fileName ? path.parse(v.fileName).name : videoId) + '.') || p.name.startsWith((v.fileName ? path.parse(v.fileName).name : videoId) + ' ');
+    });
+    if (!anyFilesForVideo) {
+      console.log(`No files found on disk for video ${videoId}. Marking as not downloaded in DB.`);
+      try {
+        await VideoMetadata.update({ downloadStatus: false, fileName: null, descriptionFile: null, commentsFile: null, subTitleFile: null, thumbNailFile: null }, { where: { videoUrl: v.videoUrl } });
+      } catch (e) {
+        console.error('Failed to update DB when marking not-downloaded:', e.message);
+      }
       continue;
     }
 
@@ -187,45 +212,54 @@ async function run() {
 
     // build new base name: <title> [<id>]
     const sanitizedTitle = sanitizeFilename(title);
-    const newBase = `${sanitizedTitle} [${videoId}]`;
+    let newBase = '';
+    if (videoId !== "NA") {
+      newBase = `${sanitizedTitle} [${videoId}]`;
+    } else {
+      newBase = `${sanitizedTitle}`;
+    }
     const newMainFilename = `${newBase}${ext}`;
     const newMainPath = path.join(saveDir, newMainFilename);
 
     // Find metadata files which start with oldBase (e.g., id.description, id.comments, id.vtt, id.jpg)
-    const allFiles = await fs.promises.readdir(saveDir);
     const metadataCandidates = allFiles.filter(f => {
       if (f === currentFileName) return false; // will rename main separately
       const p = path.parse(f);
       return p.name === oldBase || p.name.startsWith(oldBase + '.') || p.name.startsWith(oldBase + ' ');
     });
 
-    const planned = [];
-    // main file
-    planned.push({ from: currentFileName, to: newMainFilename });
-
-    // metadata
+    const plannedMeta = [];
     for (const mf of metadataCandidates) {
       const p = path.parse(mf);
       const newName = `${newBase}${p.ext}`;
-      planned.push({ from: mf, to: newName });
+      // skip metadata rename if name would be identical
+      if (mf === newName) continue;
+      plannedMeta.push({ from: mf, to: newName });
+    }
+
+    const plannedMain = [];
+    if (currentFileName) {
+      // if main name is already the desired one, skip
+      if (currentFileName !== newMainFilename) plannedMain.push({ from: currentFileName, to: newMainFilename });
     }
 
     // Show planned actions
     console.log('\n=== Video:', videoId, 'Title:', title, '===');
-    for (const item of planned) console.log((dryRun ? '[DRY] ' : '[DO ]') + ` ${item.from} -> ${item.to}`);
+    for (const item of plannedMeta) console.log((dryRun ? '[DRY] ' : '[DO ]') + ` ${item.from} -> ${item.to}`);
+    for (const item of plannedMain) console.log((dryRun ? '[DRY] ' : '[DO ]') + ` ${item.from} -> ${item.to}`);
 
     if (!dryRun) {
       // perform renames and update DB
       try {
-        // rename metadata first (so if main rename collides it won't lose data)
-        for (const item of planned) {
+        // perform metadata renames first
+        const renamedMap = {}; // from -> final basename
+        for (const item of plannedMeta) {
           const src = path.join(saveDir, item.from);
           const dst = path.join(saveDir, item.to);
           if (!fs.existsSync(src)) {
-            console.warn('Source missing, skipping:', src);
+            console.warn('Source missing, skipping metadata:', src);
             continue;
           }
-          // if dst exists, avoid overwrite by appending a numeric suffix
           let finalDst = dst;
           if (fs.existsSync(finalDst)) {
             const dstParsed = path.parse(dst);
@@ -237,19 +271,50 @@ async function run() {
             console.warn('Destination exists, will use:', finalDst);
           }
           await fs.promises.rename(src, finalDst);
+          renamedMap[item.from] = path.basename(finalDst);
+        }
+
+        // perform main file rename (if any)
+        if (plannedMain.length > 0) {
+          for (const item of plannedMain) {
+            const src = path.join(saveDir, item.from);
+            const dst = path.join(saveDir, item.to);
+            if (!fs.existsSync(src)) {
+              console.warn('Main source missing, skipping main rename:', src);
+              continue;
+            }
+            let finalDst = dst;
+            if (fs.existsSync(finalDst)) {
+              const dstParsed = path.parse(dst);
+              let i = 1;
+              do {
+                finalDst = path.join(dstParsed.dir, `${dstParsed.name} (${i})${dstParsed.ext}`);
+                i++;
+              } while (fs.existsSync(finalDst));
+              console.warn('Destination exists, will use:', finalDst);
+            }
+            await fs.promises.rename(src, finalDst);
+            renamedMap[item.from] = path.basename(finalDst);
+          }
         }
 
         // update DB filenames for this video
         const updateData = {};
-        updateData.fileName = newMainFilename;
-        // attempt to map metadata fields by extension heuristics
-        for (const item of planned) {
-          if (item.to === newMainFilename) continue;
-          const extn = path.extname(item.to).toLowerCase();
-          if (extn === '.description' || extn === '.txt') updateData.descriptionFile = item.to;
-          else if (extn === '.comments') updateData.commentsFile = item.to;
-          else if (extn === '.vtt' || extn === '.srt' || extn === '.sbv') updateData.subTitleFile = item.to;
-          else if (['.jpg', '.jpeg', '.png', '.webp'].includes(extn)) updateData.thumbNailFile = item.to;
+        // final main filename: if renamedMap has entry for original main, use it; else if currentFileName exists use that; else newMainFilename
+        if (currentFileName && renamedMap[currentFileName]) updateData.fileName = renamedMap[currentFileName];
+        else if (currentFileName) updateData.fileName = currentFileName;
+        else updateData.fileName = newMainFilename;
+
+        // attempt to map metadata fields by extension heuristics using actual renamed names when available
+        for (const mf of metadataCandidates) {
+          const intendedNew = `${newBase}${path.extname(mf)}`;
+          const finalName = renamedMap[mf] || (fs.existsSync(path.join(saveDir, intendedNew)) ? intendedNew : null);
+          if (!finalName) continue;
+          const extn = path.extname(finalName).toLowerCase();
+          if (extn === '.description' || extn === '.txt') updateData.descriptionFile = finalName;
+          else if (extn === '.comments') updateData.commentsFile = finalName;
+          else if (extn === '.vtt' || extn === '.srt' || extn === '.sbv') updateData.subTitleFile = finalName;
+          else if (['.jpg', '.jpeg', '.png', '.webp'].includes(extn)) updateData.thumbNailFile = finalName;
         }
 
         await VideoMetadata.update(updateData, { where: { videoUrl: v.videoUrl } });
