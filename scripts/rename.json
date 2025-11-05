@@ -1,0 +1,96 @@
+{
+  "timestamp": "2025-11-05T15:32:43.526Z",
+  "dryRun": false,
+  "files": [
+    {
+      "videoId": "y6LfDaFl4yE",
+      "title": "Varesa Pulls",
+      "playlistUrl": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3UAKUxzmLj7EhNh6YoYccf",
+      "saveDirectory": "/home/sagnik/Videos/yt-dlp/todo",
+      "plannedRenames": {
+        "main": [
+          {
+            "from": "y6LfDaFl4yE.webm",
+            "to": "Varesa Pulls [y6LfDaFl4yE].webm"
+          }
+        ],
+        "metadata": [
+          {
+            "from": "y6LfDaFl4yE.description",
+            "to": "Varesa Pulls [y6LfDaFl4yE].description"
+          },
+          {
+            "from": "y6LfDaFl4yE.info.json",
+            "to": "Varesa Pulls [y6LfDaFl4yE].json"
+          },
+          {
+            "from": "y6LfDaFl4yE.webp",
+            "to": "Varesa Pulls [y6LfDaFl4yE].webp"
+          }
+        ]
+      },
+      "success": true,
+      "error": null
+    },
+    {
+      "videoId": "eraxGPVNxYU",
+      "title": "Imaginium Theater 🎭 first time",
+      "playlistUrl": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3UAKUxzmLj7EhNh6YoYccf",
+      "saveDirectory": "/home/sagnik/Videos/yt-dlp/todo",
+      "plannedRenames": {
+        "main": [
+          {
+            "from": "eraxGPVNxYU.mkv",
+            "to": "Imaginium Theater 🎭 first time [eraxGPVNxYU].mkv"
+          }
+        ],
+        "metadata": [
+          {
+            "from": "eraxGPVNxYU.description",
+            "to": "Imaginium Theater 🎭 first time [eraxGPVNxYU].description"
+          },
+          {
+            "from": "eraxGPVNxYU.info.json",
+            "to": "Imaginium Theater 🎭 first time [eraxGPVNxYU].json"
+          },
+          {
+            "from": "eraxGPVNxYU.webp",
+            "to": "Imaginium Theater 🎭 first time [eraxGPVNxYU].webp"
+          }
+        ]
+      },
+      "success": true,
+      "error": null
+    },
+    {
+      "videoId": "KUQfxxAP5rM",
+      "title": "Cyclical Farming",
+      "playlistUrl": "https://www.youtube.com/playlist?list=PL4Oo6H2hGqj3UAKUxzmLj7EhNh6YoYccf",
+      "saveDirectory": "/home/sagnik/Videos/yt-dlp/todo",
+      "plannedRenames": {
+        "main": [
+          {
+            "from": "KUQfxxAP5rM.webm",
+            "to": "Cyclical Farming [KUQfxxAP5rM].webm"
+          }
+        ],
+        "metadata": [
+          {
+            "from": "KUQfxxAP5rM.description",
+            "to": "Cyclical Farming [KUQfxxAP5rM].description"
+          },
+          {
+            "from": "KUQfxxAP5rM.info.json",
+            "to": "Cyclical Farming [KUQfxxAP5rM].json"
+          },
+          {
+            "from": "KUQfxxAP5rM.webp",
+            "to": "Cyclical Farming [KUQfxxAP5rM].webp"
+          }
+        ]
+      },
+      "success": true,
+      "error": null
+    }
+  ]
+}
