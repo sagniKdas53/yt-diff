@@ -92,7 +92,7 @@ node scripts/rename_files.js --playlist="https://example.com/my-playlist"
 - Process all playlists (dry-run):
 
 ```bash
-node scripts/rename_files.js --playlist="*" --dry-run
+node scripts/rename_files.js --playlist="*" --dry-run --results-file="rename_results.json"
 ```
 
 - Process all playlists (actual renames):
@@ -116,3 +116,20 @@ Possible small improvements you may want:
 - Add an `--interactive` mode to confirm each rename.
 - Add a `--backup` option to save a JSON map of old -> new filenames before renaming (useful for rollback).
 - Add tests that simulate filesystem and DB state (unit tests using temp directories and a test DB).
+
+How to run it
+-------------
+
+copy the script to the container and run with node, e.g.:
+
+```bash
+docker cp scripts/rename_files.js ytdiff_ytdiff_1:/app/scripts/
+docker exec -it ytdiff_ytdiff_1 node /app/scripts/rename_files.js --playlist="*" --dry-run --results-file="rename_dryrun.json"
+docker exec -it ytdiff_ytdiff_1 node /app/scripts/rename_files.js --playlist="*"
+```
+
+Copy the resulting renamed files back if needed:
+
+```bash
+docker cp ytdiff_ytdiff_1:/home/ytdiff/Videos/yt-dlp/rename_dryrun.json /path/on/host/
+```
