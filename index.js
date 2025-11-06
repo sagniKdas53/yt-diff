@@ -52,7 +52,7 @@ const config = {
     maxIdle: +process.env.PROCESS_MAX_AGE || 5 * 60 * 1000, // 5 minutes
   },
   registration: {
-    allowed: process.env.ALLOW_REGISTRATION === "false" ? false : true,
+    allowed: process.env.ALLOW_REGISTRATION !== "false",
     maxUsers: +(process.env.MAX_USERS || 15)
   },
   saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
