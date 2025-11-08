@@ -42,7 +42,7 @@ console.log(`Results will be saved to: ${resultsFile}`);
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_USER = process.env.DB_USERNAME || process.env.DB_USER || 'ytdiff';
 const DB_NAME = process.env.DB_NAME || process.env.DB_DATABASE || 'vidlist';
-let DB_PASSWORD = process.env.DB_PASSWORD || "ytd1ff";
+let DB_PASSWORD = process.env.DB_PASSWORD || "";
 if (!DB_PASSWORD && process.env.DB_PASSWORD_FILE) {
   try {
     DB_PASSWORD = fs.readFileSync(process.env.DB_PASSWORD_FILE, 'utf8').trim();
@@ -53,7 +53,7 @@ if (!DB_PASSWORD && process.env.DB_PASSWORD_FILE) {
 }
 if (!DB_PASSWORD) DB_PASSWORD = '';
 
-const SAVE_PATH = process.env.SAVE_PATH || '/home/sagnik/Videos/yt-dlp/';
+const SAVE_PATH = process.env.SAVE_PATH || '/mnt/nvme/stuff/yt-diff/';
 
 // Connect to DB
 const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
@@ -104,8 +104,10 @@ function sanitizeFilename(name, maxLen = 240) {
   const replaced = name.replace(/[\\/:*?"<>|\p{C}]/gu, '_');
   // Collapse multiple spaces
   const collapsed = replaced.replace(/\s+/g, ' ').trim();
-  if (collapsed.length <= maxLen) return collapsed;
-  return collapsed.slice(0, maxLen).trim();
+  // Replace white space with _
+  const finalName = collapsed.replace(/\s/g, '_');
+  if (finalName.length <= maxLen) return finalName;
+  return finalName.slice(0, maxLen).trim();
 }
 
 async function findPlaylists(playlistUrl) {
@@ -192,7 +194,7 @@ async function processPlaylist(playlist) {
       // try to find file starting with videoId
       const match = allFiles.find(f => {
         const parsed = path.parse(f);
-        return parsed.name === videoId || parsed.name.startsWith(videoId + ' ') || parsed.name.startsWith(videoId + '.');
+        return parsed.name === videoId || parsed.name.startsWith(videoId + ' ') || parsed.name.startsWith(videoId + '.') || parsed.name.includes(`[${videoId}]`);
       });
       if (match) {
         currentFileName = match;
@@ -223,23 +225,33 @@ async function processPlaylist(playlist) {
     const sanitizedTitle = sanitizeFilename(title);
     let newBase = '';
     if (videoId !== "NA") {
-      newBase = `${sanitizedTitle} [${videoId}]`;
+      newBase = `${sanitizedTitle}_[${videoId}]`;
     } else {
       newBase = `${sanitizedTitle}`;
     }
     const newMainFilename = `${newBase}${ext}`;
 
-    // Find metadata files which start with oldBase (e.g., id.description, id.comments, id.vtt, id.jpg)
+    // Find metadata files which start with oldBase OR the original videoId
     const metadataCandidates = allFiles.filter(f => {
       if (f === currentFileName) return false; // will rename main separately
       const p = path.parse(f);
-      return p.name === oldBase || p.name.startsWith(oldBase + '.') || p.name.startsWith(oldBase + ' ');
+
+      // Check if file matches the current base name (e.g., "Title_[id].description")
+      const matchesOldBase = p.name === oldBase || p.name.startsWith(oldBase + '.') || p.name.startsWith(oldBase + ' ');
+
+      // Check if file matches the original videoId (e.g., "id.info.json")
+      const matchesVideoId = p.name === v.videoId || p.name.startsWith(v.videoId + '.') || p.name.startsWith(v.videoId + ' ');
+
+      return matchesOldBase || matchesVideoId;
     });
 
     const plannedMeta = [];
     for (const mf of metadataCandidates) {
-      const p = path.parse(mf);
-      const newName = `${newBase}${p.ext}`;
+      // Use substring to get the full extension part (e.g., ".info.json" or ".en.vtt")
+      // This correctly handles multi-part extensions that path.parse fails on.
+      const extensionPart = mf.substring(oldBase.length);
+      const newName = `${newBase}${extensionPart}`;
+
       // skip metadata rename if name would be identical
       if (mf === newName) continue;
       plannedMeta.push({ from: mf, to: newName });
@@ -331,14 +343,25 @@ async function processPlaylist(playlist) {
 
         // attempt to map metadata fields by extension heuristics using actual renamed names when available
         for (const mf of metadataCandidates) {
-          const intendedNew = `${newBase}${path.extname(mf)}`;
+          // Get the original extension part (e.g., ".info.json", ".description")
+          const extensionPart = mf.substring(oldBase.length);
+          // Reconstruct the correct intendedNew name, just like in the planning phase
+          const intendedNew = `${newBase}${extensionPart}`;
+
           const finalName = renamedMap[mf] || (fs.existsSync(path.join(saveDir, intendedNew)) ? intendedNew : null);
           if (!finalName) continue;
-          const extn = path.extname(finalName).toLowerCase();
-          if (extn === '.description' || extn === '.txt') updateData.descriptionFile = finalName;
-          else if (extn === '.comments') updateData.commentsFile = finalName;
-          else if (extn === '.vtt' || extn === '.srt' || extn === '.sbv') updateData.subTitleFile = finalName;
-          else if (['.jpg', '.jpeg', '.png', '.webp'].includes(extn)) updateData.thumbNailFile = finalName;
+
+          // Check against the reliable "extensionPart" instead of the flawed path.extname
+          if (extensionPart === '.description' || extensionPart === '.txt') {
+            updateData.descriptionFile = finalName;
+          } else if (extensionPart.endsWith('.info.json')) {
+            // Correctly assign the full new name (e.g., "...[id].info.json")
+            updateData.commentsFile = finalName;
+          } else if (extensionPart.endsWith('.vtt') || extensionPart.endsWith('.srt') || extensionPart.endsWith('.sbv')) {
+            updateData.subTitleFile = finalName;
+          } else if (['.jpg', '.jpeg', '.png', '.webp'].some(e => extensionPart.endsWith(e))) {
+            updateData.thumbNailFile = finalName;
+          }
         }
 
         await VideoMetadata.update(updateData, { where: { videoUrl: v.videoUrl } });
