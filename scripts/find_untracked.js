@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 // Script: find_untracked.js
-// Purpose: Scan download directory and list/delete files not tracked in the DB
+// Purpose: Scan download directory and list/delete/move files not tracked in the DB
 //          (i.e., files that don't match any VideoMetadata filename/metadata fields)
 
 const fs = require('fs');
@@ -12,40 +12,76 @@ const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
 function usageAndExit(msg) {
-    if (msg) console.error(msg);
-    console.log('\nUsage: node scripts/find_untracked.js [--delete | --trash] [--dry-run] [--results-file=path/to/results.json]');
-    console.log('  --dry-run   Print what would be done without making changes (implied if no action given)');
-    console.log('  --delete    Permanently delete untracked files (BE CAREFUL!)');
-    console.log('  --trash     Move untracked files to trash (safer option)');
-    console.log('  --results-file=<path>  Save results to JSON file (default: untracked_YYYYMMDD_HHMMSS.json)');
+    if (msg) console.error(`\nError: ${msg}`);
+    console.log('\nUsage: node scripts/find_untracked.js [--delete | --trash | --move-to=<path>] [--dry-run] [--results-file=path/to/results.json]');
+    console.log('  --dry-run           Print what would be done without making changes (implied if no action given)');
+    console.log('  --delete            Permanently delete untracked files (BE CAREFUL!)');
+    console.log('  --trash             Move untracked files to trash (safer option)');
+    console.log('  --move-to=<path>    Move untracked files to the specified directory');
+    console.log('  --results-file=<path> Save results to JSON file (default: untracked_YYYYMMDD_HHMMSS.json)');
     process.exit(msg ? 1 : 0);
 }
 
-// Simple arg parsing
+// Arg parsing
 const args = process.argv.slice(2);
 const shouldDelete = args.includes('--delete');
 const shouldTrash = args.includes('--trash');
-if (shouldDelete && shouldTrash) {
-    usageAndExit('Cannot specify both --delete and --trash');
-}
-const dryRun = args.includes('--dry-run') || (!shouldDelete && !shouldTrash);
+let moveToPath = null;
 let resultsFile = null;
+
 for (const arg of args) {
     if (arg.startsWith('--results-file=')) {
         resultsFile = arg.split('=')[1];
+    } else if (arg.startsWith('--move-to=')) {
+        moveToPath = arg.split('=')[1];
     }
 }
+
+const shouldMove = !!moveToPath;
+
+// Validate mutual exclusivity of actions
+const actionCount = [shouldDelete, shouldTrash, shouldMove].filter(Boolean).length;
+if (actionCount > 1) {
+    usageAndExit('Cannot specify more than one of --delete, --trash, or --move-to');
+}
+
+// Determine active mode
+const dryRun = args.includes('--dry-run') || actionCount === 0;
+
+// Validate move-to path if specified
+if (shouldMove) {
+    if (!moveToPath) {
+        usageAndExit('--move-to requires a directory path');
+    }
+    // Resolve to absolute path
+    moveToPath = path.resolve(moveToPath);
+
+    // Ensure it exists and is a directory (unless it's a dry run, but even then it's good to warn)
+    try {
+        if (!fs.existsSync(moveToPath)) {
+            usageAndExit(`Destination path does not exist: ${moveToPath}`);
+        }
+        if (!fs.statSync(moveToPath).isDirectory()) {
+            usageAndExit(`Destination is not a directory: ${moveToPath}`);
+        }
+    } catch (e) {
+        usageAndExit(`Invalid destination path: ${moveToPath} (${e.message})`);
+    }
+}
+
 // If no results file specified, create a timestamped one
 if (!resultsFile) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '').split('T');
     resultsFile = `untracked_${timestamp[0]}_${timestamp[1].slice(0, 6)}.json`;
 }
 
-if (shouldDelete && dryRun) {
-    console.log('Note: --dry-run takes precedence over --delete');
+if (!dryRun && (shouldDelete || shouldTrash || shouldMove)) {
+    console.log(`Starting ${shouldDelete ? 'DELETE' : (shouldTrash ? 'TRASH' : 'MOVE')} run...`);
+} else if (actionCount > 0) {
+    console.log('DRY RUN: No changes will be made.');
 }
 
-// Check if trash-cli is available
+// Check for trash-cli is available
 async function hasTrash() {
     try {
         await execFileAsync('trash', ['--version']);
@@ -61,46 +97,28 @@ async function moveToTrash(filePath) {
         await execFileAsync('trash', [filePath]);
         return true;
     } catch (e) {
-        console.error(`Failed to move to trash: ${filePath}`, e.message);
-        return false;
+        // console.error handled by caller for consistent logging
+        throw e;
     }
 }
 
 // Track detailed results for JSON output
 const results = {
     timestamp: new Date().toISOString(),
-    dryRun: dryRun,
+    configuration: {
+        dryRun: dryRun,
+        action: shouldDelete ? 'delete' : (shouldTrash ? 'trash' : (shouldMove ? 'move' : 'list')),
+        moveToPath: moveToPath
+    },
+    summary: {},
     files: []
 };
-
-async function run() {
-    try {
-        await sequelize.authenticate();
-    } catch (e) {
-        console.error('DB connect failed:', e.message);
-        process.exit(2);
-    }
-
-    // Check for trash-cli if we're going to use trash
-    if (shouldTrash && !dryRun) {
-        const trashAvailable = await hasTrash();
-        if (!trashAvailable) {
-            console.error('trash-cli not found. Please install it first:');
-            console.error('sudo apt-get install trash-cli  # Debian/Ubuntu');
-            console.error('- or -');
-            console.error('npm install -g trash-cli        # Via npm');
-            process.exit(3);
-        }
-    }
-
-
-}
 
 // DB and save path defaults mirrored from index.js
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_USER = process.env.DB_USERNAME || process.env.DB_USER || 'ytdiff';
 const DB_NAME = process.env.DB_NAME || process.env.DB_DATABASE || 'vidlist';
-let DB_PASSWORD = process.env.DB_PASSWORD || 'ytd1ff';
+let DB_PASSWORD = process.env.DB_PASSWORD || "3z$sF?O-<^cHA8!M:,C@1?ow{;3%[&1p";
 if (!DB_PASSWORD && process.env.DB_PASSWORD_FILE) {
     try {
         DB_PASSWORD = fs.readFileSync(process.env.DB_PASSWORD_FILE, 'utf8').trim();
@@ -110,7 +128,7 @@ if (!DB_PASSWORD && process.env.DB_PASSWORD_FILE) {
     }
 }
 
-const SAVE_PATH = process.env.SAVE_PATH || '/home/sagnik/Videos/yt-dlp/';
+const SAVE_PATH = process.env.SAVE_PATH || '/mnt/nvme/stuff/yt-diff/';
 
 // Connect to DB
 const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
@@ -122,8 +140,6 @@ const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
 // Minimal model definitions (fields we need)
 const VideoMetadata = sequelize.define('video_metadata', {
     videoUrl: { type: DataTypes.STRING, primaryKey: true },
-    videoId: { type: DataTypes.STRING },
-    title: { type: DataTypes.STRING },
     fileName: { type: DataTypes.STRING },
     descriptionFile: { type: DataTypes.STRING },
     commentsFile: { type: DataTypes.STRING },
@@ -133,7 +149,6 @@ const VideoMetadata = sequelize.define('video_metadata', {
 
 const PlaylistMetadata = sequelize.define('playlist_metadata', {
     playlistUrl: { type: DataTypes.STRING, primaryKey: true },
-    title: { type: DataTypes.STRING },
     saveDirectory: { type: DataTypes.STRING }
 }, { timestamps: false });
 
@@ -157,18 +172,16 @@ async function getKnownFiles() {
         attributes: ['fileName', 'descriptionFile', 'commentsFile', 'subTitleFile', 'thumbNailFile']
     });
 
-    // Track both exact names and partial matches (for .part files, etc)
     for (const video of videos) {
         const fields = ['fileName', 'descriptionFile', 'commentsFile', 'subTitleFile', 'thumbNailFile'];
         for (const field of fields) {
             if (video[field]) {
                 const name = video[field];
                 knownFiles.add(name);
-                // Add partial matches for common extensions and temp files
                 const base = path.parse(name).name;
-                knownFiles.add(`${base}.part`); // in-progress download
-                knownFiles.add(`${base}.ytdl`);  // temp metadata
-                knownFiles.add(`${base}.temp.mkv`); // temp video
+                knownFiles.add(`${base}.part`);
+                knownFiles.add(`${base}.ytdl`);
+                knownFiles.add(`${base}.temp.mkv`);
                 knownFiles.add(`${base}.temp.mp4`);
                 knownFiles.add(`${base}.temp.webm`);
             }
@@ -185,103 +198,95 @@ async function run() {
         process.exit(2);
     }
 
-    // Get list of playlists and their save directories
-    const playlists = await PlaylistMetadata.findAll({
-        attributes: ['saveDirectory']
-    });
-
-    console.log(`Found ${playlists.length} playlists in DB`);
-    for (const pl of playlists) {
-        console.log(` - ${pl.saveDirectory}`);
+    if (shouldTrash && !dryRun && !(await hasTrash())) {
+        console.error('Error: trash-cli not found. Please install it first.');
+        process.exit(3);
     }
 
-    // Build set of directories to scan
+    // Get playlists and build scan directories
+    const playlists = await PlaylistMetadata.findAll({ attributes: ['saveDirectory'] });
     const scanDirs = new Set([SAVE_PATH]);
     for (const pl of playlists) {
         if (pl.saveDirectory) {
-            const fullPath = path.join(SAVE_PATH, pl.saveDirectory);
-            scanDirs.add(fullPath);
+            scanDirs.add(path.join(SAVE_PATH, pl.saveDirectory));
         }
     }
 
-    // Get all known filenames from DB
     const knownFiles = await getKnownFiles();
-    console.log(`Found ${knownFiles.size} known files in DB`);
+    console.log(`Found ${knownFiles.size} known files in DB across ${scanDirs.size} potential directories.`);
 
-    // Track stats
     const stats = {
-        scanned: 0,
-        untracked: 0,
-        deleted: 0,
-        errors: 0,
-        bytes: 0
+        scanned: 0, untracked: 0, deleted: 0, trashed: 0, moved: 0, errors: 0, bytes: 0
     };
 
-    // Scan each directory
     for (const dir of scanDirs) {
         try {
-            if (!fs.existsSync(dir)) {
-                console.warn('Directory does not exist, skipping:', dir);
-                continue;
-            }
+            if (!fs.existsSync(dir)) continue;
+            console.log('\nScanning:', dir);
 
-            console.log('\nScanning directory:', dir);
             for await (const filePath of walkDir(dir)) {
                 stats.scanned++;
                 const relativePath = path.relative(dir, filePath);
                 const fileName = path.basename(filePath);
 
-                // Skip .git and node_modules
-                if (relativePath.includes('.git/') || relativePath.includes('node_modules/')) {
-                    continue;
-                }
+                if (relativePath.includes('.git/') || relativePath.includes('node_modules/')) continue;
 
-                // If file not known in DB
                 if (!knownFiles.has(fileName)) {
                     stats.untracked++;
                     try {
                         const stat = await fs.promises.stat(filePath);
                         stats.bytes += stat.size;
+                        const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
 
-                        // Track this file in results
                         const fileEntry = {
-                            path: filePath,
+                            originalPath: filePath,
                             relativePath,
-                            size: stat.size,
-                            action: dryRun ? 'would_' + (shouldTrash ? 'trash' : shouldDelete ? 'delete' : 'list')
-                                : (shouldTrash ? 'will_trash' : shouldDelete ? 'will_delete' : 'listed'),
+                            sizeBytes: stat.size,
+                            action: 'listed',
                             success: true
                         };
 
-                        if (!dryRun && (shouldDelete || shouldTrash)) {
+                        if (dryRun) {
+                            let prefix = 'LST';
+                            if (shouldDelete) { prefix = 'DEL?'; fileEntry.action = 'would_delete'; }
+                            else if (shouldTrash) { prefix = 'TRS?'; fileEntry.action = 'would_trash'; }
+                            else if (shouldMove) {
+                                prefix = 'MOV?';
+                                fileEntry.action = 'would_move';
+                                fileEntry.intendedDestination = path.join(moveToPath, relativePath);
+                            }
+                            console.log(`[${prefix}] ${relativePath} (${sizeMB} MB)`);
+                        } else {
+                            // Perform Actions
                             try {
-                                if (shouldTrash) {
-                                    // Move to trash
-                                    const trashed = await moveToTrash(filePath);
-                                    if (trashed) {
-                                        console.log('[TRS] Moved to trash:', relativePath, `(${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
-                                        stats.deleted++;
-                                        fileEntry.action = 'trashed';
-                                    } else {
-                                        console.error('[ERR] Failed to trash:', relativePath);
-                                        stats.errors++;
-                                        fileEntry.success = false;
-                                        fileEntry.error = 'Failed to move to trash';
-                                    }
-                                } else {
-                                    // Permanently delete
+                                if (shouldDelete) {
                                     await fs.promises.unlink(filePath);
-                                    console.log('[DEL] Deleted:', relativePath, `(${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
+                                    console.log(`[DEL] ${relativePath} (${sizeMB} MB)`);
                                     stats.deleted++;
                                     fileEntry.action = 'deleted';
+                                } else if (shouldTrash) {
+                                    await moveToTrash(filePath);
+                                    console.log(`[TRS] ${relativePath} (${sizeMB} MB)`);
+                                    stats.trashed++;
+                                    fileEntry.action = 'trashed';
+                                } else if (shouldMove) {
+                                    // Preserve relative structure in destination to avoid collisions
+                                    const destPath = path.join(moveToPath, relativePath);
+                                    await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+                                    await fs.promises.rename(filePath, destPath);
+                                    console.log(`[MOV] ${relativePath} -> ${destPath}`);
+                                    stats.moved++;
+                                    fileEntry.action = 'moved';
+                                    fileEntry.destinationPath = destPath;
+                                } else {
+                                    console.log(`[LST] ${relativePath} (${sizeMB} MB)`);
                                 }
-                            } catch (e) {
-                                fileEntry.success = false;
-                                fileEntry.error = e.message;
+                            } catch (actErr) {
+                                console.error(`[ERR] Action failed for ${relativePath}: ${actErr.message}`);
                                 stats.errors++;
+                                fileEntry.success = false;
+                                fileEntry.error = actErr.message;
                             }
-                        } else {
-                            console.log('[LST] Found:', relativePath, `(${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
                         }
                         results.files.push(fileEntry);
                     } catch (e) {
@@ -296,46 +301,27 @@ async function run() {
         }
     }
 
-    // Print summary
+    // Summary and Save
     console.log('\nSummary:');
-    console.log(`- Scanned files: ${stats.scanned}`);
-    console.log(`- Untracked files: ${stats.untracked}`);
-    console.log(`- Total size: ${(stats.bytes / 1024 / 1024).toFixed(2)} MB`);
-    if (shouldDelete || shouldTrash) {
-        if (!dryRun) {
-            console.log(`- Files ${shouldTrash ? 'moved to trash' : 'permanently deleted'}: ${stats.deleted}`);
-        } else {
-            console.log(`- Files that would be ${shouldTrash ? 'moved to trash' : 'permanently deleted'}: ${stats.untracked}`);
-        }
+    console.log(`- Scanned: ${stats.scanned} | Untracked: ${stats.untracked} | Size: ${(stats.bytes / 1024 / 1024).toFixed(2)} MB`);
+    if (!dryRun && (shouldDelete || shouldTrash || shouldMove)) {
+        console.log(`- Actions taken: Deleted(${stats.deleted}), Trashed(${stats.trashed}), Moved(${stats.moved})`);
     }
-    if (stats.errors > 0) {
-        console.log(`- Errors encountered: ${stats.errors}`);
-    }
+    if (stats.errors > 0) console.log(`- Errors: ${stats.errors}`);
 
-    // Save results to JSON
+    results.summary = stats;
     try {
-        results.summary = {
-            scannedFiles: stats.scanned,
-            untrackedFiles: stats.untracked,
-            totalSizeBytes: stats.bytes,
-            filesMovedToTrash: stats.deleted,
-            errors: stats.errors
-        };
         await fs.promises.writeFile(resultsFile, JSON.stringify(results, null, 2));
-        console.log(`\nResults saved to: ${resultsFile}`);
+        console.log(`Results saved to: ${resultsFile}`);
     } catch (e) {
-        console.error('Failed to save results:', e.message);
-        stats.errors++;
-    }
-
-    if (dryRun && shouldDelete) {
-        console.log('\nThis was a dry run. Use --delete without --dry-run to actually delete files.');
+        console.error('Failed to save results file:', e.message);
+        process.exit(1);
     }
 
     process.exit(stats.errors ? 1 : 0);
 }
 
 run().catch(err => {
-    console.error('Fatal:', err && err.message || err);
+    console.error('Fatal Error:', err);
     process.exit(2);
 });
