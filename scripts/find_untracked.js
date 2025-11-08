@@ -118,7 +118,7 @@ const results = {
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_USER = process.env.DB_USERNAME || process.env.DB_USER || 'ytdiff';
 const DB_NAME = process.env.DB_NAME || process.env.DB_DATABASE || 'vidlist';
-let DB_PASSWORD = process.env.DB_PASSWORD || "3z$sF?O-<^cHA8!M:,C@1?ow{;3%[&1p";
+let DB_PASSWORD = process.env.DB_PASSWORD || "";
 if (!DB_PASSWORD && process.env.DB_PASSWORD_FILE) {
     try {
         DB_PASSWORD = fs.readFileSync(process.env.DB_PASSWORD_FILE, 'utf8').trim();

@@ -5,7 +5,7 @@ ARG NODE_VERSION=22.20.0
 ARG VITE_BASE_PATH=/ytdiff
 
 # ---- Stage 1: Prebuilt Binaries Builder ----
-# This stage downloads/extracts yt-dlp, ffmpeg, and phantomjs
+# This stage downloads/extracts ffmpeg and phantomjs
 FROM debian:stable-slim AS prebuilt-binaries-builder
 
 ARG TARGETARCH
@@ -17,11 +17,6 @@ RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "fals
     apt-get install -y wget ca-certificates xz-utils bzip2 --no-install-recommends && \
     mkdir -p /dist/bin && \
     cd /tmp && \
-    # Download yt-dlp
-    YTDLP_URL_SUFFIX="" && \
-    if [ "$TARGETARCH" = "arm64" ]; then YTDLP_URL_SUFFIX="_aarch64"; fi && \
-    wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux${YTDLP_URL_SUFFIX}" -O "/dist/bin/yt-dlp" && \
-    chmod +x "/dist/bin/yt-dlp" && \
     # Download FFmpeg
     FFMPEG_ARCH_SUFFIX="linux64" && \
     if [ "$TARGETARCH" = "arm64" ]; then FFMPEG_ARCH_SUFFIX="linuxarm64"; fi && \
@@ -80,10 +75,14 @@ WORKDIR /app
 # Apply APT settings to avoid recommends/suggests
 RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras
 
-# Install runtime dependencies: ca-certificates for HTTPS, tini as an init process, wget & xz-utils for Node.js download
+# Install runtime dependencies:
+# - ca-certificates: for HTTPS
+# - tini: as an init process
+# - wget & xz-utils: for Node.js download
+# - python3 & python3-pip: for yt-dlp and its dependencies
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y ca-certificates tini wget xz-utils --no-install-recommends && \
+    apt-get install -y ca-certificates tini wget xz-utils python3 python3-pip --no-install-recommends && \
     # Install Node.js runtime
     NODE_ARCH="" && \
     if [ "$TARGETARCH" = "amd64" ]; then NODE_ARCH="x64"; \
@@ -92,6 +91,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     wget "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -O node.tar.xz && \
     tar -xJf node.tar.xz --strip-components=1 -C /usr/local && \
     rm node.tar.xz && \
+    # Install yt-dlp and its dependencies using pip
+    echo "DEBUG: Checking pip version:" && \
+    pip --version && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
+    # Verify yt-dlp installation
+    echo "DEBUG: Checking yt-dlp version:" && \
+    yt-dlp --version && \
     # Verify npm is installed and working from the manually installed Node.js
     echo "DEBUG: Checking npm version in final stage after Node.js install:" && \
     /usr/local/bin/npm --version && \
@@ -100,7 +107,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy prebuilt binaries from the prebuilt-binaries-builder stage to a standard PATH location
+# Copy prebuilt binaries (ffmpeg, phantomjs) from the prebuilt-binaries-builder stage
 COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
 
 # Copy built frontend assets from the frontend-builder stage
