@@ -82,7 +82,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "fals
 # - python3 & python3-pip: for yt-dlp and its dependencies
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y ca-certificates tini wget xz-utils python3 python3-pip --no-install-recommends && \
+    apt-get install -y ca-certificates tini wget xz-utils python3 python3-pip python3-venv --no-install-recommends && \
     # Install Node.js runtime
     NODE_ARCH="" && \
     if [ "$TARGETARCH" = "amd64" ]; then NODE_ARCH="x64"; \
@@ -92,13 +92,17 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     tar -xJf node.tar.xz --strip-components=1 -C /usr/local && \
     rm node.tar.xz && \
     # Install yt-dlp and its dependencies using pip
-    echo "DEBUG: Checking pip version:" && \
-    pip --version && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
+    echo "DEBUG: Creating Python virtual environment at /opt/venv" && \
+    python3 -m venv /opt/venv && \
+    # Now, use the pip from the venv to install packages
+    echo "DEBUG: Upgrading pip inside venv" && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    # Install yt-dlp with default dependencies, yt-dlp-ejs, and curl_cffi
+    echo "DEBUG: Installing yt-dlp, ejs, and curl_cffi into venv" && \
+    /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
     # Verify yt-dlp installation
     echo "DEBUG: Checking yt-dlp version:" && \
-    yt-dlp --version && \
+    /opt/venv/bin/yt-dlp --version && \
     # Verify npm is installed and working from the manually installed Node.js
     echo "DEBUG: Checking npm version in final stage after Node.js install:" && \
     /usr/local/bin/npm --version && \
@@ -106,6 +110,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get purge -y xz-utils && \
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
+
+# This ensures that when the script runs 'yt-dlp', it finds the one we just installed in /opt/venv/bin/yt-dlp
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy prebuilt binaries (ffmpeg, phantomjs) from the prebuilt-binaries-builder stage
 COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
