@@ -609,6 +609,7 @@ sequelize
         title: "None",
         monitoringType: "N/A",
         saveDirectory: "",
+        lastUpdatedByScheduler: new Date(0),
         sortOrder: -1,
       },
     });
