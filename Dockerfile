@@ -11,29 +11,53 @@ FROM debian:stable-slim AS prebuilt-binaries-builder
 ARG TARGETARCH
 
 # Install essential tools for downloading and extraction
-RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras && \
+RUN echo 'APT::Get::Install-Recommends "false"; \
+    APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras && \
     DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y wget ca-certificates xz-utils bzip2 --no-install-recommends && \
+    apt-get install -y wget ca-certificates xz-utils bzip2 unzip --no-install-recommends && \
     mkdir -p /dist/bin && \
     cd /tmp && \
-    # Download FFmpeg
+    # ---- START: FFMPEG Installation ----
+    echo "DEBUG: Downloading and extracting FFMPEG binaries" && \
     FFMPEG_ARCH_SUFFIX="linux64" && \
-    if [ "$TARGETARCH" = "arm64" ]; then FFMPEG_ARCH_SUFFIX="linuxarm64"; fi && \
+    if [ "$TARGETARCH" = "arm64" ]; \
+    then FFMPEG_ARCH_SUFFIX="linuxarm64"; fi && \
     wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl.tar.xz" -O "ffmpeg.tar.xz" && \
     tar -xf ffmpeg.tar.xz && \
     mv ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffmpeg ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffprobe ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffplay /dist/bin/ && \
+    # Verify ffmpeg installation
+    echo "DEBUG: Checking ffmpeg version:" && \
+    /dist/bin/ffmpeg -version && \
+    # ---- END: FFMPEG Installation ---- \
+    \
+    echo "DEBUG: Downloading and extracting PhantomJS binary" && \
     # Download PhantomJS (Note: x86_64 only from this source, will be skipped on ARM64)
-    if [ "$TARGETARCH" = "amd64" ]; then \
+    if [ "$TARGETARCH" = "amd64" ]; \
+    then \
     wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
     tar -xf phantomjs.tar.bz2 && \
     mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
     else \
     echo "INFO: Skipping PhantomJS for $TARGETARCH as only x86_64 binary is available from the script's original source."; \
     fi && \
+    # ---- START: Deno Installation ----
+    echo "DEBUG: Installing Deno" && \
+    DENO_ARCH="" && \
+    # Determine Deno architecture based on TARGETARCH variable
+    if [ "$TARGETARCH" = "amd64" ]; then DENO_ARCH="x86_64-unknown-linux-gnu"; \
+    elif [ "$TARGETARCH" = "arm64" ]; then DENO_ARCH="aarch64-unknown-linux-gnu"; \
+    else echo "ERROR: Unsupported TARGETARCH for Deno: $TARGETARCH"; exit 1; fi && \
+    wget "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}.zip" -O deno.zip && \
+    unzip -d /dist/bin/ deno.zip && \
+    rm deno.zip && \
+    # Verify Deno installation
+    echo "DEBUG: Checking Deno version:" && \
+    /dist/bin/deno --version && \
+    # ---- END: Added Deno Installation ----
     # Cleanup build dependencies and downloaded files
     cd / && rm -rf /tmp/* && \
-    apt-get purge -y wget xz-utils bzip2 && \
+    apt-get purge -y wget xz-utils bzip2 unzip && \
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
 
