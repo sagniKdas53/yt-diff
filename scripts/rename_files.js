@@ -216,6 +216,7 @@ async function processPlaylist(playlist) {
       }
       continue;
     }
+    console.log(`\nFound files for videoId ${videoId}. Current main file: ${currentFileName || 'NOT FOUND'}, anyFilesForVideo: ${anyFilesForVideo}`);
 
     const parsed = path.parse(currentFileName);
     const oldBase = parsed.name; // likely videoId
@@ -233,28 +234,39 @@ async function processPlaylist(playlist) {
 
     // Find metadata files which start with oldBase OR the original videoId
     const metadataCandidates = allFiles.filter(f => {
-      if (f === currentFileName) return false; // will rename main separately
+      if (f === currentFileName) return false;
       const p = path.parse(f);
 
       // Check if file matches the current base name (e.g., "Title_[id].description")
       const matchesOldBase = p.name === oldBase || p.name.startsWith(oldBase + '.') || p.name.startsWith(oldBase + ' ');
 
       // Check if file matches the original videoId (e.g., "id.info.json")
-      const matchesVideoId = p.name === v.videoId || p.name.startsWith(v.videoId + '.') || p.name.startsWith(v.videoId + ' ');
+      const matchesVideoId = p.name === videoId || p.name.startsWith(videoId + '.') || p.name.startsWith(videoId + ' ');
 
       return matchesOldBase || matchesVideoId;
     });
+    console.log(`Found ${metadataCandidates.length} metadata candidate(s) for videoId ${videoId}`);
 
     const plannedMeta = [];
-    for (const mf of metadataCandidates) {
-      // Use substring to get the full extension part (e.g., ".info.json" or ".en.vtt")
-      // This correctly handles multi-part extensions that path.parse fails on.
-      const extensionPart = mf.substring(oldBase.length);
-      const newName = `${newBase}${extensionPart}`;
+    for (const metaFile of metadataCandidates) {
+      let extensionPart;
+      console.log('Processing metadata file:', metaFile);
+      // Determine which base this file uses
+      const p = path.parse(metaFile);
+      console.log('Parsed name:', p.name);
+      if (p.name === videoId || p.name.startsWith(videoId + '.') || p.name.startsWith(videoId + ' ')) {
+        // File still uses videoId as base
+        extensionPart = metaFile.substring(videoId.length);
+      } else {
+        // File uses the current oldBase
+        extensionPart = metaFile.substring(oldBase.length);
+      }
 
-      // skip metadata rename if name would be identical
-      if (mf === newName) continue;
-      plannedMeta.push({ from: mf, to: newName });
+      const newName = `${newBase}${extensionPart}`;
+      console.log(`Planned metadata rename: ${metaFile} -> ${newName}, shouldRename: ${metaFile !== newName}`);
+      // if metadata name is already the desired one, skip
+      if (metaFile === newName) continue;
+      plannedMeta.push({ from: metaFile, to: newName });
     }
 
     const plannedMain = [];
@@ -402,6 +414,8 @@ async function run() {
   console.log('All done.');
   console.log('Writing results...');
   try {
+    // Filter out the result entries which had no planned renames
+    results.files = results.files.filter(f => f.plannedRenames.main.length > 0 || f.plannedRenames.metadata.length > 0);
     await fs.promises.writeFile(resultsFile, JSON.stringify(results, null, 2));
     console.log(`\nResults saved to: ${resultsFile}`);
   } catch (e) {
