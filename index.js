@@ -55,7 +55,7 @@ const config = {
     allowed: process.env.ALLOW_REGISTRATION !== "false",
     maxUsers: +(process.env.MAX_USERS || 15)
   },
-  saveLocation: process.env.SAVE_PATH || "/home/sagnik/Videos/yt-dlp/",
+  saveLocation: process.env.SAVE_PATH || "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
   cookiesFile: process.env.COOKIES_FILE
     ? fs.existsSync(process.env.COOKIES_FILE)
       ? process.env.COOKIES_FILE : new Error(`Cookies file not found: ${process.env.COOKIES_FILE}`)
