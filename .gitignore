@@ -3,7 +3,11 @@ venv/
 logs/
 dist/
 ssl/
+gluetun/
 *.log
 db_password.txt
 secret_key.txt
 cookie_secret.txt
+openvpn_password.txt
+openvpn_user.txt
+proxy_string.txt

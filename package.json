@@ -8,7 +8,8 @@
     "pty": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff NO_COLOR=true node --watch index.js",
     "noreg": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff ALLOW_REGISTRATION=false node --watch index.js",
     "unrestricted": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff RESTRICT_FILENAMES=false MAX_FILENAME_LENGTH=240 node --watch index.js",
-    "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt node --watch index.js"
+    "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt node --watch index.js",
+    "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt node --watch index.js"
   },
   "repository": {
     "type": "git",

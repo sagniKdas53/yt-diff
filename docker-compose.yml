@@ -7,6 +7,12 @@ secrets:
     file: db_password.txt
   secret_key:
     file: secret_key.txt
+  openvpn_user:
+    file: openvpn_user.txt
+  openvpn_password:
+    file: openvpn_password.txt
+  proxy_string:
+    file: proxy_string.txt
 
 volumes:
   pgadmin-data:
@@ -20,8 +26,6 @@ services:
     ports:
       - 5432:5432
     restart: always
-    env_file:
-      - .env
     secrets:
       - db_password
     networks:
@@ -104,6 +108,8 @@ services:
       # Update configuration
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
+      # Proxy Info
+      - PROXY_STRING_FILE=/run/secrets/proxy_string
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ytdiff.entryPoints=web,websecure"
@@ -190,3 +196,40 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    networks:
+      - revProxy-net
+    cap_add:
+      - NET_ADMIN
+    secrets:
+      - openvpn_user
+      - openvpn_password
+    environment:
+      - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
+      - OPENVPN_USER_SECRETFILE=/run/secrets/openvpn_user
+      - OPENVPN_PASSWORD_SECRETFILE=/run/secrets/openvpn_password
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
+      - FREE_ONLY=${FREE}
+      - Tz=${TZ_PREFERRED}
+      - HTTPPROXY=${HTTP_PROXY}
+      - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}
+      - HTTPPROXY_STEALTH=${HTTP_PROXY_STEALTH}
+      # - HTTPPROXY_USER=${HTTP_PROXY_USER}
+      # - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./gluetun:/gluetun
+    restart: "unless-stopped"
+    ports:
+      - 51413:51413
+      - 51413:51413/udp
+      # - 3128:3128 # <- Enable to use outside of the docker network
+    labels:
+      # Autoheal
+      - "autoheal.enable=true"
+      # Watchtower monitoring
+      - "com.centurylinklabs.watchtower.enable=true"
