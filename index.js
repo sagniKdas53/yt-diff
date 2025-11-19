@@ -63,7 +63,7 @@ const config = {
   proxy_string: process.env.PROXY_STRING_FILE
     ? fs.readFileSync(process.env.PROXY_STRING_FILE, "utf8").trim()
     : process.env.PROXY_STRING && process.env.PROXY_STRING.trim()
-      ? `'${process.env.PROXY_STRING.trim().replaceAll("'", "").replaceAll("\n", "").replaceAll('"', "")}'` // make sure it's quoted with single quotes
+      ? `'${process.env.PROXY_STRING.trim().replace(/['"\n]+/g, '')}'` // make sure it's quoted with single quotes
       : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
