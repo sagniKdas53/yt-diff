@@ -3231,7 +3231,7 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
 async function updateVideoMetadata(existingVideo, newData) {
   logger.trace("Checking video metadata for updates", {
     videoId: existingVideo.videoId,
-    newData: newData
+    newData: JSON.stringify(newData)
   });
 
   const differences = [];
@@ -3833,12 +3833,21 @@ async function getPlaylistsForDisplay(requestBody, response) {
     };
 
     // Add search filter if query provided
-    if (searchQuery) {
-      queryOptions.where.title = {
-        [Op.iLike]: `%${searchQuery}%`
-      };
+    if (searchQuery && searchQuery.length > 0) {
+      if (searchQuery.startsWith("url:")) {
+        if (searchQuery.slice(4).length > 0) {
+          queryOptions.where.playlistUrl = {
+            [Op.iLike]: `%${searchQuery.slice(4)}%`
+          };
+        } else {
+          logger.debug("No url provided", { searchQuery })
+        }
+      } else {
+        queryOptions.where.title = {
+          [Op.iLike]: `%${searchQuery}%`
+        };
+      }
     }
-
     // Execute query and send response
     const results = await PlaylistMetadata.findAndCountAll(queryOptions);
 
@@ -3898,9 +3907,29 @@ async function getSubListVideos(requestBody, response) {
     });
 
     // Build base query options
+    const videoMetadataWhere = {};
+
+    if (searchQuery && searchQuery.length > 0) {
+      if (searchQuery.startsWith("url:")) {
+        const urlSearch = searchQuery.slice(4);
+        if (urlSearch.length > 0) {
+          videoMetadataWhere.videoUrl = {
+            [Op.iLike]: `%${urlSearch}%`
+          };
+        } else {
+          logger.debug("No url provided for sublist query, despite using url: prefix", { searchQuery });
+        }
+      } else {
+        videoMetadataWhere.title = {
+          [Op.iLike]: `%${searchQuery}%`
+        };
+      }
+    }
+
     const queryOptions = {
       attributes: ["positionInPlaylist", "playlistUrl"],
       include: [{
+        model: VideoMetadata,
         attributes: [
           "title",
           "videoId",
@@ -3913,14 +3942,13 @@ async function getSubListVideos(requestBody, response) {
           "descriptionFile",
           "isMetaDataSynced",
         ],
-        model: VideoMetadata,
-        ...(searchQuery && {
-          where: {
-            title: { [Op.iLike]: `%${searchQuery}%` }
-          }
-        })
+        where: videoMetadataWhere,
+        // Use Inner Join (strict) if searching, otherwise Left Join (loose)
+        required: (searchQuery && searchQuery.length > 0)
       }],
-      where: { playlistUrl: playlistUrl },
+      where: {
+        playlistUrl: playlistUrl
+      },
       limit: endIndex - startIndex,
       offset: startIndex,
       order: [sortOrder]
