@@ -60,6 +60,11 @@ const config = {
     ? fs.existsSync(process.env.COOKIES_FILE)
       ? process.env.COOKIES_FILE : new Error(`Cookies file not found: ${process.env.COOKIES_FILE}`)
     : false,
+  proxy_string: process.env.PROXY_STRING_FILE
+    ? fs.readFileSync(process.env.PROXY_STRING_FILE, "utf8").trim()
+    : process.env.PROXY_STRING && process.env.PROXY_STRING.trim()
+      ? `'${process.env.PROXY_STRING.trim().replaceAll("'", "").replaceAll("\n", "").replaceAll('"', "")}'` // make sure it's quoted with single quotes
+      : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
   scheduledUpdateStr: process.env.UPDATE_SCHEDULED || "*/30 * * * *",
@@ -117,7 +122,8 @@ const downloadOptions = [
   "-o", config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
   "--print", "before_dl:title:%(title)s [%(id)s]",
   "--print", config.restrictFilenames ? "post_process:\"fileName:%(id)s.%(ext)s\"" : "post_process:\"fileName:%(title)s[%(id)s].%(ext)s\"",
-  "--progress-template", "download-title:%(info.id)s-%(progress.eta)s"
+  "--progress-template", "download-title:%(info.id)s-%(progress.eta)s",
+  "--proxy", config.proxy_string
 ].filter(Boolean);
 // Check if file name length limit is set and valid
 if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
@@ -2957,6 +2963,7 @@ async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunk
   return new Promise((resolve, reject) => {
     // Configure process arguments
     const processArgs = [
+      "--proxy", config.proxy_string,
       "--playlist-start", startIndex.toString(),
       "--playlist-end", endIndex.toString(),
       "--flat-playlist",
@@ -3383,6 +3390,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
   }
 
   const processArgs = [
+    "--proxy", config.proxy_string,
     "--playlist-end", "1",
     "--flat-playlist",
     "--print", "%(playlist_title)s",
