@@ -50,7 +50,8 @@ RUN apk update && \
     python3 \
     py3-pip \
     py3-virtualenv \
-    ffmpeg && \
+    ffmpeg \
+    deno && \
     # Install yt-dlp and its dependencies using pip in a virtual environment
     echo "DEBUG: Creating Python virtual environment at /opt/venv" && \
     python3 -m venv /opt/venv && \
@@ -64,7 +65,11 @@ RUN apk update && \
     echo "DEBUG: Checking versions:" && \
     ffmpeg -version && \
     /opt/venv/bin/yt-dlp --version && \
-    npm --version
+    node --version && \
+    npm --version && \
+    deno --version && \
+    ffmpeg -version && \
+    yt-dlp --version
 
 # This ensures that when the script runs 'yt-dlp', it finds the one we just installed in /opt/venv/bin/yt-dlp
 ENV PATH="/opt/venv/bin:$PATH"
