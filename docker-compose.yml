@@ -49,9 +49,9 @@ services:
 
   yt-diff:
     # image: purevert/yt-diff:amd64
-    image: ghcr.io/sagnikdas53/yt-diff:master
+    image: ghcr.io/sagnikdas53/yt-diff:alpine
     container_name: yt-diff
-    restart: always
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile.alpine
