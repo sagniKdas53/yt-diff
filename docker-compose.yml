@@ -54,7 +54,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.alpine
       args:
         # This is used to build the frontend in the docker image
         - VITE_BASE_PATH=${BASE_URL}
@@ -72,13 +72,12 @@ services:
         condition: service_healthy
     networks:
       - revProxy-net
-      # expose:
-      #   - ${PORT}
-      # ports:
-      # - ${PORT}:${PORT}
+    ports:
+      - ${PORT}:${PORT}
     secrets:
       - db_password
       - secret_key
+      - proxy_string
     environment:
       - PROTOCOL=${PROTOCOL}
       - HOSTNAME=${HOSTNAME}

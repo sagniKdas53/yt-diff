@@ -1,10 +1,9 @@
 # Stage 0: Define global arguments
-ARG TARGETARCH
-ARG NODE_VERSION=20.11.1
+ARG NODE_VERSION=22.20.0
 ARG VITE_BASE_PATH=/ytdiff
 
-# ---- Stage 1: Frontend Builder (Node Alpine based) ----
-# This stage builds the React frontend using an official Node Alpine image
+# ---- Stage 1: Frontend Builder ----
+# This stage builds the React frontend
 FROM node:${NODE_VERSION}-alpine AS frontend-builder
 
 ARG VITE_BASE_PATH
@@ -22,32 +21,58 @@ WORKDIR /app/frontend_src
 RUN npm install
 RUN npm run build
 
-# ---- Stage 2: Final Application Image (Node Alpine based) ----
-FROM alpine:3.21.3 AS final
+# ---- Stage 2: Final Application Image ----
+FROM alpine:3.21 AS final
 
+ARG NODE_VERSION
 ARG VITE_BASE_PATH
 
 ENV LANG=C.UTF-8
 ENV NODE_ENV=production
-# From original Dockerfile, may or may not be needed/effective on Alpine
-ENV OPENSSL_CONF=/dev/null 
-# If your backend Node.js app needs this
-ENV VITE_BASE_PATH=${VITE_BASE_PATH} 
+ENV OPENSSL_CONF=/dev/null
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 WORKDIR /app
 
-# Install runtime dependencies: tini as an init process.
-# ca-certificates is usually included in the base node alpine image.
-# Add gcompat if you absolutely need to try running glibc binaries (experimental, may not work for all cases)
-# RUN apk add --no-cache tini gcompat
+# Install runtime dependencies using Alpine packages:
+# - ca-certificates: for HTTPS
+# - tini: as an init process
+# - nodejs & npm: runtime for the backend
+# - python3 & py3-pip & py3-virtualenv: for yt-dlp and its dependencies
+# - ffmpeg: for video processing (Alpine package instead of prebuilt binary)
 RUN apk update && \
-    apk add --no-cache tini yt-dlp ca-certificates wget nodejs npm
+    apk upgrade && \
+    apk add --no-cache \
+    ca-certificates \
+    tini \
+    nodejs \
+    npm \
+    python3 \
+    py3-pip \
+    py3-virtualenv \
+    ffmpeg && \
+    # Install yt-dlp and its dependencies using pip in a virtual environment
+    echo "DEBUG: Creating Python virtual environment at /opt/venv" && \
+    python3 -m venv /opt/venv && \
+    # Now, use the pip from the venv to install packages
+    echo "DEBUG: Upgrading pip inside venv" && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    # Install yt-dlp with default dependencies, yt-dlp-ejs, and curl_cffi
+    echo "DEBUG: Installing yt-dlp, ejs, and curl_cffi into venv" && \
+    /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
+    # Verify installations
+    echo "DEBUG: Checking versions:" && \
+    ffmpeg -version && \
+    /opt/venv/bin/yt-dlp --version && \
+    npm --version
+
+# This ensures that when the script runs 'yt-dlp', it finds the one we just installed in /opt/venv/bin/yt-dlp
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy built frontend assets from the frontend-builder stage
-# IMPORTANT: Adjust './public' if your Node.js server (index.js) expects frontend assets in a different directory
 COPY --from=frontend-builder /app/dist ./dist
 
-# Copy backend application files
+# Copy backend application files (package.json, package-lock.json if it exists, and index.js)
 COPY package.json package-lock.json* ./
 COPY index.js ./
 
@@ -55,7 +80,7 @@ COPY index.js ./
 RUN npm install --omit=dev
 
 # Create a non-root user and group for running the application
-# Alpine's addgroup/adduser are slightly different
+# Alpine uses addgroup/adduser instead of groupadd/useradd
 RUN addgroup -S -g 1000 ytdiff && \
     adduser -S -u 1000 -G ytdiff -s /sbin/nologin ytdiff && \
     # Create cache directory with proper permissions
