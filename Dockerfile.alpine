@@ -63,13 +63,11 @@ RUN apk update && \
     /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
     # Verify installations
     echo "DEBUG: Checking versions:" && \
-    ffmpeg -version && \
-    /opt/venv/bin/yt-dlp --version && \
-    node --version && \
-    npm --version && \
-    deno --version && \
-    ffmpeg -version && \
-    yt-dlp --version
+    echo "Node version: $(node --version)" && \
+    echo "npm version: $(npm --version)" && \
+    echo "deno version: $(deno --version)" && \
+    echo "ffmpeg version: $(ffmpeg -version)" && \
+    echo "yt-dlp version: $(/opt/venv/bin/yt-dlp --version)"
 
 # This ensures that when the script runs 'yt-dlp', it finds the one we just installed in /opt/venv/bin/yt-dlp
 ENV PATH="/opt/venv/bin:$PATH"
