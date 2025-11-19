@@ -61,9 +61,9 @@ const config = {
       ? process.env.COOKIES_FILE : new Error(`Cookies file not found: ${process.env.COOKIES_FILE}`)
     : false,
   proxy_string: process.env.PROXY_STRING_FILE
-    ? fs.readFileSync(process.env.PROXY_STRING_FILE, "utf8").trim()
+    ? fs.readFileSync(process.env.PROXY_STRING_FILE, "utf8").trim().replace(/['"\n]+/g, '')
     : process.env.PROXY_STRING && process.env.PROXY_STRING.trim()
-      ? `'${process.env.PROXY_STRING.trim().replace(/['"\n]+/g, '')}'` // make sure it's quoted with single quotes
+      ? `${process.env.PROXY_STRING.trim().replace(/['"\n]+/g, '')}` // make sure it's not quoted
       : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: process.env.SLEEP ?? 3,
   chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
