@@ -1432,6 +1432,64 @@ async function makeSignedUrl(requestBody, response) {
   response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
   response.end(JSON.stringify({ status: 'success', signedUrlId: signedUrlId, expiry }));
 }
+
+/**
+ * Generates signed URLs for a list of files.
+ * 
+ * @param {Object} requestBody - The request body containing the list of files.
+ * @param {http.ServerResponse} response - The HTTP response object.
+ */
+async function makeSignedUrls(requestBody, response) {
+  if (!requestBody || !requestBody.files || !Array.isArray(requestBody.files)) {
+    logger.warn('makeSignedUrls missing or invalid parameters', { requestBody });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
+    return response.end(JSON.stringify({ status: 'error', message: 'files array is required' }));
+  }
+
+  const results = {};
+  const now = Date.now();
+
+  for (const file of requestBody.files) {
+    const { saveDirectory, fileName } = file;
+    if (!fileName || typeof fileName !== 'string') continue;
+
+    // Construct the absolute path using configured saveLocation.
+    const joined = path.join(config.saveLocation, saveDirectory || '', fileName);
+    const resolved = path.resolve(joined);
+    const saveRoot = path.resolve(config.saveLocation);
+
+    if (!resolved.startsWith(saveRoot) || !fs.existsSync(resolved)) {
+      results[fileName] = null;
+      continue;
+    }
+
+    let signedUrlId = null;
+    let expiry = null;
+
+    // Check cache
+    for (const [existingId, cacheEntry] of signedUrlCache.entries()) {
+      if (cacheEntry.filePath === resolved && cacheEntry.expiry > now) {
+        signedUrlId = existingId;
+        expiry = now + config.cache.maxAge * 1000;
+        cacheEntry.expiry = expiry;
+        signedUrlCache.set(existingId, cacheEntry, config.cache.maxAge);
+        break;
+      }
+    }
+
+    // Create new if not found
+    if (!signedUrlId) {
+      signedUrlId = crypto.randomUUID();
+      expiry = now + config.cache.maxAge * 1000;
+      signedUrlCache.set(signedUrlId, { filePath: resolved, mimeType: "application/octet-stream", expiry }, config.cache.maxAge);
+    }
+
+    results[fileName] = signedUrlId;
+  }
+
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
+  response.end(JSON.stringify({ status: 'success', files: results }));
+}
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
 /**
@@ -4318,6 +4376,8 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
     authenticateRequest(req, res, processDeleteVideosRequest);
   } else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
     authenticateRequest(req, res, makeSignedUrl);
+  } else if (req.url === config.urlBase + "/getfiles" && req.method === "POST") {
+    authenticateRequest(req, res, makeSignedUrls);
   } else if (req.url === config.urlBase + "/register" && req.method === "POST") {
     rateLimit(req, res, registerUser, (req, res, next) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
