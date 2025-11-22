@@ -9,6 +9,7 @@ import path from "node:path";
 import bcrypt from "npm:bcrypt";
 import jwt from "npm:jsonwebtoken";
 import he from "npm:he";
+import pg from "npm:pg";
 import { LRUCache } from "npm:lru-cache";
 import { Server } from "npm:socket.io";
 import { pipeline } from "node:stream";
@@ -356,10 +357,6 @@ function safeEmit(event, payload) {
     logger.warn('safeEmit failed', { event, error: e && e.message });
   }
 }
-
-import pg from "npm:pg";
-
-// ... existing imports ...
 
 // Database
 const sequelize = new Sequelize({
