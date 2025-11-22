@@ -241,7 +241,7 @@ const createSecurityCacheConfig = (maxBytes, maxItems, ttl) => ({
 
 const userCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB for users
 const ipCache = new LRUCache(createSecurityCacheConfig(1024 * 10, config.cache.maxItems, config.cache.maxAge)); // 10KB for IPs
-const signedUrlCache = new LRUCache(createSecurityCacheConfig(1024 * 1024, config.cache.maxItems, config.cache.maxAge)); // 1MB for signed URLs
+const signedUrlCache = new LRUCache(createSecurityCacheConfig(3 * 1024 * 1024, config.cache.maxItems, config.cache.maxAge)); // 3MB for signed URLs as each file is around < 128 bytes
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -1923,10 +1923,10 @@ async function executeDownload(downloadItem, processKey) {
 
             if (progressBlock === 0 && progressPercent === null) {
               progressPercent = 0;
-              logger.trace(output, { pid: downloadProcess.pid });
+              logger.debug(output, { pid: downloadProcess.pid });
             } else if (progressBlock > progressPercent) {
               progressPercent = progressBlock;
-              logger.trace(output, { pid: downloadProcess.pid });
+              logger.debug(output, { pid: downloadProcess.pid });
             }
 
             // Emit progress update to frontend
