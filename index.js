@@ -2197,7 +2197,7 @@ async function processListingRequest(requestBody, response) {
         logger.debug(`Playlist found in database`, { url: normalizedUrl });
         if (playlistEntry.monitoringType === monitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
-          safeEmit("playlist-skipped", {
+          safeEmit("listing-playlist-skipped-because-same-monitoring", {
             message: `Playlist ${playlistEntry.title} is already being monitored with type ${monitoringType}, skipping.`
           });
           continue; // Skip as it's already monitored
