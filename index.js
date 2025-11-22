@@ -2223,6 +2223,9 @@ async function processListingRequest(requestBody, response) {
         logger.debug(`Video found in database`, { url: normalizedUrl });
         if (videoEntry.downloadStatus) {
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
+          safeEmit("listing-video-skipped-because-downloaded", {
+            message: `Video ${videoEntry.title} is already downloaded, skipping.`
+          });
           continue; // Skip as it's already downloaded
         } else {
           logger.debug(`Video not downloaded yet, updating status`, { url: normalizedUrl });
@@ -3157,8 +3160,15 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
   const allExist = existingVideos.every(v => v) && existingIndexes.every(i => i);
 
   if (allExist) {
-    logger.debug("All videos already exist in database");
-    result.count = existingIndexes.length;
+    logger.debug("All videos already exist in database", { existingVideos: JSON.stringify(existingVideos), existingIndexes: JSON.stringify(existingIndexes) });
+    for (let i = 0; i < existingVideos.length; i++) {
+      if (existingVideos[i]) {
+        result.count++;
+        result.title = existingVideos[i].title;
+        result.alreadyExisted = true;
+      }
+    }
+    logger.debug("Returning result", { result: JSON.stringify(result) });
     return result;
   }
 
@@ -3214,7 +3224,7 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
       });
     }
   }));
-
+  logger.debug("Processed video information", { result: JSON.stringify(result) });
   return result;
 }
 /**
