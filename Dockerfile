@@ -86,11 +86,9 @@ RUN npm run build
 FROM debian:stable-slim AS final
 
 ARG TARGETARCH
-ARG NODE_VERSION
 ARG VITE_BASE_PATH
 
 ENV LANG=C.UTF-8
-ENV NODE_ENV=production
 ENV OPENSSL_CONF=/dev/null
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
@@ -102,19 +100,10 @@ RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "fals
 # Install runtime dependencies:
 # - ca-certificates: for HTTPS
 # - tini: as an init process
-# - wget & xz-utils: for Node.js download
 # - python3 & python3-pip: for yt-dlp and its dependencies
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y ca-certificates tini wget xz-utils python3 python3-pip python3-venv --no-install-recommends && \
-    # Install Node.js runtime
-    NODE_ARCH="" && \
-    if [ "$TARGETARCH" = "amd64" ]; then NODE_ARCH="x64"; \
-    elif [ "$TARGETARCH" = "arm64" ]; then NODE_ARCH="arm64"; \
-    else echo "ERROR: Unsupported TARGETARCH for Node.js: $TARGETARCH"; exit 1; fi && \
-    wget "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -O node.tar.xz && \
-    tar -xJf node.tar.xz --strip-components=1 -C /usr/local && \
-    rm node.tar.xz && \
+    apt-get install -y ca-certificates tini python3 python3-pip python3-venv --no-install-recommends && \
     # Install yt-dlp and its dependencies using pip
     echo "DEBUG: Creating Python virtual environment at /opt/venv" && \
     python3 -m venv /opt/venv && \
@@ -127,31 +116,25 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     # Verify yt-dlp installation
     echo "DEBUG: Checking yt-dlp version:" && \
     /opt/venv/bin/yt-dlp --version && \
-    # Verify npm is installed and working from the manually installed Node.js
-    echo "DEBUG: Checking npm version in final stage after Node.js install:" && \
-    /usr/local/bin/npm --version && \
-    # Cleanup build dependencies for Node.js installation and apt cache
-    apt-get purge -y xz-utils && \
+    # Cleanup apt cache
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
 
 # This ensures that when the script runs 'yt-dlp', it finds the one we just installed in /opt/venv/bin/yt-dlp
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy prebuilt binaries (ffmpeg, phantomjs) from the prebuilt-binaries-builder stage
+# Copy prebuilt binaries (ffmpeg, phantomjs, deno) from the prebuilt-binaries-builder stage
 COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
 
 # Copy built frontend assets from the frontend-builder stage
-# IMPORTANT: Adjust './public' if your Node.js server (index.js) expects frontend assets in a different directory (e.g., './frontend/dist' or similar)
 COPY --from=frontend-builder /app/dist ./dist
 
-# Copy backend application files (package.json, package-lock.json if it exists, and index.js)
-# Ensure these files are in the same directory as your Dockerfile when building
-COPY package.json package-lock.json* ./
+# Copy backend application files
+COPY deno.json ./
 COPY index.js ./
 
-# Install backend Node.js dependencies for production
-RUN npm install --omit=dev
+# Cache Deno dependencies
+RUN deno cache index.js
 
 # Create a non-root user and group for running the application
 RUN groupadd ytdiff --gid=1000 && \
@@ -168,4 +151,4 @@ EXPOSE 8888
 
 # Use tini as the entrypoint to handle signals and reap zombie processes
 ENTRYPOINT [ "/usr/bin/tini", "--" ]
-CMD [ "node", "index.js" ]
+CMD [ "deno", "run", "--allow-all", "index.js" ]

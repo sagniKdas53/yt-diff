@@ -24,11 +24,9 @@ RUN npm run build
 # ---- Stage 2: Final Application Image ----
 FROM alpine:3.21 AS final
 
-ARG NODE_VERSION
 ARG VITE_BASE_PATH
 
 ENV LANG=C.UTF-8
-ENV NODE_ENV=production
 ENV OPENSSL_CONF=/dev/null
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
@@ -37,16 +35,14 @@ WORKDIR /app
 # Install runtime dependencies using Alpine packages:
 # - ca-certificates: for HTTPS
 # - tini: as an init process
-# - nodejs & npm: runtime for the backend
 # - python3 & py3-pip & py3-virtualenv: for yt-dlp and its dependencies
 # - ffmpeg: for video processing (Alpine package instead of prebuilt binary)
+# - deno: runtime
 RUN apk update && \
     apk upgrade && \
     apk add --no-cache \
     ca-certificates \
     tini \
-    nodejs \
-    npm \
     python3 \
     py3-pip \
     py3-virtualenv \
@@ -63,8 +59,6 @@ RUN apk update && \
     /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
     # Verify installations
     echo "DEBUG: Checking versions:" && \
-    echo "Node version: $(node --version)" && \
-    echo "npm version: $(npm --version)" && \
     echo "deno version: $(deno --version)" && \
     echo "ffmpeg version: $(ffmpeg -version)" && \
     echo "yt-dlp version: $(/opt/venv/bin/yt-dlp --version)"
@@ -75,12 +69,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy built frontend assets from the frontend-builder stage
 COPY --from=frontend-builder /app/dist ./dist
 
-# Copy backend application files (package.json, package-lock.json if it exists, and index.js)
-COPY package.json package-lock.json* ./
+# Copy backend application files
+COPY deno.json ./
 COPY index.js ./
 
-# Install backend Node.js dependencies for production
-RUN npm install --omit=dev
+# Cache Deno dependencies
+RUN deno cache index.js
 
 # Create a non-root user and group for running the application
 # Alpine uses addgroup/adduser instead of groupadd/useradd
@@ -98,4 +92,4 @@ EXPOSE 8888
 
 # Use tini as the entrypoint to handle signals and reap zombie processes
 ENTRYPOINT [ "/sbin/tini", "--" ]
-CMD [ "node", "index.js" ]
+CMD [ "deno", "run", "--allow-all", "index.js" ]

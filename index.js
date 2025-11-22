@@ -1,88 +1,89 @@
-"use strict";
-const { Sequelize, DataTypes, Op } = require("sequelize");
-const { spawn } = require("child_process");
-const color = require("cli-color");
-const CronJob = require("cron").CronJob;
-const fs = require("fs");
-const http = require("http");
-const https = require("https");
-const path = require("path");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const he = require('he');
-const { LRUCache } = require('lru-cache');
-const { Server } = require("socket.io");
-const { pipeline } = require('stream');
-const { promisify } = require('util');
+import { Sequelize, DataTypes, Op } from "npm:sequelize";
+import { spawn } from "node:child_process";
+import color from "npm:cli-color";
+import { CronJob } from "npm:cron";
+import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
+import path from "node:path";
+import bcrypt from "npm:bcrypt";
+import jwt from "npm:jsonwebtoken";
+import he from "npm:he";
+import { LRUCache } from "npm:lru-cache";
+import { Server } from "npm:socket.io";
+import { pipeline } from "node:stream";
+import { promisify } from "node:util";
+import { Buffer } from "node:buffer";
+
 const pipelineAsync = promisify(pipeline);
 
 // Configuration object
 const config = {
-  protocol: process.env.PROTOCOL || "http",
-  host: process.env.HOSTNAME || "localhost",
-  port: +process.env.PORT || 8888,
-  nativeHttps: process.env.USE_NATIVE_HTTPS === "true" || false,
-  hidePorts: process.env.HIDE_PORTS === "true",
+  protocol: Deno.env.get("PROTOCOL") || "http",
+  host: Deno.env.get("HOSTNAME") || "localhost",
+  port: +Deno.env.get("PORT") || 8888,
+  nativeHttps: Deno.env.get("USE_NATIVE_HTTPS") === "true" || false,
+  hidePorts: Deno.env.get("HIDE_PORTS") === "true",
   defaultCORSMaxAge: 2592000, // 30 days
-  urlBase: process.env.BASE_URL || "/ytdiff",
+  urlBase: Deno.env.get("BASE_URL") || "/ytdiff",
   ssl: {
-    key: process.env.SSL_KEY || null,
-    cert: process.env.SSL_CERT || null,
-    passphrase: process.env.SSL_PASSPHRASE || null,
+    key: Deno.env.get("SSL_KEY") || null,
+    cert: Deno.env.get("SSL_CERT") || null,
+    passphrase: Deno.env.get("SSL_PASSPHRASE") || null,
   },
   db: {
-    host: process.env.DB_HOST || "localhost",
-    user: process.env.DB_USERNAME || "ytdiff",
+    host: Deno.env.get("DB_HOST") || "localhost",
+    user: Deno.env.get("DB_USERNAME") || "ytdiff",
     name: "vidlist",
-    password: process.env.DB_PASSWORD_FILE
-      ? fs.readFileSync(process.env.DB_PASSWORD_FILE, "utf8").trim()
-      : process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim()
-        ? process.env.DB_PASSWORD
+    password: Deno.env.get("DB_PASSWORD_FILE")
+      ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE"), "utf8").trim()
+      : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD").trim()
+        ? Deno.env.get("DB_PASSWORD")
         : new Error("DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set"),
   },
   cache: {
-    maxItems: +process.env.CACHE_MAX_ITEMS || 100,
-    maxAge: +process.env.CACHE_MAX_AGE || 3600, // keep cache for 1 hour
-    reqPerIP: +process.env.MAX_REQUESTS_PER_IP || 10
+    maxItems: +Deno.env.get("CACHE_MAX_ITEMS") || 100,
+    maxAge: +Deno.env.get("CACHE_MAX_AGE") || 3600, // keep cache for 1 hour
+    reqPerIP: +Deno.env.get("MAX_REQUESTS_PER_IP") || 10
   },
   queue: {
-    maxListings: +process.env.MAX_LISTINGS || 2,
-    maxDownloads: +process.env.MAX_DOWNLOADS || 2,
-    cleanUpInterval: process.env.CLEANUP_INTERVAL || "*/10 * * * *", // every 10 minutes
-    maxIdle: +process.env.PROCESS_MAX_AGE || 5 * 60 * 1000, // 5 minutes
+    maxListings: +Deno.env.get("MAX_LISTINGS") || 2,
+    maxDownloads: +Deno.env.get("MAX_DOWNLOADS") || 2,
+    cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *", // every 10 minutes
+    maxIdle: +Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000, // 5 minutes
   },
   registration: {
-    allowed: process.env.ALLOW_REGISTRATION !== "false",
-    maxUsers: +(process.env.MAX_USERS || 15)
+    allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",
+    maxUsers: +(Deno.env.get("MAX_USERS") || 15)
   },
-  saveLocation: process.env.SAVE_PATH || "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
-  cookiesFile: process.env.COOKIES_FILE
-    ? fs.existsSync(process.env.COOKIES_FILE)
-      ? process.env.COOKIES_FILE : new Error(`Cookies file not found: ${process.env.COOKIES_FILE}`)
+  saveLocation: Deno.env.get("SAVE_PATH") || "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
+  cookiesFile: Deno.env.get("COOKIES_FILE")
+    ? fs.existsSync(Deno.env.get("COOKIES_FILE"))
+      ? Deno.env.get("COOKIES_FILE") : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
     : false,
-  proxy_string: process.env.PROXY_STRING_FILE
-    ? fs.readFileSync(process.env.PROXY_STRING_FILE, "utf8").trim().replace(/['"\n]+/g, '')
-    : process.env.PROXY_STRING && process.env.PROXY_STRING.trim()
-      ? `${process.env.PROXY_STRING.trim().replace(/['"\n]+/g, '')}` // make sure it's not quoted
+  proxy_string: Deno.env.get("PROXY_STRING_FILE")
+    ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE"), "utf8").trim().replace(/['"\n]+/g, '')
+    : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING").trim()
+      ? `${Deno.env.get("PROXY_STRING").trim().replace(/['"\n]+/g, '')}` // make sure it's not quoted
       : "", // if both are not set, proxy will be empty i.e. direct connection
-  sleepTime: process.env.SLEEP ?? 3,
-  chunkSize: +process.env.CHUNK_SIZE_DEFAULT || 10,
-  scheduledUpdateStr: process.env.UPDATE_SCHEDULED || "*/30 * * * *",
-  timeZone: process.env.TZ_PREFERRED || "Asia/Kolkata",
-  saveSubs: process.env.SAVE_SUBTITLES !== "false",
-  saveDescription: process.env.SAVE_DESCRIPTION !== "false",
-  saveComments: process.env.SAVE_COMMENTS !== "false",
-  saveThumbnail: process.env.SAVE_THUMBNAIL !== "false",
-  restrictFilenames: process.env.RESTRICT_FILENAMES !== "false",
-  maxFileNameLength: +process.env.MAX_FILENAME_LENGTH || NaN, // No truncation by default
-  logLevel: (process.env.LOG_LEVELS || "trace").toLowerCase(),
-  logDisableColors: process.env.NO_COLOR === "true",
+  sleepTime: Deno.env.get("SLEEP") ?? 3,
+  chunkSize: +Deno.env.get("CHUNK_SIZE_DEFAULT") || 10,
+  scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
+  timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
+  saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
+  saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
+  saveComments: Deno.env.get("SAVE_COMMENTS") !== "false",
+  saveThumbnail: Deno.env.get("SAVE_THUMBNAIL") !== "false",
+  restrictFilenames: Deno.env.get("RESTRICT_FILENAMES") !== "false",
+  maxFileNameLength: +Deno.env.get("MAX_FILENAME_LENGTH") || NaN, // No truncation by default
+  logLevel: (Deno.env.get("LOG_LEVELS") || "trace").toLowerCase(),
+  logDisableColors: Deno.env.get("NO_COLOR") === "true",
   maxTitleLength: 255,
   saltRounds: 10,
-  secretKey: process.env.SECRET_KEY_FILE
-    ? fs.readFileSync(process.env.SECRET_KEY_FILE, "utf8").trim()
-    : process.env.SECRET_KEY && process.env.SECRET_KEY.trim()
-      ? process.env.SECRET_KEY.trim()
+  secretKey: Deno.env.get("SECRET_KEY_FILE")
+    ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE"), "utf8").trim()
+    : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY").trim()
+      ? Deno.env.get("SECRET_KEY").trim()
       : new Error("SECRET_KEY or SECRET_KEY_FILE environment variable must be set"),
   maxClients: 10,
   connectedClients: 0,
@@ -248,7 +249,7 @@ const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
 const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
 const orange = color.xterm(208);
 const honeyDew = color.xterm(194);
-if (config.logDisableColors || !process.stdout.isTTY) {
+if (config.logDisableColors || !Deno.stdout.isTerminal()) {
   color.enabled = false;
 }
 
@@ -356,10 +357,15 @@ function safeEmit(event, payload) {
   }
 }
 
+import pg from "npm:pg";
+
+// ... existing imports ...
+
 // Database
 const sequelize = new Sequelize({
   host: config.db.host,
   dialect: "postgres",
+  dialectModule: pg,
   logging: false,
   username: config.db.user,
   password: config.db.password,
@@ -4177,7 +4183,7 @@ if (config.nativeHttps) {
     };
   } catch (error) {
     logger.error("Error reading SSL key and/or certificate files:", error);
-    process.exit(1);
+    Deno.exit(1);
   }
   if (config.ssl.passphrase) {
     logger.info("SSL passphrase is set");
