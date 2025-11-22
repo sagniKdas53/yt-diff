@@ -123,7 +123,7 @@ const downloadOptions = [
   "--print", "before_dl:title:%(title)s [%(id)s]",
   "--print", config.restrictFilenames ? "post_process:\"fileName:%(id)s.%(ext)s\"" : "post_process:\"fileName:%(title)s[%(id)s].%(ext)s\"",
   "--progress-template", "download-title:%(info.id)s-%(progress.eta)s",
-  "--proxy", config.proxy_string
+  ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
 ].filter(Boolean);
 // Check if file name length limit is set and valid
 if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
@@ -3024,7 +3024,7 @@ async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunk
   return new Promise((resolve, reject) => {
     // Configure process arguments
     const processArgs = [
-      "--proxy", config.proxy_string,
+      ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
       "--playlist-start", startIndex.toString(),
       "--playlist-end", endIndex.toString(),
       "--flat-playlist",
@@ -3458,7 +3458,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
   }
 
   const processArgs = [
-    "--proxy", config.proxy_string,
+    ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
     "--playlist-end", "1",
     "--flat-playlist",
     "--print", "%(playlist_title)s",
