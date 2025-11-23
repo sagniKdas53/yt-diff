@@ -3,7 +3,7 @@
 DB_USERNAME=ytdiff
 DB_NAME=vidlist
 DB_HOST=yt-db
-DB_LOCATION=/home/pi5/Documents/yt-data/
+DB_LOCATION=/home/pi5/Documents/yt-data-new/
 UID=1000
 GID=1000
 
@@ -35,13 +35,35 @@ BACKUP_LOCATION=/mnt/nvme/stuff/misc/yt-db/
 SLEEP=3
 # https://github.com/TeamNewPipe/NewPipe/issues/875#issuecomment-347592489
 CHUNK_SIZE_DEFAULT=10
-SAVE_SUBTITLES=true
+# For some reason, subtitles are not being saved properly with certain formats, so disabling it by default
+SAVE_SUBTITLES=false
+# Not saving these as well as these are not that important to me right now
+SAVE_COMMENTS=false
+# Saving description
 SAVE_DESCRIPTION=true
-SAVE_COMMENTS=true
+# These are necessary for proper thumbnail display in the webui
 SAVE_THUMBNAIL=true
+# Having issues with certain filenames, so restricting them
 RESTRICT_FILENAMES=true
+# 255 is the max filename length for ext4 filesystems, but leaving some buffer
 MAX_FILENAME_LENGTH=240
 
 # CRON expression used here, use https://crontab.guru/ for examples
 UPDATE_SCHEDULED=0 */12 * * *
 TZ_PREFERRED=Asia/Kolkata
+
+#GLUETUN CONF
+#PROVIDER
+SERVICE_PROVIDER_VPN=protonvpn
+FREE=on
+HTTP_PROXY=on
+HTTP_PROXY_LISTENING_ADDRESS=:3128
+# This password being open doesn't matter as the port is exposed only inside the docker subnet
+HTTP_PROXY_USER=proton
+HTTP_PROXY_PASSWORD=n436b5CXcPkrRbKADE1VUhq
+HTTP_PROXY_STEALTH=on
+PROXY_STRING=http://proton:n436b5CXcPkrRbKADE1VUhq@gluetun:3128/
+
+# OPENVPN
+#JAPAN
+SERVER_COUNTRIES_PREFERRED=Japan
