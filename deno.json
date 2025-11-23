@@ -1,7 +1,6 @@
 {
     "nodeModulesDir": "auto",
     "tasks": {
-        "install": "deno install --allow-scripts=npm:bcrypt --allow-scripts=npm:es5-ext --entrypoint index.ts",
         "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff deno run --allow-all --watch index.ts",
         "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",
         "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts"

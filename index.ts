@@ -6,7 +6,7 @@ import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
-import bcrypt from "npm:bcrypt";
+import bcrypt from "npm:bcryptjs";
 import jwt from "npm:jsonwebtoken";
 import he from "npm:he";
 import pg from "npm:pg";
