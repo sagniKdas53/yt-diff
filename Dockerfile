@@ -15,7 +15,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras && \
     DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y wget ca-certificates xz-utils bzip2 unzip --no-install-recommends && \
+    apt-get install -y curl ca-certificates xz-utils bzip2 unzip --no-install-recommends && \
     mkdir -p /dist/bin && \
     cd /tmp && \
     # ---- START: FFMPEG Installation ----
@@ -23,7 +23,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     FFMPEG_ARCH_SUFFIX="linux64" && \
     if [ "$TARGETARCH" = "arm64" ]; \
     then FFMPEG_ARCH_SUFFIX="linuxarm64"; fi && \
-    wget "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl.tar.xz" -O "ffmpeg.tar.xz" && \
+    curl -L "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl.tar.xz" -o "ffmpeg.tar.xz" && \
     tar -xf ffmpeg.tar.xz && \
     mv ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffmpeg ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffprobe ffmpeg-master-latest-${FFMPEG_ARCH_SUFFIX}-gpl/bin/ffplay /dist/bin/ && \
     # Verify ffmpeg installation
@@ -35,7 +35,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     # Download PhantomJS (Note: x86_64 only from this source, will be skipped on ARM64)
     if [ "$TARGETARCH" = "amd64" ]; \
     then \
-    wget "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -O "phantomjs.tar.bz2" && \
+    curl -L "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -o "phantomjs.tar.bz2" && \
     tar -xf phantomjs.tar.bz2 && \
     mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
     else \
@@ -48,7 +48,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     if [ "$TARGETARCH" = "amd64" ]; then DENO_ARCH="x86_64-unknown-linux-gnu"; \
     elif [ "$TARGETARCH" = "arm64" ]; then DENO_ARCH="aarch64-unknown-linux-gnu"; \
     else echo "ERROR: Unsupported TARGETARCH for Deno: $TARGETARCH"; exit 1; fi && \
-    wget "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}.zip" -O deno.zip && \
+    curl -L "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}.zip" -o deno.zip && \
     unzip -d /dist/bin/ deno.zip && \
     rm deno.zip && \
     # Verify Deno installation
@@ -57,7 +57,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     # ---- END: Added Deno Installation ----
     # Cleanup build dependencies and downloaded files
     cd / && rm -rf /tmp/* && \
-    apt-get purge -y wget xz-utils bzip2 unzip && \
+    apt-get purge -y curl xz-utils bzip2 unzip && \
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
 
@@ -103,7 +103,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; APT::Get::Install-Suggests "fals
 # - python3 & python3-pip: for yt-dlp and its dependencies
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y ca-certificates tini python3 python3-pip python3-venv --no-install-recommends && \
+    apt-get install -y ca-certificates curl tini python3 python3-pip python3-venv --no-install-recommends && \
     # Install yt-dlp and its dependencies using pip
     echo "DEBUG: Creating Python virtual environment at /opt/venv" && \
     python3 -m venv /opt/venv && \
@@ -131,10 +131,10 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
 COPY deno.json ./
-COPY index.js ./
+COPY index.ts ./
 
 # Cache Deno dependencies
-RUN deno cache index.js
+RUN deno cache index.ts
 
 # Create a non-root user and group for running the application
 RUN groupadd ytdiff --gid=1000 && \
@@ -151,4 +151,4 @@ EXPOSE 8888
 
 # Use tini as the entrypoint to handle signals and reap zombie processes
 ENTRYPOINT [ "/usr/bin/tini", "--" ]
-CMD [ "deno", "run", "--allow-all", "index.js" ]
+CMD [ "deno", "run", "--allow-all", "index.ts" ]

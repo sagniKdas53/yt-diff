@@ -42,6 +42,7 @@ RUN apk update && \
     apk upgrade && \
     apk add --no-cache \
     ca-certificates \
+    curl \
     tini \
     python3 \
     py3-pip \
@@ -71,10 +72,10 @@ COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
 COPY deno.json ./
-COPY index.js ./
+COPY index.ts ./
 
 # Cache Deno dependencies
-RUN deno cache index.js
+RUN deno cache index.ts
 
 # Create a non-root user and group for running the application
 # Alpine uses addgroup/adduser instead of groupadd/useradd
@@ -92,4 +93,4 @@ EXPOSE 8888
 
 # Use tini as the entrypoint to handle signals and reap zombie processes
 ENTRYPOINT [ "/sbin/tini", "--" ]
-CMD [ "deno", "run", "--allow-all", "index.js" ]
+CMD [ "deno", "run", "--allow-all", "index.ts" ]

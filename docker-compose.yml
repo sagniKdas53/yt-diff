@@ -128,7 +128,7 @@ services:
       # Watchtower monitoring
       - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:8888/ytdiff/ping" ]
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:8888/ytdiff/ping" ]
       interval: 5m
       timeout: 5s
       start_period: 30s
