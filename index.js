@@ -10,7 +10,7 @@ import bcrypt from "npm:bcrypt";
 import jwt from "npm:jsonwebtoken";
 import he from "npm:he";
 import pg from "npm:pg";
-import { LRUCache } from "npm:lru-cache";
+import Redis from "npm:ioredis";
 import { Server } from "npm:socket.io";
 import { pipeline } from "node:stream";
 import { promisify } from "node:util";
@@ -41,6 +41,11 @@ const config = {
       : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD").trim()
         ? Deno.env.get("DB_PASSWORD")
         : new Error("DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set"),
+  },
+  redis: {
+    host: Deno.env.get("REDIS_HOST") || "localhost",
+    port: +Deno.env.get("REDIS_PORT") || 6379,
+    password: Deno.env.get("REDIS_PASSWORD") || null,
   },
   cache: {
     maxItems: +Deno.env.get("CACHE_MAX_ITEMS") || 100,
@@ -189,61 +194,19 @@ if (!fs.existsSync(config.saveLocation)) {
   }
 }
 
-// Caching
-// TODO: Replace with your own LRUCache implementation using  Map and CronJob
-/**
- * Generates cache configuration options for an LRU cache.
- *
- * @param {number} size - The maximum total size of all cache items in bytes.
- * @return {object} The cache options object containing configuration parameters:
- *   - max: Maximum number of items to store in the cache.
- *   - ttl: Time-to-live for each item in milliseconds.
- *   - updateAgeOnGet: Whether to reset TTL on get() to keep active items longer.
- *   - updateAgeOnHas: Whether to reset TTL on has() to keep active items longer.
- *   - sizeCalculation: Function to calculate the size of a given value in bytes.
- *   - maxSize: Maximum total size of all cache items in bytes.
- *   - dispose: Function to clear sensitive data when an item is removed.
- */
-const createSecurityCacheConfig = (maxBytes, maxItems, ttl) => ({
-  max: maxItems, // Maximum number of items to store in the cache
-  ttl: ttl * 1000, // Time-to-live for each item in milliseconds
-  updateAgeOnGet: true, // Reset TTL on get() to keep active items longer
-  updateAgeOnHas: true, // Reset TTL on has() to keep active items longer
-  /**
-   * Calculates the size of a given value in bytes.
-   *
-   * @param {any} value - The value to calculate the size of.
-   * @param {string} key - The key associated with the value (not used in calculation).
-   * @return {number} The size of the value in bytes.
-   */
-  sizeCalculation: (value, key) => {
-    const valueString = JSON.stringify(value);
-    logger.trace(`Calculating size of cache item with key: ${key}`,
-      { key: key, size: valueString.length });
-    return valueString.length; // Size in bytes
-  },
-  maxSize: maxBytes, // Maximum total size of all cache items in bytes
-  /**
-   * Clear sensitive data when an item is removed.
-   *
-   * @param {string} key - The key associated with the value to be disposed of.
-   * @param {any} value - The value to be disposed of.
-   * @param {string} reason - The reason for disposing of the value.
-   */
-  dispose: (value, key, reason) => {
-    // Clear sensitive data when an item is removed
-    logger.trace(`Disposing cache item with key: ${key}`, {
-      key: key,
-      value: JSON.stringify(value),
-      reason: reason
-    });
-    value = null;
-  },
+const redis = new Redis({
+  host: config.redis.host,
+  port: config.redis.port,
+  password: config.redis.password,
 });
 
-const userCache = new LRUCache(createSecurityCacheConfig(1024, config.cache.maxItems, config.cache.maxAge)); // 1KB for users
-const ipCache = new LRUCache(createSecurityCacheConfig(1024 * 10, config.cache.maxItems, config.cache.maxAge)); // 10KB for IPs
-const signedUrlCache = new LRUCache(createSecurityCacheConfig(3 * 1024 * 1024, config.cache.maxItems, config.cache.maxAge)); // 3MB for signed URLs as each file is around < 128 bytes
+redis.on("error", (err) => {
+  logger.error("Redis error", { error: err.message });
+});
+
+redis.on("connect", () => {
+  logger.info("Connected to Redis");
+});
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -1081,13 +1044,18 @@ async function authenticateRequest(request, response, next) {
     const decodedToken = jwt.verify(token, config.secretKey);
 
     // Check cache first
-    let user = userCache.get(decodedToken.id);
+    // Check cache first
+    let user = null;
+    const cachedUser = await redis.get(`user:${decodedToken.id}`);
+    if (cachedUser) {
+      user = JSON.parse(cachedUser);
+    }
 
     if (!user) {
       logger.debug(`Fetching user data for ID ${decodedToken.id}`);
       user = await UserAccount.findByPk(decodedToken.id);
       if (user) {
-        userCache.set(decodedToken.id, user);
+        await redis.set(`user:${decodedToken.id}`, JSON.stringify(user), "EX", config.cache.maxAge);
       }
     }
 
@@ -1101,7 +1069,8 @@ async function authenticateRequest(request, response, next) {
     }
 
     // Verify password hasn't changed
-    const lastPasswordUpdate = user.updatedAt.toISOString();
+    // user.updatedAt.toISOString is not a function
+    const lastPasswordUpdate = user.updatedAt;
     if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
       logger.error("Token invalid - password changed");
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -1161,13 +1130,18 @@ async function authenticateSocket(socket) {
     const decodedToken = jwt.verify(token, config.secretKey);
 
     // Check cache first
-    let user = userCache.get(decodedToken.id);
+    // Check cache first
+    let user = null;
+    const cachedUser = await redis.get(`user:${decodedToken.id}`);
+    if (cachedUser) {
+      user = JSON.parse(cachedUser);
+    }
 
     if (!user) {
       logger.debug(`Fetching user data for ID ${decodedToken.id}`);
       user = await UserAccount.findByPk(decodedToken.id);
       if (user) {
-        userCache.set(decodedToken.id, user);
+        await redis.set(`user:${decodedToken.id}`, JSON.stringify(user), "EX", config.cache.maxAge);
       }
     }
 
@@ -1177,7 +1151,7 @@ async function authenticateSocket(socket) {
     }
 
     // Verify password hasn't changed
-    const lastPasswordUpdate = user.updatedAt.toISOString();
+    const lastPasswordUpdate = user.updatedAt;
     if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
       logger.error("Socket auth failed - password changed");
       return false;
@@ -1219,7 +1193,7 @@ async function rateLimit(
   logger.trace(`Rate limit check for IP ${clientIp}`);
 
   // Check current request count
-  const currentRequests = ipCache.get(clientIp) || 0;
+  const currentRequests = +(await redis.get(`ip:${clientIp}`)) || 0;
 
   if (currentRequests >= maxRequestsPerWindow) {
     logger.debug(`Rate limit exceeded for ${clientIp}`);
@@ -1231,11 +1205,7 @@ async function rateLimit(
   }
 
   // Update request count
-  ipCache.set(
-    clientIp,
-    currentRequests + 1,
-    windowSeconds
-  );
+  await redis.set(`ip:${clientIp}`, currentRequests + 1, "EX", windowSeconds);
 
   logger.debug(`Request count for ${clientIp}: ${currentRequests + 1}`);
 
@@ -1411,29 +1381,19 @@ async function makeSignedUrl(requestBody, response) {
 
   // Check if a valid signed URL already exists for this file path
   const now = Date.now();
-  for (const [existingId, cacheEntry] of signedUrlCache.entries()) {
-    if (cacheEntry.filePath === absolutePath && cacheEntry.expiry > now) {
-      // Extend the expiry for the existing entry
-      const newExpiry = Date.now() + config.cache.maxAge * 1000;
-      cacheEntry.expiry = newExpiry;
-      signedUrlCache.set(existingId, cacheEntry, config.cache.maxAge);
-
-      logger.debug('Reusing existing signed URL with extended expiry', {
-        signedUrlId: existingId,
-        filePath: absolutePath,
-        newExpiry
-      });
-      response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
-      return response.end(JSON.stringify({ status: 'success', signedUrlId: existingId, expiry: newExpiry }));
-    }
-  }
-
-  // No valid entry found, create a new one
+  // Redis replacement: Create new signed URL
   const signedUrlId = crypto.randomUUID();
-  const expiry = Date.now() + config.cache.maxAge * 1000;
-  signedUrlCache.set(signedUrlId, { filePath: absolutePath, mimeType: "application/octet-stream", expiry }, config.cache.maxAge);
+  const expiry = now + config.cache.maxAge * 1000;
+
+  await redis.set(
+    `signed:${signedUrlId}`,
+    JSON.stringify({ filePath: absolutePath, mimeType: "application/octet-stream", expiry }),
+    "EX",
+    config.cache.maxAge
+  );
+
   response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
-  response.end(JSON.stringify({ status: 'success', signedUrlId: signedUrlId, expiry }));
+  response.end(JSON.stringify({ status: 'success', signedUrlId, expiry }));
 }
 
 /**
@@ -1466,26 +1426,15 @@ async function makeSignedUrls(requestBody, response) {
       continue;
     }
 
-    let signedUrlId = null;
-    let expiry = null;
+    let signedUrlId = crypto.randomUUID();
+    let expiry = now + config.cache.maxAge * 1000;
 
-    // Check cache
-    for (const [existingId, cacheEntry] of signedUrlCache.entries()) {
-      if (cacheEntry.filePath === resolved && cacheEntry.expiry > now) {
-        signedUrlId = existingId;
-        expiry = now + config.cache.maxAge * 1000;
-        cacheEntry.expiry = expiry;
-        signedUrlCache.set(existingId, cacheEntry, config.cache.maxAge);
-        break;
-      }
-    }
-
-    // Create new if not found
-    if (!signedUrlId) {
-      signedUrlId = crypto.randomUUID();
-      expiry = now + config.cache.maxAge * 1000;
-      signedUrlCache.set(signedUrlId, { filePath: resolved, mimeType: "application/octet-stream", expiry }, config.cache.maxAge);
-    }
+    await redis.set(
+      `signed:${signedUrlId}`,
+      JSON.stringify({ filePath: resolved, mimeType: "application/octet-stream", expiry }),
+      "EX",
+      config.cache.maxAge
+    );
 
     results[fileName] = signedUrlId;
   }
@@ -4200,7 +4149,7 @@ if (config.nativeHttps) {
   serverObj = http;
 }
 
-const server = serverObj.createServer(serverOptions, (req, res) => {
+const server = serverObj.createServer(serverOptions, async (req, res) => {
   if (req.url.startsWith(config.urlBase) && req.method === "GET") {
     try {
       const get = req.url;
@@ -4215,108 +4164,101 @@ const server = serverObj.createServer(serverOptions, (req, res) => {
       if (urlParams.has("fileId")) {
         const fileId = urlParams.get("fileId");
         // If fileId is present, try to serve from signedUrlCache
-        if (signedUrlCache.has(fileId)) {
-          const signedEntry = signedUrlCache.get(fileId);
+        const cachedEntry = await redis.get(`signed:${fileId}`);
+        if (cachedEntry) {
+          const signedEntry = JSON.parse(cachedEntry);
           // Serve the file from the signed URL cache
           logger.info("Serving file from signed URL cache", { url: req.url });
-          // Check if the entry has expired
-          if (Date.now() > signedEntry.expiry) {
-            logger.warn("Signed URL has expired", { url: req.url });
-            signedUrlCache.delete(fileId);
-            res.writeHead(403, generateCorsHeaders(MIME_TYPES[".html"]));
-            res.write("Signed URL has expired");
-            return res.end();
-          } else {
-            // Improved streaming for large files: Range support, pipeline, backpressure
-            logger.trace("Serving signed file", { fileId, filePath: signedEntry.filePath });
-            (async () => {
+
+          // Improved streaming for large files: Range support, pipeline, backpressure
+          logger.trace("Serving signed file", { fileId, filePath: signedEntry.filePath });
+          (async () => {
+            try {
+              const stats = await fs.promises.stat(signedEntry.filePath);
+              const total = stats.size;
+
+              const originalName = path.basename(signedEntry.filePath || '');
+              // Remove potentially dangerous characters
+              const safeName = originalName.replace(/[\r\n"]/g, '');
+              // ASCII fallback for older clients
+              const fallbackName = safeName.replace(/[^\x20-\x7E]/g, '_');
+              const encodedName = encodeURIComponent(safeName);
+
+              const contentType = signedEntry.mimeType || MIME_TYPES[path.extname(safeName)] || 'application/octet-stream';
+              // Common headers (CORS + content-type + disposition + accept-ranges)
+              const cors = generateCorsHeaders(contentType);
+              Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
+              res.setHeader('Content-Type', contentType);
+              res.setHeader('Content-Disposition', `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`);
+              res.setHeader('Accept-Ranges', 'bytes');
+
+              // Parse Range header
+              const range = req.headers.range;
+              let start = 0;
+              let end = total - 1;
+              let statusCode = 200;
+              if (range) {
+                const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+                if (m) {
+                  if (m[1]) start = parseInt(m[1], 10);
+                  if (m[2]) end = parseInt(m[2], 10);
+                  // Validate
+                  if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end > total - 1) {
+                    res.writeHead(416, { 'Content-Range': `bytes */${total}` });
+                    return res.end();
+                  }
+                  statusCode = 206;
+                  res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+                }
+              }
+
+              const chunkSize = end - start + 1;
+              res.setHeader('Content-Length', String(chunkSize));
+              res.writeHead(statusCode);
+
+              const readStream = fs.createReadStream(signedEntry.filePath, {
+                start,
+                end,
+                // Larger buffer for fewer syscall's on big files (tune as needed)
+                highWaterMark: 1024 * 1024,
+              });
+
+              const onClose = () => {
+                // Destroy the stream if client disconnects
+                try { readStream.destroy(); } catch (e) { }
+              };
+              req.on('close', onClose);
+              req.on('aborted', onClose);
+
               try {
-                const stats = await fs.promises.stat(signedEntry.filePath);
-                const total = stats.size;
-
-                const originalName = path.basename(signedEntry.filePath || '');
-                // Remove potentially dangerous characters
-                const safeName = originalName.replace(/[\r\n"]/g, '');
-                // ASCII fallback for older clients
-                const fallbackName = safeName.replace(/[^\x20-\x7E]/g, '_');
-                const encodedName = encodeURIComponent(safeName);
-
-                const contentType = signedEntry.mimeType || MIME_TYPES[path.extname(safeName)] || 'application/octet-stream';
-                // Common headers (CORS + content-type + disposition + accept-ranges)
-                const cors = generateCorsHeaders(contentType);
-                Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
-                res.setHeader('Content-Type', contentType);
-                res.setHeader('Content-Disposition', `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`);
-                res.setHeader('Accept-Ranges', 'bytes');
-
-                // Parse Range header
-                const range = req.headers.range;
-                let start = 0;
-                let end = total - 1;
-                let statusCode = 200;
-                if (range) {
-                  const m = /^bytes=(\d*)-(\d*)$/.exec(range);
-                  if (m) {
-                    if (m[1]) start = parseInt(m[1], 10);
-                    if (m[2]) end = parseInt(m[2], 10);
-                    // Validate
-                    if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end > total - 1) {
-                      res.writeHead(416, { 'Content-Range': `bytes */${total}` });
-                      return res.end();
-                    }
-                    statusCode = 206;
-                    res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
-                  }
-                }
-
-                const chunkSize = end - start + 1;
-                res.setHeader('Content-Length', String(chunkSize));
-                res.writeHead(statusCode);
-
-                const readStream = fs.createReadStream(signedEntry.filePath, {
-                  start,
-                  end,
-                  // Larger buffer for fewer syscall's on big files (tune as needed)
-                  highWaterMark: 1024 * 1024,
-                });
-
-                const onClose = () => {
-                  // Destroy the stream if client disconnects
-                  try { readStream.destroy(); } catch (e) { }
-                };
-                req.on('close', onClose);
-                req.on('aborted', onClose);
-
-                try {
-                  // Use pipeline to forward errors and handle backpressure
-                  await pipelineAsync(readStream, res);
-                  logger.trace("Finished streaming signed file", { fileId });
-                } catch (err) {
-                  logger.error("Error during streaming signed file", { error: err && err.message, fileId });
-                  if (!res.headersSent) {
-                    res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
-                  }
-                  try { res.end('Error reading file'); } catch (e) { }
-                } finally {
-                  req.removeListener('close', onClose);
-                  req.removeListener('aborted', onClose);
-                  // Note: keep signedUrlCache entry to allow multiple downloads within expiry
-                }
+                // Use pipeline to forward errors and handle backpressure
+                await pipelineAsync(readStream, res);
+                logger.trace("Finished streaming signed file", { fileId });
               } catch (err) {
-                logger.error("Error getting file stats", { error: err.message, fileId });
+                logger.error("Error during streaming signed file", { error: err && err.message, fileId });
                 if (!res.headersSent) {
                   res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
                 }
-                res.end("Error reading file");
+                try { res.end('Error reading file'); } catch (e) { }
+              } finally {
+                req.removeListener('close', onClose);
+                req.removeListener('aborted', onClose);
+                // Note: keep signedUrlCache entry to allow multiple downloads within expiry
               }
-            })();
-            return;
-            // If you want to just return the file path instead of streaming
-            // (not recommended for large files or production use)
-            // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
-            // res.write(signedEntry.filePath);
-            // return res.end();
-          }
+            } catch (err) {
+              logger.error("Error getting file stats", { error: err.message, fileId });
+              if (!res.headersSent) {
+                res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
+              }
+              res.end("Error reading file");
+            }
+          })();
+          return;
+          // If you want to just return the file path instead of streaming
+          // (not recommended for large files or production use)
+          // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
+          // res.write(signedEntry.filePath);
+          // return res.end();
         }
       }
       // Check if the GET request is for a static asset

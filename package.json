@@ -5,9 +5,6 @@
   "main": "index.js",
   "scripts": {
     "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
-    "pty": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff NO_COLOR=true node --watch index.js",
-    "noreg": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff ALLOW_REGISTRATION=false node --watch index.js",
-    "unrestricted": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff RESTRICT_FILENAMES=false MAX_FILENAME_LENGTH=240 node --watch index.js",
     "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt node --watch index.js",
     "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt node --watch index.js"
   },
@@ -37,7 +34,7 @@
     "generate-password": "^1.7.1",
     "he": "^1.2.0",
     "jsonwebtoken": "^9.0.2",
-    "lru-cache": "^11.0.2",
+    "ioredis": "^5.3.2",
     "node-cache": "^5.1.2",
     "pg": "^8.10.0",
     "pg-hstore": "^2.3.4",
