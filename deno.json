@@ -1,10 +1,8 @@
 {
     "nodeModulesDir": "auto",
     "tasks": {
+        "install": "deno install --allow-scripts=npm:bcrypt --allow-scripts=npm:es5-ext --entrypoint index.js",
         "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff deno run --allow-all --watch index.js",
-        "pty": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff NO_COLOR=true deno run --allow-all --watch index.js",
-        "noreg": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff ALLOW_REGISTRATION=false deno run --allow-all --watch index.js",
-        "unrestricted": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff RESTRICT_FILENAMES=false MAX_FILENAME_LENGTH=240 deno run --allow-all --watch index.js",
         "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.js",
         "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.js"
     }

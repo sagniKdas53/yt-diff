@@ -69,6 +69,8 @@ services:
     depends_on:
       yt-db:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
     networks:
       - revProxy-net
     ports:
@@ -108,6 +110,9 @@ services:
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
       # Proxy Info
       - PROXY_STRING_FILE=/run/secrets/proxy_string
+      # Redis Configuration
+      - REDIS_HOST=valkey
+      - REDIS_PORT=6379
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ytdiff.entryPoints=web,websecure"
@@ -128,6 +133,23 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: valkey
+    restart: always
+    networks:
+      - revProxy-net
+    ports:
+      - "6379:6379"
+    labels:
+      - "autoheal.enable=true"
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: [ "CMD", "valkey-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   pgbackups:
     container_name: pgbackups
