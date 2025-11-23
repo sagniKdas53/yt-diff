@@ -95,6 +95,103 @@ const config = {
   connectedClients: 0,
 };
 
+// Logging
+const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
+const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
+const orange = color.xterm(208);
+const honeyDew = color.xterm(194);
+if (config.logDisableColors || !Deno.stdout.isTerminal()) {
+  color.enabled = false;
+}
+
+/**
+ * Formats a log entry in logfmt style.
+ *
+ * @param {string} level - The log level (e.g., 'info', 'error').
+ * @param {string} message - The log message.
+ * @param {Object} [fields={}] - Additional fields to include in the log entry.
+ * @param {string|number|boolean|Error|null|undefined} [fields.*] - The value of the additional field. 
+ *        Strings will be escaped, Errors will include message and stack trace, null and undefined will be logged as null.
+ * @returns {string} The formatted log entry.
+ */
+const logfmt = (level, message, fields = {}) => {
+  let logEntry = `level=${level} msg="${message
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, '\\n')}"`;
+  logEntry += ` ts=${new Date().toISOString()}`;
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value === 'string') {
+      logEntry += ` ${key}="${value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, '\\n')}"`;
+    } else if (value instanceof Error) {
+      logEntry += ` ${key}="${value.message
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, '\\n')}"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${value.stack
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, '\\n')}"`;
+      }
+    } else if (value === null || value === undefined) {
+      logEntry += ` ${key}=null`;
+    } else {
+      logEntry += ` ${key}=${value}`;
+    }
+  }
+  return logEntry;
+};
+/**
+ * Logger object with various logging levels.
+ * 
+ * @property {function(string, object=): void} trace - Logs a trace level message.
+ * @property {function(string, object=): void} debug - Logs a debug level message.
+ * @property {function(string, object=): void} verbose - Logs a verbose level message.
+ * @property {function(string, object=): void} info - Logs an info level message.
+ * @property {function(string, object=): void} warn - Logs a warn level message.
+ * @property {function(string, object=): void} error - Logs an error level message.
+ * 
+ * @example
+ * logger.trace('This is a trace message', { additional: 'info' });
+ * logger.debug('This is a debug message', { additional: 'info' });
+ * logger.info('This is an info message', { additional: 'info' });
+ * logger.warn('This is a warning message', { additional: 'info' });
+ * logger.error('This is an error message', { additional: 'info' });
+ */
+const logger = {
+  trace: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("trace")) {
+      console.debug(honeyDew(logfmt('trace', message, fields)));
+    }
+  },
+  debug: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
+      console.debug(color.magentaBright(logfmt('debug', message, fields)));
+    }
+  },
+  info: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("info")) {
+      console.log(color.blueBright(logfmt('info', message, fields)));
+    }
+  },
+  warn: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("warn")) {
+      console.warn(orange(logfmt('warn', message, fields)));
+    }
+  },
+  error: (message, fields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("error")) {
+      console.error(color.redBright(logfmt('error', message, fields)));
+    }
+  }
+};
+
+logger.info("Logger initialized", { logLevel: config.logLevel });
+
 /**
  * An array of download options for a YouTube downloader.
  * The options are conditionally included based on the configuration settings.
@@ -207,103 +304,6 @@ redis.on("error", (err) => {
 redis.on("connect", () => {
   logger.info("Connected to Redis");
 });
-
-// Logging
-const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
-const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
-const orange = color.xterm(208);
-const honeyDew = color.xterm(194);
-if (config.logDisableColors || !Deno.stdout.isTerminal()) {
-  color.enabled = false;
-}
-
-/**
- * Formats a log entry in logfmt style.
- *
- * @param {string} level - The log level (e.g., 'info', 'error').
- * @param {string} message - The log message.
- * @param {Object} [fields={}] - Additional fields to include in the log entry.
- * @param {string|number|boolean|Error|null|undefined} [fields.*] - The value of the additional field. 
- *        Strings will be escaped, Errors will include message and stack trace, null and undefined will be logged as null.
- * @returns {string} The formatted log entry.
- */
-const logfmt = (level, message, fields = {}) => {
-  let logEntry = `level=${level} msg="${message
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\r?\n/g, '\\n')}"`;
-  logEntry += ` ts=${new Date().toISOString()}`;
-  for (const [key, value] of Object.entries(fields)) {
-    if (typeof value === 'string') {
-      logEntry += ` ${key}="${value
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, '\\n')}"`;
-    } else if (value instanceof Error) {
-      logEntry += ` ${key}="${value.message
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, '\\n')}"`;
-      if (value.stack) {
-        logEntry += ` ${key}_stack="${value.stack
-          .replace(/\\/g, '\\\\')
-          .replace(/"/g, '\\"')
-          .replace(/\r?\n/g, '\\n')}"`;
-      }
-    } else if (value === null || value === undefined) {
-      logEntry += ` ${key}=null`;
-    } else {
-      logEntry += ` ${key}=${value}`;
-    }
-  }
-  return logEntry;
-};
-/**
- * Logger object with various logging levels.
- * 
- * @property {function(string, object=): void} trace - Logs a trace level message.
- * @property {function(string, object=): void} debug - Logs a debug level message.
- * @property {function(string, object=): void} verbose - Logs a verbose level message.
- * @property {function(string, object=): void} info - Logs an info level message.
- * @property {function(string, object=): void} warn - Logs a warn level message.
- * @property {function(string, object=): void} error - Logs an error level message.
- * 
- * @example
- * logger.trace('This is a trace message', { additional: 'info' });
- * logger.debug('This is a debug message', { additional: 'info' });
- * logger.info('This is an info message', { additional: 'info' });
- * logger.warn('This is a warning message', { additional: 'info' });
- * logger.error('This is an error message', { additional: 'info' });
- */
-const logger = {
-  trace: (message, fields = {}) => {
-    if (currentLogLevelIndex <= logLevels.indexOf("trace")) {
-      console.debug(honeyDew(logfmt('trace', message, fields)));
-    }
-  },
-  debug: (message, fields = {}) => {
-    if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
-      console.debug(color.magentaBright(logfmt('debug', message, fields)));
-    }
-  },
-  info: (message, fields = {}) => {
-    if (currentLogLevelIndex <= logLevels.indexOf("info")) {
-      console.log(color.blueBright(logfmt('info', message, fields)));
-    }
-  },
-  warn: (message, fields = {}) => {
-    if (currentLogLevelIndex <= logLevels.indexOf("warn")) {
-      console.warn(orange(logfmt('warn', message, fields)));
-    }
-  },
-  error: (message, fields = {}) => {
-    if (currentLogLevelIndex <= logLevels.indexOf("error")) {
-      console.error(color.redBright(logfmt('error', message, fields)));
-    }
-  }
-};
-
-logger.info("Logger initialized", { logLevel: config.logLevel });
 
 /**
  * Safely emit socket.io events if socket server is available.
