@@ -4168,7 +4168,7 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
         if (cachedEntry) {
           const signedEntry = JSON.parse(cachedEntry);
           // Serve the file from the signed URL cache
-          logger.info("Serving file from signed URL cache", { url: req.url });
+          logger.trace("Serving file from signed URL cache", { url: req.url });
 
           // Improved streaming for large files: Range support, pipeline, backpressure
           logger.trace("Serving signed file", { fileId, filePath: signedEntry.filePath });

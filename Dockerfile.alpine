@@ -74,9 +74,6 @@ COPY --from=frontend-builder /app/dist ./dist
 COPY deno.json ./
 COPY index.ts ./
 
-# Cache Deno dependencies
-RUN deno cache index.ts
-
 # Create a non-root user and group for running the application
 # Alpine uses addgroup/adduser instead of groupadd/useradd
 RUN addgroup -S -g 1000 ytdiff && \
