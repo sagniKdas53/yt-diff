@@ -296,6 +296,7 @@ if (!fs.existsSync(config.saveLocation)) {
   }
 }
 
+// deno-lint-ignore no-explicit-any
 const redis = new (Redis as any)({
   host: config.redis.host,
   port: config.redis.port,
@@ -1189,7 +1190,9 @@ async function authenticateSocket(socket: Socket) {
 async function rateLimit(
   request: IncomingMessage,
   response: ServerResponse,
+  // deno-lint-ignore no-explicit-any
   currentHandler: (req: IncomingMessage, res: ServerResponse, next: (data: any, res: ServerResponse) => void) => void,
+  // deno-lint-ignore no-explicit-any
   nextHandler: (data: any, res: ServerResponse) => void,
   maxRequestsPerWindow: number,
   windowSeconds: number
@@ -1463,8 +1466,11 @@ interface PlaylistDisplayRequest {
   query?: string;
 }
 interface SubListRequest {
-  playlistUrl: string;
-  page?: number;
+  url?: string;
+  start?: number;
+  stop?: number;
+  query?: string;
+  sortDownloaded?: boolean;
 }
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
@@ -1711,6 +1717,7 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
       stack: (error as Error).stack
     });
 
+    // deno-lint-ignore no-explicit-any
     const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
@@ -1730,6 +1737,7 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
  * @returns {Promise<boolean>} Resolves to true if all downloads successful
  */
+// deno-lint-ignore no-explicit-any
 async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`);
 
@@ -1754,9 +1762,11 @@ async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
   );
 
   // Check for any failures
+  // deno-lint-ignore no-explicit-any
   const allSuccessful = downloadResults.every((result: any) => result && result.status === 'success');
 
   // Log results
+  // deno-lint-ignore no-explicit-any
   downloadResults.forEach((result: any) => {
     if (result.status === 'success') {
       logger.info(`Downloaded ${result.title} successfully`);
@@ -1781,6 +1791,7 @@ async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
  *   - status: 'success' | 'failed'
  *   - error?: Error message if failed
  */
+// deno-lint-ignore no-explicit-any
 async function downloadWithSemaphore(downloadItem: any) {
   logger.trace(`Starting download with semaphore: ${JSON.stringify(downloadItem)}`);
 
@@ -1832,7 +1843,8 @@ async function downloadWithSemaphore(downloadItem: any) {
  *   - status: 'success' | 'failed' 
  *   - error?: Error message if failed
  */
-async function executeDownload(downloadItem: any, processKey: string) {
+// deno-lint-ignore no-explicit-any
+function executeDownload(downloadItem: any, processKey: string) {
   const { url: videoUrl, title: videoTitle,
     saveDirectory: saveDirectory, videoId: videoId } = downloadItem;
 
@@ -1982,6 +1994,7 @@ async function executeDownload(downloadItem: any, processKey: string) {
               syncStatus.subTitleFileFound &&
               syncStatus.thumbNailFileFound;
 
+            // deno-lint-ignore no-explicit-any
             (updates as any).isMetaDataSynced = true;
 
             // Log metadata sync status
@@ -2003,12 +2016,17 @@ async function executeDownload(downloadItem: any, processKey: string) {
 
             // Notify frontend: send saveDirectory and fileName
             try {
+              // deno-lint-ignore no-explicit-any
               const fileName = (updates as any).fileName;
+              // deno-lint-ignore no-explicit-any
               const thumbNailFile = (updates as any).thumbNailFile;
+              // deno-lint-ignore no-explicit-any
               const subTitleFile = (updates as any).subTitleFile;
+              // deno-lint-ignore no-explicit-any
               const descriptionFile = (updates as any).descriptionFile;
+              // deno-lint-ignore no-explicit-any
               const isMetaDataSynced = (updates as any).isMetaDataSynced;
-              let saveDir = computeSaveDirectory(savePath);
+              const saveDir = computeSaveDirectory(savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
               if (typeof saveDirectory !== 'undefined' && saveDir === saveDirectory.trim()) {
@@ -2041,6 +2059,7 @@ async function executeDownload(downloadItem: any, processKey: string) {
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
+                // deno-lint-ignore no-explicit-any
                 fileName: (updates as any).fileName,
                 saveDirectory: ""
               });
@@ -2065,6 +2084,7 @@ async function executeDownload(downloadItem: any, processKey: string) {
             });
 
             safeEmit("download-failed", {
+              // deno-lint-ignore no-explicit-any
               title: videoEntry ? (videoEntry as any).title : videoTitle,
               url: videoUrl
             });
@@ -2146,9 +2166,10 @@ const listProcesses = new Map(); // Map to track listing processes
 const ListingSemaphore = {
   maxConcurrent: config.queue.maxListings,
   currentConcurrent: 0,
+  // deno-lint-ignore no-explicit-any
   queue: [] as Array<(value?: any) => void>,
 
-  async acquire() {
+  acquire() {
     return new Promise(resolve => {
       if (this.currentConcurrent < this.maxConcurrent) {
         this.currentConcurrent++;
@@ -2192,6 +2213,7 @@ const ListingSemaphore = {
  * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body
  * @returns {Promise<void>} Resolves when listing processes are started
  */
+// deno-lint-ignore no-explicit-any
 async function processListingRequest(requestBody: any, response: ServerResponse) {
   try {
     // Validate required parameters
@@ -2229,12 +2251,15 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
 
       if (playlistEntry) {
         logger.debug(`Playlist found in database`, { url: normalizedUrl });
+        // deno-lint-ignore no-explicit-any
         if ((playlistEntry as any).monitoringType === monitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
           safeEmit("listing-playlist-skipped-because-same-monitoring", {
+            // deno-lint-ignore no-explicit-any
             message: `Playlist ${(playlistEntry as any).title} is already being monitored with type ${monitoringType}, skipping.`
           });
           continue; // Skip as it's already monitored
+          // deno-lint-ignore no-explicit-any
         } else if ((playlistEntry as any).monitoringType !== monitoringType) {
           // If the monitoring type change is Full the reindex the entire playlist,
           // if it is changed to Fast then update from the last index known
@@ -2242,6 +2267,7 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
           itemsToList.push({
             url: normalizedUrl,
             type: "playlist",
+            // deno-lint-ignore no-explicit-any
             previousMonitoringType: (playlistEntry as any).monitoringType,
             currentMonitoringType: monitoringType,
             reason: `Monitoring type changed`
@@ -2255,9 +2281,11 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
       });
       if (videoEntry) {
         logger.debug(`Video found in database`, { url: normalizedUrl });
+        // deno-lint-ignore no-explicit-any
         if ((videoEntry as any).downloadStatus) {
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
           safeEmit("listing-video-skipped-because-downloaded", {
+            // deno-lint-ignore no-explicit-any
             message: `Video ${(videoEntry as any).title} is already downloaded, skipping.`
           });
           continue; // Skip as it's already downloaded
@@ -2317,6 +2345,7 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
  * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
  * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
  */
+// deno-lint-ignore no-explicit-any
 async function listItemsConcurrently(items: Array<any>, chunkSize: number, shouldSleep: boolean) {
   logger.trace(`Listing ${items.length} items concurrently (chunk size: ${chunkSize})`);
 
@@ -2337,10 +2366,12 @@ async function listItemsConcurrently(items: Array<any>, chunkSize: number, shoul
   );
 
   // Check for any failures
+  // deno-lint-ignore no-explicit-any
   const allSuccessful = listingResults.every((result: any) => result && result.status === 'success');
 
   // Log results
   try {
+    // deno-lint-ignore no-explicit-any
     listingResults.forEach((result: any) => {
       if (result.status === 'completed') {
         logger.info(`Listed ${result.title} successfully`);
@@ -2372,6 +2403,7 @@ async function listItemsConcurrently(items: Array<any>, chunkSize: number, shoul
  *   - status: 'success' | 'failed'
  *   - error?: Error message if failed
  */
+// deno-lint-ignore no-explicit-any
 async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: boolean) {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
@@ -2408,6 +2440,7 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
     // Execute listing process
     const result = await executeListing(item, entryKey, chunkSize, shouldSleep);
     // Null out the spawned process as it's completed and we don't want to keep it in logs
+    // deno-lint-ignore no-explicit-any
     (listEntry as any)["spawnedProcess"] = null;
     logger.trace(`Listing completed`, {
       result: JSON.stringify(result),
@@ -2437,10 +2470,11 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
  * @param {boolean} isScheduledUpdate - Indicates if the listing is part of a scheduled update
  * @returns {Promise<Object>} The result of the listing process
  */
+// deno-lint-ignore no-explicit-any
 async function executeListing(item: any, processKey: string, chunkSize: number, shouldSleep: boolean, isScheduledUpdate = false) {
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
-  let processedChunks = 0;
+  const processedChunks = 0;
   let playlistTitle = "";
   let seekPlaylistListTo = 0;
 
@@ -2489,9 +2523,11 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
       });
       if (existingPlaylist) {
         logger.debug(`Playlist already exists in database`, { url: videoUrl });
+        // deno-lint-ignore no-explicit-any
         if ((existingPlaylist as any).monitoringType === currentMonitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: videoUrl });
           return handleEmptyResponse(videoUrl);
+          // deno-lint-ignore no-explicit-any
         } else if ((existingPlaylist as any).monitoringType !== currentMonitoringType) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           // Update the monitoring type in the database
@@ -2501,12 +2537,15 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
+        // deno-lint-ignore no-explicit-any
         playlistTitle = (existingPlaylist as any).title;
       } else {
         // If the playlist doesn't exist, add it to the database
         logger.debug(`Playlist not found in database, adding to database`, { url: videoUrl });
         const newPlaylist = await addPlaylist(videoUrl, currentMonitoringType);
+        // deno-lint-ignore no-explicit-any
         playlistTitle = (newPlaylist as any).title;
+        // deno-lint-ignore no-explicit-any
         seekPlaylistListTo = (newPlaylist as any).sortOrder;
       }
       return await handlePlaylistListing({
@@ -2563,6 +2602,7 @@ async function determineInitialRange(itemType: string, monitoringType: string, p
         limit: 1
       });
       if (lastVideo) {
+        // deno-lint-ignore no-explicit-any
         startIndex = (lastVideo as any).positionInPlaylist + 1;
         endIndex = startIndex + chunkSize;
       }
@@ -2577,6 +2617,7 @@ async function determineInitialRange(itemType: string, monitoringType: string, p
  * @param {object} videoEntry - The video entry in the database
  * @returns {object} Object containing paths to discovered metadata files and sync status
  */
+// deno-lint-ignore no-explicit-any
 function discoverFiles(mainFileName: string | null, savePath: string, videoEntry: any) {
   const metadata = {
     fileName: null as string | null,
@@ -2814,6 +2855,7 @@ function handleEmptyResponse(videoUrl: string) {
  * @param {number} item.processedChunks - The number of chunks that have been processes
  * @returns {Promise<void>} Resolves when the playlist listing is complete.
  */
+// deno-lint-ignore no-explicit-any
 async function handlePlaylistListing(item: any) {
   const { videoUrl, responseItems, startIndex, chunkSize,
     shouldSleep, isScheduledUpdate, playlistTitle, seekPlaylistListTo, processKey } = item;
@@ -2876,6 +2918,7 @@ async function handlePlaylistListing(item: any) {
  * @param {boolean} item.isScheduledUpdate - Indicates if this is a scheduled update.
  * @returns {Promise<Object|undefined>} A promise that resolves to an object containing the video URL, title, status, and processed chunks if successful, or undefined if no processing is needed.
  */
+// deno-lint-ignore no-explicit-any
 async function handleSingleVideoListing(item: any) {
   const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } = item;
   const playlistUrl = "None";
@@ -2897,6 +2940,7 @@ async function handleSingleVideoListing(item: any) {
     attributes: ["positionInPlaylist"],
     limit: 1
   });
+  // deno-lint-ignore no-explicit-any
   const newStartIndex = lastVideo ? (lastVideo as any).positionInPlaylist + 1 : startIndex;
   const result = await processVideoInformation(responseItems, playlistUrl, newStartIndex, isScheduledUpdate);
   if (result.count === 1) {
@@ -2989,7 +3033,7 @@ function completePlaylistListing(videoUrl: string, processedChunks: number, play
  * @returns {Promise<string[]>} Array of video information strings
  * @throws {Error} If process spawn fails or max processes reached
  */
-async function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: number, processedChunks: number, processKey: string): Promise<string[]> {
+function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: number, processedChunks: number, processKey: string): Promise<string[]> {
   logger.trace("Fetching items from the given inputs", {
     url: videoUrl,
     start: startIndex,
@@ -3166,6 +3210,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
       limit: 1
     });
 
+    // deno-lint-ignore no-explicit-any
     lastProcessedIndex = lastItem ? (lastItem as any).positionInPlaylist + 1 : 1;
     logger.debug("Found last processed index", { index: lastProcessedIndex });
   }
@@ -3192,6 +3237,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
   ]);
 
   const [existingVideos, existingIndexes] = existingItems;
+  // deno-lint-ignore no-explicit-any
   const allExist = existingVideos.every((v: any) => v) && existingIndexes.every((i: any) => i);
 
   if (allExist) {
@@ -3199,6 +3245,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
     for (let i = 0; i < existingVideos.length; i++) {
       if (existingVideos[i]) {
         result.count++;
+        // deno-lint-ignore no-explicit-any
         result.title = (existingVideos[i] as any).title;
         result.alreadyExisted = true;
       }
@@ -3260,6 +3307,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
     }
   }));
   logger.debug("Processed video information", { result: JSON.stringify(result) });
+  // deno-lint-ignore no-explicit-any
   return result as any;
 }
 /**
@@ -3273,6 +3321,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
  * @param {boolean} newData.isAvailable - Video availability status
  * @returns {Promise<void>} Resolves when update complete
  */
+// deno-lint-ignore no-explicit-any
 async function updateVideoMetadata(existingVideo: any, newData: any) {
   logger.trace("Checking video metadata for updates", {
     videoId: existingVideo.videoId,
@@ -3346,6 +3395,7 @@ async function updateVideoMetadata(existingVideo: any, newData: any) {
  * @returns {Promise<void>} Resolves when monitoring type is updated
  * @throws {Error} If required parameters are missing or update fails
  */
+// deno-lint-ignore no-explicit-any
 async function updatePlaylistMonitoring(requestBody: any, response: ServerResponse) {
   try {
     // Validate required parameters
@@ -3378,6 +3428,7 @@ async function updatePlaylistMonitoring(requestBody: any, response: ServerRespon
 
     logger.debug("Successfully updated monitoring type", {
       playlistUrl,
+      // deno-lint-ignore no-explicit-any
       oldType: (playlist as any).monitoringType,
       newType: monitoringType
     });
@@ -3397,6 +3448,7 @@ async function updatePlaylistMonitoring(requestBody: any, response: ServerRespon
     });
 
     // Send error response
+    // deno-lint-ignore no-explicit-any
     const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
@@ -3425,6 +3477,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   });
 
   if (lastPlaylist !== null) {
+    // deno-lint-ignore no-explicit-any
     nextPlaylistIndex = (lastPlaylist as any).sortOrder + 1;
   }
 
@@ -3551,6 +3604,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
+// deno-lint-ignore no-explicit-any
 async function processDeletePlaylistRequest(requestBody: any, response: ServerResponse) {
   try {
     logger.debug("Received playlist delete request", { "requestBody": JSON.stringify(requestBody) });
@@ -3575,6 +3629,7 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
       return response.end(JSON.stringify({ "status": "error", "message": "Cannot delete the default playlist" }));
     }
 
+    // deno-lint-ignore no-explicit-any
     const playlist = await PlaylistMetadata.findByPk(playListUrl) as any;
     if (!playlist) {
       logger.error("Playlist not found", { "requestBody": JSON.stringify(requestBody) });
@@ -3679,6 +3734,7 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
+// deno-lint-ignore no-explicit-any
 async function processDeleteVideosRequest(requestBody: any, response: ServerResponse) {
   try {
     logger.debug("Received video delete request", { "requestBody": JSON.stringify(requestBody) });
@@ -3725,6 +3781,7 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
 
       for (const videoUrl of videoUrls) {
         try {
+          // deno-lint-ignore no-explicit-any
           const video = await VideoMetadata.findByPk(videoUrl) as any;
 
           if (!video) {
@@ -3750,6 +3807,7 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
             for (const [key, value] of Object.entries(filesToRemove)) {
               if (value) {
                 try {
+                  // deno-lint-ignore no-explicit-any
                   const filePath = path.join(config.saveLocation, (playlist as any).saveDirectory, value);
                   logger.debug("Removing file", { videoUrl, key, value, filePath });
                   fs.unlinkSync(filePath);
@@ -3806,6 +3864,7 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
 
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
+        // deno-lint-ignore no-explicit-any
         "message": `Processed ${deleted.length} video(s) from playlist ${(playlist as any).title}`,
         "deleted": deleted,
         "failed": failed,
@@ -3866,6 +3925,7 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
     );
 
     // Build base query
+    // deno-lint-ignore no-explicit-any
     const queryOptions: any = {
       where: {
         sortOrder: {
@@ -3905,6 +3965,7 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
       stack: (error as Error).stack
     });
 
+    // deno-lint-ignore no-explicit-any
     const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
@@ -3925,7 +3986,7 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
  * @returns {Promise<void>} Resolves when video data is sent to frontend
  * @throws {Error} If database query fails
  */
-async function getSubListVideos(requestBody: any, response: ServerResponse) {
+async function getSubListVideos(requestBody: SubListRequest, response: ServerResponse) {
   try {
     // Extract and validate parameters
     const playlistUrl = requestBody.url ?? "None";
@@ -3952,6 +4013,7 @@ async function getSubListVideos(requestBody: any, response: ServerResponse) {
     });
 
     // Build base query options
+    // deno-lint-ignore no-explicit-any
     const videoMetadataWhere: any = {};
 
     if (searchQuery && searchQuery.length > 0) {
@@ -3989,13 +4051,14 @@ async function getSubListVideos(requestBody: any, response: ServerResponse) {
         ],
         where: videoMetadataWhere,
         // Use Inner Join (strict) if searching, otherwise Left Join (loose)
-        required: (searchQuery && searchQuery.length > 0)
+        required: !!(searchQuery && searchQuery.length > 0)
       }],
       where: {
         playlistUrl: playlistUrl
       },
       limit: endIndex - startIndex,
       offset: startIndex,
+      // deno-lint-ignore no-explicit-any
       order: [sortOrder] as any
     };
 
@@ -4006,11 +4069,13 @@ async function getSubListVideos(requestBody: any, response: ServerResponse) {
     let playlistSaveDir = "";
     try {
       const playlist = await PlaylistMetadata.findOne({ where: { playlistUrl } });
+      // deno-lint-ignore no-explicit-any
       playlistSaveDir = (playlist as any)?.saveDirectory ?? "";
     } catch (err) {
       logger.warn('Could not fetch playlist saveDirectory', { playlistUrl, error: (err as Error).message });
     }
 
+    // deno-lint-ignore no-explicit-any
     const safeRows = results.rows.map((row: any) => {
       const vm = row.video_metadatum || {};
       // fileName logic removed as it was unused and redundant
@@ -4047,6 +4112,7 @@ async function getSubListVideos(requestBody: any, response: ServerResponse) {
       stack: (error as Error).stack
     });
 
+    // deno-lint-ignore no-explicit-any
     const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
@@ -4167,6 +4233,7 @@ if (config.nativeHttps) {
   serverObj = http;
 }
 
+// deno-lint-ignore no-explicit-any
 const server = (serverObj as any).createServer(serverOptions, async (req: IncomingMessage, res: ServerResponse) => {
   if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
     try {
@@ -4462,12 +4529,14 @@ server.listen(config.port, async () => {
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
     logger.info(`Started ${name} job`, {
+      // deno-lint-ignore no-explicit-any
       schedule: (job as any).cronTime.source,
       nextRun: job.nextDate().toLocaleString(
         {
           weekday: 'short', month: 'short', day: '2-digit',
           hour: '2-digit', minute: '2-digit'
         },
+        // deno-lint-ignore no-explicit-any
         { timeZone: config.timeZone } as any)
     });
   }
