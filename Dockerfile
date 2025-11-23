@@ -133,9 +133,6 @@ COPY --from=frontend-builder /app/dist ./dist
 COPY deno.json ./
 COPY index.ts ./
 
-# Cache Deno dependencies
-RUN deno cache index.ts
-
 # Create a non-root user and group for running the application
 RUN groupadd ytdiff --gid=1000 && \
     useradd --system --shell /bin/false --gid 1000 --uid 1000 --home /home/ytdiff ytdiff && \
