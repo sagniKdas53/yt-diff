@@ -2,6 +2,7 @@
   "version": "5",
   "specifiers": {
     "npm:@types/cron@^2.0.1": "2.4.3",
+    "npm:@types/node@*": "24.2.0",
     "npm:bcryptjs@*": "3.0.3",
     "npm:bcryptjs@^3.0.3": "3.0.3",
     "npm:bootstrap@^5.2.3": "5.3.8_@popperjs+core@2.11.8",

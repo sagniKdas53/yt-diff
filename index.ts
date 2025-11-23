@@ -1,9 +1,10 @@
+/// <reference lib="deno.ns" />
 import { Sequelize, DataTypes, Op } from "npm:sequelize";
 import { spawn } from "node:child_process";
 import color from "npm:cli-color";
 import { CronJob } from "npm:cron";
 import fs from "node:fs";
-import http from "node:http";
+import http, { IncomingMessage, ServerResponse } from "node:http";
 import https from "node:https";
 import path from "node:path";
 import bcrypt from "npm:bcryptjs";
@@ -11,18 +12,22 @@ import jwt from "npm:jsonwebtoken";
 import he from "npm:he";
 import pg from "npm:pg";
 import Redis from "npm:ioredis";
-import { Server } from "npm:socket.io";
+import { Server, Socket } from "npm:socket.io";
 import { pipeline } from "node:stream";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
 
 const pipelineAsync = promisify(pipeline);
 
+interface LogFields {
+  [key: string]: string | number | boolean | Error | null | undefined;
+}
+
 // Configuration object
 const config = {
   protocol: Deno.env.get("PROTOCOL") || "http",
   host: Deno.env.get("HOSTNAME") || "localhost",
-  port: +Deno.env.get("PORT") || 8888,
+  port: +(Deno.env.get("PORT") || 8888),
   nativeHttps: Deno.env.get("USE_NATIVE_HTTPS") === "true" || false,
   hidePorts: Deno.env.get("HIDE_PORTS") === "true",
   defaultCORSMaxAge: 2592000, // 30 days
@@ -37,26 +42,26 @@ const config = {
     user: Deno.env.get("DB_USERNAME") || "ytdiff",
     name: "vidlist",
     password: Deno.env.get("DB_PASSWORD_FILE")
-      ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE"), "utf8").trim()
-      : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD").trim()
+      ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
+      : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
         ? Deno.env.get("DB_PASSWORD")
         : new Error("DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set"),
   },
   redis: {
     host: Deno.env.get("REDIS_HOST") || "localhost",
-    port: +Deno.env.get("REDIS_PORT") || 6379,
+    port: +(Deno.env.get("REDIS_PORT") || 6379),
     password: Deno.env.get("REDIS_PASSWORD") || null,
   },
   cache: {
-    maxItems: +Deno.env.get("CACHE_MAX_ITEMS") || 100,
-    maxAge: +Deno.env.get("CACHE_MAX_AGE") || 3600, // keep cache for 1 hour
-    reqPerIP: +Deno.env.get("MAX_REQUESTS_PER_IP") || 10
+    maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 100),
+    maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
+    reqPerIP: +(Deno.env.get("MAX_REQUESTS_PER_IP") || 10)
   },
   queue: {
-    maxListings: +Deno.env.get("MAX_LISTINGS") || 2,
-    maxDownloads: +Deno.env.get("MAX_DOWNLOADS") || 2,
+    maxListings: +(Deno.env.get("MAX_LISTINGS") || 2),
+    maxDownloads: +(Deno.env.get("MAX_DOWNLOADS") || 2),
     cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *", // every 10 minutes
-    maxIdle: +Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000, // 5 minutes
+    maxIdle: +(Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000), // 5 minutes
   },
   registration: {
     allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",
@@ -64,16 +69,16 @@ const config = {
   },
   saveLocation: Deno.env.get("SAVE_PATH") || "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
   cookiesFile: Deno.env.get("COOKIES_FILE")
-    ? fs.existsSync(Deno.env.get("COOKIES_FILE"))
+    ? fs.existsSync(Deno.env.get("COOKIES_FILE")!)
       ? Deno.env.get("COOKIES_FILE") : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
     : false,
   proxy_string: Deno.env.get("PROXY_STRING_FILE")
-    ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE"), "utf8").trim().replace(/['"\n]+/g, '')
-    : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING").trim()
-      ? `${Deno.env.get("PROXY_STRING").trim().replace(/['"\n]+/g, '')}` // make sure it's not quoted
+    ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim().replace(/['"\n]+/g, '')
+    : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
+      ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, '')}` // make sure it's not quoted
       : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: Deno.env.get("SLEEP") ?? 3,
-  chunkSize: +Deno.env.get("CHUNK_SIZE_DEFAULT") || 10,
+  chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
   timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
   saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
@@ -81,15 +86,15 @@ const config = {
   saveComments: Deno.env.get("SAVE_COMMENTS") !== "false",
   saveThumbnail: Deno.env.get("SAVE_THUMBNAIL") !== "false",
   restrictFilenames: Deno.env.get("RESTRICT_FILENAMES") !== "false",
-  maxFileNameLength: +Deno.env.get("MAX_FILENAME_LENGTH") || NaN, // No truncation by default
+  maxFileNameLength: +(Deno.env.get("MAX_FILENAME_LENGTH") || NaN), // No truncation by default
   logLevel: (Deno.env.get("LOG_LEVELS") || "trace").toLowerCase(),
   logDisableColors: Deno.env.get("NO_COLOR") === "true",
   maxTitleLength: 255,
   saltRounds: 10,
   secretKey: Deno.env.get("SECRET_KEY_FILE")
-    ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE"), "utf8").trim()
-    : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY").trim()
-      ? Deno.env.get("SECRET_KEY").trim()
+    ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
+    : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
+      ? Deno.env.get("SECRET_KEY")!.trim()
       : new Error("SECRET_KEY or SECRET_KEY_FILE environment variable must be set"),
   maxClients: 10,
   connectedClients: 0,
@@ -114,7 +119,7 @@ if (config.logDisableColors || !Deno.stdout.isTerminal()) {
  *        Strings will be escaped, Errors will include message and stack trace, null and undefined will be logged as null.
  * @returns {string} The formatted log entry.
  */
-const logfmt = (level, message, fields = {}) => {
+const logfmt = (level: string, message: string, fields: LogFields = {}) => {
   let logEntry = `level=${level} msg="${message
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
@@ -163,27 +168,27 @@ const logfmt = (level, message, fields = {}) => {
  * logger.error('This is an error message', { additional: 'info' });
  */
 const logger = {
-  trace: (message, fields = {}) => {
+  trace: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("trace")) {
       console.debug(honeyDew(logfmt('trace', message, fields)));
     }
   },
-  debug: (message, fields = {}) => {
+  debug: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
       console.debug(color.magentaBright(logfmt('debug', message, fields)));
     }
   },
-  info: (message, fields = {}) => {
+  info: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("info")) {
       console.log(color.blueBright(logfmt('info', message, fields)));
     }
   },
-  warn: (message, fields = {}) => {
+  warn: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("warn")) {
       console.warn(orange(logfmt('warn', message, fields)));
     }
   },
-  error: (message, fields = {}) => {
+  error: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("error")) {
       console.error(color.redBright(logfmt('error', message, fields)));
     }
@@ -228,7 +233,7 @@ const downloadOptions = [
   "--print", config.restrictFilenames ? "post_process:\"fileName:%(id)s.%(ext)s\"" : "post_process:\"fileName:%(title)s[%(id)s].%(ext)s\"",
   "--progress-template", "download-title:%(info.id)s-%(progress.eta)s",
   ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
-].filter(Boolean);
+].filter(Boolean) as string[];
 // Check if file name length limit is set and valid
 if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
   downloadOptions.push(`--trim-filenames`);
@@ -238,7 +243,7 @@ if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
 const playlistRegex = /(?:playlist|list=)\b/i;
 
 // Static content and server configuration
-const MIME_TYPES = {
+const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -285,19 +290,19 @@ if (!fs.existsSync(config.saveLocation)) {
   } catch (error) {
     logger.error("Failed to create save location", {
       saveLocation: config.saveLocation,
-      error: error.message
+      error: (error as Error).message
     });
-    throw new Error(`Failed to create save location: ${error.message}`);
+    throw new Error(`Failed to create save location: ${(error as Error).message}`);
   }
 }
 
-const redis = new Redis({
+const redis = new (Redis as any)({
   host: config.redis.host,
   port: config.redis.port,
   password: config.redis.password,
 });
 
-redis.on("error", (err) => {
+redis.on("error", (err: Error) => {
   logger.error("Redis error", { error: err.message });
 });
 
@@ -311,13 +316,13 @@ redis.on("connect", () => {
  * @param {string} event - Event name
  * @param {any} payload - Event payload
  */
-function safeEmit(event, payload) {
+function safeEmit(event: string, payload: any) {
   try {
     if (typeof sock !== 'undefined' && sock && typeof sock.emit === 'function') {
       sock.emit(event, payload);
     }
   } catch (e) {
-    logger.warn('safeEmit failed', { event, error: e && e.message });
+    logger.warn('safeEmit failed', { event, error: e ? (e as Error).message : "Unknown error" });
   }
 }
 
@@ -338,7 +343,7 @@ try {
   });
 } catch (error) {
   logger.error("Unable to connect to the database",
-    { host: config.db.host, database: config.db.name, error: error });
+    { host: config.db.host, database: config.db.name, error: (error as Error).message });
   throw error;
 }
 
@@ -572,7 +577,7 @@ sequelize
   .then(async () => {
     logger.info(
       "tables exist or are created successfully",
-      { host: config.db.host, database: config.db.name, tables: [VideoMetadata.name, PlaylistMetadata.name, PlaylistVideoMapping.name] }
+      { host: config.db.host, database: config.db.name, tables: JSON.stringify([(VideoMetadata as any).name, (PlaylistMetadata as any).name, (PlaylistVideoMapping as any).name]) }
     );
     // Making the unlisted playlist
     const [unlistedPlaylist, created] = await PlaylistMetadata.findOrCreate({
@@ -588,7 +593,7 @@ sequelize
     if (created) {
       logger.info(
         "Unlisted playlist created successfully",
-        { host: config.db.host, database: config.db.name, tables: [unlistedPlaylist.name] }
+        { host: config.db.host, database: config.db.name, tables: JSON.stringify([(unlistedPlaylist as any).name]) }
       );
     }
     // Replace the existing default user creation code with:
@@ -605,7 +610,7 @@ sequelize
       );
     }
   })
-  .catch((error) => {
+  .catch((error: Error) => {
     logger.error(`Unable to create table`, { error: error });
   });
 
@@ -642,7 +647,7 @@ const jobs = {
           {
             weekday: 'short', month: 'short', day: '2-digit',
             hour: '2-digit', minute: '2-digit'
-          }, { timeZone: config.timeZone })
+          }, { timeZone: config.timeZone } as any)
       });
     },
     null,
@@ -675,12 +680,12 @@ const jobs = {
  * @returns {Promise<Object>} Parsed JSON data from request body
  * @throws {Object} Error with status code and message if request is too large or JSON is invalid
  */
-async function parseRequestJson(request) {
+async function parseRequestJson(request: IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
     let requestBody = "";
     const maxRequestSize = 1e6; // 1MB limit
 
-    request.on("data", chunk => {
+    request.on("data", (chunk: Buffer) => {
       requestBody += chunk;
 
       // Check request size
@@ -718,13 +723,13 @@ async function parseRequestJson(request) {
           url: request.url,
           size: requestBody.length,
           method: request.method,
-          error: error.message
+          error: (error as Error).message
         });
 
         reject({ status: 400, message: "Invalid JSON" });
       }
     });
-    request.on("error", (err) => {
+    request.on("error", (err: Error) => {
       reject({ status: 500, message: "Request stream error", error: err.message });
     });
   });
@@ -735,12 +740,12 @@ async function parseRequestJson(request) {
    * @param {string} url - URL to process
    * @returns {string} Fixed URL
    */
-function normalizeUrl(url) {
+function normalizeUrl(url: string) {
   let hostname = "";
   try {
     hostname = (new URL(url)).hostname;
   } catch (e) {
-    logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: e.message });
+    logger.warn(`Invalid videoUrl: ${url}`, { error: (e as Error).message });
   }
   // Non-exhaustive list of YouTube hostnames, can be expanded as needed
   // Also handles youtu.be short URLs
@@ -764,7 +769,7 @@ function normalizeUrl(url) {
    * @param {string} url - URL to convert to title
    * @returns {Promise<string>} Generated title
    */
-async function urlToTitle(url) {
+async function urlToTitle(url: string) {
   try {
     // Extract path segments and join them
     const pathSegments = new URL(url).pathname.split("/");
@@ -779,7 +784,7 @@ async function urlToTitle(url) {
   } catch (error) {
     logger.error("Failed to generate title from URL", {
       url,
-      error: error.message
+      error: (error as Error).message
     });
     return url;
   }
@@ -794,7 +799,7 @@ async function sleep(seconds = config.sleepTime) {
   logger.trace(`Sleeping for ${seconds} seconds`);
 
   const start = Date.now();
-  await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+  await new Promise(resolve => setTimeout(resolve, (seconds as number) * 1000));
   const duration = (Date.now() - start) / 1000;
 
   logger.trace(`Sleep completed after ${duration} seconds`);
@@ -806,7 +811,7 @@ async function sleep(seconds = config.sleepTime) {
    * @param {number} maxLength - Maximum allowed length
    * @returns {Promise<string>} Truncated string
    */
-async function truncateText(text, maxLength) {
+async function truncateText(text: string, maxLength: number) {
   if (!text || typeof text !== 'string') {
     logger.warn("Invalid text provided for truncation", {
       text,
@@ -829,12 +834,12 @@ async function truncateText(text, maxLength) {
  * @param {string} videoUrl - The URL of the video to check.
  * @returns {boolean} True if the URL's hostname is x.com or a subdomain of x.com, false otherwise.
  */
-function isSiteXDotCom(videoUrl) {
+function isSiteXDotCom(videoUrl: string) {
   let hostname = "";
   try {
     hostname = (new URL(videoUrl)).hostname;
   } catch (e) {
-    logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: e.message });
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: (e as Error).message });
   }
   // Only match x.com or its subdomains (e.g. foo.x.com)
   const allowedXHost = 'x.com';
@@ -850,13 +855,13 @@ function isSiteXDotCom(videoUrl) {
  * @returns {Promise<[string, string]>} Promise resolving to [salt, hashedPassword]
  * @throws {Error} If hashing fails
  */
-async function hashPassword(plaintextPassword) {
+async function hashPassword(plaintextPassword: string) {
   try {
     const salt = await bcrypt.genSalt(config.saltRounds);
     const hashedPassword = await bcrypt.hash(plaintextPassword, salt);
     return [salt, hashedPassword];
   } catch (error) {
-    logger.error('Password hashing failed', { error: error.message });
+    logger.error('Password hashing failed', { error: (error as Error).message });
     throw new Error('Failed to secure password');
   }
 }
@@ -869,7 +874,7 @@ async function hashPassword(plaintextPassword) {
  * @param {string} expiryDuration - Token expiry duration (e.g., "24h", "7d")
  * @returns {string} JWT token
  */
-function generateAuthToken(user, expiryDuration) {
+function generateAuthToken(user: any, expiryDuration: string) {
   return jwt.sign(
     {
       id: user.id,
@@ -886,7 +891,7 @@ function generateAuthToken(user, expiryDuration) {
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when registration completes
  */
-async function registerUser(request, response) {
+async function registerUser(request: IncomingMessage, response: ServerResponse) {
   try {
     // Check if registration is enabled
     if (!config.registration.allowed) {
@@ -910,14 +915,14 @@ async function registerUser(request, response) {
     try {
       requestData = await parseRequestJson(request);
     } catch (error) {
-      logger.error("Failed to parse request JSON", { error: error.message });
+      logger.error("Failed to parse request JSON", { error: (error as Error).message });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
-        message: `${error.message || "Invalid request"}`
+        message: `${(error as Error).message || "Invalid request"}`
       }));
     }
-    const { userName, password } = requestData;
+    const { userName, password } = requestData as any;
 
     // Validate password length (bcrypt limit is 72 bytes)
     if (Buffer.byteLength(password, 'utf8') > 72) {
@@ -960,7 +965,7 @@ async function registerUser(request, response) {
     }));
 
   } catch (error) {
-    logger.error("Registration failed", { error: error.message });
+    logger.error("Registration failed", { error: (error as Error).message });
     response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: 'error',
@@ -975,7 +980,7 @@ async function registerUser(request, response) {
  * @param {*} response Response object to send result
  * @returns {Promise<void>} Resolves with registration status
  */
-async function isRegistrationAllowed(request, response) {
+async function isRegistrationAllowed(request: IncomingMessage, response: ServerResponse) {
   let allow = true;
   if (!config.registration.allowed) {
     allow = false;
@@ -984,14 +989,14 @@ async function isRegistrationAllowed(request, response) {
   try {
     requestData = await parseRequestJson(request);
   } catch (err) {
-    logger.error("Failed to parse request JSON", { error: err.message });
+    logger.error("Failed to parse request JSON", { error: (err as Error).message });
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
       status: 'error',
-      message: `${err.message || "Invalid request"}`
+      message: `${(err as Error).message || "Invalid request"}`
     }));
   }
-  const { sendStats } = requestData || { sendStats: false };
+  const { sendStats } = (requestData as any) || { sendStats: false };
   const userCount = await UserAccount.count();
   if (userCount >= config.registration.maxUsers) {
     allow = false;
@@ -1018,7 +1023,7 @@ async function isRegistrationAllowed(request, response) {
  * @param {Function} next - Next middleware function
  * @returns {Promise<void>} Resolves when verification completes
  */
-async function authenticateRequest(request, response, next) {
+async function authenticateRequest(request: IncomingMessage, response: ServerResponse, next: Function) {
   try {
     // Try to get token from Authorization header (Bearer) first, fall back to body
     const authHeader = request.headers && (request.headers.authorization || request.headers.Authorization);
@@ -1084,28 +1089,28 @@ async function authenticateRequest(request, response, next) {
     try {
       requestData = await parseRequestJson(request);
     } catch (error) {
-      logger.error("Failed to parse request JSON", { error: error.message });
+      logger.error("Failed to parse request JSON", { error: (error as Error).message });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
-        message: `${error.message || "Invalid request"}`
+        message: `${(error as Error).message || "Invalid request"}`
       }));
     }
     // Continue to next middleware
     next(requestData, response);
 
   } catch (error) {
-    logger.error("Token verification failed", { error: error.message });
+    logger.error("Token verification failed", { error: (error as Error).message });
 
-    const statusCode = error.name === "TokenExpiredError" ? 401 : 500;
-    const message = error.name === "TokenExpiredError" ? "Token expired" : "Authentication failed";
+    const statusCode = (error as Error).name === "TokenExpiredError" ? 401 : 500;
+    const message = (error as Error).name === "TokenExpiredError" ? "Token expired" : "Authentication failed";
 
-    if (error.name === "TokenExpiredError") {
+    if ((error as Error).name === "TokenExpiredError") {
       if (typeof sock !== 'undefined' && sock && typeof sock.emit === 'function') {
         try {
-          sock.emit("token-expired", { error: error.message });
+          sock.emit("token-expired", { error: (error as Error).message });
         } catch (e) {
-          logger.warn('Failed to emit token-expired on sock', { error: e.message });
+          logger.warn('Failed to emit token-expired on sock', { error: (e as Error).message });
         }
       }
     }
@@ -1124,7 +1129,7 @@ async function authenticateRequest(request, response, next) {
  * @param {Object} socket.handshake - Connection handshake data
  * @returns {Promise<boolean>} Resolves to true if authentication valid
  */
-async function authenticateSocket(socket) {
+async function authenticateSocket(socket: Socket) {
   try {
     const token = socket.handshake.auth.token;
     const decodedToken = jwt.verify(token, config.secretKey);
@@ -1160,12 +1165,12 @@ async function authenticateSocket(socket) {
     return true;
 
   } catch (error) {
-    if (error.name === "JsonWebTokenError") {
+    if ((error as Error).name === "JsonWebTokenError") {
       logger.error("Invalid token format");
-    } else if (error.name === "TokenExpiredError") {
+    } else if ((error as Error).name === "TokenExpiredError") {
       logger.error("Token expired");
     } else {
-      logger.error("Socket authentication failed", { error: error.message });
+      logger.error("Socket authentication failed", { error: (error as Error).message });
     }
     return false;
   }
@@ -1182,12 +1187,12 @@ async function authenticateSocket(socket) {
  * @returns {Promise<void>} Resolves when rate limiting check completes
  */
 async function rateLimit(
-  request,
-  response,
-  currentHandler,
-  nextHandler,
-  maxRequestsPerWindow,
-  windowSeconds
+  request: IncomingMessage,
+  response: ServerResponse,
+  currentHandler: Function,
+  nextHandler: Function,
+  maxRequestsPerWindow: number,
+  windowSeconds: number
 ) {
   const clientIp = request.socket.remoteAddress;
   logger.trace(`Rate limit check for IP ${clientIp}`);
@@ -1219,22 +1224,22 @@ async function rateLimit(
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when authentication completes
  */
-async function authenticateUser(request, response) {
+async function authenticateUser(request: IncomingMessage, response: ServerResponse) {
   try {
     let requestData = {};
     try {
       requestData = await parseRequestJson(request);
     } catch (error) {
-      logger.error("Failed to parse request JSON", { error: error.message });
+      logger.error("Failed to parse request JSON", { error: (error as Error).message });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
-        message: `${error.message || "Invalid request"}`
+        message: `${(error as Error).message || "Invalid request"}`
       }));
     }
 
     // Extract and validate fields
-    if (!requestData.userName || !requestData.password) {
+    if (!(requestData as any).userName || !(requestData as any).password) {
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         status: 'error',
@@ -1247,7 +1252,7 @@ async function authenticateUser(request, response) {
       userName,
       password,
       expiry_time: expiryTime = "31d"
-    } = requestData;
+    } = requestData as any;
 
     // Validate password length
     if (Buffer.byteLength(password, 'utf8') > 72) {
@@ -1277,7 +1282,7 @@ async function authenticateUser(request, response) {
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(password, (user as any).passwordHash);
 
     if (!isPasswordValid) {
       logger.warn(`Authentication failed for user ${userName}`);
@@ -1299,7 +1304,7 @@ async function authenticateUser(request, response) {
     }));
 
   } catch (error) {
-    logger.error("Authentication failed", { error: error.message });
+    logger.error("Authentication failed", { error: (error as Error).message });
     response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: 'error',
@@ -1341,7 +1346,7 @@ async function authenticateUser(request, response) {
  * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body.
  * @returns {Promise<void>} Resolves after sending the HTTP response. On success sends JSON with { status, signedUrlId, expiry }. On error sends a 400 JSON error.
  */
-async function makeSignedUrl(requestBody, response) {
+async function makeSignedUrl(requestBody: any, response: ServerResponse) {
   let absolutePath = null;
   if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
     const saveDirectory = requestBody.saveDirectory || "";
@@ -1402,14 +1407,14 @@ async function makeSignedUrl(requestBody, response) {
  * @param {Object} requestBody - The request body containing the list of files.
  * @param {http.ServerResponse} response - The HTTP response object.
  */
-async function makeSignedUrls(requestBody, response) {
+async function makeSignedUrls(requestBody: any, response: ServerResponse) {
   if (!requestBody || !requestBody.files || !Array.isArray(requestBody.files)) {
     logger.warn('makeSignedUrls missing or invalid parameters', { requestBody });
     response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
     return response.end(JSON.stringify({ status: 'error', message: 'files array is required' }));
   }
 
-  const results = {};
+  const results: Record<string, any> = {};
   const now = Date.now();
 
   for (const file of requestBody.files) {
@@ -1466,14 +1471,14 @@ const downloadProcesses = new Map(); // Map to track download processes
 const DownloadSemaphore = {
   maxConcurrent: 2,
   currentConcurrent: 0,
-  queue: [],
+  queue: [] as Array<(value?: any) => void>,
 
   async acquire() {
     return new Promise(resolve => {
       if (this.currentConcurrent < this.maxConcurrent) {
         this.currentConcurrent++;
         logger.debug(`Semaphore acquired, current concurrent: ${this.currentConcurrent}`);
-        resolve();
+        resolve(undefined);
       } else {
         logger.debug(`Semaphore full, queuing request`);
         this.queue.push(resolve);
@@ -1485,20 +1490,20 @@ const DownloadSemaphore = {
     if (this.queue.length > 0) {
       const next = this.queue.shift();
       logger.debug(`Semaphore released, current concurrent: ${this.currentConcurrent}`);
-      next();
+      if (next) next();
     } else {
       logger.debug(`Semaphore released`);
       this.currentConcurrent--;
     }
   },
 
-  setMaxConcurrent(max) {
+  setMaxConcurrent(max: number) {
     this.maxConcurrent = max;
     // Check if we can start any queued tasks
     while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
       const next = this.queue.shift();
       this.currentConcurrent++;
-      next();
+      if (next) next();
     }
   }
 };
@@ -1508,8 +1513,8 @@ const DownloadSemaphore = {
    * @param {Map<string, {status: string}>} processMap - Map of process entries
    * @returns {Object} Object containing process states by ID
    */
-function getProcessStates(processMap) {
-  const states = {};
+function getProcessStates(processMap: Map<string, any>) {
+  const states: Record<string, any> = {};
 
   for (const [processId, process] of processMap.entries()) {
     logger.debug(`Processing state for ${processId}`, {
@@ -1535,12 +1540,12 @@ function getProcessStates(processMap) {
    * @returns {number} Number of processes cleaned up
    */
 function cleanupStaleProcesses(
-  processMap,
+  processMap: Map<string, any>,
   {
     maxIdleTime = config.queue.maxIdle,
     forceKill = false
   } = {},
-  processType
+  processType: string
 ) {
   const now = Date.now();
   let cleanedCount = 0;
@@ -1591,7 +1596,7 @@ function cleanupStaleProcesses(
           }
         } catch (error) {
           logger.error(`Failed to kill process ${processId}`, {
-            error: error.message
+            error: (error as Error).message
           });
         }
       }
@@ -1617,7 +1622,7 @@ function cleanupStaleProcesses(
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when download processing is complete
  */
-async function processDownloadRequest(requestBody, response) {
+async function processDownloadRequest(requestBody: any, response: ServerResponse) {
   try {
     // Initialize download tracking
     const videosToDownload = [];
@@ -1651,10 +1656,10 @@ async function processDownloadRequest(requestBody, response) {
         const playlist = await PlaylistMetadata.findOne({
           where: { playlistUrl: playlistUrl }
         });
-        saveDirectory = playlist?.saveDirectory ?? "";
+        saveDirectory = (playlist as any)?.saveDirectory ?? "";
       } catch (error) {
         logger.error(`Error getting playlist save directory`, {
-          error: error.message,
+          error: (error as Error).message,
           playlistUrl
         });
       }
@@ -1662,9 +1667,9 @@ async function processDownloadRequest(requestBody, response) {
       // Add to download queue
       videosToDownload.push({
         url: videoUrl,
-        title: videoEntry.title,
+        title: (videoEntry as any).title,
         saveDirectory: saveDirectory,
-        videoId: videoEntry.videoId
+        videoId: (videoEntry as any).videoId
       });
       uniqueUrls.add(videoUrl);
     }
@@ -1683,15 +1688,15 @@ async function processDownloadRequest(requestBody, response) {
 
   } catch (error) {
     logger.error(`Download processing failed`, {
-      error: error.message,
-      stack: error.stack
+      error: (error as Error).message,
+      stack: (error as Error).stack
     });
 
-    const statusCode = error.status || 500;
+    const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "error",
-      message: he.escape(error.message)
+      message: he.escape((error as Error).message)
     }));
   }
 }
@@ -1706,7 +1711,7 @@ async function processDownloadRequest(requestBody, response) {
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
  * @returns {Promise<boolean>} Resolves to true if all downloads successful
  */
-async function downloadItemsConcurrently(items, maxConcurrent = 2) {
+async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
   logger.trace(`Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`);
 
   // Update the semaphore's max concurrent value
@@ -1730,10 +1735,10 @@ async function downloadItemsConcurrently(items, maxConcurrent = 2) {
   );
 
   // Check for any failures
-  const allSuccessful = downloadResults.every(result => result.status === 'success');
+  const allSuccessful = downloadResults.every((result: any) => result && result.status === 'success');
 
   // Log results
-  downloadResults.forEach(result => {
+  downloadResults.forEach((result: any) => {
     if (result.status === 'success') {
       logger.info(`Downloaded ${result.title} successfully`);
     } else {
@@ -1757,7 +1762,7 @@ async function downloadItemsConcurrently(items, maxConcurrent = 2) {
  *   - status: 'success' | 'failed'
  *   - error?: Error message if failed
  */
-async function downloadWithSemaphore(downloadItem) {
+async function downloadWithSemaphore(downloadItem: any) {
   logger.trace(`Starting download with semaphore: ${JSON.stringify(downloadItem)}`);
 
   // Acquire semaphore before starting download
@@ -1808,7 +1813,7 @@ async function downloadWithSemaphore(downloadItem) {
  *   - status: 'success' | 'failed' 
  *   - error?: Error message if failed
  */
-async function executeDownload(downloadItem, processKey) {
+async function executeDownload(downloadItem: any, processKey: string) {
   const { url: videoUrl, title: videoTitle,
     saveDirectory: saveDirectory, videoId: videoId } = downloadItem;
 
@@ -1825,9 +1830,9 @@ async function executeDownload(downloadItem, processKey) {
     }
 
     return new Promise((resolve, reject) => {
-      let progressPercent = null;
-      let capturedTitle = null;
-      let capturedFileName = null;
+      let progressPercent: number | null = null;
+      let capturedTitle: string | null = null;
+      let capturedFileName: string | null = null;
       // Prepare final parameters
       const processArgs = ["-P", "home:" + savePath, videoUrl];
 
@@ -1876,7 +1881,7 @@ async function executeDownload(downloadItem, processKey) {
             if (progressBlock === 0 && progressPercent === null) {
               progressPercent = 0;
               logger.debug(output, { pid: downloadProcess.pid });
-            } else if (progressBlock > progressPercent) {
+            } else if (progressPercent !== null && progressBlock > progressPercent) {
               progressPercent = progressBlock;
               logger.debug(output, { pid: downloadProcess.pid });
             }
@@ -1906,7 +1911,7 @@ async function executeDownload(downloadItem, processKey) {
 
         } catch (error) {
           if (!(error instanceof TypeError)) {
-            safeEmit("error", { message: error.message });
+            safeEmit("error", { message: (error as Error).message });
           }
         }
       });
@@ -1958,7 +1963,7 @@ async function executeDownload(downloadItem, processKey) {
               syncStatus.subTitleFileFound &&
               syncStatus.thumbNailFileFound;
 
-            updates.isMetaDataSynced = true;
+            (updates as any).isMetaDataSynced = true;
 
             // Log metadata sync status
             if (allExtraFilesFound) {
@@ -1975,15 +1980,15 @@ async function executeDownload(downloadItem, processKey) {
               pid: downloadProcess.pid
             });
 
-            await videoEntry.update(updates);
+            if (videoEntry) await videoEntry.update(updates);
 
             // Notify frontend: send saveDirectory and fileName
             try {
-              const fileName = updates.fileName;
-              const thumbNailFile = updates.thumbNailFile;
-              const subTitleFile = updates.subTitleFile;
-              const descriptionFile = updates.descriptionFile;
-              const isMetaDataSynced = updates.isMetaDataSynced;
+              const fileName = (updates as any).fileName;
+              const thumbNailFile = (updates as any).thumbNailFile;
+              const subTitleFile = (updates as any).subTitleFile;
+              const descriptionFile = (updates as any).descriptionFile;
+              const isMetaDataSynced = (updates as any).isMetaDataSynced;
               let saveDir = computeSaveDirectory(savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
@@ -2012,12 +2017,12 @@ async function executeDownload(downloadItem, processKey) {
             } catch (e) {
               // Fallback to previous behavior if something goes wrong
               logger.error('Error computing save directory, using fallback', {
-                error: e.message
+                error: (e as Error).message
               });
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
-                fileName: updates.fileName,
+                fileName: (updates as any).fileName,
                 saveDirectory: ""
               });
             }
@@ -2041,7 +2046,7 @@ async function executeDownload(downloadItem, processKey) {
             });
 
             safeEmit("download-failed", {
-              title: videoEntry.title,
+              title: videoEntry ? (videoEntry as any).title : videoTitle,
               url: videoUrl
             });
 
@@ -2053,7 +2058,7 @@ async function executeDownload(downloadItem, processKey) {
           }
 
         } catch (error) {
-          logger.error(`Error handling download completion: ${error.message}`, {
+          logger.error(`Error handling download completion: ${(error as Error).message}`, {
             pid: downloadProcess.pid
           });
           reject(error);
@@ -2062,12 +2067,12 @@ async function executeDownload(downloadItem, processKey) {
     });
 
   } catch (error) {
-    logger.error(`Download error: ${error.message}`);
+    logger.error(`Download error: ${(error as Error).message}`);
     return {
       url: videoUrl,
       title: videoTitle,
       status: 'failed',
-      error: error.message
+      error: (error as Error).message
     };
   }
 }
@@ -2077,7 +2082,7 @@ async function executeDownload(downloadItem, processKey) {
  *
  * @param {string} processKey - Key of the process entry to update
  */
-function updateProcessActivity(processKey) {
+function updateProcessActivity(processKey: string) {
   const processEntry = downloadProcesses.get(processKey);
   if (processEntry) {
     processEntry.lastActivity = Date.now();
@@ -2089,7 +2094,7 @@ function updateProcessActivity(processKey) {
  * @param {string} processKey - Key of the process entry to remove
  * @param {number} pid - Process ID of the process to remove
  */
-function cleanupProcess(processKey, pid) {
+function cleanupProcess(processKey: string, pid: number | undefined) {
   if (downloadProcesses.has(processKey)) {
     downloadProcesses.delete(processKey);
     logger.trace(`Removed process from cache: ${pid}`, { pid });
@@ -2122,14 +2127,14 @@ const listProcesses = new Map(); // Map to track listing processes
 const ListingSemaphore = {
   maxConcurrent: config.queue.maxListings,
   currentConcurrent: 0,
-  queue: [],
+  queue: [] as Array<(value?: any) => void>,
 
   async acquire() {
     return new Promise(resolve => {
       if (this.currentConcurrent < this.maxConcurrent) {
         this.currentConcurrent++;
         logger.debug(`Listing semaphore acquired, current concurrent: ${this.currentConcurrent}`);
-        resolve();
+        resolve(undefined);
       } else {
         logger.debug(`Listing semaphore full, queuing request`);
         this.queue.push(resolve);
@@ -2141,19 +2146,19 @@ const ListingSemaphore = {
     if (this.queue.length > 0) {
       const next = this.queue.shift();
       logger.debug(`Listing semaphore released, current concurrent: ${this.currentConcurrent}`);
-      next();
+      if (next) next();
     } else {
       logger.debug(`Listing semaphore released`);
       this.currentConcurrent--;
     }
   },
 
-  setMaxConcurrent(max) {
+  setMaxConcurrent(max: number) {
     this.maxConcurrent = max;
     while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
       const next = this.queue.shift();
       this.currentConcurrent++;
-      next();
+      if (next) next();
     }
   }
 };
@@ -2168,7 +2173,7 @@ const ListingSemaphore = {
  * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body
  * @returns {Promise<void>} Resolves when listing processes are started
  */
-async function processListingRequest(requestBody, response) {
+async function processListingRequest(requestBody: any, response: ServerResponse) {
   try {
     // Validate required parameters
     if (!requestBody.urlList) {
@@ -2205,20 +2210,20 @@ async function processListingRequest(requestBody, response) {
 
       if (playlistEntry) {
         logger.debug(`Playlist found in database`, { url: normalizedUrl });
-        if (playlistEntry.monitoringType === monitoringType) {
+        if ((playlistEntry as any).monitoringType === monitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
           safeEmit("listing-playlist-skipped-because-same-monitoring", {
-            message: `Playlist ${playlistEntry.title} is already being monitored with type ${monitoringType}, skipping.`
+            message: `Playlist ${(playlistEntry as any).title} is already being monitored with type ${monitoringType}, skipping.`
           });
           continue; // Skip as it's already monitored
-        } else if (playlistEntry.monitoringType !== monitoringType) {
+        } else if ((playlistEntry as any).monitoringType !== monitoringType) {
           // If the monitoring type change is Full the reindex the entire playlist,
           // if it is changed to Fast then update from the last index known
           logger.debug(`Playlist monitoring has changed`, { url: normalizedUrl });
           itemsToList.push({
             url: normalizedUrl,
             type: "playlist",
-            previousMonitoringType: playlistEntry.monitoringType,
+            previousMonitoringType: (playlistEntry as any).monitoringType,
             currentMonitoringType: monitoringType,
             reason: `Monitoring type changed`
           });
@@ -2231,10 +2236,10 @@ async function processListingRequest(requestBody, response) {
       });
       if (videoEntry) {
         logger.debug(`Video found in database`, { url: normalizedUrl });
-        if (videoEntry.downloadStatus) {
+        if ((videoEntry as any).downloadStatus) {
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
           safeEmit("listing-video-skipped-because-downloaded", {
-            message: `Video ${videoEntry.title} is already downloaded, skipping.`
+            message: `Video ${(videoEntry as any).title} is already downloaded, skipping.`
           });
           continue; // Skip as it's already downloaded
         } else {
@@ -2276,8 +2281,8 @@ async function processListingRequest(requestBody, response) {
     }));
   } catch (error) {
     logger.error("Failed to process URL list", {
-      error: error.message,
-      stack: error.stack
+      error: (error as Error).message,
+      stack: (error as Error).stack
     });
   }
 }
@@ -2293,7 +2298,7 @@ async function processListingRequest(requestBody, response) {
  * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
  * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
  */
-async function listItemsConcurrently(items, chunkSize, shouldSleep) {
+async function listItemsConcurrently(items: Array<any>, chunkSize: number, shouldSleep: boolean) {
   logger.trace(`Listing ${items.length} items concurrently (chunk size: ${chunkSize})`);
 
   // If no items to list, return
@@ -2313,11 +2318,11 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
   );
 
   // Check for any failures
-  const allSuccessful = listingResults.every(result => result.status === 'success');
+  const allSuccessful = listingResults.every((result: any) => result && result.status === 'success');
 
   // Log results
   try {
-    listingResults.forEach(result => {
+    listingResults.forEach((result: any) => {
       if (result.status === 'completed') {
         logger.info(`Listed ${result.title} successfully`);
       } else {
@@ -2326,8 +2331,8 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
     });
   } catch (error) {
     logger.error("Failed to log listing results", {
-      error: error.message,
-      stack: error.stack
+      error: (error as Error).message,
+      stack: (error as Error).stack
     });
   }
 
@@ -2348,7 +2353,7 @@ async function listItemsConcurrently(items, chunkSize, shouldSleep) {
  *   - status: 'success' | 'failed'
  *   - error?: Error message if failed
  */
-async function listWithSemaphore(item, chunkSize, shouldSleep) {
+async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: boolean) {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
   // Check process limit before acquiring semaphore
@@ -2384,7 +2389,7 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
     // Execute listing process
     const result = await executeListing(item, entryKey, chunkSize, shouldSleep);
     // Null out the spawned process as it's completed and we don't want to keep it in logs
-    listEntry["spawnedProcess"] = null;
+    (listEntry as any)["spawnedProcess"] = null;
     logger.trace(`Listing completed`, {
       result: JSON.stringify(result),
       listEntry: JSON.stringify(listEntry)
@@ -2413,7 +2418,7 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
  * @param {boolean} isScheduledUpdate - Indicates if the listing is part of a scheduled update
  * @returns {Promise<Object>} The result of the listing process
  */
-async function executeListing(item, processKey, chunkSize, shouldSleep, isScheduledUpdate = false) {
+async function executeListing(item: any, processKey: string, chunkSize: number, shouldSleep: boolean, isScheduledUpdate = false) {
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
   let processedChunks = 0;
@@ -2465,10 +2470,10 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
       });
       if (existingPlaylist) {
         logger.debug(`Playlist already exists in database`, { url: videoUrl });
-        if (existingPlaylist.monitoringType === currentMonitoringType) {
+        if ((existingPlaylist as any).monitoringType === currentMonitoringType) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: videoUrl });
           return handleEmptyResponse(videoUrl);
-        } else if (existingPlaylist.monitoringType !== currentMonitoringType) {
+        } else if ((existingPlaylist as any).monitoringType !== currentMonitoringType) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           // Update the monitoring type in the database
           await existingPlaylist.update({
@@ -2477,13 +2482,13 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
-        playlistTitle = existingPlaylist.title;
+        playlistTitle = (existingPlaylist as any).title;
       } else {
         // If the playlist doesn't exist, add it to the database
         logger.debug(`Playlist not found in database, adding to database`, { url: videoUrl });
         const newPlaylist = await addPlaylist(videoUrl, currentMonitoringType);
-        playlistTitle = newPlaylist.title;
-        seekPlaylistListTo = newPlaylist.sortOrder;
+        playlistTitle = (newPlaylist as any).title;
+        seekPlaylistListTo = (newPlaylist as any).sortOrder;
       }
       return await handlePlaylistListing({
         videoUrl,
@@ -2510,7 +2515,7 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
     }
 
   } catch (error) {
-    return handleListingError(error, videoUrl, itemType);
+    return handleListingError(error as Error, videoUrl, itemType);
   }
 }
 
@@ -2524,7 +2529,7 @@ async function executeListing(item, processKey, chunkSize, shouldSleep, isSchedu
  * @param {number} chunkSize - The size of the chunk to process in each iteration.
  * @returns {Promise<{startIndex: number, endIndex: number}>} An object containing the start and end indices for processing.
  */
-async function determineInitialRange(itemType, monitoringType, playlistUrl, chunkSize) {
+async function determineInitialRange(itemType: string, monitoringType: string, playlistUrl: string, chunkSize: number) {
   let startIndex = 1;
   let endIndex = chunkSize;
   if (itemType === "playlist") {
@@ -2539,7 +2544,7 @@ async function determineInitialRange(itemType, monitoringType, playlistUrl, chun
         limit: 1
       });
       if (lastVideo) {
-        startIndex = lastVideo.positionInPlaylist + 1;
+        startIndex = (lastVideo as any).positionInPlaylist + 1;
         endIndex = startIndex + chunkSize;
       }
     }
@@ -2553,13 +2558,13 @@ async function determineInitialRange(itemType, monitoringType, playlistUrl, chun
  * @param {object} videoEntry - The video entry in the database
  * @returns {object} Object containing paths to discovered metadata files and sync status
  */
-function discoverFiles(mainFileName, savePath, videoEntry) {
+function discoverFiles(mainFileName: string | null, savePath: string, videoEntry: any) {
   const metadata = {
-    fileName: null,
-    descriptionFile: null,
-    commentsFile: null,
-    subTitleFile: null,
-    thumbNailFile: null
+    fileName: null as string | null,
+    descriptionFile: null as string | null,
+    commentsFile: null as string | null,
+    subTitleFile: null as string | null,
+    thumbNailFile: null as string | null
   };
 
   // Track which files were expected vs found
@@ -2585,8 +2590,8 @@ function discoverFiles(mainFileName, savePath, videoEntry) {
   }
 
   try {
-    const mainFileExt = path.extname(mainFileName).toLowerCase();
-    const mainFileBase = mainFileName.replace(mainFileExt, '');
+    const mainFileExt = path.extname(mainFileName!).toLowerCase();
+    const mainFileBase = mainFileName!.replace(mainFileExt, '');
     logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
 
     // Define extension patterns for each file type
@@ -2599,7 +2604,7 @@ function discoverFiles(mainFileName, savePath, videoEntry) {
     };
 
     // Optimistically check for known file patterns first
-    const checkFile = (baseName, extensions) => {
+    const checkFile = (baseName: string, extensions: string[]) => {
       for (const ext of extensions) {
         const filePath = path.join(savePath, baseName + ext);
         if (fs.existsSync(filePath)) {
@@ -2698,7 +2703,7 @@ function discoverFiles(mainFileName, savePath, videoEntry) {
   } catch (error) {
     logger.debug('Could not read savePath for extra metadata files', {
       savePath,
-      error: error.message
+      error: (error as Error).message
     });
 
     return {
@@ -2718,7 +2723,7 @@ function discoverFiles(mainFileName, savePath, videoEntry) {
  * @param {string} savePath - The configured save location
  * @returns {string} Relative save directory
  */
-function computeSaveDirectory(savePath) {
+function computeSaveDirectory(savePath: string) {
   try {
     let saveDir = path.relative(
       path.resolve(config.saveLocation),
@@ -2744,9 +2749,9 @@ function computeSaveDirectory(savePath) {
 
   } catch (error) {
     logger.error('Error computing save directory', {
-      fileName,
-      saveLocation,
-      error: error.message
+      savePath,
+      saveLocation: config.saveLocation,
+      error: (error as Error).message
     });
     return '';
   }
@@ -2759,7 +2764,7 @@ function computeSaveDirectory(savePath) {
  * @returns {Object} An object containing the video URL, a default title, status as "failed",
  *                   and an error message indicating no items were found.
  */
-function handleEmptyResponse(videoUrl) {
+function handleEmptyResponse(videoUrl: string) {
   safeEmit("listing-error", {
     url: videoUrl,
     error: "No items found"
@@ -2790,7 +2795,7 @@ function handleEmptyResponse(videoUrl) {
  * @param {number} item.processedChunks - The number of chunks that have been processes
  * @returns {Promise<void>} Resolves when the playlist listing is complete.
  */
-async function handlePlaylistListing(item) {
+async function handlePlaylistListing(item: any) {
   const { videoUrl, responseItems, startIndex, chunkSize,
     shouldSleep, isScheduledUpdate, playlistTitle, seekPlaylistListTo, processKey } = item;
   let processedChunks = item.processedChunks || 0;
@@ -2852,7 +2857,7 @@ async function handlePlaylistListing(item) {
  * @param {boolean} item.isScheduledUpdate - Indicates if this is a scheduled update.
  * @returns {Promise<Object|undefined>} A promise that resolves to an object containing the video URL, title, status, and processed chunks if successful, or undefined if no processing is needed.
  */
-async function handleSingleVideoListing(item) {
+async function handleSingleVideoListing(item: any) {
   const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } = item;
   const playlistUrl = "None";
   if (itemType === "undownloaded") {
@@ -2873,7 +2878,7 @@ async function handleSingleVideoListing(item) {
     attributes: ["positionInPlaylist"],
     limit: 1
   });
-  const newStartIndex = lastVideo ? lastVideo.positionInPlaylist + 1 : startIndex;
+  const newStartIndex = lastVideo ? (lastVideo as any).positionInPlaylist + 1 : startIndex;
   const result = await processVideoInformation(responseItems, playlistUrl, newStartIndex, isScheduledUpdate);
   if (result.count === 1) {
     safeEmit("listing-single-item-complete", {
@@ -2900,7 +2905,7 @@ async function handleSingleVideoListing(item) {
  * @param {string} itemType - The type of item being listed, either "playlist" or "video".
  * @returns {Object} An object containing details about the failed listing, including the URL, title, status, and error message.
  */
-function handleListingError(error, videoUrl, itemType) {
+function handleListingError(error: Error, videoUrl: string, itemType: string) {
   logger.error("Listing failed", {
     url: videoUrl,
     error: error.message,
@@ -2926,7 +2931,7 @@ function handleListingError(error, videoUrl, itemType) {
  * @param {number} seekPlaylistListTo - Position in the playlist list to seek to
  * @returns {Object} Object containing url, title, status and processed chunk count
  */
-function completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo) {
+function completePlaylistListing(videoUrl: string, processedChunks: number, playlistTitle: string, seekPlaylistListTo: number) {
   // Log completion
   logger.info(`Playlist listing completed`, {
     url: videoUrl,
@@ -2965,7 +2970,7 @@ function completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekP
  * @returns {Promise<string[]>} Array of video information strings
  * @throws {Error} If process spawn fails or max processes reached
  */
-async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunks, processKey) {
+async function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: number, processedChunks: number, processKey: string): Promise<string[]> {
   logger.trace("Fetching items from the given inputs", {
     url: videoUrl,
     start: startIndex,
@@ -2990,7 +2995,7 @@ async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunk
     // but for now just check for x.com links as that's the real pain in the ass
     if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
       logger.debug(`Using cookies file: ${config.cookiesFile}`);
-      processArgs.unshift(`--cookies`, config.cookiesFile);
+      processArgs.unshift(`--cookies`, config.cookiesFile as string);
     }
 
     // Quote arguments with spaces
@@ -3042,7 +3047,7 @@ async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunk
         error: data,
         pid: listProcess.pid
       });
-      updateProcessActivity(listProcess.pid.toString());
+      updateProcessActivity(String(listProcess.pid));
     });
 
     // Handle process error
@@ -3114,7 +3119,7 @@ async function fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunk
  * @param {boolean} isUpdate - Whether this is an update operation
  * @returns {Promise<Object>} Processing results including counts and status
  */
-async function processVideoInformation(responseItems, playlistUrl, startIndex, isUpdate) {
+async function processVideoInformation(responseItems: string[], playlistUrl: string, startIndex: number, isUpdate: boolean) {
   logger.trace("Processing video information", {
     playlistUrl,
     startIndex,
@@ -3127,6 +3132,7 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
     title: "",
     responseUrl: playlistUrl,
     startIndex: startIndex,
+    alreadyExisted: false
   };
 
   // Get last processed index for updates
@@ -3141,7 +3147,7 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
       limit: 1
     });
 
-    lastProcessedIndex = lastItem ? lastItem.positionInPlaylist + 1 : 1;
+    lastProcessedIndex = lastItem ? (lastItem as any).positionInPlaylist + 1 : 1;
     logger.debug("Found last processed index", { index: lastProcessedIndex });
   }
 
@@ -3167,14 +3173,14 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
   ]);
 
   const [existingVideos, existingIndexes] = existingItems;
-  const allExist = existingVideos.every(v => v) && existingIndexes.every(i => i);
+  const allExist = existingVideos.every((v: any) => v) && existingIndexes.every((i: any) => i);
 
   if (allExist) {
     logger.debug("All videos already exist in database", { existingVideos: JSON.stringify(existingVideos), existingIndexes: JSON.stringify(existingIndexes) });
     for (let i = 0; i < existingVideos.length; i++) {
       if (existingVideos[i]) {
         result.count++;
-        result.title = existingVideos[i].title;
+        result.title = (existingVideos[i] as any).title;
         result.alreadyExisted = true;
       }
     }
@@ -3229,13 +3235,13 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
 
     } catch (error) {
       logger.error("Failed to process video item", {
-        error: error.message,
+        error: (error as Error).message,
         item: item
       });
     }
   }));
   logger.debug("Processed video information", { result: JSON.stringify(result) });
-  return result;
+  return result as any;
 }
 /**
  * Updates video metadata in database if changes detected
@@ -3248,7 +3254,7 @@ async function processVideoInformation(responseItems, playlistUrl, startIndex, i
  * @param {boolean} newData.isAvailable - Video availability status
  * @returns {Promise<void>} Resolves when update complete
  */
-async function updateVideoMetadata(existingVideo, newData) {
+async function updateVideoMetadata(existingVideo: any, newData: any) {
   logger.trace("Checking video metadata for updates", {
     videoId: existingVideo.videoId,
     newData: JSON.stringify(newData)
@@ -3296,7 +3302,7 @@ async function updateVideoMetadata(existingVideo, newData) {
 
   // Perform update if needed
   if (requiresUpdate) {
-    logger.warn("Video metadata changes detected", { differences });
+    logger.warn("Video metadata changes detected", { differences: JSON.stringify(differences) });
 
     Object.assign(existingVideo, {
       videoId: newData.videoId,
@@ -3321,7 +3327,7 @@ async function updateVideoMetadata(existingVideo, newData) {
  * @returns {Promise<void>} Resolves when monitoring type is updated
  * @throws {Error} If required parameters are missing or update fails
  */
-async function updatePlaylistMonitoring(requestBody, response) {
+async function updatePlaylistMonitoring(requestBody: any, response: ServerResponse) {
   try {
     // Validate required parameters
     if (!requestBody.url || !requestBody.watch) {
@@ -3353,7 +3359,7 @@ async function updatePlaylistMonitoring(requestBody, response) {
 
     logger.debug("Successfully updated monitoring type", {
       playlistUrl,
-      oldType: playlist.monitoringType,
+      oldType: (playlist as any).monitoringType,
       newType: monitoringType
     });
 
@@ -3367,16 +3373,16 @@ async function updatePlaylistMonitoring(requestBody, response) {
   } catch (error) {
     // Log error details
     logger.error("Failed to update monitoring type", {
-      error: error.message,
-      stack: error.stack
+      error: (error as Error).message,
+      stack: (error as Error).stack
     });
 
     // Send error response
-    const statusCode = error.status || 500;
+    const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "error",
-      message: he.escape(error.message)
+      message: he.escape((error as Error).message)
     }));
   }
 }
@@ -3388,7 +3394,7 @@ async function updatePlaylistMonitoring(requestBody, response) {
  * @return {Promise<void>} Resolves when playlist is added to database
  * @throws {Error} If playlist creation fails or max listing processes reached
  */
-async function addPlaylist(playlistUrl, monitoringType) {
+async function addPlaylist(playlistUrl: string, monitoringType: string) {
   let playlistTitle = "";
   let nextPlaylistIndex = 0;
 
@@ -3400,7 +3406,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
   });
 
   if (lastPlaylist !== null) {
-    nextPlaylistIndex = lastPlaylist.sortOrder + 1;
+    nextPlaylistIndex = (lastPlaylist as any).sortOrder + 1;
   }
 
   // Check if we've hit the process limit
@@ -3424,7 +3430,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
   // will make yt-dlp get the rest of the items in the post, check the folder.
   if (config.cookiesFile && isSiteXDotCom(playlistUrl)) {
     logger.debug(`Using cookies file: ${config.cookiesFile}`);
-    processArgs.unshift("--cookies", config.cookiesFile);
+    processArgs.unshift("--cookies", config.cookiesFile as string);
   }
   const fullCommandString = [
     "yt-dlp",
@@ -3469,7 +3475,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
           try {
             playlistTitle = await urlToTitle(playlistUrl);
           } catch (error) {
-            logger.error(`Failed to get title from URL: ${error.message}`);
+            logger.error(`Failed to get title from URL: ${(error as Error).message}`);
             playlistTitle = playlistUrl;
           }
         }
@@ -3506,7 +3512,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
       } catch (error) {
         logger.error("Failed to create playlist", {
           url: playlistUrl,
-          error: error.message
+          error: (error as Error).message
         });
         reject(error);
       }
@@ -3526,7 +3532,7 @@ async function addPlaylist(playlistUrl, monitoringType) {
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
-async function processDeletePlaylistRequest(requestBody, response) {
+async function processDeletePlaylistRequest(requestBody: any, response: ServerResponse) {
   try {
     logger.debug("Received playlist delete request", { "requestBody": JSON.stringify(requestBody) });
 
@@ -3550,7 +3556,7 @@ async function processDeletePlaylistRequest(requestBody, response) {
       return response.end(JSON.stringify({ "status": "error", "message": "Cannot delete the default playlist" }));
     }
 
-    const playlist = await PlaylistMetadata.findByPk(playListUrl);
+    const playlist = await PlaylistMetadata.findByPk(playListUrl) as any;
     if (!playlist) {
       logger.error("Playlist not found", { "requestBody": JSON.stringify(requestBody) });
       response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
@@ -3581,7 +3587,7 @@ async function processDeletePlaylistRequest(requestBody, response) {
           {
             by: 1,
             where: {
-              sortOrder: { [sequelize.Sequelize.Op.gt]: deletedSortOrder }
+              sortOrder: { [Op.gt]: deletedSortOrder }
             },
             transaction
           }
@@ -3612,7 +3618,7 @@ async function processDeletePlaylistRequest(requestBody, response) {
         } catch (error) {
           logger.error("Failed to clean up playlist directory", {
             saveDirectory: playlist.saveDirectory,
-            error: error.message
+            error: (error as Error).message
           });
           message += " but failed to clean up playlist directory";
         }
@@ -3630,15 +3636,15 @@ async function processDeletePlaylistRequest(requestBody, response) {
 
     } catch (error) {
       await transaction.rollback();
-      logger.error(`Playlist deletion failed with error ${error.message}`, {
+      logger.error(`Playlist deletion failed with error ${(error as Error).message}`, {
         playListUrl, deleteAllVideosInPlaylist, deletePlaylist, cleanUp
       });
       response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": error.message }));
+      return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
     }
   } catch (error) {
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({ "status": "error", "message": error.message }));
+    return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
   }
 }
 
@@ -3654,7 +3660,7 @@ async function processDeletePlaylistRequest(requestBody, response) {
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
-async function processDeleteVideosRequest(requestBody, response) {
+async function processDeleteVideosRequest(requestBody: any, response: ServerResponse) {
   try {
     logger.debug("Received video delete request", { "requestBody": JSON.stringify(requestBody) });
 
@@ -3700,7 +3706,7 @@ async function processDeleteVideosRequest(requestBody, response) {
 
       for (const videoUrl of videoUrls) {
         try {
-          const video = await VideoMetadata.findByPk(videoUrl);
+          const video = await VideoMetadata.findByPk(videoUrl) as any;
 
           if (!video) {
             logger.warn("Video not found", { videoUrl });
@@ -3712,7 +3718,7 @@ async function processDeleteVideosRequest(requestBody, response) {
 
           // Clean up downloaded files if requested
           if (cleanUp && video.downloadStatus) {
-            const filesToRemove = {
+            const filesToRemove: Record<string, string | null> = {
               "fileName": video.fileName,
               "thumbNailFile": video.thumbNailFile,
               "subTitleFile": video.subTitleFile,
@@ -3725,13 +3731,13 @@ async function processDeleteVideosRequest(requestBody, response) {
             for (const [key, value] of Object.entries(filesToRemove)) {
               if (value) {
                 try {
-                  const filePath = path.join(config.saveLocation, playlist.saveDirectory, value);
+                  const filePath = path.join(config.saveLocation, (playlist as any).saveDirectory, value);
                   logger.debug("Removing file", { videoUrl, key, value, filePath });
                   fs.unlinkSync(filePath);
                   logger.debug("Removed file", { videoUrl, key, value, filePath });
                   filesToRemove[key] = null;
                 } catch (error) {
-                  logger.error("Failed to remove file", { videoUrl, key, value, error: error.message });
+                  logger.error("Failed to remove file", { videoUrl, key, value, error: (error as Error).message });
                   allFilesRemoved = false;
                 }
               }
@@ -3772,8 +3778,8 @@ async function processDeleteVideosRequest(requestBody, response) {
           }
 
         } catch (error) {
-          logger.error("Failed to process video", { videoUrl, error: error.message });
-          failed.push({ videoUrl, reason: error.message });
+          logger.error("Failed to process video", { videoUrl, error: (error as Error).message });
+          failed.push({ videoUrl, reason: (error as Error).message });
         }
       }
 
@@ -3781,7 +3787,7 @@ async function processDeleteVideosRequest(requestBody, response) {
 
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        "message": `Processed ${deleted.length} video(s) from playlist ${playlist.title}`,
+        "message": `Processed ${deleted.length} video(s) from playlist ${(playlist as any).title}`,
         "deleted": deleted,
         "failed": failed,
         "cleanUp": cleanUp,
@@ -3791,15 +3797,15 @@ async function processDeleteVideosRequest(requestBody, response) {
 
     } catch (error) {
       await transaction.rollback();
-      logger.error(`Video deletion failed with error ${error.message}`, {
-        playListUrl, videoUrls, cleanUp, deleteVideoMappings, deleteVideosInDB
+      logger.error(`Video deletion failed with error ${(error as Error).message}`, {
+        playListUrl, videoUrls: JSON.stringify(videoUrls), cleanUp, deleteVideoMappings, deleteVideosInDB
       });
       response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": error.message }));
+      return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
     }
   } catch (error) {
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({ "status": "error", "message": error.message }));
+    return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
   }
 }
 
@@ -3817,7 +3823,7 @@ async function processDeleteVideosRequest(requestBody, response) {
  * @returns {Promise<void>} Resolves when playlist data is sent to frontend
  * @throws {Error} If database query fails
  */
-async function getPlaylistsForDisplay(requestBody, response) {
+async function getPlaylistsForDisplay(requestBody: any, response: ServerResponse) {
   try {
     // Extract and validate parameters
     const startIndex = requestBody.start !== undefined ? +requestBody.start : 0;
@@ -3841,7 +3847,7 @@ async function getPlaylistsForDisplay(requestBody, response) {
     );
 
     // Build base query
-    const queryOptions = {
+    const queryOptions: any = {
       where: {
         sortOrder: {
           [Op.gte]: 0 // Filter out system playlists
@@ -3876,14 +3882,14 @@ async function getPlaylistsForDisplay(requestBody, response) {
 
   } catch (error) {
     logger.error("Failed to fetch playlists", {
-      error: error.message,
-      stack: error.stack
+      error: (error as Error).message,
+      stack: (error as Error).stack
     });
 
-    const statusCode = error.status || 500;
+    const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      error: he.escape(error.message)
+      error: he.escape((error as Error).message)
     }));
   }
 }
@@ -3900,7 +3906,7 @@ async function getPlaylistsForDisplay(requestBody, response) {
  * @returns {Promise<void>} Resolves when video data is sent to frontend
  * @throws {Error} If database query fails
  */
-async function getSubListVideos(requestBody, response) {
+async function getSubListVideos(requestBody: any, response: ServerResponse) {
   try {
     // Extract and validate parameters
     const playlistUrl = requestBody.url ?? "None";
@@ -3927,7 +3933,7 @@ async function getSubListVideos(requestBody, response) {
     });
 
     // Build base query options
-    const videoMetadataWhere = {};
+    const videoMetadataWhere: any = {};
 
     if (searchQuery && searchQuery.length > 0) {
       if (searchQuery.startsWith("url:")) {
@@ -3971,7 +3977,7 @@ async function getSubListVideos(requestBody, response) {
       },
       limit: endIndex - startIndex,
       offset: startIndex,
-      order: [sortOrder]
+      order: [sortOrder] as any
     };
 
     // Execute query
@@ -3981,12 +3987,12 @@ async function getSubListVideos(requestBody, response) {
     let playlistSaveDir = "";
     try {
       const playlist = await PlaylistMetadata.findOne({ where: { playlistUrl } });
-      playlistSaveDir = playlist?.saveDirectory ?? "";
+      playlistSaveDir = (playlist as any)?.saveDirectory ?? "";
     } catch (err) {
-      logger.warn('Could not fetch playlist saveDirectory', { playlistUrl, error: err.message });
+      logger.warn('Could not fetch playlist saveDirectory', { playlistUrl, error: (err as Error).message });
     }
 
-    const safeRows = results.rows.map((row) => {
+    const safeRows = results.rows.map((row: any) => {
       const vm = row.video_metadatum || {};
       let fileName = null;
       try {
@@ -4025,14 +4031,14 @@ async function getSubListVideos(requestBody, response) {
 
   } catch (error) {
     logger.error("Failed to fetch playlist videos", {
-      error: error.message,
-      stack: error.stack
+      error: (error as Error).message,
+      stack: (error as Error).stack
     });
 
-    const statusCode = error.status || 500;
+    const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      error: he.escape(error.message)
+      error: he.escape((error as Error).message)
     }));
   }
 }
@@ -4049,7 +4055,7 @@ async function getSubListVideos(requestBody, response) {
  * @returns {Object} Object containing CORS headers
  */
 function generateCorsHeaders(
-  contentType,
+  contentType: string,
   {
     allowedOrigins = CORS_ALLOWED_ORIGINS,
     allowedMethods = CORS_ALLOWED_HEADERS,
@@ -4071,9 +4077,9 @@ function generateCorsHeaders(
  * @param {string} dir - The directory path to start retrieving files from.
  * @return {Array<{filePath: string, extension: string}>} An array of objects containing the file path and extension of each file found in the directory and its subdirectories.
  */
-function getFiles(dir) {
+function getFiles(dir: string): Array<{ filePath: string, extension: string }> {
   const files = fs.readdirSync(dir);
-  let fileList = [];
+  let fileList: Array<{ filePath: string, extension: string }> = [];
 
   files.forEach((file) => {
     const filePath = path.join(dir, file);
@@ -4096,8 +4102,8 @@ function getFiles(dir) {
  * @param {Array<{filePath: string, extension: string}>} fileList - The list of file objects containing the file path and extension.
  * @return {Object<string, {file: Buffer, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
  */
-function makeAssets(fileList) {
-  const staticAssets = {};
+function makeAssets(fileList: Array<{ filePath: string, extension: string }>) {
+  const staticAssets: Record<string, { file: Buffer | string, type: string }> = {};
   fileList.forEach((element) => {
     staticAssets[element.filePath.replace("dist", config.urlBase)] = {
       file: fs.readFileSync(element.filePath),
@@ -4122,13 +4128,13 @@ let serverObj = null;
 if (config.nativeHttps) {
   try {
     serverOptions = {
-      key: fs.readFileSync(config.ssl.key, "utf8"),
-      cert: fs.readFileSync(config.ssl.cert, "utf8"),
+      key: fs.readFileSync(config.ssl.key as string, "utf8"),
+      cert: fs.readFileSync(config.ssl.cert as string, "utf8"),
       // If passphrase is not set, don't include it in options
       ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase })
     };
   } catch (error) {
-    logger.error("Error reading SSL key and/or certificate files:", error);
+    logger.error("Error reading SSL key and/or certificate files:", { error: (error as Error).message });
     Deno.exit(1);
   }
   if (config.ssl.passphrase) {
@@ -4149,8 +4155,8 @@ if (config.nativeHttps) {
   serverObj = http;
 }
 
-const server = serverObj.createServer(serverOptions, async (req, res) => {
-  if (req.url.startsWith(config.urlBase) && req.method === "GET") {
+const server = (serverObj as any).createServer(serverOptions, async (req: IncomingMessage, res: ServerResponse) => {
+  if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
     try {
       const get = req.url;
       const reqEncoding = req.headers["accept-encoding"] || "";
@@ -4235,7 +4241,7 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
                 await pipelineAsync(readStream, res);
                 logger.trace("Finished streaming signed file", { fileId });
               } catch (err) {
-                logger.error("Error during streaming signed file", { error: err && err.message, fileId });
+                logger.error("Error during streaming signed file", { error: (err as Error)?.message || String(err), fileId });
                 if (!res.headersSent) {
                   res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
                 }
@@ -4246,7 +4252,7 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
                 // Note: keep signedUrlCache entry to allow multiple downloads within expiry
               }
             } catch (err) {
-              logger.error("Error getting file stats", { error: err.message, fileId });
+              logger.error("Error getting file stats", { error: (err as Error).message, fileId });
               if (!res.headersSent) {
                 res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
               }
@@ -4262,7 +4268,7 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
         }
       }
       // Check if the GET request is for a static asset
-      if (!staticAssets[get]) {
+      if (!get || !staticAssets[get]) {
         logger.error("Requested Resource couldn't be found", {
           url: req.url,
           method: req.method,
@@ -4272,7 +4278,7 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
         res.write("Not Found");
         return res.end();
       }
-      const resHeaders = generateCorsHeaders(staticAssets[get].type);
+      const resHeaders: any = generateCorsHeaders(staticAssets[get]!.type);
       if (reqEncoding.includes("br") && staticAssets[get + ".br"]) {
         resHeaders["Content-Encoding"] = "br";
         res.writeHead(200, resHeaders);
@@ -4291,7 +4297,7 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
       logger.error("Error in processing request", {
         url: req.url,
         method: req.method,
-        error: error,
+        error: error as Error,
       });
       res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
       res.write("Not Found");
@@ -4324,13 +4330,13 @@ const server = serverObj.createServer(serverOptions, async (req, res) => {
   } else if (req.url === config.urlBase + "/getfiles" && req.method === "POST") {
     authenticateRequest(req, res, makeSignedUrls);
   } else if (req.url === config.urlBase + "/register" && req.method === "POST") {
-    rateLimit(req, res, registerUser, (req, res, next) => next(req, res),
+    rateLimit(req, res, registerUser, (req: IncomingMessage, res: ServerResponse, next: Function) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
   } else if (req.url === config.urlBase + "/login" && req.method === "POST") {
-    rateLimit(req, res, authenticateUser, (req, res, next) => next(req, res),
+    rateLimit(req, res, authenticateUser, (req: IncomingMessage, res: ServerResponse, next: Function) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
   } else if (req.url === config.urlBase + "/isregallowed" && req.method === "POST") {
-    rateLimit(req, res, isRegistrationAllowed, (req, res, next) => next(req, res),
+    rateLimit(req, res, isRegistrationAllowed, (req: IncomingMessage, res: ServerResponse, next: Function) => next(req, res),
       config.cache.reqPerIP, config.cache.maxAge);
   } else {
     logger.error("Requested Resource couldn't be found", {
@@ -4351,7 +4357,7 @@ const io = new Server(server, {
   },
 });
 
-io.use((socket, next) => {
+io.use((socket: Socket, next: Function) => {
   authenticateSocket(socket).then((result) => {
     if (result) {
       logger.debug("Valid socket", {
@@ -4371,13 +4377,13 @@ io.use((socket, next) => {
     logger.error("Error in verifying socket", {
       id: socket.id,
       ip: socket.handshake.address,
-      error: err
+      error: err as Error
     });
-    next(new Error(err.message));
+    next(new Error((err as Error).message));
   });
 });
 
-const sock = io.on("connection", (socket) => {
+const sock = io.on("connection", (socket: Socket) => {
   if (config.connectedClients >= config.maxClients) {
     logger.info("Rejecting client", {
       id: socket.id,
@@ -4392,7 +4398,7 @@ const sock = io.on("connection", (socket) => {
 
   // Increment the count of connected clients
   socket.emit("init", { message: "Connected", id: socket.id });
-  socket.on("acknowledge", ({ data, id }) => {
+  socket.on("acknowledge", ({ data, id }: { data: string, id: string }) => {
     logger.info(`Acknowledged from client id ${id}`, {
       id: id,
       ip: socket.handshake.address,
@@ -4434,13 +4440,13 @@ server.listen(config.port, async () => {
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
     logger.info(`Started ${name} job`, {
-      schedule: job.cronTime.source,
+      schedule: (job as any).cronTime.source,
       nextRun: job.nextDate().toLocaleString(
         {
           weekday: 'short', month: 'short', day: '2-digit',
           hour: '2-digit', minute: '2-digit'
         },
-        { timeZone: config.timeZone })
+        { timeZone: config.timeZone } as any)
     });
   }
 });
