@@ -571,6 +571,17 @@
     }
   },
   "workspace": {
+    "dependencies": [
+      "npm:bcryptjs@^3.0.3",
+      "npm:cli-color@^2.0.3",
+      "npm:cron@^2.3.0",
+      "npm:he@^1.2.0",
+      "npm:ioredis@^5.3.2",
+      "npm:jsonwebtoken@^9.0.2",
+      "npm:pg@^8.10.0",
+      "npm:sequelize@^6.31.1",
+      "npm:socket.io@^4.8.1"
+    ],
     "packageJson": {
       "dependencies": [
         "npm:@types/cron@^2.0.1",
