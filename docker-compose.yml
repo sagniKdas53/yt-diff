@@ -48,7 +48,6 @@ services:
       retries: 5
 
   yt-diff:
-    # image: purevert/yt-diff:amd64
     image: ghcr.io/sagnikdas53/yt-diff:master
     container_name: yt-diff
     restart: unless-stopped
@@ -216,8 +215,8 @@ services:
       - HTTPPROXY=${HTTP_PROXY}
       - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}
       - HTTPPROXY_STEALTH=${HTTP_PROXY_STEALTH}
-      # - HTTPPROXY_USER=${HTTP_PROXY_USER}
-      # - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
+      - HTTPPROXY_USER=${HTTP_PROXY_USER}
+      - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:
@@ -226,7 +225,7 @@ services:
     ports:
       - 51413:51413
       - 51413:51413/udp
-      # - 3128:3128 # <- Enable to use outside of the docker network
+      - 3128:3128 # <- Enable to use outside of the docker network
     labels:
       # Autoheal
       - "autoheal.enable=true"
