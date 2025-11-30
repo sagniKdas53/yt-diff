@@ -4078,7 +4078,6 @@ async function getSubListVideos(requestBody: SubListRequest, response: ServerRes
     // deno-lint-ignore no-explicit-any
     const safeRows = results.rows.map((row: any) => {
       const vm = row.video_metadatum || {};
-      // fileName logic removed as it was unused and redundant
       // Build a sanitized video_metadatum to return to client
       const safeVideoMeta = {
         title: vm.title,
@@ -4310,7 +4309,7 @@ const server = (serverObj as any).createServer(serverOptions, async (req: Incomi
 
               const onClose = () => {
                 // Destroy the stream if client disconnects
-                try { readStream.destroy(); } catch (_e) { /* ignore */ }
+                try { readStream.destroy(); } catch (err: unknown) { logger.error("Error destroying read stream on client disconnect", { error: (err as Error)?.message || String(err), fileId }); }
               };
               req.on('close', onClose);
               req.on('aborted', onClose);
@@ -4324,7 +4323,7 @@ const server = (serverObj as any).createServer(serverOptions, async (req: Incomi
                 if (!res.headersSent) {
                   res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
                 }
-                try { res.end('Error reading file'); } catch (_e) { /* ignore */ }
+                try { res.end('Error reading file'); } catch (error: unknown) { logger.error("Error ending response after streaming failure", { error: (error as Error)?.message || String(error), fileId }); }
               } finally {
                 req.removeListener('close', onClose);
                 req.removeListener('aborted', onClose);
