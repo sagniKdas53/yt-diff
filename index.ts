@@ -1055,6 +1055,16 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
     const cachedUser = await redis.get(`user:${decodedToken.id}`);
     if (cachedUser) {
       user = JSON.parse(cachedUser);
+      // Verify password hasn't changed, keep it here to avoid the scenario where user is null
+      const lastPasswordUpdate = user.updatedAt;
+      if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
+        logger.error("Token invalid - password changed");
+        response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
+        return response.end(JSON.stringify({
+          status: 'error',
+          message: "Token expired"
+        }));
+      }
     }
 
     if (!user) {
@@ -1071,18 +1081,6 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
       return response.end(JSON.stringify({
         status: 'error',
         message: "User not found"
-      }));
-    }
-
-    // Verify password hasn't changed
-    // user.updatedAt.toISOString is not a function
-    const lastPasswordUpdate = user.updatedAt;
-    if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
-      logger.error("Token invalid - password changed");
-      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: 'error',
-        message: "Token expired"
       }));
     }
 
@@ -1141,6 +1139,12 @@ async function authenticateSocket(socket: Socket) {
     const cachedUser = await redis.get(`user:${decodedToken.id}`);
     if (cachedUser) {
       user = JSON.parse(cachedUser);
+      // Verify password hasn't changed, keep it here to avoid the scenario where user is null
+      const lastPasswordUpdate = user.updatedAt;
+      if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
+        logger.error("Socket auth failed - password changed");
+        return false;
+      }
     }
 
     if (!user) {
@@ -1153,13 +1157,6 @@ async function authenticateSocket(socket: Socket) {
 
     if (!user) {
       logger.error("Socket auth failed - user not found");
-      return false;
-    }
-
-    // Verify password hasn't changed
-    const lastPasswordUpdate = user.updatedAt;
-    if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
-      logger.error("Socket auth failed - password changed");
       return false;
     }
 
