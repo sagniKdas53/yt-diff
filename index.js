@@ -2417,7 +2417,7 @@ async function listWithSemaphore(item, chunkSize, shouldSleep) {
 async function executeListing(item, processKey, chunkSize, shouldSleep, isScheduledUpdate = false) {
     const { url: videoUrl, currentMonitoringType } = item;
     let itemType = item.type;
-    let processedChunks = 0;
+    const processedChunks = 0;
     let playlistTitle = "";
     let seekPlaylistListTo = 0;
 
