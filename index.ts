@@ -1504,6 +1504,7 @@ const DownloadSemaphore = {
       } else {
         logger.debug(`Semaphore full, queuing request`);
         this.queue.push(resolve);
+        logger.debug(`Queue length: ${this.queue.length}`);
       }
     });
   },
