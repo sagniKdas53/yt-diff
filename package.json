@@ -28,7 +28,7 @@
   "homepage": "https://github.com/sagniKdas53/yt-diff#readme",
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "bootstrap": "^5.2.3",
+    "bootstrap": "^5.3.8",
     "cli-color": "^2.0.4",
     "cron": "^4.4.0",
     "generate-password": "^1.7.1",
@@ -36,14 +36,14 @@
     "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.3",
     "node-cache": "^5.1.2",
-    "pg": "^8.10.0",
+    "pg": "^8.18.0",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.7",
-    "socket.io": "^4.8.1",
-    "uuid": "^9.0.0"
+    "socket.io": "^4.8.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/cron": "^2.0.1",
-    "csv-parser": "^3.0.0"
+    "@types/cron": "^2.4.3",
+    "csv-parser": "^3.2.0"
   }
 }
