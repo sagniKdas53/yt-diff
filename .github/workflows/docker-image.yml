@@ -1,15 +1,18 @@
-name: Build
+name: Build and Push Docker Image
 
 on:
   push:
     branches:
       - master
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - master
 
 env:
-  REGISTRY: ghcr.io
+  GHCR_REGISTRY: ghcr.io
+  DOCKERHUB_USERNAME: purevert
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -18,17 +21,24 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Log in to the Container registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -36,11 +46,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata
-        id: meta
+      - name: Extract metadata for GHCR
+        id: meta-ghcr
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
             latest=true
           tags: |
@@ -50,32 +60,74 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}.{{patch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}
-            type=sha
 
-      - name: Prune Old Images
+      - name: Extract metadata for Docker Hub
+        id: meta-dockerhub
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_USERNAME }}/yt-diff
+          flavor: |
+            latest=true
+          tags: |
+            type=schedule,pattern={{date 'YYYYMMDD-HHmmss' tz='UTC'}}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{major}}.{{minor}}.{{patch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}
+
+      - name: Prune Old Images from GHCR
         uses: vlaurin/action-ghcr-prune@v0.6.0
         with:
           token: ${{ secrets.PRUNE_TOKEN }}
-          user: sagnikdas53
+          user: ${{ github.repository_owner }}
           container: yt-diff
-          dry-run: false # Dry-run first, then change to `false`
-          keep-younger-than: 0 # days
-          keep-last: 6
+          dry-run: false
+          keep-younger-than: 7
+          keep-last: 10
           prune-untagged: true
           keep-tags-regexes: |
-            ^pr-
+            ^v[0-9]+\.[0-9]+\.[0-9]+
+            ^master$
+            ^dev$
           prune-tags-regexes: |
             ^sha-
 
-      - name: Build and push
+      - name: Prune Old Images from Docker Hub
+        uses: lostlink/docker-cleanup@v1.0.1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          # If this is a personal repo, 'organization' is your username
+          organization: ${{ github.repository_owner }}
+          repositories: 'yt-diff'
+          # 1. Global retention for anything not matched by patterns below
+          # (Matches your 'keep-younger-than: 7')
+          sha-retention-days: 7
+          # 2. Protected tags (Never delete)
+          # (Matches your '^master$' and '^dev$')
+          protected-tags: 'master,dev,latest'
+          # 3. Custom regex patterns with retention days
+          # (Matches your '^v[0-9]+...' and '^sha-')
+          custom-patterns: |
+            {
+              "^v[0-9]+\\.[0-9]+\\.[0-9]+$": 365,
+              "^sha-.*": 7
+            }
+          dry-run: true
+          verbose: true
+
+      - name: Build and push to both registries
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          platforms: linux/amd64,linux/arm64  # https://docs.docker.com/build/ci/github-actions/cache/
-          # cache-from: type=gha
-          # cache-to: type=gha,mode=max
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.meta-ghcr.outputs.tags }}
+            ${{ steps.meta-dockerhub.outputs.tags }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             VITE_BASE_PATH=/ytdiff
