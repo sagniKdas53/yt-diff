@@ -1,5 +1,5 @@
 /// <reference lib="deno.ns" />
-import { Sequelize, DataTypes, Op } from "sequelize";
+import { DataTypes, Op, Sequelize } from "sequelize";
 import { spawn } from "node:child_process";
 import color from "cli-color";
 import { CronJob } from "cron";
@@ -44,8 +44,10 @@ const config = {
     password: Deno.env.get("DB_PASSWORD_FILE")
       ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
       : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
-        ? Deno.env.get("DB_PASSWORD")
-        : new Error("DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set"),
+      ? Deno.env.get("DB_PASSWORD")
+      : new Error(
+        "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
+      ),
   },
   redis: {
     host: Deno.env.get("REDIS_HOST") || "localhost",
@@ -55,7 +57,7 @@ const config = {
   cache: {
     maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 100),
     maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
-    reqPerIP: +(Deno.env.get("MAX_REQUESTS_PER_IP") || 10)
+    reqPerIP: +(Deno.env.get("MAX_REQUESTS_PER_IP") || 10),
   },
   queue: {
     maxListings: +(Deno.env.get("MAX_LISTINGS") || 2),
@@ -65,18 +67,21 @@ const config = {
   },
   registration: {
     allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",
-    maxUsers: +(Deno.env.get("MAX_USERS") || 15)
+    maxUsers: +(Deno.env.get("MAX_USERS") || 15),
   },
-  saveLocation: Deno.env.get("SAVE_PATH") || "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
+  saveLocation: Deno.env.get("SAVE_PATH") ||
+    "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
   cookiesFile: Deno.env.get("COOKIES_FILE")
     ? fs.existsSync(Deno.env.get("COOKIES_FILE")!)
-      ? Deno.env.get("COOKIES_FILE") : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
+      ? Deno.env.get("COOKIES_FILE")
+      : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
     : false,
   proxy_string: Deno.env.get("PROXY_STRING_FILE")
-    ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim().replace(/['"\n]+/g, '')
+    ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
+      .replace(/['"\n]+/g, "")
     : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
-      ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, '')}` // make sure it's not quoted
-      : "", // if both are not set, proxy will be empty i.e. direct connection
+    ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
+    : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
@@ -94,8 +99,10 @@ const config = {
   secretKey: Deno.env.get("SECRET_KEY_FILE")
     ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
     : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
-      ? Deno.env.get("SECRET_KEY")!.trim()
-      : new Error("SECRET_KEY or SECRET_KEY_FILE environment variable must be set"),
+    ? Deno.env.get("SECRET_KEY")!.trim()
+    : new Error(
+      "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
+    ),
   maxClients: 10,
   connectedClients: 0,
 };
@@ -115,32 +122,40 @@ if (config.logDisableColors || !Deno.stdout.isTerminal()) {
  * @param {string} level - The log level (e.g., 'info', 'error').
  * @param {string} message - The log message.
  * @param {Object} [fields={}] - Additional fields to include in the log entry.
- * @param {string|number|boolean|Error|null|undefined} [fields.*] - The value of the additional field. 
+ * @param {string|number|boolean|Error|null|undefined} [fields.*] - The value of the additional field.
  *        Strings will be escaped, Errors will include message and stack trace, null and undefined will be logged as null.
  * @returns {string} The formatted log entry.
  */
 const logfmt = (level: string, message: string, fields: LogFields = {}) => {
-  let logEntry = `level=${level} msg="${message
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\r?\n/g, '\\n')}"`;
+  let logEntry = `level=${level} msg="${
+    message
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\r?\n/g, "\\n")
+  }"`;
   logEntry += ` ts=${new Date().toISOString()}`;
   for (const [key, value] of Object.entries(fields)) {
-    if (typeof value === 'string') {
-      logEntry += ` ${key}="${value
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, '\\n')}"`;
-    } else if (value instanceof Error) {
-      logEntry += ` ${key}="${value.message
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, '\\n')}"`;
-      if (value.stack) {
-        logEntry += ` ${key}_stack="${value.stack
-          .replace(/\\/g, '\\\\')
+    if (typeof value === "string") {
+      logEntry += ` ${key}="${
+        value
+          .replace(/\\/g, "\\\\")
           .replace(/"/g, '\\"')
-          .replace(/\r?\n/g, '\\n')}"`;
+          .replace(/\r?\n/g, "\\n")
+      }"`;
+    } else if (value instanceof Error) {
+      logEntry += ` ${key}="${
+        value.message
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, "\\n")
+      }"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${
+          value.stack
+            .replace(/\\/g, "\\\\")
+            .replace(/"/g, '\\"')
+            .replace(/\r?\n/g, "\\n")
+        }"`;
       }
     } else if (value === null || value === undefined) {
       logEntry += ` ${key}=null`;
@@ -152,14 +167,14 @@ const logfmt = (level: string, message: string, fields: LogFields = {}) => {
 };
 /**
  * Logger object with various logging levels.
- * 
+ *
  * @property {function(string, object=): void} trace - Logs a trace level message.
  * @property {function(string, object=): void} debug - Logs a debug level message.
  * @property {function(string, object=): void} verbose - Logs a verbose level message.
  * @property {function(string, object=): void} info - Logs an info level message.
  * @property {function(string, object=): void} warn - Logs a warn level message.
  * @property {function(string, object=): void} error - Logs an error level message.
- * 
+ *
  * @example
  * logger.trace('This is a trace message', { additional: 'info' });
  * logger.debug('This is a debug message', { additional: 'info' });
@@ -170,29 +185,29 @@ const logfmt = (level: string, message: string, fields: LogFields = {}) => {
 const logger = {
   trace: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("trace")) {
-      console.debug(honeyDew(logfmt('trace', message, fields)));
+      console.debug(honeyDew(logfmt("trace", message, fields)));
     }
   },
   debug: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
-      console.debug(color.magentaBright(logfmt('debug', message, fields)));
+      console.debug(color.magentaBright(logfmt("debug", message, fields)));
     }
   },
   info: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("info")) {
-      console.log(color.blueBright(logfmt('info', message, fields)));
+      console.log(color.blueBright(logfmt("info", message, fields)));
     }
   },
   warn: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("warn")) {
-      console.warn(orange(logfmt('warn', message, fields)));
+      console.warn(orange(logfmt("warn", message, fields)));
     }
   },
   error: (message: string, fields: LogFields = {}) => {
     if (currentLogLevelIndex <= logLevels.indexOf("error")) {
-      console.error(color.redBright(logfmt('error', message, fields)));
+      console.error(color.redBright(logfmt("error", message, fields)));
     }
-  }
+  },
 };
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
@@ -200,7 +215,7 @@ logger.info("Logger initialized", { logLevel: config.logLevel });
 /**
  * An array of download options for a YouTube downloader.
  * The options are conditionally included based on the configuration settings.
- * 
+ *
  * Options included:
  * - "--embed-metadata": Always included to embed metadata in the downloaded file.
  * - "--embed-chapters": Always included to embed chapters in the downloaded file.
@@ -210,11 +225,11 @@ logger.info("Logger initialized", { logLevel: config.logLevel });
  * - "--write-comments": Included if `config.saveComments` is true, to write the video comments.
  * - "--write-thumbnail": Included if `config.saveThumbnail` is true, to write the video thumbnail.
  * - "--paths": Always included to specify the download paths.
- * 
+ *
  * Options that are supported but not included by default:
  * - "--embed-thumbnail": This option is not included as it is not be supported for webm formats and can cause conversion to mkv/mp4, which adds time to the process.
  * - "--embed-subs": This option is not included as embedding subtitles to every video may not be possible depending on the format.
- * 
+ *
  * The array is filtered to remove any empty strings.
  */
 const downloadOptions = [
@@ -227,11 +242,18 @@ const downloadOptions = [
   config.saveComments ? "--write-comments" : "",
   config.saveThumbnail ? "--write-thumbnail" : "",
   config.restrictFilenames ? "--restrict-filenames" : "",
-  "-P", "temp:/tmp",
-  "-o", config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
-  "--print", "before_dl:title:%(title)s [%(id)s]",
-  "--print", config.restrictFilenames ? "post_process:\"fileName:%(id)s.%(ext)s\"" : "post_process:\"fileName:%(title)s[%(id)s].%(ext)s\"",
-  "--progress-template", "download-title:%(info.id)s-%(progress.eta)s",
+  "-P",
+  "temp:/tmp",
+  "-o",
+  config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
+  "--print",
+  "before_dl:title:%(title)s [%(id)s]",
+  "--print",
+  config.restrictFilenames
+    ? 'post_process:"fileName:%(id)s.%(ext)s"'
+    : 'post_process:"fileName:%(title)s[%(id)s].%(ext)s"',
+  "--progress-template",
+  "download-title:%(info.id)s-%(progress.eta)s",
   ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
 ].filter(Boolean) as string[];
 // Check if file name length limit is set and valid
@@ -244,21 +266,21 @@ const playlistRegex = /(?:playlist|list=)\b/i;
 
 // Static content and server configuration
 const MIME_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.ico': 'image/x-icon',
-  '.html': 'text/html; charset=utf-8',
-  '.webmanifest': 'application/manifest+json',
-  '.xml': 'application/xml',
-  '.gz': 'application/gzip',
-  '.br': 'application/brotli',
-  '.svg': 'image/svg+xml',
-  '.json': 'application/json; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8',
+  ".png": "image/png",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".html": "text/html; charset=utf-8",
+  ".webmanifest": "application/manifest+json",
+  ".xml": "application/xml",
+  ".gz": "application/gzip",
+  ".br": "application/brotli",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
 };
 const CORS_ALLOWED_ORIGINS = [
-  'http://localhost:5173',
+  "http://localhost:5173",
   // `http://localhost:${config.port}`,
   // `${config.protocol}://${config.host}:${config.port}`,
   // "*"
@@ -268,7 +290,7 @@ const CORS_ALLOWED_HEADERS = [
   "POST",
   "PUT",
   "DELETE",
-  "OPTIONS"
+  "OPTIONS",
 ];
 
 if (config.secretKey instanceof Error) {
@@ -283,16 +305,22 @@ if (config.cookiesFile instanceof Error) {
   throw error;
 }
 if (!fs.existsSync(config.saveLocation)) {
-  logger.info("Save location doesn't exists", { saveLocation: config.saveLocation });
+  logger.info("Save location doesn't exists", {
+    saveLocation: config.saveLocation,
+  });
   try {
-    logger.info("Creating save location", { saveLocation: config.saveLocation });
+    logger.info("Creating save location", {
+      saveLocation: config.saveLocation,
+    });
     fs.mkdirSync(config.saveLocation, { recursive: true });
   } catch (error) {
     logger.error("Failed to create save location", {
       saveLocation: config.saveLocation,
-      error: (error as Error).message
+      error: (error as Error).message,
     });
-    throw new Error(`Failed to create save location: ${(error as Error).message}`);
+    throw new Error(
+      `Failed to create save location: ${(error as Error).message}`,
+    );
   }
 }
 
@@ -319,11 +347,16 @@ redis.on("connect", () => {
  */
 function safeEmit(event: string, payload: unknown) {
   try {
-    if (typeof sock !== 'undefined' && sock && typeof sock.emit === 'function') {
+    if (
+      typeof sock !== "undefined" && sock && typeof sock.emit === "function"
+    ) {
       sock.emit(event, payload);
     }
   } catch (e) {
-    logger.warn('safeEmit failed', { event, error: e instanceof Error ? e.message : "Unknown error" });
+    logger.warn("safeEmit failed", {
+      event,
+      error: e instanceof Error ? e.message : "Unknown error",
+    });
   }
 }
 
@@ -339,12 +372,17 @@ const sequelize = new Sequelize({
 });
 try {
   sequelize.authenticate().then(() => {
-    logger.info("Connection to database has been established successfully",
-      { host: config.db.host, database: config.db.name });
+    logger.info("Connection to database has been established successfully", {
+      host: config.db.host,
+      database: config.db.name,
+    });
   });
 } catch (error) {
-  logger.error("Unable to connect to the database",
-    { host: config.db.host, database: config.db.name, error: (error as Error).message });
+  logger.error("Unable to connect to the database", {
+    host: config.db.host,
+    database: config.db.name,
+    error: (error as Error).message,
+  });
   throw error;
 }
 
@@ -356,73 +394,76 @@ const VideoMetadata = sequelize.define("video_metadata", {
   videoUrl: {
     type: DataTypes.STRING,
     allowNull: false,
-    primaryKey: true
+    primaryKey: true,
   },
   videoId: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "YouTube/platform-specific video identifier"
+    comment: "YouTube/platform-specific video identifier",
   },
   title: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
   },
   approximateSize: {
     type: DataTypes.BIGINT,
     allowNull: false,
-    comment: "Estimated file size in bytes"
+    comment: "Estimated file size in bytes",
   },
   downloadStatus: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: false,
-    comment: "Whether video has been downloaded"
+    comment: "Whether video has been downloaded",
   },
   isAvailable: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: true,
-    comment: "Whether video is still available on platform"
+    comment: "Whether video is still available on platform",
   },
   fileName: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: "Name of the file on disk, should have the extension. null if not downloaded."
+    comment:
+      "Name of the file on disk, should have the extension. null if not downloaded.",
   },
   thumbNailFile: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: "Thumbnail generated by yt-dlp"
+    comment: "Thumbnail generated by yt-dlp",
   },
   subTitleFile: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: "Subtitle generated by yt-dlp"
+    comment: "Subtitle generated by yt-dlp",
   },
   commentsFile: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: "Comments file generated by yt-dlp"
+    comment: "Comments file generated by yt-dlp",
   },
   descriptionFile: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: "Description retrieved by yt-dlp, not sure yet if I will save the path or read the data and save it here."
+    comment:
+      "Description retrieved by yt-dlp, not sure yet if I will save the path or read the data and save it here.",
   },
   isMetaDataSynced: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: false,
-    comment: "This will serve as a marker for other processes to know if they need to sync metadata from downloaded files"
+    comment:
+      "This will serve as a marker for other processes to know if they need to sync metadata from downloaded files",
   },
   createdAt: {
     type: DataTypes.DATE,
-    allowNull: false
+    allowNull: false,
   },
   updatedAt: {
     type: DataTypes.DATE,
-    allowNull: false
-  }
+    allowNull: false,
+  },
 });
 
 /**
@@ -433,40 +474,41 @@ const PlaylistMetadata = sequelize.define("playlist_metadata", {
   playlistUrl: {
     type: DataTypes.STRING,
     allowNull: false,
-    primaryKey: true
+    primaryKey: true,
   },
   title: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
   },
   sortOrder: {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 0,
-    comment: "Order in which playlists are displayed"
+    comment: "Order in which playlists are displayed",
   },
   monitoringType: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Type of monitoring applied to playlist"
+    comment: "Type of monitoring applied to playlist",
   },
   saveDirectory: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Directory path for downloaded videos"
+    comment: "Directory path for downloaded videos",
   },
   createdAt: {
     type: DataTypes.DATE,
-    allowNull: false
+    allowNull: false,
   },
   updatedAt: {
     type: DataTypes.DATE,
-    allowNull: false
+    allowNull: false,
   },
   lastUpdatedByScheduler: {
     type: DataTypes.DATE,
     allowNull: false,
-    comment: "Timestamp of the last update made by the scheduler, default value is createdAt"
+    comment:
+      "Timestamp of the last update made by the scheduler, default value is createdAt",
   },
 });
 
@@ -482,36 +524,36 @@ const PlaylistVideoMapping = sequelize.define("playlist_video_mapping", {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
-    allowNull: false
+    allowNull: false,
   },
   videoUrl: {
     type: DataTypes.STRING,
     allowNull: false,
     references: {
       model: VideoMetadata,
-      key: "videoUrl"
+      key: "videoUrl",
     },
     onUpdate: "CASCADE",
     onDelete: "CASCADE",
-    comment: "Foreign key linking to VideoMetadata"
+    comment: "Foreign key linking to VideoMetadata",
   },
   playlistUrl: {
     type: DataTypes.STRING,
     allowNull: false,
     references: {
       model: PlaylistMetadata,
-      key: "playlistUrl"
+      key: "playlistUrl",
     },
     onUpdate: "CASCADE",
     onDelete: "CASCADE",
-    comment: "Foreign key linking to PlaylistMetadata"
+    comment: "Foreign key linking to PlaylistMetadata",
   },
   positionInPlaylist: {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 0,
-    comment: "Order of video within playlist"
-  }
+    comment: "Order of video within playlist",
+  },
 });
 
 /**
@@ -523,34 +565,34 @@ const UserAccount = sequelize.define("user_account", {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
-    allowNull: false
+    allowNull: false,
   },
   username: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true
+    unique: true,
   },
   passwordHash: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Hashed password using bcrypt"
+    comment: "Hashed password using bcrypt",
   },
   passwordSalt: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Salt used in password hashing"
-  }
+    comment: "Salt used in password hashing",
+  },
 });
 
 /**
  * Database Relationships
- * 
+ *
  * Videos to Playlists (Many-to-Many):
  * - Videos can belong to multiple playlists
  * - Playlists can contain multiple videos
  * - PlaylistVideoMapping manages the relationships
  * - Each mapping includes video position in playlist
- * 
+ *
  * Cascading Deletes:
  * - Deleting a video removes all its playlist mappings
  * - Deleting a playlist removes all its video mappings
@@ -558,19 +600,19 @@ const UserAccount = sequelize.define("user_account", {
 
 // Define relationships
 PlaylistVideoMapping.belongsTo(VideoMetadata, {
-  foreignKey: "videoUrl"
+  foreignKey: "videoUrl",
 });
 
 PlaylistVideoMapping.belongsTo(PlaylistMetadata, {
-  foreignKey: "playlistUrl"
+  foreignKey: "playlistUrl",
 });
 
 VideoMetadata.hasMany(PlaylistVideoMapping, {
-  foreignKey: "videoUrl"
+  foreignKey: "videoUrl",
 });
 
 PlaylistMetadata.hasMany(PlaylistVideoMapping, {
-  foreignKey: "playlistUrl"
+  foreignKey: "playlistUrl",
 });
 
 sequelize
@@ -578,7 +620,15 @@ sequelize
   .then(async () => {
     logger.info(
       "tables exist or are created successfully",
-      { host: config.db.host, database: config.db.name, tables: JSON.stringify([(VideoMetadata as unknown as { name: string }).name, (PlaylistMetadata as unknown as { name: string }).name, (PlaylistVideoMapping as unknown as { name: string }).name]) }
+      {
+        host: config.db.host,
+        database: config.db.name,
+        tables: JSON.stringify([
+          (VideoMetadata as unknown as { name: string }).name,
+          (PlaylistMetadata as unknown as { name: string }).name,
+          (PlaylistVideoMapping as unknown as { name: string }).name,
+        ]),
+      },
     );
     // Making the unlisted playlist
     const [unlistedPlaylist, created] = await PlaylistMetadata.findOrCreate({
@@ -594,7 +644,13 @@ sequelize
     if (created) {
       logger.info(
         "Unlisted playlist created successfully",
-        { host: config.db.host, database: config.db.name, tables: JSON.stringify([(unlistedPlaylist as unknown as { name: string }).name]) }
+        {
+          host: config.db.host,
+          database: config.db.name,
+          tables: JSON.stringify([
+            (unlistedPlaylist as unknown as { name: string }).name,
+          ]),
+        },
       );
     }
     // Replace the existing default user creation code with:
@@ -602,12 +658,12 @@ sequelize
     if (defaultUserCheck === 0) {
       logger.warn(
         "No users exist in the database. Please create a user account.",
-        { setup_required: true }
+        { setup_required: true },
       );
     } else {
       logger.info(
         "Users exist in database",
-        { user_count: defaultUserCheck }
+        { user_count: defaultUserCheck },
       );
     }
   })
@@ -617,7 +673,7 @@ sequelize
 
 // Scheduler
 const jobs = {
-  // TODO: 
+  // TODO:
   // 1. Implement scheduled updates to check playlists for new videos
   cleanup: new CronJob(
     config.queue.cleanUpInterval,
@@ -628,32 +684,37 @@ const jobs = {
         downloadProcesses,
         {
           maxIdleTime: config.queue.maxIdle,
-          forceKill: true
+          forceKill: true,
         },
-        "download"
+        "download",
       );
       // Cleanup list processes
       const cleanedLists = cleanupStaleProcesses(
         listProcesses,
         {
           maxIdleTime: config.queue.maxIdle,
-          forceKill: true
+          forceKill: true,
         },
-        "list"
+        "list",
       );
       logger.info("Completed scheduled process cleanup", {
         cleanedDownloads,
         cleanedLists,
         nextRun: jobs.cleanup.nextDate().toLocaleString(
           {
-            weekday: 'short', month: 'short', day: '2-digit',
-            hour: '2-digit', minute: '2-digit'
-          }, { timeZone: config.timeZone } as Intl.DateTimeFormatOptions)
+            weekday: "short",
+            month: "short",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+        ),
       });
     },
     null,
     true,
-    config.timeZone
+    config.timeZone,
   ),
 };
 // const jobs = {
@@ -695,7 +756,7 @@ function parseRequestJson(request: IncomingMessage): Promise<unknown> {
           ip: request.socket.remoteAddress,
           url: request.url,
           size: requestBody.length,
-          method: request.method
+          method: request.method,
         });
 
         request.destroy();
@@ -708,7 +769,7 @@ function parseRequestJson(request: IncomingMessage): Promise<unknown> {
         logger.warn("Empty request body", {
           ip: request.socket.remoteAddress,
           url: request.url,
-          method: request.method
+          method: request.method,
         });
 
         reject({ status: 400, message: "Empty Request Body" });
@@ -724,23 +785,27 @@ function parseRequestJson(request: IncomingMessage): Promise<unknown> {
           url: request.url,
           size: requestBody.length,
           method: request.method,
-          error: (error as Error).message
+          error: (error as Error).message,
         });
 
         reject({ status: 400, message: "Invalid JSON" });
       }
     });
     request.on("error", (err: Error) => {
-      reject({ status: 500, message: "Request stream error", error: err.message });
+      reject({
+        status: 500,
+        message: "Request stream error",
+        error: err.message,
+      });
     });
   });
 }
 /**
-   * Fixes common URL formatting issues for various platforms
-   * 
-   * @param {string} url - URL to process
-   * @returns {string} Fixed URL
-   */
+ * Fixes common URL formatting issues for various platforms
+ *
+ * @param {string} url - URL to process
+ * @returns {string} Fixed URL
+ */
 function normalizeUrl(url: string) {
   let hostname = "";
   try {
@@ -751,10 +816,16 @@ function normalizeUrl(url: string) {
   // Non-exhaustive list of YouTube hostnames, can be expanded as needed
   // Also handles youtu.be short URLs
   // https://support.google.com/youtube/answer/6180214?hl=en
-  const youtubeHostNames = ['youtube.com', 'www.youtube.com',
-    'youtu.be', 'www.youtu.be',
-    'm.youtube.com', 'www.m.youtube.com',
-    'youtube-nocookie.com', 'www.youtube-nocookie.com'];
+  const youtubeHostNames = [
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "www.youtu.be",
+    "m.youtube.com",
+    "www.m.youtube.com",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com",
+  ];
   if (youtubeHostNames.includes(hostname)) {
     // Add /videos to YouTube channel URLs if missing
     if (!/\/videos\/?$/.test(url) && url.includes("/@")) {
@@ -765,58 +836,59 @@ function normalizeUrl(url: string) {
   return url;
 }
 /**
-   * Generates a title from a URL by extracting meaningful path segments
-   * 
-   * @param {string} url - URL to convert to title
-   * @returns {Promise<string>} Generated title
-   */
+ * Generates a title from a URL by extracting meaningful path segments
+ *
+ * @param {string} url - URL to convert to title
+ * @returns {Promise<string>} Generated title
+ */
 function urlToTitle(url: string) {
   try {
     // Extract path segments and join them
     const pathSegments = new URL(url).pathname.split("/");
-    const unwantedSegments = new Set(['videos', 'channel', 'user', 'playlist']);
+    const unwantedSegments = new Set(["videos", "channel", "user", "playlist"]);
 
-    const titleSegments = pathSegments.filter(segment =>
+    const titleSegments = pathSegments.filter((segment) =>
       segment && !unwantedSegments.has(segment.toLowerCase())
     );
 
     return titleSegments.join("_") || url;
-
   } catch (error) {
     logger.error("Failed to generate title from URL", {
       url,
-      error: (error as Error).message
+      error: (error as Error).message,
     });
     return url;
   }
 }
 /**
-   * Pauses execution for specified duration
-   * 
-   * @param {number} [seconds=config.sleepTime] - Duration to sleep in seconds
-   * @returns {Promise<void>} Resolves after sleep completes
-   */
+ * Pauses execution for specified duration
+ *
+ * @param {number} [seconds=config.sleepTime] - Duration to sleep in seconds
+ * @returns {Promise<void>} Resolves after sleep completes
+ */
 async function sleep(seconds = config.sleepTime) {
   logger.trace(`Sleeping for ${seconds} seconds`);
 
   const start = Date.now();
-  await new Promise(resolve => setTimeout(resolve, (seconds as number) * 1000));
+  await new Promise((resolve) =>
+    setTimeout(resolve, (seconds as number) * 1000)
+  );
   const duration = (Date.now() - start) / 1000;
 
   logger.trace(`Sleep completed after ${duration} seconds`);
 }
 /**
-   * Truncates a string to specified length if needed
-   * 
-   * @param {string} text - Text to truncate
-   * @param {number} maxLength - Maximum allowed length
-   * @returns {Promise<string>} Truncated string
-   */
+ * Truncates a string to specified length if needed
+ *
+ * @param {string} text - Text to truncate
+ * @param {number} maxLength - Maximum allowed length
+ * @returns {Promise<string>} Truncated string
+ */
 function truncateText(text: string, maxLength: number) {
-  if (!text || typeof text !== 'string') {
+  if (!text || typeof text !== "string") {
     logger.warn("Invalid text provided for truncation", {
       text,
-      type: typeof text
+      type: typeof text,
     });
     return "";
   }
@@ -826,7 +898,9 @@ function truncateText(text: string, maxLength: number) {
   }
 
   const truncated = text.slice(0, maxLength);
-  logger.debug(`Truncated text from ${text.length} to ${truncated.length} characters`);
+  logger.debug(
+    `Truncated text from ${text.length} to ${truncated.length} characters`,
+  );
   return truncated;
 }
 /**
@@ -840,11 +914,14 @@ function isSiteXDotCom(videoUrl: string) {
   try {
     hostname = (new URL(videoUrl)).hostname;
   } catch (e) {
-    logger.warn(`Invalid videoUrl: ${videoUrl}`, { error: (e as Error).message });
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
+      error: (e as Error).message,
+    });
   }
   // Only match x.com or its subdomains (e.g. foo.x.com)
-  const allowedXHost = 'x.com';
-  const isAllowedXCom = hostname === allowedXHost || hostname.endsWith('.' + allowedXHost);
+  const allowedXHost = "x.com";
+  const isAllowedXCom = hostname === allowedXHost ||
+    hostname.endsWith("." + allowedXHost);
   return isAllowedXCom;
 }
 
@@ -862,8 +939,10 @@ async function hashPassword(plaintextPassword: string) {
     const hashedPassword = await bcrypt.hash(plaintextPassword, salt);
     return [salt, hashedPassword];
   } catch (error) {
-    logger.error('Password hashing failed', { error: (error as Error).message });
-    throw new Error('Failed to secure password');
+    logger.error("Password hashing failed", {
+      error: (error as Error).message,
+    });
+    throw new Error("Failed to secure password");
   }
 }
 /**
@@ -875,14 +954,17 @@ async function hashPassword(plaintextPassword: string) {
  * @param {string} expiryDuration - Token expiry duration (e.g., "24h", "7d")
  * @returns {string} JWT token
  */
-function generateAuthToken(user: { id: string, updatedAt: Date }, expiryDuration: string) {
+function generateAuthToken(
+  user: { id: string; updatedAt: Date },
+  expiryDuration: string,
+) {
   return jwt.sign(
     {
       id: user.id,
-      lastPasswordChangeTime: user.updatedAt
+      lastPasswordChangeTime: user.updatedAt,
     },
     config.secretKey,
-    { expiresIn: expiryDuration }
+    { expiresIn: expiryDuration },
   );
 }
 /**
@@ -892,14 +974,17 @@ function generateAuthToken(user: { id: string, updatedAt: Date }, expiryDuration
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when registration completes
  */
-async function registerUser(request: IncomingMessage, response: ServerResponse) {
+async function registerUser(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
   try {
     // Check if registration is enabled
     if (!config.registration.allowed) {
       response.writeHead(403, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Registration is currently disabled"
+        status: "error",
+        message: "Registration is currently disabled",
       }));
     }
 
@@ -908,46 +993,51 @@ async function registerUser(request: IncomingMessage, response: ServerResponse) 
     if (userCount >= config.registration.maxUsers) {
       response.writeHead(403, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Maximum number of users reached"
+        status: "error",
+        message: "Maximum number of users reached",
       }));
     }
     let requestData = {};
     try {
       requestData = await parseRequestJson(request) as Record<string, unknown>;
     } catch (error) {
-      logger.error("Failed to parse request JSON", { error: (error as Error).message });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: 'error',
-        message: `${(error as Error).message || "Invalid request"}`
-      }));
-    }
-    const { userName, password } = requestData as { userName: string, password: string };
-
-    // Validate password length (bcrypt limit is 72 bytes)
-    if (Buffer.byteLength(password, 'utf8') > 72) {
-      logger.error("Password too long", {
-        userName,
-        passwordLength: Buffer.byteLength(password, 'utf8')
+      logger.error("Failed to parse request JSON", {
+        error: (error as Error).message,
       });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Password exceeds maximum length"
+        status: "error",
+        message: `${(error as Error).message || "Invalid request"}`,
+      }));
+    }
+    const { userName, password } = requestData as {
+      userName: string;
+      password: string;
+    };
+
+    // Validate password length (bcrypt limit is 72 bytes)
+    if (Buffer.byteLength(password, "utf8") > 72) {
+      logger.error("Password too long", {
+        userName,
+        passwordLength: Buffer.byteLength(password, "utf8"),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Password exceeds maximum length",
       }));
     }
 
     // Check for existing user
     const existingUser = await UserAccount.findOne({
-      where: { username: userName }
+      where: { username: userName },
     });
 
     if (existingUser) {
       response.writeHead(409, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Username already exists"
+        status: "error",
+        message: "Username already exists",
       }));
     }
 
@@ -956,32 +1046,34 @@ async function registerUser(request: IncomingMessage, response: ServerResponse) 
     await UserAccount.create({
       username: userName,
       passwordSalt: salt,
-      passwordHash: hashedPassword
+      passwordHash: hashedPassword,
     });
 
     response.writeHead(201, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      status: 'success',
-      message: "User registered successfully"
+      status: "success",
+      message: "User registered successfully",
     }));
-
   } catch (error) {
     logger.error("Registration failed", { error: (error as Error).message });
     response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      status: 'error',
-      message: "Registration failed"
+      status: "error",
+      message: "Registration failed",
     }));
   }
 }
 /**
  * Checks if user registration is allowed based on current settings
- * 
+ *
  * @param {*} request Request object to read any parameters
  * @param {*} response Response object to send result
  * @returns {Promise<void>} Resolves with registration status
  */
-async function isRegistrationAllowed(request: IncomingMessage, response: ServerResponse) {
+async function isRegistrationAllowed(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
   let allow = true;
   if (!config.registration.allowed) {
     allow = false;
@@ -990,14 +1082,17 @@ async function isRegistrationAllowed(request: IncomingMessage, response: ServerR
   try {
     requestData = await parseRequestJson(request) as Record<string, unknown>;
   } catch (err) {
-    logger.error("Failed to parse request JSON", { error: (err as Error).message });
+    logger.error("Failed to parse request JSON", {
+      error: (err as Error).message,
+    });
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
-      status: 'error',
-      message: `${(err as Error).message || "Invalid request"}`
+      status: "error",
+      message: `${(err as Error).message || "Invalid request"}`,
     }));
   }
-  const { sendStats } = (requestData as { sendStats?: boolean }) || { sendStats: false };
+  const { sendStats } = (requestData as { sendStats?: boolean }) ||
+    { sendStats: false };
   const userCount = await UserAccount.count();
   if (userCount >= config.registration.maxUsers) {
     allow = false;
@@ -1007,12 +1102,12 @@ async function isRegistrationAllowed(request: IncomingMessage, response: ServerR
     return response.end(JSON.stringify({
       registrationAllowed: allow,
       currentUsers: userCount,
-      maxUsers: config.registration.maxUsers
+      maxUsers: config.registration.maxUsers,
     }));
   } else {
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
-      registrationAllowed: allow
+      registrationAllowed: allow,
     }));
   }
 }
@@ -1024,13 +1119,18 @@ async function isRegistrationAllowed(request: IncomingMessage, response: ServerR
  * @param {Function} next - Next middleware function
  * @returns {Promise<void>} Resolves when verification completes
  */
-async function authenticateRequest(request: IncomingMessage, response: ServerResponse, next: (data: unknown, res: ServerResponse) => void) {
+async function authenticateRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: (data: unknown, res: ServerResponse) => void,
+) {
   try {
     // Try to get token from Authorization header (Bearer) first, fall back to body
-    const authHeader = request.headers && (request.headers.authorization || request.headers.Authorization);
+    const authHeader = request.headers &&
+      (request.headers.authorization || request.headers.Authorization);
     let headerToken = null;
-    if (authHeader && typeof authHeader === 'string') {
-      const parts = authHeader.split(' ');
+    if (authHeader && typeof authHeader === "string") {
+      const parts = authHeader.split(" ");
       if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
         headerToken = parts[1];
       } else {
@@ -1043,7 +1143,9 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
 
     if (!token) {
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ status: 'error', message: "Token required" }));
+      return response.end(
+        JSON.stringify({ status: "error", message: "Token required" }),
+      );
     }
 
     // Verify token
@@ -1061,8 +1163,8 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
         logger.error("Token invalid - password changed");
         response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
         return response.end(JSON.stringify({
-          status: 'error',
-          message: "Token expired"
+          status: "error",
+          message: "Token expired",
         }));
       }
     }
@@ -1071,7 +1173,12 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
       logger.debug(`Fetching user data for ID ${decodedToken.id}`);
       user = await UserAccount.findByPk(decodedToken.id);
       if (user) {
-        await redis.set(`user:${decodedToken.id}`, JSON.stringify(user), "EX", config.cache.maxAge);
+        await redis.set(
+          `user:${decodedToken.id}`,
+          JSON.stringify(user),
+          "EX",
+          config.cache.maxAge,
+        );
       }
     }
 
@@ -1079,8 +1186,8 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
       logger.error("User not found");
       response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "User not found"
+        status: "error",
+        message: "User not found",
       }));
     }
 
@@ -1088,36 +1195,47 @@ async function authenticateRequest(request: IncomingMessage, response: ServerRes
     try {
       requestData = await parseRequestJson(request) as Record<string, unknown>;
     } catch (error) {
-      logger.error("Failed to parse request JSON", { error: (error as Error).message });
+      logger.error("Failed to parse request JSON", {
+        error: (error as Error).message,
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: `${(error as Error).message || "Invalid request"}`
+        status: "error",
+        message: `${(error as Error).message || "Invalid request"}`,
       }));
     }
     // Continue to next middleware
     next(requestData, response);
-
   } catch (error) {
-    logger.error("Token verification failed", { error: (error as Error).message });
+    logger.error("Token verification failed", {
+      error: (error as Error).message,
+    });
 
-    const statusCode = (error as Error).name === "TokenExpiredError" ? 401 : 500;
-    const message = (error as Error).name === "TokenExpiredError" ? "Token expired" : "Authentication failed";
+    const statusCode = (error as Error).name === "TokenExpiredError"
+      ? 401
+      : 500;
+    const message = (error as Error).name === "TokenExpiredError"
+      ? "Token expired"
+      : "Authentication failed";
 
     if ((error as Error).name === "TokenExpiredError") {
-      if (typeof sock !== 'undefined' && sock && typeof sock.emit === 'function') {
+      if (
+        typeof sock !== "undefined" && sock && typeof sock.emit === "function"
+      ) {
         try {
           sock.emit("token-expired", { error: (error as Error).message });
         } catch (e) {
-          logger.warn('Failed to emit token-expired on sock', { error: (e as Error).message });
+          logger.warn("Failed to emit token-expired on sock", {
+            error: (e as Error).message,
+          });
         }
       }
     }
 
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
-      status: 'error',
-      message: he.escape(message)
+      status: "error",
+      message: he.escape(message),
     }));
   }
 }
@@ -1151,7 +1269,12 @@ async function authenticateSocket(socket: Socket) {
       logger.debug(`Fetching user data for ID ${decodedToken.id}`);
       user = await UserAccount.findByPk(decodedToken.id);
       if (user) {
-        await redis.set(`user:${decodedToken.id}`, JSON.stringify(user), "EX", config.cache.maxAge);
+        await redis.set(
+          `user:${decodedToken.id}`,
+          JSON.stringify(user),
+          "EX",
+          config.cache.maxAge,
+        );
       }
     }
 
@@ -1161,14 +1284,15 @@ async function authenticateSocket(socket: Socket) {
     }
 
     return true;
-
   } catch (error) {
     if ((error as Error).name === "JsonWebTokenError") {
       logger.error("Invalid token format");
     } else if ((error as Error).name === "TokenExpiredError") {
       logger.error("Token expired");
     } else {
-      logger.error("Socket authentication failed", { error: (error as Error).message });
+      logger.error("Socket authentication failed", {
+        error: (error as Error).message,
+      });
     }
     return false;
   }
@@ -1188,11 +1312,15 @@ async function rateLimit(
   request: IncomingMessage,
   response: ServerResponse,
   // deno-lint-ignore no-explicit-any
-  currentHandler: (req: IncomingMessage, res: ServerResponse, next: (data: any, res: ServerResponse) => void) => void,
+  currentHandler: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    next: (data: any, res: ServerResponse) => void,
+  ) => void,
   // deno-lint-ignore no-explicit-any
   nextHandler: (data: any, res: ServerResponse) => void,
   maxRequestsPerWindow: number,
-  windowSeconds: number
+  windowSeconds: number,
 ) {
   const clientIp = request.socket.remoteAddress;
   logger.trace(`Rate limit check for IP ${clientIp}`);
@@ -1204,8 +1332,8 @@ async function rateLimit(
     logger.debug(`Rate limit exceeded for ${clientIp}`);
     response.writeHead(429, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
-      status: 'error',
-      message: "Too many requests"
+      status: "error",
+      message: "Too many requests",
     }));
   }
 
@@ -1224,27 +1352,36 @@ async function rateLimit(
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when authentication completes
  */
-async function authenticateUser(request: IncomingMessage, response: ServerResponse) {
+async function authenticateUser(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
   try {
     let requestData = {};
     try {
       requestData = await parseRequestJson(request) as Record<string, unknown>;
     } catch (error) {
-      logger.error("Failed to parse request JSON", { error: (error as Error).message });
+      logger.error("Failed to parse request JSON", {
+        error: (error as Error).message,
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: `${(error as Error).message || "Invalid request"}`
+        status: "error",
+        message: `${(error as Error).message || "Invalid request"}`,
       }));
     }
 
     // Extract and validate fields
-    const data = requestData as { userName?: string, password?: string, expiry_time?: string };
+    const data = requestData as {
+      userName?: string;
+      password?: string;
+      expiry_time?: string;
+    };
     if (!data.userName || !data.password) {
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "userName and password are required"
+        status: "error",
+        message: "userName and password are required",
       }));
     }
 
@@ -1252,64 +1389,69 @@ async function authenticateUser(request: IncomingMessage, response: ServerRespon
     const {
       userName,
       password,
-      expiry_time: expiryTime = "31d"
+      expiry_time: expiryTime = "31d",
     } = data;
 
     // Validate password length
-    if (Buffer.byteLength(password, 'utf8') > 72) {
+    if (Buffer.byteLength(password, "utf8") > 72) {
       logger.error("Password too long", {
         userName,
-        passwordLength: Buffer.byteLength(password, 'utf8')
+        passwordLength: Buffer.byteLength(password, "utf8"),
       });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Password exceeds maximum length"
+        status: "error",
+        message: "Password exceeds maximum length",
       }));
     }
 
     // Find user
     const user = await UserAccount.findOne({
-      where: { username: userName }
+      where: { username: userName },
     });
 
     if (!user) {
       logger.warn(`Authentication failed for user ${userName}`);
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Invalid credentials"
+        status: "error",
+        message: "Invalid credentials",
       }));
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, (user as unknown as { passwordHash: string }).passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      (user as unknown as { passwordHash: string }).passwordHash,
+    );
 
     if (!isPasswordValid) {
       logger.warn(`Authentication failed for user ${userName}`);
       response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        status: 'error',
-        message: "Invalid credentials"
+        status: "error",
+        message: "Invalid credentials",
       }));
     }
 
     // Generate token
-    const token = generateAuthToken(user as unknown as { id: string, updatedAt: Date }, expiryTime);
+    const token = generateAuthToken(
+      user as unknown as { id: string; updatedAt: Date },
+      expiryTime,
+    );
     logger.info(`Authentication successful for user ${userName}`);
 
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({
-      status: 'success',
-      token: he.escape(token)
+      status: "success",
+      token: he.escape(token),
     }));
-
   } catch (error) {
     logger.error("Authentication failed", { error: (error as Error).message });
     response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      status: 'error',
-      message: "Authentication failed"
+      status: "error",
+      message: "Authentication failed",
     }));
   }
 }
@@ -1347,42 +1489,69 @@ async function authenticateUser(request: IncomingMessage, response: ServerRespon
  * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body.
  * @returns {Promise<void>} Resolves after sending the HTTP response. On success sends JSON with { status, signedUrlId, expiry }. On error sends a 400 JSON error.
  */
-async function makeSignedUrl(requestBody: { saveDirectory?: string, fileName?: string }, response: ServerResponse) {
+async function makeSignedUrl(
+  requestBody: { saveDirectory?: string; fileName?: string },
+  response: ServerResponse,
+) {
   let absolutePath = null;
   if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
     const saveDirectory = requestBody.saveDirectory || "";
     const fileName = requestBody.fileName;
-    if (!fileName || typeof fileName !== 'string') {
-      logger.warn('serveFileByPath invalid fileName', { saveDirectory, fileName });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-      return response.end(JSON.stringify({ status: 'error', message: 'fileName is required' }));
+    if (!fileName || typeof fileName !== "string") {
+      logger.warn("serveFileByPath invalid fileName", {
+        saveDirectory,
+        fileName,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "fileName is required" }),
+      );
     }
 
     // Construct the absolute path using configured saveLocation. Use path_fs.join and
     // then verify that the resolved path is within config.saveLocation to avoid traversal.
-    const joined = path.join(config.saveLocation, saveDirectory || '', fileName);
+    const joined = path.join(
+      config.saveLocation,
+      saveDirectory || "",
+      fileName,
+    );
     const resolved = path.resolve(joined);
     const saveRoot = path.resolve(config.saveLocation);
     if (!resolved.startsWith(saveRoot)) {
-      logger.warn('serveFileByPath attempted path traversal', { saveDirectory, fileName, resolved });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-      return response.end(JSON.stringify({ status: 'error', message: 'Invalid file path' }));
+      logger.warn("serveFileByPath attempted path traversal", {
+        saveDirectory,
+        fileName,
+        resolved,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "Invalid file path" }),
+      );
     }
     logger.debug(`Resolved Path ${resolved}`, {
       joined,
       resolved,
-      saveRoot
-    })
-    if (fs.existsSync(resolved))
+      saveRoot,
+    });
+    if (fs.existsSync(resolved)) {
       absolutePath = resolved;
-    else {
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-      return response.end(JSON.stringify({ status: 'error', message: 'File could not be found' }));
+    } else {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "File could not be found" }),
+      );
     }
   } else {
-    logger.warn('makeSignedUrl missing parameters', { requestBody: JSON.stringify(requestBody) });
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-    return response.end(JSON.stringify({ status: 'error', message: 'saveDirectory and fileName are required' }));
+    logger.warn("makeSignedUrl missing parameters", {
+      requestBody: JSON.stringify(requestBody),
+    });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        status: "error",
+        message: "saveDirectory and fileName are required",
+      }),
+    );
   }
 
   // Check if a valid signed URL already exists for this file path
@@ -1393,26 +1562,37 @@ async function makeSignedUrl(requestBody: { saveDirectory?: string, fileName?: s
 
   await redis.set(
     `signed:${signedUrlId}`,
-    JSON.stringify({ filePath: absolutePath, mimeType: "application/octet-stream", expiry }),
+    JSON.stringify({
+      filePath: absolutePath,
+      mimeType: "application/octet-stream",
+      expiry,
+    }),
     "EX",
-    config.cache.maxAge
+    config.cache.maxAge,
   );
 
-  response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
-  response.end(JSON.stringify({ status: 'success', signedUrlId, expiry }));
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+  response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
 }
 
 /**
  * Generates signed URLs for a list of files.
- * 
+ *
  * @param {Object} requestBody - The request body containing the list of files.
  * @param {http.ServerResponse} response - The HTTP response object.
  */
-async function makeSignedUrls(requestBody: { files?: { saveDirectory?: string, fileName?: string }[] }, response: ServerResponse) {
+async function makeSignedUrls(
+  requestBody: { files?: { saveDirectory?: string; fileName?: string }[] },
+  response: ServerResponse,
+) {
   if (!requestBody || !requestBody.files || !Array.isArray(requestBody.files)) {
-    logger.warn('makeSignedUrls missing or invalid parameters', { requestBody: JSON.stringify(requestBody) });
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES['.json']));
-    return response.end(JSON.stringify({ status: 'error', message: 'files array is required' }));
+    logger.warn("makeSignedUrls missing or invalid parameters", {
+      requestBody: JSON.stringify(requestBody),
+    });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({ status: "error", message: "files array is required" }),
+    );
   }
 
   const results: Record<string, string | null> = {};
@@ -1420,10 +1600,14 @@ async function makeSignedUrls(requestBody: { files?: { saveDirectory?: string, f
 
   for (const file of requestBody.files) {
     const { saveDirectory, fileName } = file;
-    if (!fileName || typeof fileName !== 'string') continue;
+    if (!fileName || typeof fileName !== "string") continue;
 
     // Construct the absolute path using configured saveLocation.
-    const joined = path.join(config.saveLocation, saveDirectory || '', fileName);
+    const joined = path.join(
+      config.saveLocation,
+      saveDirectory || "",
+      fileName,
+    );
     const resolved = path.resolve(joined);
     const saveRoot = path.resolve(config.saveLocation);
 
@@ -1437,16 +1621,20 @@ async function makeSignedUrls(requestBody: { files?: { saveDirectory?: string, f
 
     await redis.set(
       `signed:${signedUrlId}`,
-      JSON.stringify({ filePath: resolved, mimeType: "application/octet-stream", expiry }),
+      JSON.stringify({
+        filePath: resolved,
+        mimeType: "application/octet-stream",
+        expiry,
+      }),
       "EX",
-      config.cache.maxAge
+      config.cache.maxAge,
     );
 
     results[fileName] = signedUrlId;
   }
 
-  response.writeHead(200, generateCorsHeaders(MIME_TYPES['.json']));
-  response.end(JSON.stringify({ status: 'success', files: results }));
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+  response.end(JSON.stringify({ status: "success", files: results }));
 }
 interface Process {
   status: string;
@@ -1473,18 +1661,18 @@ interface SubListRequest {
 const downloadProcesses = new Map(); // Map to track download processes
 /**
  * A semaphore implementation to control the number of concurrent asynchronous operations.
- * 
+ *
  * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
  * @property {number} currentConcurrent - The current number of active concurrent operations.
  * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
- * 
+ *
  * @method acquire
  * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
  * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
- * 
+ *
  * @method release
  * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
- * 
+ *
  * @method setMaxConcurrent
  * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
  * operations to start, queued operations are processed.
@@ -1496,10 +1684,12 @@ const DownloadSemaphore = {
   queue: [] as Array<(value?: unknown) => void>,
 
   acquire() {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       if (this.currentConcurrent < this.maxConcurrent) {
         this.currentConcurrent++;
-        logger.debug(`Semaphore acquired, current concurrent: ${this.currentConcurrent}`);
+        logger.debug(
+          `Semaphore acquired, current concurrent: ${this.currentConcurrent}`,
+        );
         resolve(undefined);
       } else {
         logger.debug(`Semaphore full, queuing request`);
@@ -1512,7 +1702,9 @@ const DownloadSemaphore = {
   release() {
     if (this.queue.length > 0) {
       const next = this.queue.shift();
-      logger.debug(`Semaphore released, current concurrent: ${this.currentConcurrent}`);
+      logger.debug(
+        `Semaphore released, current concurrent: ${this.currentConcurrent}`,
+      );
       if (next) next();
     } else {
       logger.debug(`Semaphore released`);
@@ -1523,59 +1715,68 @@ const DownloadSemaphore = {
   setMaxConcurrent(max: number) {
     this.maxConcurrent = max;
     // Check if we can start any queued tasks
-    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
+    while (
+      this.currentConcurrent < this.maxConcurrent && this.queue.length > 0
+    ) {
       const next = this.queue.shift();
       this.currentConcurrent++;
       if (next) next();
     }
-  }
+  },
 };
 /**
-   * Converts a process map to a serializable state object
-   *
-   * @param {Map<string, {status: string}>} processMap - Map of process entries
-   * @returns {Object} Object containing process states by ID
-   */
+ * Converts a process map to a serializable state object
+ *
+ * @param {Map<string, {status: string}>} processMap - Map of process entries
+ * @returns {Object} Object containing process states by ID
+ */
 function getProcessStates(processMap: Map<string, Process>) {
-  const states: Record<string, { status: string, type: string, lastActive: number }> = {};
+  const states: Record<
+    string,
+    { status: string; type: string; lastActive: number }
+  > = {};
 
   for (const [processId, process] of processMap.entries()) {
     logger.debug(`Processing state for ${processId}`, {
-      status: process.status
+      status: process.status,
     });
 
     states[processId] = {
       status: process.status,
       type: process.spawnType,
-      lastActive: process.lastActivity
+      lastActive: process.lastActivity,
     };
   }
 
   return JSON.stringify(states);
 }
 /**
-   * Cleans up stale processes from the process map
-   *
-   * @param {Map<string, Object>} processMap - Map of active processes
-   * @param {Object} [options] - Cleanup options
-   * @param {number} [options.maxIdleTime=config.queue.maxIdle] - Maximum idle time in ms
-   * @param {boolean} [options.forceKill=false] - Whether to force kill hanging processes
-   * @returns {number} Number of processes cleaned up
-   */
+ * Cleans up stale processes from the process map
+ *
+ * @param {Map<string, Object>} processMap - Map of active processes
+ * @param {Object} [options] - Cleanup options
+ * @param {number} [options.maxIdleTime=config.queue.maxIdle] - Maximum idle time in ms
+ * @param {boolean} [options.forceKill=false] - Whether to force kill hanging processes
+ * @returns {number} Number of processes cleaned up
+ */
 function cleanupStaleProcesses(
   processMap: Map<string, Process>,
   {
     maxIdleTime = config.queue.maxIdle,
-    forceKill = false
+    forceKill = false,
   } = {},
-  processType: string
+  processType: string,
 ) {
   const now = Date.now();
   let cleanedCount = 0;
 
-  logger.info(`Cleaning up processes older than ${maxIdleTime / 1000} seconds in ${processType} processes`);
-  logger.trace('Current process states:', {
-    states: getProcessStates(processMap)
+  logger.info(
+    `Cleaning up processes older than ${
+      maxIdleTime / 1000
+    } seconds in ${processType} processes`,
+  );
+  logger.trace("Current process states:", {
+    states: getProcessStates(processMap),
   });
 
   // Iterate through processes
@@ -1585,41 +1786,41 @@ function cleanupStaleProcesses(
     logger.debug(`Checking process ${processId}`, {
       status,
       lastActivity,
-      age: now - spawnTimeStamp
+      age: now - spawnTimeStamp,
     });
 
     // Handle completed processes
-    if (status === 'completed' || status === 'failed') {
+    if (status === "completed" || status === "failed") {
       processMap.delete(processId);
       cleanedCount++;
       continue;
     }
 
     // Handle stale processes
-    if (status === 'running' && (now - spawnTimeStamp > maxIdleTime)) {
+    if (status === "running" && (now - spawnTimeStamp > maxIdleTime)) {
       logger.warn(`Found stale process: ${processId}`, {
         idleTime: (now - spawnTimeStamp) / 1000,
-        lastActivity: new Date(lastActivity).toISOString()
+        lastActivity: new Date(lastActivity).toISOString(),
       });
 
       if (spawnedProcess?.kill && forceKill) {
         try {
           // Try SIGKILL first
-          const killed = spawnedProcess.kill('SIGKILL');
+          const killed = spawnedProcess.kill("SIGKILL");
           if (killed) {
             logger.info(`Killed stale process ${processId}`);
           } else {
             // Fall back to SIGTERM
-            const terminated = spawnedProcess.kill('SIGTERM');
+            const terminated = spawnedProcess.kill("SIGTERM");
             logger.info(`Terminated stale process ${processId}`);
 
             if (!terminated) {
-              throw new Error('Failed to terminate process');
+              throw new Error("Failed to terminate process");
             }
           }
         } catch (error) {
           logger.error(`Failed to kill process ${processId}`, {
-            error: (error as Error).message
+            error: (error as Error).message,
           });
         }
       }
@@ -1630,8 +1831,8 @@ function cleanupStaleProcesses(
   }
 
   logger.info(`Cleaned up ${cleanedCount} processes`);
-  logger.trace('Updated process states:', {
-    states: getProcessStates(processMap)
+  logger.trace("Updated process states:", {
+    states: getProcessStates(processMap),
   });
 
   return cleanedCount;
@@ -1645,7 +1846,10 @@ function cleanupStaleProcesses(
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when download processing is complete
  */
-async function processDownloadRequest(requestBody: { urlList: string[], playListUrl?: string }, response: ServerResponse) {
+async function processDownloadRequest(
+  requestBody: { urlList: string[]; playListUrl?: string },
+  response: ServerResponse,
+) {
   try {
     // Initialize download tracking
     const videosToDownload = [];
@@ -1662,14 +1866,14 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
 
       // Look up video in database
       const videoEntry = await VideoMetadata.findOne({
-        where: { videoUrl: videoUrl }
+        where: { videoUrl: videoUrl },
       });
 
       if (!videoEntry) {
         logger.error(`Video not found in database`, { url: videoUrl });
         response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
         return response.end(JSON.stringify({
-          error: `Video with URL ${videoUrl} is not indexed`
+          error: `Video with URL ${videoUrl} is not indexed`,
         }));
       }
 
@@ -1677,13 +1881,15 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
       let saveDirectory = "";
       try {
         const playlist = await PlaylistMetadata.findOne({
-          where: { playlistUrl: playlistUrl }
+          where: { playlistUrl: playlistUrl },
         });
-        saveDirectory = (playlist as unknown as { saveDirectory: string })?.saveDirectory ?? "";
+        saveDirectory =
+          (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
+            "";
       } catch (error) {
         logger.error(`Error getting playlist save directory`, {
           error: (error as Error).message,
-          playlistUrl
+          playlistUrl,
         });
       }
 
@@ -1692,27 +1898,28 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
         url: videoUrl,
         title: (videoEntry as unknown as { title: string }).title,
         saveDirectory: saveDirectory,
-        videoId: (videoEntry as unknown as { videoId: string }).videoId
+        videoId: (videoEntry as unknown as { videoId: string }).videoId,
       });
       uniqueUrls.add(videoUrl);
     }
 
     // Start downloads
     downloadItemsConcurrently(videosToDownload, config.queue.maxDownloads);
-    logger.debug(`Download processes started`, { itemCount: videosToDownload.length });
+    logger.debug(`Download processes started`, {
+      itemCount: videosToDownload.length,
+    });
 
     // Send success response
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "success",
       message: "Downloads initiated",
-      items: videosToDownload
+      items: videosToDownload,
     }));
-
   } catch (error) {
     logger.error(`Download processing failed`, {
       error: (error as Error).message,
-      stack: (error as Error).stack
+      stack: (error as Error).stack,
     });
 
     // deno-lint-ignore no-explicit-any
@@ -1720,16 +1927,16 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "error",
-      message: he.escape((error as Error).message)
+      message: he.escape((error as Error).message),
     }));
   }
 }
 /**
  * Downloads multiple items concurrently with enhanced process tracking and concurrency control
- * 
+ *
  * @param {Array<Map<string, string>>} items - Array of items to download, each represented as a Map with keys:
  *   - url: URL of video
- *   - title: Title of video  
+ *   - title: Title of video
  *   - saveDirectory: Save directory path
  *   - videoId: Video ID
  * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
@@ -1737,17 +1944,21 @@ async function processDownloadRequest(requestBody: { urlList: string[], playList
  */
 // deno-lint-ignore no-explicit-any
 async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
-  logger.trace(`Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`);
+  logger.trace(
+    `Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`,
+  );
 
   // Update the semaphore's max concurrent value
   DownloadSemaphore.setMaxConcurrent(maxConcurrent);
 
   // Filter out URLs already being downloaded
-  const uniqueItems = items.filter(item => {
+  const uniqueItems = items.filter((item) => {
     const videoUrl = item.url;
     const existingDownload = Array.from(downloadProcesses.values())
-      .find(process => process.url === videoUrl &&
-        ['running', 'pending'].includes(process.status));
+      .find((process) =>
+        process.url === videoUrl &&
+        ["running", "pending"].includes(process.status)
+      );
 
     return !existingDownload;
   });
@@ -1756,17 +1967,19 @@ async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
 
   // Process all items with semaphore control
   const downloadResults = await Promise.all(
-    uniqueItems.map(item => downloadWithSemaphore(item))
+    uniqueItems.map((item) => downloadWithSemaphore(item)),
   );
 
   // Check for any failures
   // deno-lint-ignore no-explicit-any
-  const allSuccessful = downloadResults.every((result: any) => result && result.status === 'success');
+  const allSuccessful = downloadResults.every((result: any) =>
+    result && result.status === "success"
+  );
 
   // Log results
   // deno-lint-ignore no-explicit-any
   downloadResults.forEach((result: any) => {
-    if (result.status === 'success') {
+    if (result.status === "success") {
       logger.info(`Downloaded ${result.title} successfully`);
     } else {
       logger.error(`Failed to download ${result.title}: ${result.error}`);
@@ -1781,17 +1994,19 @@ async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
  * @param {Object} downloadItem - Object containing video details:
  *   - url: Video URL
  *   - title: Video title
- *   - saveDirectory: Save directory path  
+ *   - saveDirectory: Save directory path
  *   - videoId: Video ID
  * @returns {Promise<Object>} Download result containing:
  *   - url: Video URL
- *   - title: Video title 
+ *   - title: Video title
  *   - status: 'success' | 'failed'
  *   - error?: Error message if failed
  */
 // deno-lint-ignore no-explicit-any
 async function downloadWithSemaphore(downloadItem: any) {
-  logger.trace(`Starting download with semaphore: ${JSON.stringify(downloadItem)}`);
+  logger.trace(
+    `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
+  );
 
   // Acquire semaphore before starting download
   await DownloadSemaphore.acquire();
@@ -1805,7 +2020,7 @@ async function downloadWithSemaphore(downloadItem: any) {
       title: videoTitle,
       lastActivity: Date.now(),
       spawnTimeStamp: Date.now(),
-      status: "pending"
+      status: "pending",
     };
 
     const entryKey = `pending_${videoUrl}_${Date.now()}`;
@@ -1820,7 +2035,6 @@ async function downloadWithSemaphore(downloadItem: any) {
     }
 
     return result;
-
   } finally {
     // Always release semaphore
     DownloadSemaphore.release();
@@ -1832,19 +2046,23 @@ async function downloadWithSemaphore(downloadItem: any) {
  * @param {Object} downloadItem - Object containing video details:
  *   - url: Video URL
  *   - title: Video title
- *   - saveDirectory: Save directory path  
+ *   - saveDirectory: Save directory path
  *   - videoId: Video ID
  * @param {string} processKey - Key to track download process
  * @returns {Promise<Object>} Download result containing:
  *   - url: Video URL
  *   - title: Video title
- *   - status: 'success' | 'failed' 
+ *   - status: 'success' | 'failed'
  *   - error?: Error message if failed
  */
 // deno-lint-ignore no-explicit-any
 function executeDownload(downloadItem: any, processKey: string) {
-  const { url: videoUrl, title: videoTitle,
-    saveDirectory: saveDirectory, videoId: videoId } = downloadItem;
+  const {
+    url: videoUrl,
+    title: videoTitle,
+    saveDirectory: saveDirectory,
+    videoId: videoId,
+  } = downloadItem;
 
   try {
     // Trim the saveDirectory just as a precaution
@@ -1878,10 +2096,15 @@ function executeDownload(downloadItem: any, processKey: string) {
       logger.debug(`Starting download for ${videoUrl}`, {
         url: videoTitle,
         savePath,
-        fullCommand: `yt-dlp ${downloadOptions.join(' ')} ${processArgs.join(' ')}`,
+        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
+          processArgs.join(" ")
+        }`,
       });
       // Spawn download process, by assembling full args
-      const downloadProcess = spawn("yt-dlp", downloadOptions.concat(processArgs));
+      const downloadProcess = spawn(
+        "yt-dlp",
+        downloadOptions.concat(processArgs),
+      );
 
       // Update process tracking
       const processEntry = downloadProcesses.get(processKey);
@@ -1897,7 +2120,7 @@ function executeDownload(downloadItem: any, processKey: string) {
 
       // Handle stdout for progress tracking
       downloadProcess.stdout.setEncoding("utf8");
-      downloadProcess.stdout.on("data", data => {
+      downloadProcess.stdout.on("data", (data) => {
         try {
           const output = data.toString().trim();
 
@@ -1910,7 +2133,9 @@ function executeDownload(downloadItem: any, processKey: string) {
             if (progressBlock === 0 && progressPercent === null) {
               progressPercent = 0;
               logger.debug(output, { pid: downloadProcess.pid });
-            } else if (progressPercent !== null && progressBlock > progressPercent) {
+            } else if (
+              progressPercent !== null && progressBlock > progressPercent
+            ) {
               progressPercent = progressBlock;
               logger.debug(output, { pid: downloadProcess.pid });
             }
@@ -1923,8 +2148,10 @@ function executeDownload(downloadItem: any, processKey: string) {
           // Extract the title, no extension
           const itemTitle = /title:(.+)/m.exec(output);
           if (itemTitle?.[1] && !capturedFileName) {
-            capturedTitle = itemTitle[1].trim()
-            logger.debug(`Video Title from process ${capturedTitle}`, { pid: downloadProcess.pid });
+            capturedTitle = itemTitle[1].trim();
+            logger.debug(`Video Title from process ${capturedTitle}`, {
+              pid: downloadProcess.pid,
+            });
           }
 
           // Get the final file name (only the video) from that we can get the rest
@@ -1932,12 +2159,13 @@ function executeDownload(downloadItem: any, processKey: string) {
           if (fileNameInDest?.[1]) {
             const finalFileName = fileNameInDest[1].trim();
             capturedFileName = path.basename(finalFileName);
-            logger.debug(`Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
-              { pid: downloadProcess.pid });
+            logger.debug(
+              `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
+              { pid: downloadProcess.pid },
+            );
           }
           // Update activity timestamp
           updateProcessActivity(processKey);
-
         } catch (error) {
           if (!(error instanceof TypeError)) {
             safeEmit("error", { message: (error as Error).message });
@@ -1947,29 +2175,32 @@ function executeDownload(downloadItem: any, processKey: string) {
 
       // Handle stderr
       downloadProcess.stderr.setEncoding("utf8");
-      downloadProcess.stderr.on("data", error => {
+      downloadProcess.stderr.on("data", (error) => {
         logger.error(`Download error: ${error}`, { pid: downloadProcess.pid });
         updateProcessActivity(processKey);
       });
 
       // Handle process errors
-      downloadProcess.on("error", error => {
-        logger.error(`Download process error: ${error.message}`, { pid: downloadProcess.pid });
+      downloadProcess.on("error", (error) => {
+        logger.error(`Download process error: ${error.message}`, {
+          pid: downloadProcess.pid,
+        });
         updateProcessActivity(processKey);
         reject(error);
       });
 
       // Handle process completion
-      downloadProcess.on("close", async code => {
+      downloadProcess.on("close", async (code) => {
         try {
           const videoEntry = await VideoMetadata.findOne({
-            where: { videoUrl: videoUrl }
+            where: { videoUrl: videoUrl },
           });
 
           if (code === 0) {
             // ===== SUCCESS: Update video entry =====
 
-            const unhelpfulTitle = (videoTitle === videoId || videoTitle === "NA");
+            const unhelpfulTitle = videoTitle === videoId ||
+              videoTitle === "NA";
             const fallbackTitle = capturedTitle || videoTitle;
 
             // Build initial updates object
@@ -1980,7 +2211,11 @@ function executeDownload(downloadItem: any, processKey: string) {
             };
 
             // Discover associated metadata files
-            const { metadata, syncStatus } = discoverFiles(capturedFileName, savePath, videoEntry);
+            const { metadata, syncStatus } = discoverFiles(
+              capturedFileName,
+              savePath,
+              videoEntry,
+            );
 
             // Add discovered metadata files to updates
             Object.assign(updates, metadata);
@@ -1997,17 +2232,17 @@ function executeDownload(downloadItem: any, processKey: string) {
 
             // Log metadata sync status
             if (allExtraFilesFound) {
-              logger.info('All extra files found', {
-                updates: JSON.stringify(updates)
+              logger.info("All extra files found", {
+                updates: JSON.stringify(updates),
               });
             } else {
-              logger.info('Some of the expected files are not found', {
-                updates: JSON.stringify(updates)
+              logger.info("Some of the expected files are not found", {
+                updates: JSON.stringify(updates),
               });
             }
 
             logger.debug(`Updating video: ${JSON.stringify(updates)}`, {
-              pid: downloadProcess.pid
+              pid: downloadProcess.pid,
             });
 
             if (videoEntry) await videoEntry.update(updates);
@@ -2027,16 +2262,25 @@ function executeDownload(downloadItem: any, processKey: string) {
               const saveDir = computeSaveDirectory(savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
-              if (typeof saveDirectory !== 'undefined' && saveDir === saveDirectory.trim()) {
-                logger.debug(`Computed saveDir matches expected saveDirectory`, {
-                  saveDir,
-                  saveDirectory
-                });
-              } else if (typeof saveDirectory !== 'undefined') {
-                logger.debug(`Computed saveDir differs from expected saveDirectory`, {
-                  saveDir,
-                  saveDirectory
-                });
+              if (
+                typeof saveDirectory !== "undefined" &&
+                saveDir === saveDirectory.trim()
+              ) {
+                logger.debug(
+                  `Computed saveDir matches expected saveDirectory`,
+                  {
+                    saveDir,
+                    saveDirectory,
+                  },
+                );
+              } else if (typeof saveDirectory !== "undefined") {
+                logger.debug(
+                  `Computed saveDir differs from expected saveDirectory`,
+                  {
+                    saveDir,
+                    saveDirectory,
+                  },
+                );
               }
 
               safeEmit("download-done", {
@@ -2047,19 +2291,19 @@ function executeDownload(downloadItem: any, processKey: string) {
                 isMetaDataSynced: isMetaDataSynced,
                 thumbNailFile: thumbNailFile,
                 subTitleFile: subTitleFile,
-                descriptionFile: descriptionFile
+                descriptionFile: descriptionFile,
               });
             } catch (e) {
               // Fallback to previous behavior if something goes wrong
-              logger.error('Error computing save directory, using fallback', {
-                error: (e as Error).message
+              logger.error("Error computing save directory, using fallback", {
+                error: (e as Error).message,
               });
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
                 // deno-lint-ignore no-explicit-any
                 fileName: (updates as any).fileName,
-                saveDirectory: ""
+                saveDirectory: "",
               });
             }
 
@@ -2069,47 +2313,47 @@ function executeDownload(downloadItem: any, processKey: string) {
             resolve({
               url: videoUrl,
               title: updates.title,
-              status: 'success'
+              status: "success",
             });
-
           } else {
             // ===== FAILURE: Handle download failure =====
 
-            logger.error('Download failed', {
+            logger.error("Download failed", {
               videoUrl,
               exitCode: code,
-              pid: downloadProcess.pid
+              pid: downloadProcess.pid,
             });
 
             safeEmit("download-failed", {
               // deno-lint-ignore no-explicit-any
               title: videoEntry ? (videoEntry as any).title : videoTitle,
-              url: videoUrl
+              url: videoUrl,
             });
 
             resolve({
               url: videoUrl,
               title: videoTitle,
-              status: 'failed'
+              status: "failed",
             });
           }
-
         } catch (error) {
-          logger.error(`Error handling download completion: ${(error as Error).message}`, {
-            pid: downloadProcess.pid
-          });
+          logger.error(
+            `Error handling download completion: ${(error as Error).message}`,
+            {
+              pid: downloadProcess.pid,
+            },
+          );
           reject(error);
         }
       });
     });
-
   } catch (error) {
     logger.error(`Download error: ${(error as Error).message}`);
     return {
       url: videoUrl,
       title: videoTitle,
-      status: 'failed',
-      error: (error as Error).message
+      status: "failed",
+      error: (error as Error).message,
     };
   }
 }
@@ -2148,14 +2392,14 @@ const listProcesses = new Map(); // Map to track listing processes
  * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
  * @property {number} currentConcurrent - The current number of active concurrent operations.
  * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
- * 
+ *
  * @method acquire
  * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
  * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
- * 
+ *
  * @method release
  * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
- * 
+ *
  * @method setMaxConcurrent
  * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
  * operations to start, queued operations are processed.
@@ -2168,10 +2412,12 @@ const ListingSemaphore = {
   queue: [] as Array<(value?: any) => void>,
 
   acquire() {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       if (this.currentConcurrent < this.maxConcurrent) {
         this.currentConcurrent++;
-        logger.debug(`Listing semaphore acquired, current concurrent: ${this.currentConcurrent}`);
+        logger.debug(
+          `Listing semaphore acquired, current concurrent: ${this.currentConcurrent}`,
+        );
         resolve(undefined);
       } else {
         logger.debug(`Listing semaphore full, queuing request`);
@@ -2183,7 +2429,9 @@ const ListingSemaphore = {
   release() {
     if (this.queue.length > 0) {
       const next = this.queue.shift();
-      logger.debug(`Listing semaphore released, current concurrent: ${this.currentConcurrent}`);
+      logger.debug(
+        `Listing semaphore released, current concurrent: ${this.currentConcurrent}`,
+      );
       if (next) next();
     } else {
       logger.debug(`Listing semaphore released`);
@@ -2193,12 +2441,14 @@ const ListingSemaphore = {
 
   setMaxConcurrent(max: number) {
     this.maxConcurrent = max;
-    while (this.currentConcurrent < this.maxConcurrent && this.queue.length > 0) {
+    while (
+      this.currentConcurrent < this.maxConcurrent && this.queue.length > 0
+    ) {
       const next = this.queue.shift();
       this.currentConcurrent++;
       if (next) next();
     }
-  }
+  },
 };
 /**
  * Processes a list of URLs and initiates listing operations for undownloaded videos and unmonitored playlists.
@@ -2212,7 +2462,10 @@ const ListingSemaphore = {
  * @returns {Promise<void>} Resolves when listing processes are started
  */
 // deno-lint-ignore no-explicit-any
-async function processListingRequest(requestBody: any, response: ServerResponse) {
+async function processListingRequest(
+  requestBody: any,
+  response: ServerResponse,
+) {
   try {
     // Validate required parameters
     if (!requestBody.urlList) {
@@ -2220,7 +2473,10 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
     }
 
     // Extract and normalize parameters
-    const chunkSize = Math.max(config.chunkSize, +(requestBody.chunkSize ?? config.chunkSize));
+    const chunkSize = Math.max(
+      config.chunkSize,
+      +(requestBody.chunkSize ?? config.chunkSize),
+    );
     const shouldSleep = requestBody.sleep ?? false;
     const monitoringType = requestBody.monitoringType ?? "N/A";
     const itemsToList = [];
@@ -2230,7 +2486,7 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
       urlCount: requestBody.urlList.length,
       chunkSize,
       shouldSleep,
-      monitoringType
+      monitoringType,
     });
 
     for (const url of requestBody.urlList) {
@@ -2244,38 +2500,44 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
 
       // Look up URL in database as a playlist
       const playlistEntry = await PlaylistMetadata.findOne({
-        where: { playlistUrl: normalizedUrl }
+        where: { playlistUrl: normalizedUrl },
       });
 
       if (playlistEntry) {
         logger.debug(`Playlist found in database`, { url: normalizedUrl });
         // deno-lint-ignore no-explicit-any
         if ((playlistEntry as any).monitoringType === monitoringType) {
-          logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: normalizedUrl });
+          logger.debug(`Playlist monitoring hasn't changed so skipping`, {
+            url: normalizedUrl,
+          });
           safeEmit("listing-playlist-skipped-because-same-monitoring", {
             // deno-lint-ignore no-explicit-any
-            message: `Playlist ${(playlistEntry as any).title} is already being monitored with type ${monitoringType}, skipping.`
+            message: `Playlist ${
+              (playlistEntry as any).title
+            } is already being monitored with type ${monitoringType}, skipping.`,
           });
           continue; // Skip as it's already monitored
           // deno-lint-ignore no-explicit-any
         } else if ((playlistEntry as any).monitoringType !== monitoringType) {
           // If the monitoring type change is Full the reindex the entire playlist,
           // if it is changed to Fast then update from the last index known
-          logger.debug(`Playlist monitoring has changed`, { url: normalizedUrl });
+          logger.debug(`Playlist monitoring has changed`, {
+            url: normalizedUrl,
+          });
           itemsToList.push({
             url: normalizedUrl,
             type: "playlist",
             // deno-lint-ignore no-explicit-any
             previousMonitoringType: (playlistEntry as any).monitoringType,
             currentMonitoringType: monitoringType,
-            reason: `Monitoring type changed`
+            reason: `Monitoring type changed`,
           });
         }
       }
 
       // Look up URL in database as an unlisted video
       const videoEntry = await VideoMetadata.findOne({
-        where: { videoUrl: normalizedUrl }
+        where: { videoUrl: normalizedUrl },
       });
       if (videoEntry) {
         logger.debug(`Video found in database`, { url: normalizedUrl });
@@ -2284,28 +2546,34 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
           safeEmit("listing-video-skipped-because-downloaded", {
             // deno-lint-ignore no-explicit-any
-            message: `Video ${(videoEntry as any).title} is already downloaded, skipping.`
+            message: `Video ${
+              (videoEntry as any).title
+            } is already downloaded, skipping.`,
           });
           continue; // Skip as it's already downloaded
         } else {
-          logger.debug(`Video not downloaded yet, updating status`, { url: normalizedUrl });
+          logger.debug(`Video not downloaded yet, updating status`, {
+            url: normalizedUrl,
+          });
           itemsToList.push({
             url: normalizedUrl,
             type: "undownloaded",
             currentMonitoringType: "N/A",
-            reason: `Video not downloaded yet`
+            reason: `Video not downloaded yet`,
           });
         }
       }
 
       // If URL is not found in either table, add to list for processing
       if (!playlistEntry && !videoEntry) {
-        logger.debug(`URL not found in database, adding to list`, { url: normalizedUrl });
+        logger.debug(`URL not found in database, adding to list`, {
+          url: normalizedUrl,
+        });
         itemsToList.push({
           url: normalizedUrl,
           type: "undetermined",
           currentMonitoringType: monitoringType,
-          reason: `URL not found in database`
+          reason: `URL not found in database`,
         });
       }
 
@@ -2315,25 +2583,27 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
 
     // Start listing processes
     listItemsConcurrently(itemsToList, chunkSize, shouldSleep);
-    logger.debug(`Listing processes started`, { itemCount: itemsToList.length });
+    logger.debug(`Listing processes started`, {
+      itemCount: itemsToList.length,
+    });
 
     // Send success response
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "success",
       message: "Listing initiated",
-      items: itemsToList
+      items: itemsToList,
     }));
   } catch (error) {
     logger.error("Failed to process URL list", {
       error: (error as Error).message,
-      stack: (error as Error).stack
+      stack: (error as Error).stack,
     });
   }
 }
 /**
  * Lists a given array of items concurrently, controlling the number of concurrent listing operations using a semaphore.
- * 
+ *
  * @param {Array<Object>} items - Array of items to list, each containing properties:
  *   - url: URL of video or playlist
  *   - type: Type of item (video, playlist, undownloaded, undetermined)
@@ -2344,8 +2614,14 @@ async function processListingRequest(requestBody: any, response: ServerResponse)
  * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
  */
 // deno-lint-ignore no-explicit-any
-async function listItemsConcurrently(items: Array<any>, chunkSize: number, shouldSleep: boolean) {
-  logger.trace(`Listing ${items.length} items concurrently (chunk size: ${chunkSize})`);
+async function listItemsConcurrently(
+  items: Array<any>,
+  chunkSize: number,
+  shouldSleep: boolean,
+) {
+  logger.trace(
+    `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
+  );
 
   // If no items to list, return
   if (items.length === 0) {
@@ -2357,30 +2633,34 @@ async function listItemsConcurrently(items: Array<any>, chunkSize: number, shoul
   ListingSemaphore.setMaxConcurrent(config.queue.maxListings);
 
   // Process all items with semaphore control
-  // TODO: Fix the issue where if send playlists (since they take long time) 
+  // TODO: Fix the issue where if send playlists (since they take long time)
   // the semaphore behavior is not consistent, sometimes it gets un-tracked
   const listingResults = await Promise.all(
-    items.map(item => listWithSemaphore(item, chunkSize, shouldSleep))
+    items.map((item) => listWithSemaphore(item, chunkSize, shouldSleep)),
   );
 
   // Check for any failures
   // deno-lint-ignore no-explicit-any
-  const allSuccessful = listingResults.every((result: any) => result && result.status === 'success');
+  const allSuccessful = listingResults.every((result: any) =>
+    result && result.status === "success"
+  );
 
   // Log results
   try {
     // deno-lint-ignore no-explicit-any
     listingResults.forEach((result: any) => {
-      if (result.status === 'completed') {
+      if (result.status === "completed") {
         logger.info(`Listed ${result.title} successfully`);
       } else {
-        logger.error(`Failed to list ${result.title}: ${JSON.stringify(result)}`);
+        logger.error(
+          `Failed to list ${result.title}: ${JSON.stringify(result)}`,
+        );
       }
     });
   } catch (error) {
     logger.error("Failed to log listing results", {
       error: (error as Error).message,
-      stack: (error as Error).stack
+      stack: (error as Error).stack,
     });
   }
 
@@ -2388,7 +2668,7 @@ async function listItemsConcurrently(items: Array<any>, chunkSize: number, shoul
 }
 /**
  * Lists a single item with semaphore control to prevent excessive concurrent listing operations.
- * 
+ *
  * @param {Object} item - Item to list containing properties:
  *   - url: URL of video or playlist
  *   - type: Type of item (video, playlist, undownloaded, undetermined)
@@ -2402,7 +2682,11 @@ async function listItemsConcurrently(items: Array<any>, chunkSize: number, shoul
  *   - error?: Error message if failed
  */
 // deno-lint-ignore no-explicit-any
-async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: boolean) {
+async function listWithSemaphore(
+  item: any,
+  chunkSize: number,
+  shouldSleep: boolean,
+) {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
   // Check process limit before acquiring semaphore
@@ -2412,7 +2696,7 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
       url: item.url,
       title: "Video",
       status: "failed",
-      error: "Maximum listing processes reached"
+      error: "Maximum listing processes reached",
     };
   }
 
@@ -2429,7 +2713,7 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
       monitoringType: monitoringType,
       lastActivity: Date.now(),
       spawnTimeStamp: null,
-      status: "pending"
+      status: "pending",
     };
 
     const entryKey = `pending_${videoUrl}_${Date.now()}`;
@@ -2442,7 +2726,7 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
     (listEntry as any)["spawnedProcess"] = null;
     logger.trace(`Listing completed`, {
       result: JSON.stringify(result),
-      listEntry: JSON.stringify(listEntry)
+      listEntry: JSON.stringify(listEntry),
     });
 
     // Cleanup pending entry if still exists
@@ -2451,7 +2735,6 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
     }
 
     return result;
-
   } finally {
     // Always release semaphore
     ListingSemaphore.release();
@@ -2469,7 +2752,13 @@ async function listWithSemaphore(item: any, chunkSize: number, shouldSleep: bool
  * @returns {Promise<Object>} The result of the listing process
  */
 // deno-lint-ignore no-explicit-any
-async function executeListing(item: any, processKey: string, chunkSize: number, shouldSleep: boolean, isScheduledUpdate = false) {
+async function executeListing(
+  item: any,
+  processKey: string,
+  chunkSize: number,
+  shouldSleep: boolean,
+  isScheduledUpdate = false,
+) {
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
   // Initialize processed chunks counter, used later do not remove
@@ -2482,11 +2771,16 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
     safeEmit("listing-started", {
       url: videoUrl,
       type: itemType,
-      status: "started"
+      status: "started",
     });
 
     // Get initial chunk start and end indices
-    const { startIndex, endIndex } = await determineInitialRange(itemType, currentMonitoringType, videoUrl, chunkSize);
+    const { startIndex, endIndex } = await determineInitialRange(
+      itemType,
+      currentMonitoringType,
+      videoUrl,
+      chunkSize,
+    );
     // Fetch video information for the initial chunk
     logger.debug(`Fetching information while listing`, {
       url: videoUrl,
@@ -2494,16 +2788,22 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
       startIndex,
       endIndex,
       processedChunks,
-      processKey
+      processKey,
     });
-    const responseItems = await fetchPlayListItems(videoUrl, startIndex, endIndex, processedChunks, processKey);
+    const responseItems = await fetchPlayListItems(
+      videoUrl,
+      startIndex,
+      endIndex,
+      processedChunks,
+      processKey,
+    );
 
     logger.debug(`Got items from listing chunk`, {
       itemCount: responseItems.length,
       url: videoUrl,
       startIndex,
       endIndex,
-      processedChunks
+      processedChunks,
     });
 
     if (responseItems.length === 0) {
@@ -2512,27 +2812,34 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
 
     // Handle single video vs playlist
     // Add an exception for x.com URLs as they despite having multiple items are not playlists
-    const isPlaylist = responseItems.length > 1 || playlistRegex.test(videoUrl) || itemType === "playlist";
+    const isPlaylist = responseItems.length > 1 ||
+      playlistRegex.test(videoUrl) || itemType === "playlist";
 
     if (isPlaylist && !isSiteXDotCom(videoUrl)) {
       itemType = "playlist";
       // Check if the playlist already exists
       const existingPlaylist = await PlaylistMetadata.findOne({
-        where: { playlistUrl: videoUrl }
+        where: { playlistUrl: videoUrl },
       });
       if (existingPlaylist) {
         logger.debug(`Playlist already exists in database`, { url: videoUrl });
         // deno-lint-ignore no-explicit-any
-        if ((existingPlaylist as any).monitoringType === currentMonitoringType) {
-          logger.debug(`Playlist monitoring hasn't changed so skipping`, { url: videoUrl });
+        if (
+          (existingPlaylist as any).monitoringType === currentMonitoringType
+        ) {
+          logger.debug(`Playlist monitoring hasn't changed so skipping`, {
+            url: videoUrl,
+          });
           return handleEmptyResponse(videoUrl);
           // deno-lint-ignore no-explicit-any
-        } else if ((existingPlaylist as any).monitoringType !== currentMonitoringType) {
+        } else if (
+          (existingPlaylist as any).monitoringType !== currentMonitoringType
+        ) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           // Update the monitoring type in the database
           await existingPlaylist.update({
             monitoringType: currentMonitoringType,
-            lastUpdatedByScheduler: Date.now()
+            lastUpdatedByScheduler: Date.now(),
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
@@ -2540,7 +2847,9 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
         playlistTitle = (existingPlaylist as any).title;
       } else {
         // If the playlist doesn't exist, add it to the database
-        logger.debug(`Playlist not found in database, adding to database`, { url: videoUrl });
+        logger.debug(`Playlist not found in database, adding to database`, {
+          url: videoUrl,
+        });
         const newPlaylist = await addPlaylist(videoUrl, currentMonitoringType);
         // deno-lint-ignore no-explicit-any
         playlistTitle = (newPlaylist as any).title;
@@ -2557,7 +2866,7 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
         processedChunks,
         playlistTitle,
         seekPlaylistListTo,
-        processKey
+        processKey,
       });
     } else {
       itemType = "unlisted";
@@ -2567,10 +2876,9 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
         responseItems,
         itemType,
         startIndex,
-        isScheduledUpdate
+        isScheduledUpdate,
       });
     }
-
   } catch (error) {
     return handleListingError(error as Error, videoUrl, itemType);
   }
@@ -2586,7 +2894,12 @@ async function executeListing(item: any, processKey: string, chunkSize: number, 
  * @param {number} chunkSize - The size of the chunk to process in each iteration.
  * @returns {Promise<{startIndex: number, endIndex: number}>} An object containing the start and end indices for processing.
  */
-async function determineInitialRange(itemType: string, monitoringType: string, playlistUrl: string, chunkSize: number) {
+async function determineInitialRange(
+  itemType: string,
+  monitoringType: string,
+  playlistUrl: string,
+  chunkSize: number,
+) {
   let startIndex = 1;
   let endIndex = chunkSize;
   if (itemType === "playlist") {
@@ -2598,7 +2911,7 @@ async function determineInitialRange(itemType: string, monitoringType: string, p
       const lastVideo = await PlaylistVideoMapping.findOne({
         where: { playlistUrl },
         order: [["positionInPlaylist", "DESC"]],
-        limit: 1
+        limit: 1,
       });
       if (lastVideo) {
         // deno-lint-ignore no-explicit-any
@@ -2617,13 +2930,17 @@ async function determineInitialRange(itemType: string, monitoringType: string, p
  * @returns {object} Object containing paths to discovered metadata files and sync status
  */
 // deno-lint-ignore no-explicit-any
-function discoverFiles(mainFileName: string | null, savePath: string, videoEntry: any) {
+function discoverFiles(
+  mainFileName: string | null,
+  savePath: string,
+  videoEntry: any,
+) {
   const metadata = {
     fileName: null as string | null,
     descriptionFile: null as string | null,
     commentsFile: null as string | null,
     subTitleFile: null as string | null,
-    thumbNailFile: null as string | null
+    thumbNailFile: null as string | null,
   };
 
   // Track which files were expected vs found
@@ -2632,34 +2949,37 @@ function discoverFiles(mainFileName: string | null, savePath: string, videoEntry
     descriptionFileFound: !config.saveDescription,
     commentsFileFound: !config.saveComments,
     subTitleFileFound: !config.saveSubs,
-    thumbNailFileFound: !config.saveThumbnail
+    thumbNailFileFound: !config.saveThumbnail,
   };
 
   // If a file is being re-downloaded/updated, mainFileName will be null
   if (!mainFileName) {
-    logger.debug('No main file name provided for metadata discovery');
+    logger.debug("No main file name provided for metadata discovery");
     // Check if video is already downloaded, and if it has a download status as true
     if (videoEntry && videoEntry.downloadStatus) {
       mainFileName = videoEntry.fileName;
-      logger.debug('Using main file name from database', { mainFileName });
+      logger.debug("Using main file name from database", { mainFileName });
     } else {
-      logger.debug('No main file name found in database');
+      logger.debug("No main file name found in database");
       return { metadata, syncStatus };
     }
   }
 
   try {
     const mainFileExt = path.extname(mainFileName!).toLowerCase();
-    const mainFileBase = mainFileName!.replace(mainFileExt, '');
-    logger.debug('Scanning savePath for extra metadata files', { savePath, mainFileBase });
+    const mainFileBase = mainFileName!.replace(mainFileExt, "");
+    logger.debug("Scanning savePath for extra metadata files", {
+      savePath,
+      mainFileBase,
+    });
 
     // Define extension patterns for each file type
     const patterns = {
-      video: ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.m4v'],
-      description: ['.description'],
-      comments: ['.info.json'],
-      subtitle: ['.vtt', '.srt'], // There can be languages too
-      thumbnail: ['.webp', '.jpg', '.jpeg', '.png']
+      video: [".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"],
+      description: [".description"],
+      comments: [".info.json"],
+      subtitle: [".vtt", ".srt"], // There can be languages too
+      thumbnail: [".webp", ".jpg", ".jpeg", ".png"],
     };
 
     // Optimistically check for known file patterns first
@@ -2679,7 +2999,7 @@ function discoverFiles(mainFileName: string | null, savePath: string, videoEntry
       if (found) {
         metadata.descriptionFile = found;
         syncStatus.descriptionFileFound = true;
-        logger.trace('Found description file', { file: found });
+        logger.trace("Found description file", { file: found });
       }
     }
 
@@ -2688,25 +3008,36 @@ function discoverFiles(mainFileName: string | null, savePath: string, videoEntry
       if (found) {
         metadata.commentsFile = found;
         syncStatus.commentsFileFound = true;
-        logger.trace('Found comments file', { file: found });
+        logger.trace("Found comments file", { file: found });
       }
     }
 
     if (config.saveSubs) {
       // Try common subtitle patterns: baseName.ext and baseName.lang.ext
-      const commonLanguages = ['en', 'fr', 'de', 'es', 'it', 'pt', 'ru', 'ja', 'zh', 'ko'];
+      const commonLanguages = [
+        "en",
+        "fr",
+        "de",
+        "es",
+        "it",
+        "pt",
+        "ru",
+        "ja",
+        "zh",
+        "ko",
+      ];
       const subtitlePatterns = [
         ...patterns.subtitle, // Direct patterns: baseName.vtt, baseName.srt
-        ...commonLanguages.flatMap(lang =>
-          patterns.subtitle.map(ext => `.${lang}${ext}`)
-        ) // Language patterns: baseName.en.vtt, baseName.fr.srt, etc.
+        ...commonLanguages.flatMap((lang) =>
+          patterns.subtitle.map((ext) => `.${lang}${ext}`)
+        ), // Language patterns: baseName.en.vtt, baseName.fr.srt, etc.
       ];
 
       const found = checkFile(mainFileBase, subtitlePatterns);
       if (found) {
         metadata.subTitleFile = found;
         syncStatus.subTitleFileFound = true;
-        logger.trace('Found subtitles file', { file: found });
+        logger.trace("Found subtitles file", { file: found });
       }
     }
 
@@ -2715,54 +3046,60 @@ function discoverFiles(mainFileName: string | null, savePath: string, videoEntry
       if (found) {
         metadata.thumbNailFile = found;
         syncStatus.thumbNailFileFound = true;
-        logger.trace('Found thumbnail file', { file: found });
+        logger.trace("Found thumbnail file", { file: found });
       }
     }
 
     // Check if the initially found file extension was for the video
     if (mainFileExt && patterns.video.includes(mainFileExt)) {
       // This way the likely hood of finding it in the first iteration is very high
-      patterns.video = [mainFileExt, ...patterns.video.filter(ext => ext !== mainFileExt)];
+      patterns.video = [
+        mainFileExt,
+        ...patterns.video.filter((ext) => ext !== mainFileExt),
+      ];
     }
     // Find video file - check common extensions first, then fallback to directory scan
     const videoFile = checkFile(mainFileBase, patterns.video);
     if (videoFile) {
       metadata.fileName = videoFile;
       syncStatus.videoFileFound = true;
-      logger.trace('Found video file', { file: videoFile });
+      logger.trace("Found video file", { file: videoFile });
     } else {
       // Fallback: scan directory for video file with unknown extension
-      logger.trace('Video file not found with common extensions, scanning directory');
+      logger.trace(
+        "Video file not found with common extensions, scanning directory",
+      );
       const files = fs.readdirSync(savePath);
 
       // Filter out only the ones we need
-      const filesOfInterest = files.filter(file => file.startsWith(mainFileBase));
+      const filesOfInterest = files.filter((file) =>
+        file.startsWith(mainFileBase)
+      );
 
       // Look for the video file - any file starting with mainFileBase that isn't a known metadata file
       const knownMetadataExts = [
         ...patterns.description,
         ...patterns.comments,
         ...patterns.subtitle,
-        ...patterns.thumbnail
+        ...patterns.thumbnail,
       ];
 
       for (const file of filesOfInterest) {
         // If it's not a known metadata extension, assume it's the video file
-        if (!knownMetadataExts.some(metaExt => file.endsWith(metaExt))) {
+        if (!knownMetadataExts.some((metaExt) => file.endsWith(metaExt))) {
           metadata.fileName = file;
           syncStatus.videoFileFound = true;
-          logger.trace('Found video file', { file });
+          logger.trace("Found video file", { file });
           break;
         }
       }
     }
 
     return { metadata, syncStatus };
-
   } catch (error) {
-    logger.debug('Could not read savePath for extra metadata files', {
+    logger.debug("Could not read savePath for extra metadata files", {
       savePath,
-      error: (error as Error).message
+      error: (error as Error).message,
     });
 
     return {
@@ -2772,8 +3109,8 @@ function discoverFiles(mainFileName: string | null, savePath: string, videoEntry
         descriptionFileFound: false,
         commentsFileFound: false,
         subTitleFileFound: false,
-        thumbNailFileFound: false
-      }
+        thumbNailFileFound: false,
+      },
     };
   }
 }
@@ -2786,12 +3123,12 @@ function computeSaveDirectory(savePath: string) {
   try {
     let saveDir = path.relative(
       path.resolve(config.saveLocation),
-      path.resolve(savePath)
+      path.resolve(savePath),
     );
 
     // Normalize: convert "." to empty string
-    if (saveDir === path.sep || saveDir === '.') {
-      saveDir = '';
+    if (saveDir === path.sep || saveDir === ".") {
+      saveDir = "";
     }
 
     // Remove leading separator
@@ -2805,14 +3142,13 @@ function computeSaveDirectory(savePath: string) {
     }
 
     return saveDir;
-
   } catch (error) {
-    logger.error('Error computing save directory', {
+    logger.error("Error computing save directory", {
       savePath,
       saveLocation: config.saveLocation,
-      error: (error as Error).message
+      error: (error as Error).message,
     });
-    return '';
+    return "";
   }
 }
 /**
@@ -2826,14 +3162,14 @@ function computeSaveDirectory(savePath: string) {
 function handleEmptyResponse(videoUrl: string) {
   safeEmit("listing-error", {
     url: videoUrl,
-    error: "No items found"
+    error: "No items found",
   });
 
   return {
     url: videoUrl,
     title: "Video",
     status: "failed",
-    error: "No items found"
+    error: "No items found",
   };
 }
 /**
@@ -2856,14 +3192,33 @@ function handleEmptyResponse(videoUrl: string) {
  */
 // deno-lint-ignore no-explicit-any
 async function handlePlaylistListing(item: any) {
-  const { videoUrl, responseItems, startIndex, chunkSize,
-    shouldSleep, isScheduledUpdate, playlistTitle, seekPlaylistListTo, processKey } = item;
+  const {
+    videoUrl,
+    responseItems,
+    startIndex,
+    chunkSize,
+    shouldSleep,
+    isScheduledUpdate,
+    playlistTitle,
+    seekPlaylistListTo,
+    processKey,
+  } = item;
   let processedChunks = item.processedChunks || 0;
   // Process initial chunk
-  const initialResult = await processVideoInformation(responseItems, videoUrl, startIndex, isScheduledUpdate);
+  const initialResult = await processVideoInformation(
+    responseItems,
+    videoUrl,
+    startIndex,
+    isScheduledUpdate,
+  );
   processedChunks++;
   if (initialResult.count < chunkSize) {
-    return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
+    return completePlaylistListing(
+      videoUrl,
+      processedChunks,
+      playlistTitle,
+      seekPlaylistListTo,
+    );
   }
   // This is the first chunk, so we need to emit the event
   safeEmit("listing-playlist-chunk-complete", {
@@ -2872,7 +3227,7 @@ async function handlePlaylistListing(item: any) {
     status: "chunk-completed",
     processedChunks,
     playlistTitle,
-    seekPlaylistListTo
+    seekPlaylistListTo,
   });
   // Process remaining chunks
   while (true) {
@@ -2884,14 +3239,30 @@ async function handlePlaylistListing(item: any) {
       startIndex: nextStartIndex,
       endIndex: nextEndIndex,
       processedChunks,
-      processKey
+      processKey,
     });
-    const nextItems = await fetchPlayListItems(videoUrl, nextStartIndex, nextEndIndex, processedChunks, processKey);
+    const nextItems = await fetchPlayListItems(
+      videoUrl,
+      nextStartIndex,
+      nextEndIndex,
+      processedChunks,
+      processKey,
+    );
     if (nextItems.length === 0) break;
-    const result = await processVideoInformation(nextItems, videoUrl, nextStartIndex, isScheduledUpdate);
+    const result = await processVideoInformation(
+      nextItems,
+      videoUrl,
+      nextStartIndex,
+      isScheduledUpdate,
+    );
     processedChunks++;
     if (result.count < chunkSize) {
-      return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
+      return completePlaylistListing(
+        videoUrl,
+        processedChunks,
+        playlistTitle,
+        seekPlaylistListTo,
+      );
     }
     safeEmit("listing-playlist-chunk-complete", {
       url: videoUrl,
@@ -2899,10 +3270,15 @@ async function handlePlaylistListing(item: any) {
       status: "chunk-completed",
       processedChunks,
       playlistTitle,
-      seekPlaylistListTo
+      seekPlaylistListTo,
     });
   }
-  return completePlaylistListing(videoUrl, processedChunks, playlistTitle, seekPlaylistListTo);
+  return completePlaylistListing(
+    videoUrl,
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo,
+  );
 }
 /**
  * Handles the processing of a single video listing item.
@@ -2919,29 +3295,37 @@ async function handlePlaylistListing(item: any) {
  */
 // deno-lint-ignore no-explicit-any
 async function handleSingleVideoListing(item: any) {
-  const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } = item;
+  const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } =
+    item;
   const playlistUrl = "None";
   if (itemType === "undownloaded") {
-    // TODO: Add logic to check if the video still available, 
+    // TODO: Add logic to check if the video still available,
     // if not then update accordingly
     // return await updateExistingVideo(videoUrl);
     return {
       url: videoUrl,
       title: "Video",
       status: "unchanged",
-      processedChunks: 0
-    }
+      processedChunks: 0,
+    };
   }
   // Add new video to "None" playlist
   const lastVideo = await PlaylistVideoMapping.findOne({
     where: { playlistUrl },
     order: [["positionInPlaylist", "DESC"]],
     attributes: ["positionInPlaylist"],
-    limit: 1
+    limit: 1,
   });
   // deno-lint-ignore no-explicit-any
-  const newStartIndex = lastVideo ? (lastVideo as any).positionInPlaylist + 1 : startIndex;
-  const result = await processVideoInformation(responseItems, playlistUrl, newStartIndex, isScheduledUpdate);
+  const newStartIndex = lastVideo
+    ? (lastVideo as any).positionInPlaylist + 1
+    : startIndex;
+  const result = await processVideoInformation(
+    responseItems,
+    playlistUrl,
+    newStartIndex,
+    isScheduledUpdate,
+  );
   if (result.count === 1) {
     safeEmit("listing-single-item-complete", {
       url: videoUrl,
@@ -2949,13 +3333,13 @@ async function handleSingleVideoListing(item: any) {
       title: result.title,
       status: "completed",
       processedChunks: 1,
-      seekSubListTo: newStartIndex
+      seekSubListTo: newStartIndex,
     });
     return {
       url: videoUrl,
       title: result.title,
       status: "completed",
-      processedChunks: 1
+      processedChunks: 1,
     };
   }
 }
@@ -2971,35 +3355,40 @@ function handleListingError(error: Error, videoUrl: string, itemType: string) {
   logger.error("Listing failed", {
     url: videoUrl,
     error: error.message,
-    stack: error.stack
+    stack: error.stack,
   });
   safeEmit("listing-error", {
     url: videoUrl,
-    error: error.message
+    error: error.message,
   });
   return {
     url: videoUrl,
     title: itemType === "playlist" ? "Playlist" : "Video",
     status: "failed",
-    error: error.message
+    error: error.message,
   };
 }
 /**
  * Handles completion of playlist listing process and emits completion events
- * 
+ *
  * @param {string} videoUrl - URL of the playlist that was processed
  * @param {number} processedChunks - Number of chunks that were processed
  * @param {string} playlistTitle - Title of the playlist
  * @param {number} seekPlaylistListTo - Position in the playlist list to seek to
  * @returns {Object} Object containing url, title, status and processed chunk count
  */
-function completePlaylistListing(videoUrl: string, processedChunks: number, playlistTitle: string, seekPlaylistListTo: number) {
+function completePlaylistListing(
+  videoUrl: string,
+  processedChunks: number,
+  playlistTitle: string,
+  seekPlaylistListTo: number,
+) {
   // Log completion
   logger.info(`Playlist listing completed`, {
     url: videoUrl,
     processedChunks,
     playlistTitle,
-    seekPlaylistListTo
+    seekPlaylistListTo,
   });
 
   // Emit completion event
@@ -3009,7 +3398,7 @@ function completePlaylistListing(videoUrl: string, processedChunks: number, play
     status: "completed",
     processedChunks,
     playlistTitle,
-    seekPlaylistListTo
+    seekPlaylistListTo,
   });
 
   // Return completion status
@@ -3019,7 +3408,7 @@ function completePlaylistListing(videoUrl: string, processedChunks: number, play
     status: "completed",
     processedChunks,
     playlistTitle,
-    seekPlaylistListTo
+    seekPlaylistListTo,
   };
 }
 /**
@@ -3032,24 +3421,32 @@ function completePlaylistListing(videoUrl: string, processedChunks: number, play
  * @returns {Promise<string[]>} Array of video information strings
  * @throws {Error} If process spawn fails or max processes reached
  */
-function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: number, processedChunks: number, processKey: string): Promise<string[]> {
+function fetchPlayListItems(
+  videoUrl: string,
+  startIndex: number,
+  endIndex: number,
+  processedChunks: number,
+  processKey: string,
+): Promise<string[]> {
   logger.trace("Fetching items from the given inputs", {
     url: videoUrl,
     start: startIndex,
     end: endIndex,
-    processKey
+    processKey,
   });
 
   return new Promise((resolve, reject) => {
     // Configure process arguments
     const processArgs = [
       ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
-      "--playlist-start", startIndex.toString(),
-      "--playlist-end", endIndex.toString(),
+      "--playlist-start",
+      startIndex.toString(),
+      "--playlist-end",
+      endIndex.toString(),
       "--flat-playlist",
       "--print",
       "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
-      videoUrl
+      videoUrl,
     ];
 
     // This is a test, will probably be better to filter
@@ -3063,11 +3460,11 @@ function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: numb
     // Quote arguments with spaces
     const fullCommandString = [
       "yt-dlp",
-      ...processArgs.map(arg => (/\s/.test(arg) ? `"${arg}"` : arg)) // quote args with spaces
+      ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)), // quote args with spaces
     ].join(" ");
     logger.debug(`Starting listing for ${videoUrl}`, {
       url: videoUrl,
-      fullCommand: fullCommandString
+      fullCommand: fullCommandString,
     });
     // Spawn process
     const listProcess = spawn("yt-dlp", processArgs);
@@ -3097,26 +3494,26 @@ function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: numb
 
     // Handle stdout
     listProcess.stdout.setEncoding("utf8");
-    listProcess.stdout.on("data", data => {
+    listProcess.stdout.on("data", (data) => {
       responseData += data;
       updateProcessActivity(processKey);
     });
 
     // Handle stderr
     listProcess.stderr.setEncoding("utf8");
-    listProcess.stderr.on("data", data => {
+    listProcess.stderr.on("data", (data) => {
       logger.error("List process error", {
         error: data,
-        pid: listProcess.pid
+        pid: listProcess.pid,
       });
       updateProcessActivity(String(listProcess.pid));
     });
 
     // Handle process error
-    listProcess.on("error", error => {
+    listProcess.on("error", (error) => {
       logger.error("Failed to spawn list process", {
         error: error.message,
-        pid: listProcess.pid
+        pid: listProcess.pid,
       });
       const processEntryInt = listProcesses.get(processKey);
       if (processEntryInt) {
@@ -3130,13 +3527,13 @@ function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: numb
     });
 
     // Handle process completion
-    listProcess.on("close", code => {
+    listProcess.on("close", (code) => {
       const processEntryInt = listProcesses.get(processKey);
 
       if (code !== 0) {
         logger.error("List process failed", {
           code: code,
-          pid: listProcess.pid
+          pid: listProcess.pid,
         });
 
         if (processEntryInt) {
@@ -3165,8 +3562,8 @@ function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: numb
       // Return filtered results
       const items = responseData
         .split("\n")
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
       // Items will always be an array, so no checks needed here
       return resolve(items);
     });
@@ -3181,12 +3578,17 @@ function fetchPlayListItems(videoUrl: string, startIndex: number, endIndex: numb
  * @param {boolean} isUpdate - Whether this is an update operation
  * @returns {Promise<Object>} Processing results including counts and status
  */
-async function processVideoInformation(responseItems: string[], playlistUrl: string, startIndex: number, isUpdate: boolean) {
+async function processVideoInformation(
+  responseItems: string[],
+  playlistUrl: string,
+  startIndex: number,
+  isUpdate: boolean,
+) {
   logger.trace("Processing video information", {
     playlistUrl,
     startIndex,
     isUpdate,
-    itemCount: responseItems.length
+    itemCount: responseItems.length,
   });
 
   const result = {
@@ -3194,7 +3596,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
     title: "",
     responseUrl: playlistUrl,
     startIndex: startIndex,
-    alreadyExisted: false
+    alreadyExisted: false,
   };
 
   // Get last processed index for updates
@@ -3206,41 +3608,47 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
       where: { playlistUrl: playlistUrl },
       order: [["positionInPlaylist", "DESC"]],
       attributes: ["positionInPlaylist"],
-      limit: 1
+      limit: 1,
     });
 
     // deno-lint-ignore no-explicit-any
-    lastProcessedIndex = lastItem ? (lastItem as any).positionInPlaylist + 1 : 1;
+    lastProcessedIndex = lastItem
+      ? (lastItem as any).positionInPlaylist + 1
+      : 1;
     logger.debug("Found last processed index", { index: lastProcessedIndex });
   }
 
   // Check for existing items
   const existingItems = await Promise.all([
     // Check VideoMetadata table
-    Promise.all(responseItems.map(async item => {
+    Promise.all(responseItems.map(async (item) => {
       const videoUrl = item.split("\t")[2];
       return await VideoMetadata.findOne({
-        where: { videoUrl: videoUrl }
+        where: { videoUrl: videoUrl },
       });
     })),
     // Check PlaylistVideoMapping table
-    Promise.all(responseItems.map(async item => {
+    Promise.all(responseItems.map(async (item) => {
       const videoUrl = item.split("\t")[2];
       return await PlaylistVideoMapping.findOne({
         where: {
           videoUrl: videoUrl,
-          playlistUrl: playlistUrl
-        }
+          playlistUrl: playlistUrl,
+        },
       });
-    }))
+    })),
   ]);
 
   const [existingVideos, existingIndexes] = existingItems;
   // deno-lint-ignore no-explicit-any
-  const allExist = existingVideos.every((v: any) => v) && existingIndexes.every((i: any) => i);
+  const allExist = existingVideos.every((v: any) => v) &&
+    existingIndexes.every((i: any) => i);
 
   if (allExist) {
-    logger.debug("All videos already exist in database", { existingVideos: JSON.stringify(existingVideos), existingIndexes: JSON.stringify(existingIndexes) });
+    logger.debug("All videos already exist in database", {
+      existingVideos: JSON.stringify(existingVideos),
+      existingIndexes: JSON.stringify(existingIndexes),
+    });
     for (let i = 0; i < existingVideos.length; i++) {
       if (existingVideos[i]) {
         result.count++;
@@ -3263,18 +3671,22 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
         videoId: videoId.trim(),
         title: await truncateText(
           title === "NA" ? videoId.trim() : title,
-          config.maxTitleLength
+          config.maxTitleLength,
         ),
         approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
         downloadStatus: false,
-        isAvailable: !["[Deleted video]", "[Private video]", "[Unavailable video]"].includes(title)
+        isAvailable: ![
+          "[Deleted video]",
+          "[Private video]",
+          "[Unavailable video]",
+        ].includes(title),
       };
 
       // Update or create video record
       if (!existingVideos[index]) {
         await VideoMetadata.create({
           videoUrl: videoUrl,
-          ...videoData
+          ...videoData,
         });
       } else {
         await updateVideoMetadata(existingVideos[index], videoData);
@@ -3285,7 +3697,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
         await PlaylistVideoMapping.create({
           videoUrl: videoUrl,
           playlistUrl: playlistUrl,
-          positionInPlaylist: startIndex + index + lastProcessedIndex
+          positionInPlaylist: startIndex + index + lastProcessedIndex,
         });
       }
 
@@ -3295,17 +3707,18 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
         videoUrl: videoUrl,
         title: videoData.title,
         playlistUrl: playlistUrl,
-        index: startIndex + index + lastProcessedIndex
+        index: startIndex + index + lastProcessedIndex,
       });
-
     } catch (error) {
       logger.error("Failed to process video item", {
         error: (error as Error).message,
-        item: item
+        item: item,
       });
     }
   }));
-  logger.debug("Processed video information", { result: JSON.stringify(result) });
+  logger.debug("Processed video information", {
+    result: JSON.stringify(result),
+  });
   // deno-lint-ignore no-explicit-any
   return result as any;
 }
@@ -3324,7 +3737,7 @@ async function processVideoInformation(responseItems: string[], playlistUrl: str
 async function updateVideoMetadata(existingVideo: any, newData: any) {
   logger.trace("Checking video metadata for updates", {
     videoId: existingVideo.videoId,
-    newData: JSON.stringify(newData)
+    newData: JSON.stringify(newData),
   });
 
   const differences = [];
@@ -3333,49 +3746,51 @@ async function updateVideoMetadata(existingVideo: any, newData: any) {
   // Check for differences
   if (existingVideo.videoId !== newData.videoId) {
     differences.push({
-      field: 'videoId',
+      field: "videoId",
       old: existingVideo.videoId,
-      new: newData.videoId
+      new: newData.videoId,
     });
     requiresUpdate = true;
   }
 
   if (+existingVideo.approximateSize !== +newData.approximateSize) {
     differences.push({
-      field: 'approximateSize',
+      field: "approximateSize",
       old: existingVideo.approximateSize,
-      new: newData.approximateSize
+      new: newData.approximateSize,
     });
     requiresUpdate = true;
   }
 
   if (existingVideo.title !== newData.title) {
     differences.push({
-      field: 'title',
+      field: "title",
       old: existingVideo.title,
-      new: newData.title
+      new: newData.title,
     });
     requiresUpdate = true;
   }
 
   if (existingVideo.isAvailable !== newData.isAvailable) {
     differences.push({
-      field: 'isAvailable',
+      field: "isAvailable",
       old: existingVideo.isAvailable,
-      new: newData.isAvailable
+      new: newData.isAvailable,
     });
     requiresUpdate = true;
   }
 
   // Perform update if needed
   if (requiresUpdate) {
-    logger.warn("Video metadata changes detected", { differences: JSON.stringify(differences) });
+    logger.warn("Video metadata changes detected", {
+      differences: JSON.stringify(differences),
+    });
 
     Object.assign(existingVideo, {
       videoId: newData.videoId,
       approximateSize: +newData.approximateSize,
       title: newData.title,
-      isAvailable: newData.isAvailable
+      isAvailable: newData.isAvailable,
     });
 
     await existingVideo.save();
@@ -3395,7 +3810,10 @@ async function updateVideoMetadata(existingVideo: any, newData: any) {
  * @throws {Error} If required parameters are missing or update fails
  */
 // deno-lint-ignore no-explicit-any
-async function updatePlaylistMonitoring(requestBody: any, response: ServerResponse) {
+async function updatePlaylistMonitoring(
+  requestBody: any,
+  response: ServerResponse,
+) {
   try {
     // Validate required parameters
     if (!requestBody.url || !requestBody.watch) {
@@ -3407,12 +3825,12 @@ async function updatePlaylistMonitoring(requestBody: any, response: ServerRespon
 
     logger.trace("Updating playlist monitoring type", {
       playlistUrl,
-      monitoringType
+      monitoringType,
     });
 
     // Find playlist in database
     const playlist = await PlaylistMetadata.findOne({
-      where: { playlistUrl: playlistUrl }
+      where: { playlistUrl: playlistUrl },
     });
 
     if (!playlist) {
@@ -3422,28 +3840,27 @@ async function updatePlaylistMonitoring(requestBody: any, response: ServerRespon
     // Update monitoring type
     await playlist.update(
       { monitoringType: monitoringType },
-      { silent: true }
+      { silent: true },
     );
 
     logger.debug("Successfully updated monitoring type", {
       playlistUrl,
       // deno-lint-ignore no-explicit-any
       oldType: (playlist as any).monitoringType,
-      newType: monitoringType
+      newType: monitoringType,
     });
 
     // Send success response
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "success",
-      message: "Monitoring type updated successfully"
+      message: "Monitoring type updated successfully",
     }));
-
   } catch (error) {
     // Log error details
     logger.error("Failed to update monitoring type", {
       error: (error as Error).message,
-      stack: (error as Error).stack
+      stack: (error as Error).stack,
     });
 
     // Send error response
@@ -3452,7 +3869,7 @@ async function updatePlaylistMonitoring(requestBody: any, response: ServerRespon
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       status: "error",
-      message: he.escape((error as Error).message)
+      message: he.escape((error as Error).message),
     }));
   }
 }
@@ -3472,7 +3889,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   const lastPlaylist = await PlaylistMetadata.findOne({
     order: [["sortOrder", "DESC"]],
     attributes: ["sortOrder"],
-    limit: 1
+    limit: 1,
   });
 
   if (lastPlaylist !== null) {
@@ -3488,12 +3905,14 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
 
   const processArgs = [
     ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
-    "--playlist-end", "1",
+    "--playlist-end",
+    "1",
     "--flat-playlist",
-    "--print", "%(playlist_title)s",
-    playlistUrl
+    "--print",
+    "%(playlist_title)s",
+    playlistUrl,
   ];
-  // Playlist are not something that exists on x.com but a post can have 
+  // Playlist are not something that exists on x.com but a post can have
   // multiple videos so we need to use cookies for those links,
   // The listed videos will all have the same link with a different id
   // which this code can't handle yet, you will get only one item in the
@@ -3505,11 +3924,11 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   }
   const fullCommandString = [
     "yt-dlp",
-    ...processArgs.map(arg => (/\s/.test(arg) ? `"${arg}"` : arg)) // quote args with spaces
+    ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)), // quote args with spaces
   ].join(" ");
   logger.debug("Trying to get playlist title", {
     url: playlistUrl,
-    fullCommand: fullCommandString
+    fullCommand: fullCommandString,
   });
   // Spawn process to get playlist title
   const titleProcess = spawn("yt-dlp", processArgs);
@@ -3517,24 +3936,24 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   return new Promise((resolve, reject) => {
     // Handle stdout
     titleProcess.stdout.setEncoding("utf8");
-    titleProcess.stdout.on("data", data => {
+    titleProcess.stdout.on("data", (data) => {
       playlistTitle += data;
     });
 
     // Handle stderr
     titleProcess.stderr.setEncoding("utf8");
-    titleProcess.stderr.on("data", data => {
+    titleProcess.stderr.on("data", (data) => {
       logger.error(`Error getting playlist title: ${data}`);
     });
 
     // Handle process errors
-    titleProcess.on("error", error => {
+    titleProcess.on("error", (error) => {
       logger.error(`Title process error: ${error.message}`);
       reject(error);
     });
 
     // Handle process completion
-    titleProcess.on("close", async code => {
+    titleProcess.on("close", async (code) => {
       try {
         if (code !== 0) {
           logger.error(`Title process failed with code: ${code}`);
@@ -3546,19 +3965,24 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
           try {
             playlistTitle = await urlToTitle(playlistUrl);
           } catch (error) {
-            logger.error(`Failed to get title from URL: ${(error as Error).message}`);
+            logger.error(
+              `Failed to get title from URL: ${(error as Error).message}`,
+            );
             playlistTitle = playlistUrl;
           }
         }
 
         // Trim title to max length
-        playlistTitle = await truncateText(playlistTitle, config.maxTitleLength);
+        playlistTitle = await truncateText(
+          playlistTitle,
+          config.maxTitleLength,
+        );
         logger.debug(`Creating playlist with title: ${playlistTitle}`, {
           url: playlistUrl,
           pid: titleProcess.pid,
           code: code,
           monitoringType: monitoringType,
-          lastUpdatedByScheduler: Date.now()
+          lastUpdatedByScheduler: Date.now(),
         });
 
         // Create playlist entry
@@ -3570,8 +3994,8 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
             saveDirectory: playlistTitle.trim(),
             // Order in which playlists are displayed or Index
             sortOrder: nextPlaylistIndex,
-            lastUpdatedByScheduler: Date.now()
-          }
+            lastUpdatedByScheduler: Date.now(),
+          },
         });
 
         if (!created) {
@@ -3579,11 +4003,10 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
         }
 
         resolve(playlist);
-
       } catch (error) {
         logger.error("Failed to create playlist", {
           url: playlistUrl,
-          error: (error as Error).message
+          error: (error as Error).message,
         });
         reject(error);
       }
@@ -3604,12 +4027,18 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
  * @returns {Promise<void>} Resolves when deletion is complete
  */
 // deno-lint-ignore no-explicit-any
-async function processDeletePlaylistRequest(requestBody: any, response: ServerResponse) {
+async function processDeletePlaylistRequest(
+  requestBody: any,
+  response: ServerResponse,
+) {
   try {
-    logger.debug("Received playlist delete request", { "requestBody": JSON.stringify(requestBody) });
+    logger.debug("Received playlist delete request", {
+      "requestBody": JSON.stringify(requestBody),
+    });
 
     const playListUrl = requestBody.playListUrl || "";
-    const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist || false;
+    const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist ||
+      false;
     const deletePlaylist = requestBody.deletePlaylist || false;
     const cleanUp = requestBody.cleanUp || false;
 
@@ -3618,22 +4047,37 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
     //return response.end(JSON.stringify({ "status": "test", "message": playListUrl }));
 
     if (!playListUrl) {
-      logger.error("Need a playListUrl", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("Need a playListUrl", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "Need a playListUrl" }));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+      );
     }
     if (playListUrl === "None") {
-      logger.error("Cannot delete the default playlist", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("Cannot delete the default playlist", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "Cannot delete the default playlist" }));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": "Cannot delete the default playlist",
+        }),
+      );
     }
 
     // deno-lint-ignore no-explicit-any
     const playlist = await PlaylistMetadata.findByPk(playListUrl) as any;
     if (!playlist) {
-      logger.error("Playlist not found", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("Playlist not found", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "Playlist not found" }));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Playlist not found" }),
+      );
     }
 
     const transaction = await sequelize.transaction();
@@ -3642,8 +4086,12 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
 
       // Delete all video mappings if requested
       if (deleteAllVideosInPlaylist) {
-        await PlaylistVideoMapping.destroy({ where: { playlistUrl: playListUrl }, transaction });
-        message = `Removed all video references from playlist ${playlist.title}`;
+        await PlaylistVideoMapping.destroy({
+          where: { playlistUrl: playListUrl },
+          transaction,
+        });
+        message =
+          `Removed all video references from playlist ${playlist.title}`;
       }
 
       // Delete the playlist itself if requested
@@ -3652,20 +4100,24 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
         const deletedSortOrder = playlist.sortOrder;
         // Delete playlist
         await playlist.destroy({ transaction });
-        message += message ? " and deleted playlist" : `Deleted playlist ${playlist.title}`;
+        message += message
+          ? " and deleted playlist"
+          : `Deleted playlist ${playlist.title}`;
 
         // Update sortOrder for all playlists that came after the deleted one
         await PlaylistMetadata.decrement(
-          'sortOrder',
+          "sortOrder",
           {
             by: 1,
             where: {
-              sortOrder: { [Op.gt]: deletedSortOrder }
+              sortOrder: { [Op.gt]: deletedSortOrder },
             },
-            transaction
-          }
+            transaction,
+          },
         );
-        logger.debug("Updated sortOrder for playlists after deleted playlist", { deletedSortOrder });
+        logger.debug("Updated sortOrder for playlists after deleted playlist", {
+          deletedSortOrder,
+        });
       }
 
       // If neither action was requested, just return a message
@@ -3676,22 +4128,30 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
           "message": `No deletion performed for playlist ${playlist.title}`,
           "cleanUp": false,
           "deletePlaylist": false,
-          "deleteAllVideosInPlaylist": false
+          "deleteAllVideosInPlaylist": false,
         }));
       }
 
       // Clean up directory if requested (after transaction commits)
       if (cleanUp) {
         try {
-          const playListDir = path.join(config.saveLocation, playlist.saveDirectory);
-          logger.debug("Cleaning up playlist directory", { saveDirectory: playlist.saveDirectory, absolutePath: playListDir });
+          const playListDir = path.join(
+            config.saveLocation,
+            playlist.saveDirectory,
+          );
+          logger.debug("Cleaning up playlist directory", {
+            saveDirectory: playlist.saveDirectory,
+            absolutePath: playListDir,
+          });
           fs.rmSync(playListDir, { recursive: true, force: true });
-          logger.debug("Playlist directory cleaned up", { saveDirectory: playlist.saveDirectory });
+          logger.debug("Playlist directory cleaned up", {
+            saveDirectory: playlist.saveDirectory,
+          });
           message += " and cleaned up playlist directory";
         } catch (error) {
           logger.error("Failed to clean up playlist directory", {
             saveDirectory: playlist.saveDirectory,
-            error: (error as Error).message
+            error: (error as Error).message,
           });
           message += " but failed to clean up playlist directory";
         }
@@ -3704,20 +4164,35 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
         "message": message,
         "cleanUp": cleanUp,
         "deletePlaylist": deletePlaylist,
-        "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist
+        "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist,
       }));
-
     } catch (error) {
       await transaction.rollback();
-      logger.error(`Playlist deletion failed with error ${(error as Error).message}`, {
-        playListUrl, deleteAllVideosInPlaylist, deletePlaylist, cleanUp
-      });
+      logger.error(
+        `Playlist deletion failed with error ${(error as Error).message}`,
+        {
+          playListUrl,
+          deleteAllVideosInPlaylist,
+          deletePlaylist,
+          cleanUp,
+        },
+      );
       response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": (error as Error).message,
+        }),
+      );
     }
   } catch (error) {
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
+    return response.end(
+      JSON.stringify({
+        "status": "error",
+        "message": (error as Error).message,
+      }),
+    );
   }
 }
 
@@ -3734,9 +4209,14 @@ async function processDeletePlaylistRequest(requestBody: any, response: ServerRe
  * @returns {Promise<void>} Resolves when deletion is complete
  */
 // deno-lint-ignore no-explicit-any
-async function processDeleteVideosRequest(requestBody: any, response: ServerResponse) {
+async function processDeleteVideosRequest(
+  requestBody: any,
+  response: ServerResponse,
+) {
   try {
-    logger.debug("Received video delete request", { "requestBody": JSON.stringify(requestBody) });
+    logger.debug("Received video delete request", {
+      "requestBody": JSON.stringify(requestBody),
+    });
 
     const playListUrl = requestBody.playListUrl || "";
     const videoUrls = requestBody.videoUrls || [];
@@ -3749,28 +4229,50 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
     //return response.end(JSON.stringify({ "status": "test", "message": videoUrls }));
 
     if (!playListUrl) {
-      logger.error("Need a playListUrl", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("Need a playListUrl", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "Need a playListUrl" }));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+      );
     }
 
     if (!Array.isArray(videoUrls)) {
-      logger.error("videoUrls must be an array", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("videoUrls must be an array", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "videoUrls must be an array" }));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": "videoUrls must be an array",
+        }),
+      );
     }
 
     if (videoUrls.length === 0) {
-      logger.error("videoUrls array cannot be empty", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("videoUrls array cannot be empty", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "videoUrls array cannot be empty" }));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": "videoUrls array cannot be empty",
+        }),
+      );
     }
 
     const playlist = await PlaylistMetadata.findByPk(playListUrl);
     if (!playlist) {
-      logger.error("Playlist not found", { "requestBody": JSON.stringify(requestBody) });
+      logger.error("Playlist not found", {
+        "requestBody": JSON.stringify(requestBody),
+      });
       response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": "Playlist not found" }));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Playlist not found" }),
+      );
     }
 
     const transaction = await sequelize.transaction();
@@ -3798,22 +4300,44 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
               "thumbNailFile": video.thumbNailFile,
               "subTitleFile": video.subTitleFile,
               "commentsFile": video.commentsFile,
-              "descriptionFile": video.descriptionFile
+              "descriptionFile": video.descriptionFile,
             };
 
-            logger.debug("Removing files for video", { videoUrl, filesToRemove: JSON.stringify(filesToRemove) });
+            logger.debug("Removing files for video", {
+              videoUrl,
+              filesToRemove: JSON.stringify(filesToRemove),
+            });
 
             for (const [key, value] of Object.entries(filesToRemove)) {
               if (value) {
                 try {
                   // deno-lint-ignore no-explicit-any
-                  const filePath = path.join(config.saveLocation, (playlist as any).saveDirectory, value);
-                  logger.debug("Removing file", { videoUrl, key, value, filePath });
+                  const filePath = path.join(
+                    config.saveLocation,
+                    (playlist as any).saveDirectory,
+                    value,
+                  );
+                  logger.debug("Removing file", {
+                    videoUrl,
+                    key,
+                    value,
+                    filePath,
+                  });
                   fs.unlinkSync(filePath);
-                  logger.debug("Removed file", { videoUrl, key, value, filePath });
+                  logger.debug("Removed file", {
+                    videoUrl,
+                    key,
+                    value,
+                    filePath,
+                  });
                   filesToRemove[key] = null;
                 } catch (error) {
-                  logger.error("Failed to remove file", { videoUrl, key, value, error: (error as Error).message });
+                  logger.error("Failed to remove file", {
+                    videoUrl,
+                    key,
+                    value,
+                    error: (error as Error).message,
+                  });
                   allFilesRemoved = false;
                 }
               }
@@ -3842,7 +4366,7 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
             if (deleteVideoMappings && (!cleanUp || allFilesRemoved)) {
               await PlaylistVideoMapping.destroy({
                 where: { videoUrl, playlistUrl: playListUrl },
-                transaction
+                transaction,
               });
             }
           }
@@ -3850,11 +4374,16 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
           if (allFilesRemoved || !cleanUp) {
             deleted.push(videoUrl);
           } else {
-            failed.push({ videoUrl, reason: "Some files could not be removed" });
+            failed.push({
+              videoUrl,
+              reason: "Some files could not be removed",
+            });
           }
-
         } catch (error) {
-          logger.error("Failed to process video", { videoUrl, error: (error as Error).message });
+          logger.error("Failed to process video", {
+            videoUrl,
+            error: (error as Error).message,
+          });
           failed.push({ videoUrl, reason: (error as Error).message });
         }
       }
@@ -3864,25 +4393,43 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         // deno-lint-ignore no-explicit-any
-        "message": `Processed ${deleted.length} video(s) from playlist ${(playlist as any).title}`,
+        "message": `Processed ${deleted.length} video(s) from playlist ${
+          (playlist as any).title
+        }`,
         "deleted": deleted,
         "failed": failed,
         "cleanUp": cleanUp,
         "deleteVideoMappings": deleteVideoMappings,
-        "deleteVideosInDB": deleteVideosInDB
+        "deleteVideosInDB": deleteVideosInDB,
       }));
-
     } catch (error) {
       await transaction.rollback();
-      logger.error(`Video deletion failed with error ${(error as Error).message}`, {
-        playListUrl, videoUrls: JSON.stringify(videoUrls), cleanUp, deleteVideoMappings, deleteVideosInDB
-      });
+      logger.error(
+        `Video deletion failed with error ${(error as Error).message}`,
+        {
+          playListUrl,
+          videoUrls: JSON.stringify(videoUrls),
+          cleanUp,
+          deleteVideoMappings,
+          deleteVideosInDB,
+        },
+      );
       response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": (error as Error).message,
+        }),
+      );
     }
   } catch (error) {
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({ "status": "error", "message": (error as Error).message }));
+    return response.end(
+      JSON.stringify({
+        "status": "error",
+        "message": (error as Error).message,
+      }),
+    );
   }
 }
 
@@ -3893,34 +4440,42 @@ async function processDeleteVideosRequest(requestBody: any, response: ServerResp
  * @param {Object} requestBody - The request parameters
  * @param {number} [requestBody.start=0] - Starting index for pagination
  * @param {number} [requestBody.stop=config.chunkSize] - End index for pagination
- * @param {number} [requestBody.sort=1] - Sort column (1: sortOrder, 3: updatedAt)  
+ * @param {number} [requestBody.sort=1] - Sort column (1: sortOrder, 3: updatedAt)
  * @param {number} [requestBody.order=1] - Sort order (1: ASC, 2: DESC)
  * @param {string} [requestBody.query=""] - Search query to filter playlists by title
  * @param {Object} response - HTTP response object
  * @returns {Promise<void>} Resolves when playlist data is sent to frontend
  * @throws {Error} If database query fails
  */
-async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, response: ServerResponse) {
+async function getPlaylistsForDisplay(
+  requestBody: PlaylistDisplayRequest,
+  response: ServerResponse,
+) {
   try {
     // Extract and validate parameters
     const startIndex = requestBody.start !== undefined ? +requestBody.start : 0;
-    const pageSize = requestBody.stop !== undefined ? +requestBody.stop - startIndex : config.chunkSize;
+    const pageSize = requestBody.stop !== undefined
+      ? +requestBody.stop - startIndex
+      : config.chunkSize;
     const sortColumn = requestBody.sort !== undefined ? +requestBody.sort : 1;
     const sortOrder = requestBody.order !== undefined ? +requestBody.order : 1;
-    const searchQuery = requestBody.query !== undefined ? requestBody.query : "";
+    const searchQuery = requestBody.query !== undefined
+      ? requestBody.query
+      : "";
 
     // Determine sort settings
     const sortDirection = sortOrder === 2 ? "DESC" : "ASC";
     const sortBy = sortColumn === 3 ? "lastUpdatedByScheduler" : "createdAt";
 
     logger.trace(
-      `Fetching playlists for display`, {
-      startIndex,
-      pageSize,
-      sortBy,
-      sortDirection,
-      searchQuery
-    }
+      `Fetching playlists for display`,
+      {
+        startIndex,
+        pageSize,
+        sortBy,
+        sortDirection,
+        searchQuery,
+      },
     );
 
     // Build base query
@@ -3928,12 +4483,12 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
     const queryOptions: any = {
       where: {
         sortOrder: {
-          [Op.gte]: 0 // Filter out system playlists
-        }
+          [Op.gte]: 0, // Filter out system playlists
+        },
       },
       limit: pageSize,
       offset: startIndex,
-      order: [[sortBy, sortDirection]]
+      order: [[sortBy, sortDirection]],
     };
 
     // Add search filter if query provided
@@ -3941,14 +4496,14 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
       if (searchQuery.startsWith("url:")) {
         if (searchQuery.slice(4).length > 0) {
           queryOptions.where.playlistUrl = {
-            [Op.iLike]: `%${searchQuery.slice(4)}%`
+            [Op.iLike]: `%${searchQuery.slice(4)}%`,
           };
         } else {
-          logger.debug("No url provided", { searchQuery })
+          logger.debug("No url provided", { searchQuery });
         }
       } else {
         queryOptions.where.title = {
-          [Op.iLike]: `%${searchQuery}%`
+          [Op.iLike]: `%${searchQuery}%`,
         };
       }
     }
@@ -3957,18 +4512,17 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
 
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify(results));
-
   } catch (error) {
     logger.error("Failed to fetch playlists", {
       error: (error as Error).message,
-      stack: (error as Error).stack
+      stack: (error as Error).stack,
     });
 
     // deno-lint-ignore no-explicit-any
     const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      error: he.escape((error as Error).message)
+      error: he.escape((error as Error).message),
     }));
   }
 }
@@ -3985,7 +4539,10 @@ async function getPlaylistsForDisplay(requestBody: PlaylistDisplayRequest, respo
  * @returns {Promise<void>} Resolves when video data is sent to frontend
  * @throws {Error} If database query fails
  */
-async function getSubListVideos(requestBody: SubListRequest, response: ServerResponse) {
+async function getSubListVideos(
+  requestBody: SubListRequest,
+  response: ServerResponse,
+) {
   try {
     // Extract and validate parameters
     const playlistUrl = requestBody.url ?? "None";
@@ -4008,7 +4565,7 @@ async function getSubListVideos(requestBody: SubListRequest, response: ServerRes
       searchQuery,
       sortBy: sortByDownloaded ? "downloadStatus" : "positionInPlaylist",
       sortDirection: sortByDownloaded ? "DESC" : "ASC",
-      playlistUrl
+      playlistUrl,
     });
 
     // Build base query options
@@ -4020,14 +4577,17 @@ async function getSubListVideos(requestBody: SubListRequest, response: ServerRes
         const urlSearch = searchQuery.slice(4);
         if (urlSearch.length > 0) {
           videoMetadataWhere.videoUrl = {
-            [Op.iLike]: `%${urlSearch}%`
+            [Op.iLike]: `%${urlSearch}%`,
           };
         } else {
-          logger.debug("No url provided for sublist query, despite using url: prefix", { searchQuery });
+          logger.debug(
+            "No url provided for sublist query, despite using url: prefix",
+            { searchQuery },
+          );
         }
       } else {
         videoMetadataWhere.title = {
-          [Op.iLike]: `%${searchQuery}%`
+          [Op.iLike]: `%${searchQuery}%`,
         };
       }
     }
@@ -4050,15 +4610,15 @@ async function getSubListVideos(requestBody: SubListRequest, response: ServerRes
         ],
         where: videoMetadataWhere,
         // Use Inner Join (strict) if searching, otherwise Left Join (loose)
-        required: !!(searchQuery && searchQuery.length > 0)
+        required: !!(searchQuery && searchQuery.length > 0),
       }],
       where: {
-        playlistUrl: playlistUrl
+        playlistUrl: playlistUrl,
       },
       limit: endIndex - startIndex,
       offset: startIndex,
       // deno-lint-ignore no-explicit-any
-      order: [sortOrder] as any
+      order: [sortOrder] as any,
     };
 
     // Execute query
@@ -4067,11 +4627,16 @@ async function getSubListVideos(requestBody: SubListRequest, response: ServerRes
     // Fetch playlist save directory
     let playlistSaveDir = "";
     try {
-      const playlist = await PlaylistMetadata.findOne({ where: { playlistUrl } });
+      const playlist = await PlaylistMetadata.findOne({
+        where: { playlistUrl },
+      });
       // deno-lint-ignore no-explicit-any
       playlistSaveDir = (playlist as any)?.saveDirectory ?? "";
     } catch (err) {
-      logger.warn('Could not fetch playlist saveDirectory', { playlistUrl, error: (err as Error).message });
+      logger.warn("Could not fetch playlist saveDirectory", {
+        playlistUrl,
+        error: (err as Error).message,
+      });
     }
 
     // deno-lint-ignore no-explicit-any
@@ -4088,33 +4653,36 @@ async function getSubListVideos(requestBody: SubListRequest, response: ServerRes
         thumbNailFile: vm.thumbNailFile,
         subTitleFile: vm.subTitleFile,
         descriptionFile: vm.descriptionFile,
-        isMetaDataSynced: vm.isMetaDataSynced
+        isMetaDataSynced: vm.isMetaDataSynced,
       };
 
       return {
         positionInPlaylist: row.positionInPlaylist,
         playlistUrl: row.playlistUrl,
-        video_metadatum: safeVideoMeta
+        video_metadatum: safeVideoMeta,
       };
     });
 
-    const safeResult = { count: results.count, rows: safeRows, saveDirectory: playlistSaveDir };
+    const safeResult = {
+      count: results.count,
+      rows: safeRows,
+      saveDirectory: playlistSaveDir,
+    };
 
     // Send response
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify(safeResult));
-
   } catch (error) {
     logger.error("Failed to fetch playlist videos", {
       error: (error as Error).message,
-      stack: (error as Error).stack
+      stack: (error as Error).stack,
     });
 
     // deno-lint-ignore no-explicit-any
     const statusCode = (error as any).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
-      error: he.escape((error as Error).message)
+      error: he.escape((error as Error).message),
     }));
   }
 }
@@ -4135,15 +4703,15 @@ function generateCorsHeaders(
   {
     allowedOrigins = CORS_ALLOWED_ORIGINS,
     allowedMethods = CORS_ALLOWED_HEADERS,
-    maxAge = config.defaultCORSMaxAge
-  } = {}
+    maxAge = config.defaultCORSMaxAge,
+  } = {},
 ) {
   return {
-    'Access-Control-Allow-Origin': allowedOrigins.join(', '),
-    'Access-Control-Allow-Methods': allowedMethods.join(', '),
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': maxAge,
-    'Content-Type': contentType
+    "Access-Control-Allow-Origin": allowedOrigins.join(", "),
+    "Access-Control-Allow-Methods": allowedMethods.join(", "),
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": maxAge,
+    "Content-Type": contentType,
   };
 }
 
@@ -4153,9 +4721,9 @@ function generateCorsHeaders(
  * @param {string} dir - The directory path to start retrieving files from.
  * @return {Array<{filePath: string, extension: string}>} An array of objects containing the file path and extension of each file found in the directory and its subdirectories.
  */
-function getFiles(dir: string): Array<{ filePath: string, extension: string }> {
+function getFiles(dir: string): Array<{ filePath: string; extension: string }> {
   const files = fs.readdirSync(dir);
-  let fileList: Array<{ filePath: string, extension: string }> = [];
+  let fileList: Array<{ filePath: string; extension: string }> = [];
 
   files.forEach((file) => {
     const filePath = path.join(dir, file);
@@ -4178,21 +4746,30 @@ function getFiles(dir: string): Array<{ filePath: string, extension: string }> {
  * @param {Array<{filePath: string, extension: string}>} fileList - The list of file objects containing the file path and extension.
  * @return {Object<string, {file: Buffer, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
  */
-function makeAssets(fileList: Array<{ filePath: string, extension: string }>) {
-  const staticAssets: Record<string, { file: Buffer | string, type: string }> = {};
+function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
+  const staticAssets: Record<string, { file: Buffer | string; type: string }> =
+    {};
   fileList.forEach((element) => {
     staticAssets[element.filePath.replace("dist", config.urlBase)] = {
       file: fs.readFileSync(element.filePath),
       type: MIME_TYPES[element.extension],
     };
   });
-  staticAssets[`${config.urlBase}/`] = staticAssets[`${config.urlBase}/index.html`];
+  staticAssets[`${config.urlBase}/`] =
+    staticAssets[`${config.urlBase}/index.html`];
   staticAssets[config.urlBase] = staticAssets[`${config.urlBase}/index.html`];
-  staticAssets[`${config.urlBase}/.gz`] = staticAssets[`${config.urlBase}/index.html.gz`];
-  staticAssets[`${config.urlBase}.gz`] = staticAssets[`${config.urlBase}/index.html.gz`];
-  staticAssets[`${config.urlBase}/.br`] = staticAssets[`${config.urlBase}/index.html.br`];
-  staticAssets[`${config.urlBase}.br`] = staticAssets[`${config.urlBase}/index.html.br`];
-  staticAssets[`${config.urlBase}/ping`] = { file: "pong", type: MIME_TYPES[".txt"] };
+  staticAssets[`${config.urlBase}/.gz`] =
+    staticAssets[`${config.urlBase}/index.html.gz`];
+  staticAssets[`${config.urlBase}.gz`] =
+    staticAssets[`${config.urlBase}/index.html.gz`];
+  staticAssets[`${config.urlBase}/.br`] =
+    staticAssets[`${config.urlBase}/index.html.br`];
+  staticAssets[`${config.urlBase}.br`] =
+    staticAssets[`${config.urlBase}/index.html.br`];
+  staticAssets[`${config.urlBase}/ping`] = {
+    file: "pong",
+    type: MIME_TYPES[".txt"],
+  };
   return staticAssets;
 }
 
@@ -4207,24 +4784,30 @@ if (config.nativeHttps) {
       key: fs.readFileSync(config.ssl.key as string, "utf8"),
       cert: fs.readFileSync(config.ssl.cert as string, "utf8"),
       // If passphrase is not set, don't include it in options
-      ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase })
+      ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase }),
     };
   } catch (error) {
-    logger.error("Error reading SSL key and/or certificate files:", { error: (error as Error).message });
+    logger.error("Error reading SSL key and/or certificate files:", {
+      error: (error as Error).message,
+    });
     Deno.exit(1);
   }
   if (config.ssl.passphrase) {
     logger.info("SSL passphrase is set");
   }
   if (config.protocol === "http") {
-    logger.warn("Protocol is set to HTTP but nativeHttps is enabled. Overriding protocol to HTTPS.");
+    logger.warn(
+      "Protocol is set to HTTP but nativeHttps is enabled. Overriding protocol to HTTPS.",
+    );
     config.protocol = "https";
   }
   logger.info("Starting server in HTTPS mode");
   serverObj = https;
 } else {
   if (config.protocol === "https") {
-    logger.warn("Protocol is set to HTTPS but nativeHttps is disabled. Overriding protocol to HTTP.");
+    logger.warn(
+      "Protocol is set to HTTPS but nativeHttps is disabled. Overriding protocol to HTTP.",
+    );
     config.protocol = "http";
   }
   logger.info("Starting server in HTTP mode");
@@ -4232,209 +4815,339 @@ if (config.nativeHttps) {
 }
 
 // deno-lint-ignore no-explicit-any
-const server = (serverObj as any).createServer(serverOptions, async (req: IncomingMessage, res: ServerResponse) => {
-  if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
-    try {
-      const get = req.url;
-      const reqEncoding = req.headers["accept-encoding"] || "";
-      logger.trace(`Request Received`, {
-        url: req.url,
-        method: req.method,
-        encoding: reqEncoding,
-      });
-      // Check if the request is for a file from the signedUrlCache
-      const urlParams = new URLSearchParams(req.url.split("?")[1]);
-      if (urlParams.has("fileId")) {
-        const fileId = urlParams.get("fileId");
-        // If fileId is present, try to serve from signedUrlCache
-        const cachedEntry = await redis.get(`signed:${fileId}`);
-        if (cachedEntry) {
-          const signedEntry = JSON.parse(cachedEntry);
-          // Serve the file from the signed URL cache
-          logger.trace("Serving file from signed URL cache", { url: req.url });
-
-          // Improved streaming for large files: Range support, pipeline, backpressure
-          logger.trace("Serving signed file", { fileId, filePath: signedEntry.filePath });
-          (async () => {
-            try {
-              const stats = await fs.promises.stat(signedEntry.filePath);
-              const total = stats.size;
-
-              const originalName = path.basename(signedEntry.filePath || '');
-              // Remove potentially dangerous characters
-              const safeName = originalName.replace(/[\r\n"]/g, '');
-              // ASCII fallback for older clients
-              const fallbackName = safeName.replace(/[^\x20-\x7E]/g, '_');
-              const encodedName = encodeURIComponent(safeName);
-
-              const contentType = signedEntry.mimeType || MIME_TYPES[path.extname(safeName)] || 'application/octet-stream';
-              // Common headers (CORS + content-type + disposition + accept-ranges)
-              const cors = generateCorsHeaders(contentType);
-              Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
-              res.setHeader('Content-Type', contentType);
-              res.setHeader('Content-Disposition', `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`);
-              res.setHeader('Accept-Ranges', 'bytes');
-
-              // Parse Range header
-              const range = req.headers.range;
-              let start = 0;
-              let end = total - 1;
-              let statusCode = 200;
-              if (range) {
-                const m = /^bytes=(\d*)-(\d*)$/.exec(range);
-                if (m) {
-                  if (m[1]) start = parseInt(m[1], 10);
-                  if (m[2]) end = parseInt(m[2], 10);
-                  // Validate
-                  if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end > total - 1) {
-                    res.writeHead(416, { 'Content-Range': `bytes */${total}` });
-                    return res.end();
-                  }
-                  statusCode = 206;
-                  res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
-                }
-              }
-
-              const chunkSize = end - start + 1;
-              res.setHeader('Content-Length', String(chunkSize));
-              res.writeHead(statusCode);
-
-              const readStream = fs.createReadStream(signedEntry.filePath, {
-                start,
-                end,
-                // Larger buffer for fewer syscall's on big files (tune as needed)
-                highWaterMark: 1024 * 1024,
-              });
-
-              const onClose = () => {
-                // Destroy the stream if client disconnects
-                try { readStream.destroy(); } catch (err: unknown) { logger.error("Error destroying read stream on client disconnect", { error: (err as Error)?.message || String(err), fileId }); }
-              };
-              req.on('close', onClose);
-              req.on('aborted', onClose);
-
-              try {
-                // Use pipeline to forward errors and handle backpressure
-                await pipelineAsync(readStream, res);
-                logger.trace("Finished streaming signed file", { fileId });
-              } catch (err) {
-                logger.error("Error during streaming signed file", { error: (err as Error)?.message || String(err), fileId });
-                if (!res.headersSent) {
-                  res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
-                }
-                try { res.end('Error reading file'); } catch (error: unknown) { logger.error("Error ending response after streaming failure", { error: (error as Error)?.message || String(error), fileId }); }
-              } finally {
-                req.removeListener('close', onClose);
-                req.removeListener('aborted', onClose);
-                // Note: keep signedUrlCache entry to allow multiple downloads within expiry
-              }
-            } catch (err) {
-              logger.error("Error getting file stats", { error: (err as Error).message, fileId });
-              if (!res.headersSent) {
-                res.writeHead(500, generateCorsHeaders(MIME_TYPES['.html']));
-              }
-              res.end("Error reading file");
-            }
-          })();
-          return;
-          // If you want to just return the file path instead of streaming
-          // (not recommended for large files or production use)
-          // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
-          // res.write(signedEntry.filePath);
-          // return res.end();
-        }
-      }
-      // Check if the GET request is for a static asset
-      if (!get || !staticAssets[get]) {
-        logger.error("Requested Resource couldn't be found", {
+const server = (serverObj as any).createServer(
+  serverOptions,
+  async (req: IncomingMessage, res: ServerResponse) => {
+    if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
+      try {
+        const get = req.url;
+        const reqEncoding = req.headers["accept-encoding"] || "";
+        logger.trace(`Request Received`, {
           url: req.url,
           method: req.method,
           encoding: reqEncoding,
         });
+        // Check if the request is for a file from the signedUrlCache
+        const urlParams = new URLSearchParams(req.url.split("?")[1]);
+        if (urlParams.has("fileId")) {
+          const fileId = urlParams.get("fileId");
+          // If fileId is present, try to serve from signedUrlCache
+          const cachedEntry = await redis.get(`signed:${fileId}`);
+          if (cachedEntry) {
+            const signedEntry = JSON.parse(cachedEntry);
+            // Serve the file from the signed URL cache
+            logger.trace("Serving file from signed URL cache", {
+              url: req.url,
+            });
+
+            // Improved streaming for large files: Range support, pipeline, backpressure
+            logger.trace("Serving signed file", {
+              fileId,
+              filePath: signedEntry.filePath,
+            });
+            (async () => {
+              try {
+                const stats = await fs.promises.stat(signedEntry.filePath);
+                const total = stats.size;
+
+                const originalName = path.basename(signedEntry.filePath || "");
+                // Remove potentially dangerous characters
+                const safeName = originalName.replace(/[\r\n"]/g, "");
+                // ASCII fallback for older clients
+                const fallbackName = safeName.replace(/[^\x20-\x7E]/g, "_");
+                const encodedName = encodeURIComponent(safeName);
+
+                const contentType = signedEntry.mimeType ||
+                  MIME_TYPES[path.extname(safeName)] ||
+                  "application/octet-stream";
+                // Common headers (CORS + content-type + disposition + accept-ranges)
+                const cors = generateCorsHeaders(contentType);
+                Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
+                res.setHeader("Content-Type", contentType);
+                res.setHeader(
+                  "Content-Disposition",
+                  `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+                );
+                res.setHeader("Accept-Ranges", "bytes");
+
+                // Parse Range header
+                const range = req.headers.range;
+                let start = 0;
+                let end = total - 1;
+                let statusCode = 200;
+                if (range) {
+                  const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+                  if (m) {
+                    if (m[1]) start = parseInt(m[1], 10);
+                    if (m[2]) end = parseInt(m[2], 10);
+                    // Validate
+                    if (
+                      Number.isNaN(start) || Number.isNaN(end) || start > end ||
+                      start < 0 || end > total - 1
+                    ) {
+                      res.writeHead(416, {
+                        "Content-Range": `bytes */${total}`,
+                      });
+                      return res.end();
+                    }
+                    statusCode = 206;
+                    res.setHeader(
+                      "Content-Range",
+                      `bytes ${start}-${end}/${total}`,
+                    );
+                  }
+                }
+
+                const chunkSize = end - start + 1;
+                res.setHeader("Content-Length", String(chunkSize));
+                res.writeHead(statusCode);
+
+                const readStream = fs.createReadStream(signedEntry.filePath, {
+                  start,
+                  end,
+                  // Larger buffer for fewer syscall's on big files (tune as needed)
+                  highWaterMark: 1024 * 1024,
+                });
+
+                const onClose = () => {
+                  // Destroy the stream if client disconnects
+                  try {
+                    readStream.destroy();
+                  } catch (err: unknown) {
+                    logger.error(
+                      "Error destroying read stream on client disconnect",
+                      { error: (err as Error)?.message || String(err), fileId },
+                    );
+                  }
+                };
+                req.on("close", onClose);
+                req.on("aborted", onClose);
+
+                try {
+                  // Use pipeline to forward errors and handle backpressure
+                  await pipelineAsync(readStream, res);
+                  logger.trace("Finished streaming signed file", { fileId });
+                } catch (err) {
+                  logger.error("Error during streaming signed file", {
+                    error: (err as Error)?.message || String(err),
+                    fileId,
+                  });
+                  if (!res.headersSent) {
+                    res.writeHead(
+                      500,
+                      generateCorsHeaders(MIME_TYPES[".html"]),
+                    );
+                  }
+                  try {
+                    res.end("Error reading file");
+                  } catch (error: unknown) {
+                    logger.error(
+                      "Error ending response after streaming failure",
+                      {
+                        error: (error as Error)?.message || String(error),
+                        fileId,
+                      },
+                    );
+                  }
+                } finally {
+                  req.removeListener("close", onClose);
+                  req.removeListener("aborted", onClose);
+                  // Note: keep signedUrlCache entry to allow multiple downloads within expiry
+                }
+              } catch (err) {
+                logger.error("Error getting file stats", {
+                  error: (err as Error).message,
+                  fileId,
+                });
+                if (!res.headersSent) {
+                  res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
+                }
+                res.end("Error reading file");
+              }
+            })();
+            return;
+            // If you want to just return the file path instead of streaming
+            // (not recommended for large files or production use)
+            // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
+            // res.write(signedEntry.filePath);
+            // return res.end();
+          }
+        }
+        // Check if the GET request is for a static asset
+        if (!get || !staticAssets[get]) {
+          logger.error("Requested Resource couldn't be found", {
+            url: req.url,
+            method: req.method,
+            encoding: reqEncoding,
+          });
+          res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+          res.write("Not Found");
+          return res.end();
+        }
+        // deno-lint-ignore no-explicit-any
+        const resHeaders: any = generateCorsHeaders(staticAssets[get]!.type);
+        if (reqEncoding.includes("br") && staticAssets[get + ".br"]) {
+          resHeaders["Content-Encoding"] = "br";
+          res.writeHead(200, resHeaders);
+          res.write(staticAssets[get + ".br"].file);
+          return res.end();
+        } else if (reqEncoding.includes("gzip") && staticAssets[get + ".gz"]) {
+          resHeaders["Content-Encoding"] = "gzip";
+          res.writeHead(200, resHeaders);
+          res.write(staticAssets[get + ".gz"].file);
+          return res.end();
+        } else {
+          res.writeHead(200, resHeaders);
+          res.write(staticAssets[get].file);
+        }
+      } catch (error) {
+        logger.error("Error in processing request", {
+          url: req.url,
+          method: req.method,
+          error: error as Error,
+        });
         res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
         res.write("Not Found");
-        return res.end();
       }
+      res.end();
+    } else if (req.method === "OPTIONS") {
+      // necessary for cors
+      res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
+      res.end();
+    } else if (req.method === "HEAD") {
+      // necessary for health check
+      res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
+      res.end();
+    } else if (req.url === config.urlBase + "/list" && req.method === "POST") {
       // deno-lint-ignore no-explicit-any
-      const resHeaders: any = generateCorsHeaders(staticAssets[get]!.type);
-      if (reqEncoding.includes("br") && staticAssets[get + ".br"]) {
-        resHeaders["Content-Encoding"] = "br";
-        res.writeHead(200, resHeaders);
-        res.write(staticAssets[get + ".br"].file);
-        return res.end();
-      } else if (reqEncoding.includes("gzip") && staticAssets[get + ".gz"]) {
-        resHeaders["Content-Encoding"] = "gzip";
-        res.writeHead(200, resHeaders);
-        res.write(staticAssets[get + ".gz"].file);
-        return res.end();
-      } else {
-        res.writeHead(200, resHeaders);
-        res.write(staticAssets[get].file);
-      }
-    } catch (error) {
-      logger.error("Error in processing request", {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processListingRequest(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/download" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processDownloadRequest(data as any, res),
+      );
+    } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          updatePlaylistMonitoring(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getplay" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          getPlaylistsForDisplay(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/delplay" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processDeletePlaylistRequest(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getsub" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          getSubListVideos(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/delsub" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processDeleteVideosRequest(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getfile" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) => makeSignedUrl(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getfiles" && req.method === "POST"
+    ) {
+      // deno-lint-ignore no-explicit-any
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          makeSignedUrls(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/register" && req.method === "POST"
+    ) {
+      rateLimit(
+        req,
+        res,
+        registerUser,
+        (req: IncomingMessage, res: ServerResponse) =>
+          isRegistrationAllowed(req, res),
+        config.cache.reqPerIP,
+        config.cache.maxAge,
+      );
+    } else if (req.url === config.urlBase + "/login" && req.method === "POST") {
+      rateLimit(
+        req,
+        res,
+        authenticateUser,
+        (req: IncomingMessage, res: ServerResponse) =>
+          authenticateUser(req, res),
+        config.cache.reqPerIP,
+        config.cache.maxAge,
+      );
+    } else if (
+      req.url === config.urlBase + "/isregallowed" && req.method === "POST"
+    ) {
+      rateLimit(
+        req,
+        res,
+        isRegistrationAllowed,
+        (req: IncomingMessage, res: ServerResponse) =>
+          isRegistrationAllowed(req, res),
+        config.cache.reqPerIP,
+        config.cache.maxAge,
+      );
+    } else {
+      logger.error("Requested Resource couldn't be found", {
         url: req.url,
         method: req.method,
-        error: error as Error,
       });
       res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
       res.write("Not Found");
+      res.end();
     }
-    res.end();
-  } else if (req.method === "OPTIONS") {
-    // necessary for cors
-    res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
-    res.end();
-  } else if (req.method === "HEAD") {
-    // necessary for health check
-    res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
-    res.end();
-  } else if (req.url === config.urlBase + "/list" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => processListingRequest(data as any, res));
-  } else if (req.url === config.urlBase + "/download" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => processDownloadRequest(data as any, res));
-  } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => updatePlaylistMonitoring(data as any, res));
-  } else if (req.url === config.urlBase + "/getplay" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => getPlaylistsForDisplay(data as any, res));
-  } else if (req.url === config.urlBase + "/delplay" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => processDeletePlaylistRequest(data as any, res));
-  } else if (req.url === config.urlBase + "/getsub" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => getSubListVideos(data as any, res));
-  } else if (req.url === config.urlBase + "/delsub" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => processDeleteVideosRequest(data as any, res));
-  } else if (req.url === config.urlBase + "/getfile" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => makeSignedUrl(data as any, res));
-  } else if (req.url === config.urlBase + "/getfiles" && req.method === "POST") {
-    // deno-lint-ignore no-explicit-any
-    authenticateRequest(req, res, (data: unknown, res: ServerResponse) => makeSignedUrls(data as any, res));
-  } else if (req.url === config.urlBase + "/register" && req.method === "POST") {
-    rateLimit(req, res, registerUser, (req: IncomingMessage, res: ServerResponse) => isRegistrationAllowed(req, res),
-      config.cache.reqPerIP, config.cache.maxAge);
-  } else if (req.url === config.urlBase + "/login" && req.method === "POST") {
-    rateLimit(req, res, authenticateUser, (req: IncomingMessage, res: ServerResponse) => authenticateUser(req, res),
-      config.cache.reqPerIP, config.cache.maxAge);
-  } else if (req.url === config.urlBase + "/isregallowed" && req.method === "POST") {
-    rateLimit(req, res, isRegistrationAllowed, (req: IncomingMessage, res: ServerResponse) => isRegistrationAllowed(req, res),
-      config.cache.reqPerIP, config.cache.maxAge);
-  } else {
-    logger.error("Requested Resource couldn't be found", {
-      url: req.url,
-      method: req.method
-    });
-    res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-    res.write("Not Found");
-    res.end();
-  }
-});
+  },
+);
 
 const io = new Server(server, {
   path: config.urlBase + "/socket.io/",
@@ -4452,11 +5165,10 @@ io.use((socket: Socket, next: (err?: Error) => void) => {
         ip: socket.handshake.address,
       });
       next();
-    }
-    else {
+    } else {
       logger.error("Invalid socket", {
         id: socket.id,
-        ip: socket.handshake.address
+        ip: socket.handshake.address,
       });
       next(new Error("Invalid socket"));
     }
@@ -4464,7 +5176,7 @@ io.use((socket: Socket, next: (err?: Error) => void) => {
     logger.error("Error in verifying socket", {
       id: socket.id,
       ip: socket.handshake.address,
-      error: err as Error
+      error: err as Error,
     });
     next(new Error((err as Error).message));
   });
@@ -4485,11 +5197,11 @@ const sock = io.on("connection", (socket: Socket) => {
 
   // Increment the count of connected clients
   socket.emit("init", { message: "Connected", id: socket.id });
-  socket.on("acknowledge", ({ data, id }: { data: string, id: string }) => {
+  socket.on("acknowledge", ({ data, id }: { data: string; id: string }) => {
     logger.info(`Acknowledged from client id ${id}`, {
       id: id,
       ip: socket.handshake.address,
-      data: data
+      data: data,
     });
     config.connectedClients++;
   });
@@ -4507,9 +5219,13 @@ const sock = io.on("connection", (socket: Socket) => {
 
 server.listen(config.port, async () => {
   if (config.hidePorts) {
-    logger.info(`Server listening on ${config.protocol}://${config.host}${config.urlBase}`);
+    logger.info(
+      `Server listening on ${config.protocol}://${config.host}${config.urlBase}`,
+    );
   } else {
-    logger.info(`Server listening on ${config.protocol}://${config.host}:${config.port}${config.urlBase}`);
+    logger.info(
+      `Server listening on ${config.protocol}://${config.host}:${config.port}${config.urlBase}`,
+    );
   }
   // I do not really know if calling these here is a good idea, but how else can I even do it?
   const start = Date.now();
@@ -4517,12 +5233,16 @@ server.listen(config.port, async () => {
   const elapsed = Date.now() - start;
   logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
   logger.debug(
-    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${config.saveLocation.endsWith("/") ? config.saveLocation : config.saveLocation + "/"}` +
-    `{playlist_dir}" "{url}"`
+    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${
+      config.saveLocation.endsWith("/")
+        ? config.saveLocation
+        : config.saveLocation + "/"
+    }` +
+      `{playlist_dir}" "{url}"`,
   );
   logger.debug(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-    `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`
+      `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
   );
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
@@ -4531,11 +5251,15 @@ server.listen(config.port, async () => {
       schedule: (job as any).cronTime.source,
       nextRun: job.nextDate().toLocaleString(
         {
-          weekday: 'short', month: 'short', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
+          weekday: "short",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
         },
         // deno-lint-ignore no-explicit-any
-        { timeZone: config.timeZone } as any)
+        { timeZone: config.timeZone } as any,
+      ),
     });
   }
 });
