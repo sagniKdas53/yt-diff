@@ -17,7 +17,7 @@
     "npm:jsonwebtoken@^9.0.3": "9.0.3",
     "npm:node-cache@^5.1.2": "5.1.2",
     "npm:pg-hstore@^2.3.4": "2.3.4",
-    "npm:pg@^8.18.0": "8.18.0",
+    "npm:pg@^8.19.0": "8.19.0",
     "npm:sequelize@^6.37.7": "6.37.7",
     "npm:socket.io@^4.8.3": "4.8.3",
     "npm:uuid@13": "13.0.0"
@@ -384,14 +384,14 @@
     "pg-int8@1.0.1": {
       "integrity": "sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw=="
     },
-    "pg-pool@3.11.0_pg@8.18.0": {
-      "integrity": "sha512-MJYfvHwtGp870aeusDh+hg9apvOe2zmpZJpyt+BMtzUWlVqbhFmMK6bOBXLBUPd7iRtIF9fZplDc7KrPN3PN7w==",
+    "pg-pool@3.12.0_pg@8.19.0": {
+      "integrity": "sha512-eIJ0DES8BLaziFHW7VgJEBPi5hg3Nyng5iKpYtj3wbcAUV9A1wLgWiY7ajf/f/oO1wfxt83phXPY8Emztg7ITg==",
       "dependencies": [
         "pg"
       ]
     },
-    "pg-protocol@1.11.0": {
-      "integrity": "sha512-pfsxk2M9M3BuGgDOfuy37VNRRX3jmKgMjcvAcWqNDpZSf4cUmv8HSOl5ViRQFsfARFn0KuUQTgLxVMbNq5NW3g=="
+    "pg-protocol@1.12.0": {
+      "integrity": "sha512-uOANXNRACNdElMXJ0tPz6RBM0XQ61nONGAwlt8da5zs/iUOOCLBQOHSXnrC6fMsvtjxbOJrZZl5IScGv+7mpbg=="
     },
     "pg-types@2.2.0": {
       "integrity": "sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==",
@@ -403,8 +403,8 @@
         "postgres-interval"
       ]
     },
-    "pg@8.18.0": {
-      "integrity": "sha512-xqrUDL1b9MbkydY/s+VZ6v+xiMUmOUk7SS9d/1kpyQxoJ6U9AO1oIJyUWVZojbfe5Cc/oluutcgFG4L9RDP1iQ==",
+    "pg@8.19.0": {
+      "integrity": "sha512-QIcLGi508BAHkQ3pJNptsFz5WQMlpGbuBGBaIaXsWK8mel2kQ/rThYI+DbgjUvZrIr7MiuEuc9LcChJoEZK1xQ==",
       "dependencies": [
         "pg-connection-string",
         "pg-pool",
@@ -566,7 +566,7 @@
       "npm:he@^1.2.0",
       "npm:ioredis@^5.9.3",
       "npm:jsonwebtoken@^9.0.3",
-      "npm:pg@^8.18.0",
+      "npm:pg@^8.19.0",
       "npm:sequelize@^6.37.7",
       "npm:socket.io@^4.8.3"
     ],
@@ -584,7 +584,7 @@
         "npm:jsonwebtoken@^9.0.3",
         "npm:node-cache@^5.1.2",
         "npm:pg-hstore@^2.3.4",
-        "npm:pg@^8.18.0",
+        "npm:pg@^8.19.0",
         "npm:sequelize@^6.37.7",
         "npm:socket.io@^4.8.3",
         "npm:uuid@13"
