@@ -16,7 +16,7 @@ import { Server, Socket } from "socket.io";
 import { pipeline } from "node:stream";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import * as readline from "node:readline";
+import { createInterface } from "node:readline";
 
 const pipelineAsync = promisify(pipeline);
 
@@ -45,10 +45,10 @@ const config = {
     password: Deno.env.get("DB_PASSWORD_FILE")
       ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
       : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
-        ? Deno.env.get("DB_PASSWORD")
-        : new Error(
-          "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
-        ),
+      ? Deno.env.get("DB_PASSWORD")
+      : new Error(
+        "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
+      ),
   },
   redis: {
     host: Deno.env.get("REDIS_HOST") || "localhost",
@@ -81,8 +81,8 @@ const config = {
     ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
       .replace(/['"\n]+/g, "")
     : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
-      ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
-      : "", // if both are not set, proxy will be empty i.e. direct connection
+    ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
+    : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
@@ -100,10 +100,10 @@ const config = {
   secretKey: Deno.env.get("SECRET_KEY_FILE")
     ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
     : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
-      ? Deno.env.get("SECRET_KEY")!.trim()
-      : new Error(
-        "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
-      ),
+    ? Deno.env.get("SECRET_KEY")!.trim()
+    : new Error(
+      "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
+    ),
   maxClients: 10,
   connectedClients: 0,
 };
@@ -128,31 +128,35 @@ if (config.logDisableColors || !Deno.stdout.isTerminal()) {
  * @returns {string} The formatted log entry.
  */
 const logfmt = (level: string, message: string, fields: LogFields = {}) => {
-  let logEntry = `level=${level} msg="${message
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\r?\n/g, "\\n")
-    }"`;
+  let logEntry = `level=${level} msg="${
+    message
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\r?\n/g, "\\n")
+  }"`;
   logEntry += ` ts=${new Date().toISOString()}`;
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value === "string") {
-      logEntry += ` ${key}="${value
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, "\\n")
-        }"`;
-    } else if (value instanceof Error) {
-      logEntry += ` ${key}="${value.message
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\r?\n/g, "\\n")
-        }"`;
-      if (value.stack) {
-        logEntry += ` ${key}_stack="${value.stack
+      logEntry += ` ${key}="${
+        value
           .replace(/\\/g, "\\\\")
           .replace(/"/g, '\\"')
           .replace(/\r?\n/g, "\\n")
-          }"`;
+      }"`;
+    } else if (value instanceof Error) {
+      logEntry += ` ${key}="${
+        value.message
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, "\\n")
+      }"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${
+          value.stack
+            .replace(/\\/g, "\\\\")
+            .replace(/"/g, '\\"')
+            .replace(/\r?\n/g, "\\n")
+        }"`;
       }
     } else if (value === null || value === undefined) {
       logEntry += ` ${key}=null`;
@@ -1814,7 +1818,8 @@ function cleanupStaleProcesses(
   let cleanedCount = 0;
 
   logger.info(
-    `Cleaning up processes older than ${maxIdleTime / 1000
+    `Cleaning up processes older than ${
+      maxIdleTime / 1000
     } seconds in ${processType} processes`,
   );
   logger.trace("Current process states:", {
@@ -1927,7 +1932,7 @@ async function processDownloadRequest(
         });
         saveDirectory =
           (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
-          "";
+            "";
       } catch (error) {
         logger.error(`Error getting playlist save directory`, {
           error: (error as Error).message,
@@ -2144,8 +2149,9 @@ function executeDownload(
       logger.debug(`Starting download for ${videoUrl}`, {
         url: videoTitle,
         savePath,
-        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${processArgs.join(" ")
-          }`,
+        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
+          processArgs.join(" ")
+        }`,
       });
       // Spawn download process, by assembling full args
       const downloadProcess = spawn(
@@ -2555,8 +2561,9 @@ async function processListingRequest(
             url: normalizedUrl,
           });
           safeEmit("listing-playlist-skipped-because-same-monitoring", {
-            message: `Playlist ${(playlistEntry as any).title
-              } is already being monitored with type ${monitoringType}, skipping.`,
+            message: `Playlist ${
+              (playlistEntry as any).title
+            } is already being monitored with type ${monitoringType}, skipping.`,
           });
           continue; // Skip as it's already monitored
         } else if ((playlistEntry as any).monitoringType !== monitoringType) {
@@ -2586,8 +2593,9 @@ async function processListingRequest(
         if ((videoEntry as any).downloadStatus) {
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
           safeEmit("listing-video-skipped-because-downloaded", {
-            message: `Video ${(videoEntry as any).title
-              } is already downloaded, skipping.`,
+            message: `Video ${
+              (videoEntry as any).title
+            } is already downloaded, skipping.`,
           });
           continue; // Skip as it's already downloaded
         } else {
@@ -2827,14 +2835,16 @@ async function executeListing(
         logger.debug(`Playlist already exists in database`, { url: videoUrl });
 
         if (
-          existingPlaylist.getDataValue("monitoringType") === currentMonitoringType
+          existingPlaylist.getDataValue("monitoringType") ===
+            currentMonitoringType
         ) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, {
             url: videoUrl,
           });
           return handleEmptyResponse(videoUrl);
         } else if (
-          existingPlaylist.getDataValue("monitoringType") !== currentMonitoringType
+          existingPlaylist.getDataValue("monitoringType") !==
+            currentMonitoringType
         ) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           await existingPlaylist.update({
@@ -2863,17 +2873,15 @@ async function executeListing(
         processKey,
         monitoringType: currentMonitoringType,
       });
-
     } else {
       // Unlisted / single video streaming
       return await handleSingleVideoStreaming({
         videoUrl,
         itemType,
         isScheduledUpdate,
-        processKey
+        processKey,
       });
     }
-
   } catch (error) {
     return handleListingError(error as Error, videoUrl, itemType);
   }
@@ -2881,7 +2889,9 @@ async function executeListing(
 
 // Helpers for streaming execution
 
-async function handlePlaylistStreaming(item: Record<string, any>): Promise<any> {
+async function handlePlaylistStreaming(
+  item: Record<string, any>,
+): Promise<any> {
   const {
     videoUrl,
     chunkSize,
@@ -2890,7 +2900,7 @@ async function handlePlaylistStreaming(item: Record<string, any>): Promise<any> 
     playlistTitle,
     seekPlaylistListTo,
     processKey,
-    monitoringType
+    monitoringType,
   } = item;
 
   let processedChunks = 0;
@@ -2934,12 +2944,17 @@ async function handlePlaylistStreaming(item: Record<string, any>): Promise<any> 
         });
 
         // If every single item in this chunk already existed, we might want to exit early for 'Fast' mode
-        if (result.alreadyExistedCount === chunkSize && monitoringType === "Fast") {
+        if (
+          result.alreadyExistedCount === chunkSize && monitoringType === "Fast"
+        ) {
           consecutiveDuplicateChunks++;
           if (consecutiveDuplicateChunks >= 2) {
-            logger.info(`Fast mode incremental update found 2 consecutive chunks of already existing videos. Terminating stream.`, { url: videoUrl });
+            logger.info(
+              `Fast mode incremental update found 2 consecutive chunks of already existing videos. Terminating stream.`,
+              { url: videoUrl },
+            );
             // Kill process cleanly to exit stream
-            ytDlpProcess.kill('SIGTERM');
+            ytDlpProcess.kill("SIGTERM");
             break;
           }
         } else {
@@ -2973,7 +2988,11 @@ async function handlePlaylistStreaming(item: Record<string, any>): Promise<any> 
     error = e as Error;
   }
 
-  if (!processSucceeded && error && error.message !== 'Process exited with code null' && error.message !== 'Process exited with code 143') {
+  if (
+    !processSucceeded && error &&
+    error.message !== "Process exited with code null" &&
+    error.message !== "Process exited with code 143"
+  ) {
     // Code 143 or null indicates we killed it natively via SIGTERM
     return handleListingError(error, videoUrl, "playlist");
   }
@@ -3061,7 +3080,7 @@ async function handleSingleVideoStreaming(
 function streamPlayListItems(
   videoUrl: string,
   processKey: string,
-): { process: ReturnType<typeof spawn>, iterator: AsyncGenerator<string> } {
+): { process: ReturnType<typeof spawn>; iterator: AsyncGenerator<string> } {
   logger.trace("Starting streaming fetch for items", {
     url: videoUrl,
     processKey,
@@ -3121,7 +3140,7 @@ function streamPlayListItems(
     exitCodePromiseResolve = resolve;
   });
 
-  listProcess.on('close', (code) => {
+  listProcess.on("close", (code) => {
     _exitStatus = code;
     logger.debug("List process closed", {
       pid: listProcess.pid,
@@ -3131,9 +3150,9 @@ function streamPlayListItems(
   });
 
   async function* lineIterator() {
-    const rl = readline.createInterface({
+    const rl = createInterface({
       input: listProcess.stdout,
-      crlfDelay: Infinity
+      crlfDelay: Infinity,
     });
 
     try {
@@ -3164,7 +3183,6 @@ function streamPlayListItems(
           listProcesses.set(processKey, processEntryInt);
         }
       }
-
     } catch (error) {
       const processEntryInt = listProcesses.get(processKey);
       if (processEntryInt) {
@@ -3179,7 +3197,7 @@ function streamPlayListItems(
 
   return {
     process: listProcess,
-    iterator: lineIterator()
+    iterator: lineIterator(),
   };
 }
 
@@ -3232,9 +3250,14 @@ async function processStreamingVideoInformation(
       const [title, videoId, videoUrl, approxSize] = item.split("\t");
       const existingVideo = existingVideos[index];
       const existingIndex = existingIndexes[index];
-      const absoluteIndex = playlistUrl === "None" ? chunkStartIndex : chunkStartIndex + index;
+      const absoluteIndex = playlistUrl === "None"
+        ? chunkStartIndex
+        : chunkStartIndex + index;
 
-      if (existingVideo && existingIndex && existingIndex.getDataValue("positionInPlaylist") === absoluteIndex) {
+      if (
+        existingVideo && existingIndex &&
+        existingIndex.getDataValue("positionInPlaylist") === absoluteIndex
+      ) {
         result.alreadyExistedCount++;
         result.count++;
         result.title = existingVideo.getDataValue("title");
@@ -3271,7 +3294,9 @@ async function processStreamingVideoInformation(
           playlistUrl: playlistUrl,
           positionInPlaylist: absoluteIndex,
         });
-      } else if (existingIndex.getDataValue("positionInPlaylist") !== absoluteIndex) {
+      } else if (
+        existingIndex.getDataValue("positionInPlaylist") !== absoluteIndex
+      ) {
         // The video index drifted, update the position
         await existingIndex.update({ positionInPlaylist: absoluteIndex });
       }
@@ -3285,7 +3310,9 @@ async function processStreamingVideoInformation(
         index: absoluteIndex,
       });
     } catch (error) {
-      logger.error(`Failed to process video mapping: ${(error as Error).message}`);
+      logger.error(
+        `Failed to process video mapping: ${(error as Error).message}`,
+      );
     }
   }));
 
@@ -4282,8 +4309,9 @@ async function processDeleteVideosRequest(
 
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        "message": `Processed ${deleted.length} video(s) from playlist ${(playlist as any).title
-          }`,
+        "message": `Processed ${deleted.length} video(s) from playlist ${
+          (playlist as any).title
+        }`,
         "deleted": deleted,
         "failed": failed,
         "cleanUp": cleanUp,
@@ -5108,15 +5136,16 @@ server.listen(config.port, async () => {
   const elapsed = Date.now() - start;
   logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
   logger.debug(
-    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${config.saveLocation.endsWith("/")
-      ? config.saveLocation
-      : config.saveLocation + "/"
+    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${
+      config.saveLocation.endsWith("/")
+        ? config.saveLocation
+        : config.saveLocation + "/"
     }` +
-    `{playlist_dir}" "{url}"`,
+      `{playlist_dir}" "{url}"`,
   );
   logger.debug(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-    `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
+      `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
   );
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
