@@ -905,7 +905,7 @@ function truncateText(text: string, maxLength: number) {
  * @param {string} videoUrl - The URL of the video to check.
  * @returns {boolean} True if the URL's hostname is x.com or a subdomain of x.com, false otherwise.
  */
-function isSiteXDotCom(videoUrl: string) {
+function isSiteXDotCom(videoUrl: string): boolean {
   let hostname = "";
   try {
     hostname = (new URL(videoUrl)).hostname;
@@ -921,7 +921,13 @@ function isSiteXDotCom(videoUrl: string) {
   return isAllowedXCom;
 }
 
-function isSiteIwaraDotTv(videoUrl: string) {
+/**
+ * Checks if the given video URL belongs to iwara.tv or any of its subdomains.
+ *
+ * @param {string} videoUrl - The URL of the video to check.
+ * @returns {boolean} True if the URL's hostname is iwara.tv or a subdomain of iwara.tv, false otherwise.
+ */
+function isSiteIwaraDotTv(videoUrl: string): boolean {
   let hostname = "";
   try {
     hostname = (new URL(videoUrl)).hostname;
@@ -937,6 +943,31 @@ function isSiteIwaraDotTv(videoUrl: string) {
   return isAllowedIwaraDotTv;
 }
 
+// Site specific argument builders
+export type SiteArgBuilder = (url: string, config: any) => string[];
+
+const siteArgBuilders: SiteArgBuilder[] = [
+  // x.com
+  (url, config) => {
+    if (config.cookiesFile && isSiteXDotCom(url)) {
+      logger.debug(`Using cookies file: ${config.cookiesFile}`);
+      return ["--cookies", config.cookiesFile as string];
+    }
+    return [];
+  },
+  // iwara.tv
+  (url) => {
+    if (isSiteIwaraDotTv(url)) {
+      return ["--impersonate", "Chrome-133"];
+    }
+    return [];
+  }
+];
+
+export function buildSiteArgs(url: string, config: any): string[] {
+  return siteArgBuilders.flatMap(builder => builder(url, config));
+}
+
 //Authentication functions
 /**
  * Hashes a password using bcrypt with configurable salt rounds
@@ -945,7 +976,7 @@ function isSiteIwaraDotTv(videoUrl: string) {
  * @returns {Promise<[string, string]>} Promise resolving to [salt, hashedPassword]
  * @throws {Error} If hashing fails
  */
-async function hashPassword(plaintextPassword: string) {
+async function hashPassword(plaintextPassword: string): Promise<[string, string]> {
   try {
     const salt = await bcrypt.genSalt(config.saltRounds);
     const hashedPassword = await bcrypt.hash(plaintextPassword, salt);
@@ -969,7 +1000,7 @@ async function hashPassword(plaintextPassword: string) {
 function generateAuthToken(
   user: { id: string; updatedAt: Date },
   expiryDuration: string,
-) {
+): string {
   return jwt.sign(
     {
       id: user.id,
@@ -1258,7 +1289,7 @@ async function authenticateRequest(
  * @param {Object} socket.handshake - Connection handshake data
  * @returns {Promise<boolean>} Resolves to true if authentication valid
  */
-async function authenticateSocket(socket: Socket) {
+async function authenticateSocket(socket: Socket): Promise<boolean> {
   try {
     const token = socket.handshake.auth.token;
     const decodedToken = jwt.verify(token, config.secretKey);
@@ -1954,7 +1985,7 @@ async function processDownloadRequest(
  * @returns {Promise<boolean>} Resolves to true if all downloads successful
  */
 // deno-lint-ignore no-explicit-any
-async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
+async function downloadItemsConcurrently(items: Array<any>, maxConcurrent: number = 2): Promise<boolean> {
   logger.trace(
     `Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`,
   );
@@ -2014,7 +2045,7 @@ async function downloadItemsConcurrently(items: Array<any>, maxConcurrent = 2) {
  *   - error?: Error message if failed
  */
 // deno-lint-ignore no-explicit-any
-async function downloadWithSemaphore(downloadItem: any) {
+async function downloadWithSemaphore(downloadItem: Record<string, any>): Promise<any> {
   logger.trace(
     `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
   );
@@ -2067,7 +2098,7 @@ async function downloadWithSemaphore(downloadItem: any) {
  *   - error?: Error message if failed
  */
 // deno-lint-ignore no-explicit-any
-function executeDownload(downloadItem: any, processKey: string) {
+function executeDownload(downloadItem: Record<string, any>, processKey: string) {
   const {
     url: videoUrl,
     title: videoTitle,
@@ -2097,16 +2128,10 @@ function executeDownload(downloadItem: any, processKey: string) {
       // Notify frontend of download start
       safeEmit("download-started", { percentage: 101 });
 
-      // Check and add cookies file for x.com if configured
-      if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
-        logger.debug(`Using cookies file: ${config.cookiesFile}`);
-        // Add cookies file to process args
-        processArgs.unshift(`--cookies`, config.cookiesFile);
-      }
-
-      // Add impersonation for iwara.tv
-      if (isSiteIwaraDotTv(videoUrl)) {
-        processArgs.unshift(`--impersonate`, `Chrome-133`);
+      // Add site-specific args (like cookies for x.com, impersonation for iwara.tv)
+      const siteArgs = buildSiteArgs(videoUrl, config);
+      if (siteArgs.length > 0) {
+        processArgs.unshift(...siteArgs);
       }
 
       logger.debug(`Starting download for ${videoUrl}`, {
@@ -2478,9 +2503,9 @@ const ListingSemaphore = {
  */
 // deno-lint-ignore no-explicit-any
 async function processListingRequest(
-  requestBody: any,
+  requestBody: Record<string, any>,
   response: ServerResponse,
-) {
+): Promise<void> {
   try {
     // Validate required parameters
     if (!requestBody.urlList) {
@@ -2631,7 +2656,7 @@ async function listItemsConcurrently(
   items: Array<any>,
   chunkSize: number,
   shouldSleep: boolean,
-) {
+): Promise<boolean> {
   logger.trace(
     `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
   );
@@ -2696,10 +2721,10 @@ async function listItemsConcurrently(
  */
 // deno-lint-ignore no-explicit-any
 async function listWithSemaphore(
-  item: any,
+  item: Record<string, any>,
   chunkSize: number,
   shouldSleep: boolean,
-) {
+): Promise<any> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
   // Check process limit before acquiring semaphore
@@ -2766,12 +2791,12 @@ async function listWithSemaphore(
  */
 // deno-lint-ignore no-explicit-any
 async function executeListing(
-  item: any,
+  item: Record<string, any>,
   processKey: string,
   chunkSize: number,
   shouldSleep: boolean,
-  isScheduledUpdate = false,
-) {
+  isScheduledUpdate: boolean = false,
+): Promise<any> {
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
   // Initialize processed chunks counter, used later do not remove
@@ -2912,7 +2937,7 @@ async function determineInitialRange(
   monitoringType: string,
   playlistUrl: string,
   chunkSize: number,
-) {
+): Promise<{ startIndex: number, endIndex: number }> {
   let startIndex = 1;
   let endIndex = chunkSize;
   if (itemType === "playlist") {
@@ -2946,6 +2971,7 @@ async function determineInitialRange(
 function discoverFiles(
   mainFileName: string | null,
   savePath: string,
+  // deno-lint-ignore no-explicit-any
   videoEntry: any,
 ) {
   const metadata = {
@@ -3204,7 +3230,7 @@ function handleEmptyResponse(videoUrl: string) {
  * @returns {Promise<void>} Resolves when the playlist listing is complete.
  */
 // deno-lint-ignore no-explicit-any
-async function handlePlaylistListing(item: any) {
+async function handlePlaylistListing(item: Record<string, any>): Promise<any> {
   const {
     videoUrl,
     responseItems,
@@ -3307,7 +3333,7 @@ async function handlePlaylistListing(item: any) {
  * @returns {Promise<Object|undefined>} A promise that resolves to an object containing the video URL, title, status, and processed chunks if successful, or undefined if no processing is needed.
  */
 // deno-lint-ignore no-explicit-any
-async function handleSingleVideoListing(item: any) {
+async function handleSingleVideoListing(item: Record<string, any>): Promise<any> {
   const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } =
     item;
   const playlistUrl = "None";
@@ -3465,13 +3491,9 @@ function fetchPlayListItems(
     // This is a test, will probably be better to filter
     // for site and then apply cookies on a per site basis
     // but for now just check for x.com links as that's the real pain in the ass
-    if (config.cookiesFile && isSiteXDotCom(videoUrl)) {
-      logger.debug(`Using cookies file: ${config.cookiesFile}`);
-      processArgs.unshift(`--cookies`, config.cookiesFile as string);
-    }
-
-    if (isSiteIwaraDotTv(videoUrl)) {
-      processArgs.unshift(`--impersonate`, `Chrome-133`);
+    const siteArgs = buildSiteArgs(videoUrl, config);
+    if (siteArgs.length > 0) {
+      processArgs.unshift(...siteArgs);
     }
 
     // Quote arguments with spaces
@@ -3600,7 +3622,7 @@ async function processVideoInformation(
   playlistUrl: string,
   startIndex: number,
   isUpdate: boolean,
-) {
+): Promise<any> {
   logger.trace("Processing video information", {
     playlistUrl,
     startIndex,
@@ -3751,7 +3773,7 @@ async function processVideoInformation(
  * @returns {Promise<void>} Resolves when update complete
  */
 // deno-lint-ignore no-explicit-any
-async function updateVideoMetadata(existingVideo: any, newData: any) {
+async function updateVideoMetadata(existingVideo: Record<string, any>, newData: Record<string, any>): Promise<void> {
   logger.trace("Checking video metadata for updates", {
     videoId: existingVideo.videoId,
     newData: JSON.stringify(newData),
@@ -3828,9 +3850,9 @@ async function updateVideoMetadata(existingVideo: any, newData: any) {
  */
 // deno-lint-ignore no-explicit-any
 async function updatePlaylistMonitoring(
-  requestBody: any,
+  requestBody: Record<string, any>,
   response: ServerResponse,
-) {
+): Promise<void> {
   try {
     // Validate required parameters
     if (!requestBody.url || !requestBody.watch) {
@@ -3935,13 +3957,9 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   // which this code can't handle yet, you will get only one item in the
   // playlist generated from it (hopefully the first one) but downloading that
   // will make yt-dlp get the rest of the items in the post, check the folder.
-  if (config.cookiesFile && isSiteXDotCom(playlistUrl)) {
-    logger.debug(`Using cookies file: ${config.cookiesFile}`);
-    processArgs.unshift("--cookies", config.cookiesFile as string);
-  }
-
-  if (isSiteIwaraDotTv(playlistUrl)) {
-    processArgs.unshift(`--impersonate`, `Chrome-133`);
+  const siteArgs = buildSiteArgs(playlistUrl, config);
+  if (siteArgs.length > 0) {
+    processArgs.unshift(...siteArgs);
   }
 
   const fullCommandString = [
@@ -4050,7 +4068,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
  */
 // deno-lint-ignore no-explicit-any
 async function processDeletePlaylistRequest(
-  requestBody: any,
+  requestBody: Record<string, any>,
   response: ServerResponse,
 ) {
   try {
@@ -4232,7 +4250,7 @@ async function processDeletePlaylistRequest(
  */
 // deno-lint-ignore no-explicit-any
 async function processDeleteVideosRequest(
-  requestBody: any,
+  requestBody: Record<string, any>,
   response: ServerResponse,
 ) {
   try {
@@ -4471,7 +4489,7 @@ async function processDeleteVideosRequest(
 async function getPlaylistsForDisplay(
   requestBody: PlaylistDisplayRequest,
   response: ServerResponse,
-) {
+): Promise<void> {
   try {
     // Extract and validate parameters
     const startIndex = requestBody.start !== undefined ? +requestBody.start : 0;
@@ -4563,7 +4581,7 @@ async function getPlaylistsForDisplay(
 async function getSubListVideos(
   requestBody: SubListRequest,
   response: ServerResponse,
-) {
+): Promise<void> {
   try {
     // Extract and validate parameters
     const playlistUrl = requestBody.url ?? "None";
