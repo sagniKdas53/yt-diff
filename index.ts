@@ -16,6 +16,7 @@ import { Server, Socket } from "socket.io";
 import { pipeline } from "node:stream";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
+import * as readline from "node:readline";
 
 const pipelineAsync = promisify(pipeline);
 
@@ -44,10 +45,10 @@ const config = {
     password: Deno.env.get("DB_PASSWORD_FILE")
       ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
       : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
-      ? Deno.env.get("DB_PASSWORD")
-      : new Error(
-        "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
-      ),
+        ? Deno.env.get("DB_PASSWORD")
+        : new Error(
+          "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
+        ),
   },
   redis: {
     host: Deno.env.get("REDIS_HOST") || "localhost",
@@ -80,8 +81,8 @@ const config = {
     ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
       .replace(/['"\n]+/g, "")
     : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
-    ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
-    : "", // if both are not set, proxy will be empty i.e. direct connection
+      ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
+      : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
@@ -99,10 +100,10 @@ const config = {
   secretKey: Deno.env.get("SECRET_KEY_FILE")
     ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
     : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
-    ? Deno.env.get("SECRET_KEY")!.trim()
-    : new Error(
-      "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
-    ),
+      ? Deno.env.get("SECRET_KEY")!.trim()
+      : new Error(
+        "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
+      ),
   maxClients: 10,
   connectedClients: 0,
 };
@@ -127,35 +128,31 @@ if (config.logDisableColors || !Deno.stdout.isTerminal()) {
  * @returns {string} The formatted log entry.
  */
 const logfmt = (level: string, message: string, fields: LogFields = {}) => {
-  let logEntry = `level=${level} msg="${
-    message
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"')
-      .replace(/\r?\n/g, "\\n")
-  }"`;
+  let logEntry = `level=${level} msg="${message
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, "\\n")
+    }"`;
   logEntry += ` ts=${new Date().toISOString()}`;
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value === "string") {
-      logEntry += ` ${key}="${
-        value
-          .replace(/\\/g, "\\\\")
-          .replace(/"/g, '\\"')
-          .replace(/\r?\n/g, "\\n")
-      }"`;
-    } else if (value instanceof Error) {
-      logEntry += ` ${key}="${
-        value.message
-          .replace(/\\/g, "\\\\")
-          .replace(/"/g, '\\"')
-          .replace(/\r?\n/g, "\\n")
-      }"`;
-      if (value.stack) {
-        logEntry += ` ${key}_stack="${
-          value.stack
-            .replace(/\\/g, "\\\\")
-            .replace(/"/g, '\\"')
-            .replace(/\r?\n/g, "\\n")
+      logEntry += ` ${key}="${value
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, "\\n")
         }"`;
+    } else if (value instanceof Error) {
+      logEntry += ` ${key}="${value.message
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, "\\n")
+        }"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${value.stack
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, "\\n")
+          }"`;
       }
     } else if (value === null || value === undefined) {
       logEntry += ` ${key}=null`;
@@ -1817,8 +1814,7 @@ function cleanupStaleProcesses(
   let cleanedCount = 0;
 
   logger.info(
-    `Cleaning up processes older than ${
-      maxIdleTime / 1000
+    `Cleaning up processes older than ${maxIdleTime / 1000
     } seconds in ${processType} processes`,
   );
   logger.trace("Current process states:", {
@@ -1931,7 +1927,7 @@ async function processDownloadRequest(
         });
         saveDirectory =
           (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
-            "";
+          "";
       } catch (error) {
         logger.error(`Error getting playlist save directory`, {
           error: (error as Error).message,
@@ -2148,9 +2144,8 @@ function executeDownload(
       logger.debug(`Starting download for ${videoUrl}`, {
         url: videoTitle,
         savePath,
-        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
-          processArgs.join(" ")
-        }`,
+        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${processArgs.join(" ")
+          }`,
       });
       // Spawn download process, by assembling full args
       const downloadProcess = spawn(
@@ -2560,9 +2555,8 @@ async function processListingRequest(
             url: normalizedUrl,
           });
           safeEmit("listing-playlist-skipped-because-same-monitoring", {
-            message: `Playlist ${
-              (playlistEntry as any).title
-            } is already being monitored with type ${monitoringType}, skipping.`,
+            message: `Playlist ${(playlistEntry as any).title
+              } is already being monitored with type ${monitoringType}, skipping.`,
           });
           continue; // Skip as it's already monitored
         } else if ((playlistEntry as any).monitoringType !== monitoringType) {
@@ -2592,9 +2586,8 @@ async function processListingRequest(
         if ((videoEntry as any).downloadStatus) {
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
           safeEmit("listing-video-skipped-because-downloaded", {
-            message: `Video ${
-              (videoEntry as any).title
-            } is already downloaded, skipping.`,
+            message: `Video ${(videoEntry as any).title
+              } is already downloaded, skipping.`,
           });
           continue; // Skip as it's already downloaded
         } else {
@@ -2806,10 +2799,6 @@ async function executeListing(
 ): Promise<any> {
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
-  // Initialize processed chunks counter, used later do not remove
-  const processedChunks = 0;
-  let playlistTitle = "";
-  let seekPlaylistListTo = 0;
 
   try {
     // Send initial status
@@ -2819,50 +2808,18 @@ async function executeListing(
       status: "started",
     });
 
-    // Get initial chunk start and end indices
-    const { startIndex, endIndex } = await determineInitialRange(
-      itemType,
-      currentMonitoringType,
-      videoUrl,
-      chunkSize,
-    );
-    // Fetch video information for the initial chunk
-    logger.debug(`Fetching information while listing`, {
-      url: videoUrl,
-      itemType,
-      startIndex,
-      endIndex,
-      processedChunks,
-      processKey,
-    });
-    const responseItems = await fetchPlayListItems(
-      videoUrl,
-      startIndex,
-      endIndex,
-      processedChunks,
-      processKey,
-    );
-
-    logger.debug(`Got items from listing chunk`, {
-      itemCount: responseItems.length,
-      url: videoUrl,
-      startIndex,
-      endIndex,
-      processedChunks,
-    });
-
-    if (responseItems.length === 0) {
-      return handleEmptyResponse(videoUrl);
-    }
-
-    // Handle single video vs playlist
-    // Add an exception for x.com URLs as they despite having multiple items are not playlists
-    const isPlaylist = responseItems.length > 1 ||
-      playlistRegex.test(videoUrl) || itemType === "playlist";
-
+    // Check if it's a playlist
+    const isPlaylist = playlistRegex.test(videoUrl) || itemType === "playlist";
     if (isPlaylist && !isSiteXDotCom(videoUrl)) {
       itemType = "playlist";
-      // Check if the playlist already exists
+    } else {
+      itemType = "unlisted";
+    }
+
+    let playlistTitle = "";
+    let seekPlaylistListTo = 0;
+
+    if (itemType === "playlist") {
       const existingPlaylist = await PlaylistMetadata.findOne({
         where: { playlistUrl: videoUrl },
       });
@@ -2870,100 +2827,469 @@ async function executeListing(
         logger.debug(`Playlist already exists in database`, { url: videoUrl });
 
         if (
-          (existingPlaylist as any).monitoringType === currentMonitoringType
+          existingPlaylist.getDataValue("monitoringType") === currentMonitoringType
         ) {
           logger.debug(`Playlist monitoring hasn't changed so skipping`, {
             url: videoUrl,
           });
           return handleEmptyResponse(videoUrl);
         } else if (
-          (existingPlaylist as any).monitoringType !== currentMonitoringType
+          existingPlaylist.getDataValue("monitoringType") !== currentMonitoringType
         ) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
-          // Update the monitoring type in the database
           await existingPlaylist.update({
             monitoringType: currentMonitoringType,
             lastUpdatedByScheduler: Date.now(),
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         }
-
-        playlistTitle = (existingPlaylist as any).title;
+        playlistTitle = existingPlaylist.getDataValue("title");
       } else {
-        // If the playlist doesn't exist, add it to the database
         logger.debug(`Playlist not found in database, adding to database`, {
           url: videoUrl,
         });
         const newPlaylist = await addPlaylist(videoUrl, currentMonitoringType);
-
         playlistTitle = (newPlaylist as any).title;
-
         seekPlaylistListTo = (newPlaylist as any).sortOrder;
       }
-      return await handlePlaylistListing({
+
+      return await handlePlaylistStreaming({
         videoUrl,
-        responseItems,
-        startIndex,
         chunkSize,
         shouldSleep,
         isScheduledUpdate,
-        processedChunks,
         playlistTitle,
         seekPlaylistListTo,
         processKey,
+        monitoringType: currentMonitoringType,
       });
+
     } else {
-      itemType = "unlisted";
-      // Single video handling, no processKey needed
-      return await handleSingleVideoListing({
+      // Unlisted / single video streaming
+      return await handleSingleVideoStreaming({
         videoUrl,
-        responseItems,
         itemType,
-        startIndex,
         isScheduledUpdate,
+        processKey
       });
+    }
+
+  } catch (error) {
+    return handleListingError(error as Error, videoUrl, itemType);
+  }
+}
+
+// Helpers for streaming execution
+
+async function handlePlaylistStreaming(item: Record<string, any>): Promise<any> {
+  const {
+    videoUrl,
+    chunkSize,
+    shouldSleep,
+    isScheduledUpdate,
+    playlistTitle,
+    seekPlaylistListTo,
+    processKey,
+    monitoringType
+  } = item;
+
+  let processedChunks = 0;
+
+  logger.info(`Starting streaming listing for playlist`, { url: videoUrl });
+
+  let chunkItems: string[] = [];
+  let absoluteIndexCount = 0;
+  let consecutiveDuplicateChunks = 0;
+  let processSucceeded = false;
+  let error: Error | undefined;
+  let ytDlpProcess: any;
+
+  try {
+    const streamProcessor = streamPlayListItems(videoUrl, processKey);
+    ytDlpProcess = streamProcessor.process;
+
+    for await (const line of streamProcessor.iterator) {
+      absoluteIndexCount++;
+      chunkItems.push(line);
+
+      if (chunkItems.length >= chunkSize) {
+        // Process the chunk
+        const result = await processStreamingVideoInformation(
+          chunkItems,
+          videoUrl,
+          absoluteIndexCount - chunkSize + 1, // startIndex for this chunk
+          isScheduledUpdate,
+        );
+
+        processedChunks++;
+        chunkItems = []; // Reset chunk buffer
+
+        safeEmit("listing-playlist-chunk-complete", {
+          url: videoUrl,
+          type: "playlist-chunk",
+          status: "chunk-completed",
+          processedChunks,
+          playlistTitle,
+          seekPlaylistListTo,
+        });
+
+        // If every single item in this chunk already existed, we might want to exit early for 'Fast' mode
+        if (result.alreadyExistedCount === chunkSize && monitoringType === "Fast") {
+          consecutiveDuplicateChunks++;
+          if (consecutiveDuplicateChunks >= 2) {
+            logger.info(`Fast mode incremental update found 2 consecutive chunks of already existing videos. Terminating stream.`, { url: videoUrl });
+            // Kill process cleanly to exit stream
+            ytDlpProcess.kill('SIGTERM');
+            break;
+          }
+        } else {
+          consecutiveDuplicateChunks = 0;
+        }
+
+        if (shouldSleep) await sleep();
+      }
+    }
+
+    // Process any remaining items
+    if (chunkItems.length > 0) {
+      await processStreamingVideoInformation(
+        chunkItems,
+        videoUrl,
+        absoluteIndexCount - chunkItems.length + 1,
+        isScheduledUpdate,
+      );
+      processedChunks++;
+      safeEmit("listing-playlist-chunk-complete", {
+        url: videoUrl,
+        type: "playlist-chunk",
+        status: "chunk-completed",
+        processedChunks,
+        playlistTitle,
+        seekPlaylistListTo,
+      });
+    }
+    processSucceeded = true;
+  } catch (e) {
+    error = e as Error;
+  }
+
+  if (!processSucceeded && error && error.message !== 'Process exited with code null' && error.message !== 'Process exited with code 143') {
+    // Code 143 or null indicates we killed it natively via SIGTERM
+    return handleListingError(error, videoUrl, "playlist");
+  }
+
+  return completePlaylistListing(
+    videoUrl,
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo,
+  );
+}
+
+async function handleSingleVideoStreaming(
+  item: Record<string, any>,
+): Promise<any> {
+  const { videoUrl, itemType, isScheduledUpdate, processKey } = item;
+  const playlistUrl = "None";
+
+  if (itemType === "undownloaded") {
+    return {
+      url: videoUrl,
+      title: "Video",
+      status: "unchanged",
+      processedChunks: 0,
+    };
+  }
+
+  try {
+    const streamProcessor = streamPlayListItems(videoUrl, processKey);
+    const chunkItems: string[] = [];
+
+    for await (const line of streamProcessor.iterator) {
+      chunkItems.push(line);
+    }
+
+    if (chunkItems.length === 0) {
+      return handleEmptyResponse(videoUrl);
+    }
+
+    const lastVideo = await PlaylistVideoMapping.findOne({
+      where: { playlistUrl },
+      order: [["positionInPlaylist", "DESC"]],
+      attributes: ["positionInPlaylist"],
+      limit: 1,
+    });
+
+    const newStartIndex = lastVideo
+      ? lastVideo.getDataValue("positionInPlaylist") + 1
+      : 1;
+
+    const result = await processStreamingVideoInformation(
+      chunkItems,
+      playlistUrl,
+      newStartIndex,
+      isScheduledUpdate,
+    );
+
+    if (result.count === 1) {
+      safeEmit("listing-single-item-complete", {
+        url: videoUrl,
+        type: itemType,
+        title: result.title,
+        status: "completed",
+        processedChunks: 1,
+        seekSubListTo: newStartIndex,
+      });
+      return {
+        url: videoUrl,
+        title: result.title,
+        status: "completed",
+        processedChunks: 1,
+      };
     }
   } catch (error) {
     return handleListingError(error as Error, videoUrl, itemType);
   }
 }
 
-// Helper functions for executeListing()
 /**
- * Determines the initial range of indices for processing items in a playlist.
- *
- * @param {string} itemType - The type of item being processed (e.g., "playlist").
- * @param {string} monitoringType - The monitoring mode, either "Full" for full re-indexing or "Fast" for incremental updates.
- * @param {string} playlistUrl - The URL of the playlist being monitored.
- * @param {number} chunkSize - The size of the chunk to process in each iteration.
- * @returns {Promise<{startIndex: number, endIndex: number}>} An object containing the start and end indices for processing.
+ * Spawns an unending yt-dlp process to stream playlist/video information
+ * @param {string} videoUrl - URL to fetch information from
+ * @param {string} processKey - Unique key for the process
+ * @returns {Object} An object containing the un-finished process and an async iterator representing the lines
  */
-async function determineInitialRange(
-  itemType: string,
-  monitoringType: string,
-  playlistUrl: string,
-  chunkSize: number,
-): Promise<{ startIndex: number; endIndex: number }> {
-  let startIndex = 1;
-  let endIndex = chunkSize;
-  if (itemType === "playlist") {
-    if (monitoringType === "Full") {
-      // Start from beginning for full reindex
-      startIndex = 1;
-    } else if (monitoringType === "Fast") {
-      // Get last known position for incremental update
-      const lastVideo = await PlaylistVideoMapping.findOne({
-        where: { playlistUrl },
-        order: [["positionInPlaylist", "DESC"]],
-        limit: 1,
-      });
-      if (lastVideo) {
-        startIndex = (lastVideo as any).positionInPlaylist + 1;
-        endIndex = startIndex + chunkSize;
+function streamPlayListItems(
+  videoUrl: string,
+  processKey: string,
+): { process: ReturnType<typeof spawn>, iterator: AsyncGenerator<string> } {
+  logger.trace("Starting streaming fetch for items", {
+    url: videoUrl,
+    processKey,
+  });
+
+  const processArgs = [
+    ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
+    "--playlist-start",
+    "1",
+    "--flat-playlist",
+    "--print",
+    "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
+    videoUrl,
+  ];
+
+  const siteArgs = buildSiteArgs(videoUrl, config);
+  if (siteArgs.length > 0) {
+    processArgs.unshift(...siteArgs);
+  }
+
+  const fullCommandString = [
+    "yt-dlp",
+    ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
+  ].join(" ");
+
+  logger.debug(`Starting streaming listing for ${videoUrl}`, {
+    url: videoUrl,
+    fullCommand: fullCommandString,
+  });
+
+  const listProcess = spawn("yt-dlp", processArgs);
+  const processEntry = listProcesses.get(processKey);
+
+  if (processEntry) {
+    processEntry.spawnedProcess = listProcess;
+    processEntry.status = "running";
+    processEntry.spawnTimeStamp = Date.now();
+    processEntry.lastActivity = Date.now();
+    listProcesses.set(processKey, processEntry);
+  } else {
+    logger.error(`Process entry not found: ${processKey}`);
+    throw new Error(`Process entry not found: ${processKey}`);
+  }
+
+  listProcess.stderr.setEncoding("utf8");
+  listProcess.stderr.on("data", (data) => {
+    logger.error("List process error", {
+      error: data,
+      pid: listProcess.pid,
+    });
+    updateProcessActivity(String(listProcess.pid));
+  });
+
+  let _exitStatus: number | null = null;
+  let exitCodePromiseResolve: ((code: number | null) => void) | null = null;
+  const exitCodePromise = new Promise<number | null>((resolve) => {
+    exitCodePromiseResolve = resolve;
+  });
+
+  listProcess.on('close', (code) => {
+    _exitStatus = code;
+    logger.debug("List process closed", {
+      pid: listProcess.pid,
+      code: code,
+    });
+    if (exitCodePromiseResolve) exitCodePromiseResolve(code);
+  });
+
+  async function* lineIterator() {
+    const rl = readline.createInterface({
+      input: listProcess.stdout,
+      crlfDelay: Infinity
+    });
+
+    try {
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (trimmed.length > 0) {
+          updateProcessActivity(processKey);
+          yield trimmed;
+        }
       }
+
+      // Wait for exit code to ensure no unexpected failures happened, but only if we didn't deliberately kill it
+      const exitCode = listProcess.killed ? null : await exitCodePromise;
+
+      if (exitCode !== null && exitCode !== 0) {
+        const processEntryInt = listProcesses.get(processKey);
+        if (processEntryInt) {
+          processEntryInt.status = "failed";
+          processEntryInt.lastActivity = Date.now();
+          listProcesses.set(processKey, processEntryInt);
+        }
+        throw new Error(`Process exited with code ${exitCode}`);
+      } else {
+        const processEntryInt = listProcesses.get(processKey);
+        if (processEntryInt) {
+          processEntryInt.status = "completed";
+          processEntryInt.lastActivity = Date.now();
+          listProcesses.set(processKey, processEntryInt);
+        }
+      }
+
+    } catch (error) {
+      const processEntryInt = listProcesses.get(processKey);
+      if (processEntryInt) {
+        processEntryInt.status = "errored";
+        processEntryInt.lastActivity = Date.now();
+        listProcesses.set(processKey, processEntryInt);
+      }
+      if (!listProcess.killed) listProcess.kill();
+      throw error;
     }
   }
-  return { startIndex, endIndex };
+
+  return {
+    process: listProcess,
+    iterator: lineIterator()
+  };
+}
+
+/**
+ * Processes video information and updates database records using streaming absolute indices
+ */
+async function processStreamingVideoInformation(
+  responseItems: string[],
+  playlistUrl: string,
+  chunkStartIndex: number,
+  isUpdate: boolean,
+): Promise<any> {
+  logger.trace("Processing video information chunk", {
+    playlistUrl,
+    chunkStartIndex,
+    isUpdate,
+    itemCount: responseItems.length,
+  });
+
+  const result = {
+    count: 0,
+    title: "",
+    responseUrl: playlistUrl,
+    alreadyExistedCount: 0,
+  };
+
+  // Check for existing items in bulk
+  const existingItems = await Promise.all([
+    Promise.all(responseItems.map(async (item) => {
+      const videoUrl = item.split("\t")[2];
+      return await VideoMetadata.findOne({
+        where: { videoUrl: videoUrl },
+      });
+    })),
+    Promise.all(responseItems.map(async (item) => {
+      const videoUrl = item.split("\t")[2];
+      return await PlaylistVideoMapping.findOne({
+        where: {
+          videoUrl: videoUrl,
+          playlistUrl: playlistUrl,
+        },
+      });
+    })),
+  ]);
+
+  const [existingVideos, existingIndexes] = existingItems;
+
+  await Promise.all(responseItems.map(async (item, index) => {
+    try {
+      const [title, videoId, videoUrl, approxSize] = item.split("\t");
+      const existingVideo = existingVideos[index];
+      const existingIndex = existingIndexes[index];
+      const absoluteIndex = playlistUrl === "None" ? chunkStartIndex : chunkStartIndex + index;
+
+      if (existingVideo && existingIndex && existingIndex.getDataValue("positionInPlaylist") === absoluteIndex) {
+        result.alreadyExistedCount++;
+        result.count++;
+        result.title = existingVideo.getDataValue("title");
+        return; // Skip full process if completely matches
+      }
+
+      const videoData = {
+        videoId: videoId.trim(),
+        title: await truncateText(
+          title === "NA" ? videoId.trim() : title,
+          config.maxTitleLength,
+        ),
+        approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
+        downloadStatus: false,
+        isAvailable: ![
+          "[Deleted video]",
+          "[Private video]",
+          "[Unavailable video]",
+        ].includes(title),
+      };
+
+      if (!existingVideo) {
+        await VideoMetadata.create({
+          videoUrl: videoUrl,
+          ...videoData,
+        });
+      } else {
+        await updateVideoMetadata(existingVideo, videoData);
+      }
+
+      if (!existingIndex) {
+        await PlaylistVideoMapping.create({
+          videoUrl: videoUrl,
+          playlistUrl: playlistUrl,
+          positionInPlaylist: absoluteIndex,
+        });
+      } else if (existingIndex.getDataValue("positionInPlaylist") !== absoluteIndex) {
+        // The video index drifted, update the position
+        await existingIndex.update({ positionInPlaylist: absoluteIndex });
+      }
+
+      result.count++;
+      result.title = videoData.title;
+      logger.debug("Processed video item", {
+        videoUrl,
+        title: videoData.title,
+        playlistUrl,
+        index: absoluteIndex,
+      });
+    } catch (error) {
+      logger.error(`Failed to process video mapping: ${(error as Error).message}`);
+    }
+  }));
+
+  return result;
 }
 /**
  * Discovers metadata files associated with a downloaded video
@@ -3216,179 +3542,6 @@ function handleEmptyResponse(videoUrl: string) {
   };
 }
 /**
- * Handles the listing of a playlist by processing video information in chunks.
- *
- * @async
- * @function handlePlaylistListing
- * @param {Object} item - The item containing playlist details.
- * @param {string} item.videoUrl - The URL of the video or playlist to process.
- * @param {Array} item.responseItems - The initial set of video information to process.
- * @param {number} item.startIndex - The starting index for processing video information.
- * @param {number} item.chunkSize - The size of each chunk to process.
- * @param {boolean} item.shouldSleep - Whether to introduce a delay between processing chunks.
- * @param {boolean} item.isScheduledUpdate - Indicates if the processing is part of a scheduled update.
- * @param {string} item.playlistTitle - The title of the playlist being processed.
- * @param {number} item.seekPlaylistListTo - The position in the playlist list to seek to after processing.
- * @param {string} item.processKey - The key by which processes are tracked
- * @param {number} item.processedChunks - The number of chunks that have been processes
- * @returns {Promise<void>} Resolves when the playlist listing is complete.
- */
-
-async function handlePlaylistListing(item: Record<string, any>): Promise<any> {
-  const {
-    videoUrl,
-    responseItems,
-    startIndex,
-    chunkSize,
-    shouldSleep,
-    isScheduledUpdate,
-    playlistTitle,
-    seekPlaylistListTo,
-    processKey,
-  } = item;
-  let processedChunks = item.processedChunks || 0;
-  // Process initial chunk
-  const initialResult = await processVideoInformation(
-    responseItems,
-    videoUrl,
-    startIndex,
-    isScheduledUpdate,
-  );
-  processedChunks++;
-  if (initialResult.count < chunkSize) {
-    return completePlaylistListing(
-      videoUrl,
-      processedChunks,
-      playlistTitle,
-      seekPlaylistListTo,
-    );
-  }
-  // This is the first chunk, so we need to emit the event
-  safeEmit("listing-playlist-chunk-complete", {
-    url: videoUrl,
-    type: "playlist-chunk",
-    status: "chunk-completed",
-    processedChunks,
-    playlistTitle,
-    seekPlaylistListTo,
-  });
-  // Process remaining chunks
-  while (true) {
-    if (shouldSleep) await sleep();
-    const nextStartIndex = startIndex + (processedChunks * chunkSize);
-    const nextEndIndex = nextStartIndex + chunkSize;
-    logger.debug(`Fetching next chunk of video information`, {
-      url: videoUrl,
-      startIndex: nextStartIndex,
-      endIndex: nextEndIndex,
-      processedChunks,
-      processKey,
-    });
-    const nextItems = await fetchPlayListItems(
-      videoUrl,
-      nextStartIndex,
-      nextEndIndex,
-      processedChunks,
-      processKey,
-    );
-    if (nextItems.length === 0) break;
-    const result = await processVideoInformation(
-      nextItems,
-      videoUrl,
-      nextStartIndex,
-      isScheduledUpdate,
-    );
-    processedChunks++;
-    if (result.count < chunkSize) {
-      return completePlaylistListing(
-        videoUrl,
-        processedChunks,
-        playlistTitle,
-        seekPlaylistListTo,
-      );
-    }
-    safeEmit("listing-playlist-chunk-complete", {
-      url: videoUrl,
-      type: "playlist-chunk",
-      status: "chunk-completed",
-      processedChunks,
-      playlistTitle,
-      seekPlaylistListTo,
-    });
-  }
-  return completePlaylistListing(
-    videoUrl,
-    processedChunks,
-    playlistTitle,
-    seekPlaylistListTo,
-  );
-}
-/**
- * Handles the processing of a single video listing item.
- *
- * @async
- * @function handleSingleVideoListing
- * @param {Object} item - The video listing item to process.
- * @param {string} item.videoUrl - The URL of the video.
- * @param {Array} item.responseItems - The response items containing video information.
- * @param {string} item.itemType - The type of the item (e.g., "undownloaded").
- * @param {number} item.startIndex - The starting index for the video in the playlist.
- * @param {boolean} item.isScheduledUpdate - Indicates if this is a scheduled update.
- * @returns {Promise<Object|undefined>} A promise that resolves to an object containing the video URL, title, status, and processed chunks if successful, or undefined if no processing is needed.
- */
-
-async function handleSingleVideoListing(
-  item: Record<string, any>,
-): Promise<any> {
-  const { videoUrl, responseItems, itemType, startIndex, isScheduledUpdate } =
-    item;
-  const playlistUrl = "None";
-  if (itemType === "undownloaded") {
-    // TODO: Add logic to check if the video still available,
-    // if not then update accordingly
-    // return await updateExistingVideo(videoUrl);
-    return {
-      url: videoUrl,
-      title: "Video",
-      status: "unchanged",
-      processedChunks: 0,
-    };
-  }
-  // Add new video to "None" playlist
-  const lastVideo = await PlaylistVideoMapping.findOne({
-    where: { playlistUrl },
-    order: [["positionInPlaylist", "DESC"]],
-    attributes: ["positionInPlaylist"],
-    limit: 1,
-  });
-
-  const newStartIndex = lastVideo
-    ? (lastVideo as any).positionInPlaylist + 1
-    : startIndex;
-  const result = await processVideoInformation(
-    responseItems,
-    playlistUrl,
-    newStartIndex,
-    isScheduledUpdate,
-  );
-  if (result.count === 1) {
-    safeEmit("listing-single-item-complete", {
-      url: videoUrl,
-      type: itemType,
-      title: result.title,
-      status: "completed",
-      processedChunks: 1,
-      seekSubListTo: newStartIndex,
-    });
-    return {
-      url: videoUrl,
-      title: result.title,
-      status: "completed",
-      processedChunks: 1,
-    };
-  }
-}
-/**
  * Handles errors that occur during the listing process for a video or playlist.
  *
  * @param {Error} error - The error object containing details about the failure.
@@ -3457,313 +3610,6 @@ function completePlaylistListing(
   };
 }
 /**
- * Spawns yt-dlp process to fetch playlist/video information
- *
- * @param {string} videoUrl - URL to fetch information from
- * @param {number} startIndex - Starting index in playlist
- * @param {number} endIndex - Ending index in playlist
- * @param {string} processKey - Unique key for the process
- * @returns {Promise<string[]>} Array of video information strings
- * @throws {Error} If process spawn fails or max processes reached
- */
-function fetchPlayListItems(
-  videoUrl: string,
-  startIndex: number,
-  endIndex: number,
-  processedChunks: number,
-  processKey: string,
-): Promise<string[]> {
-  logger.trace("Fetching items from the given inputs", {
-    url: videoUrl,
-    start: startIndex,
-    end: endIndex,
-    processKey,
-  });
-
-  return new Promise((resolve, reject) => {
-    // Configure process arguments
-    const processArgs = [
-      ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
-      "--playlist-start",
-      startIndex.toString(),
-      "--playlist-end",
-      endIndex.toString(),
-      "--flat-playlist",
-      "--print",
-      "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
-      videoUrl,
-    ];
-
-    // This is a test, will probably be better to filter
-    // for site and then apply cookies on a per site basis
-    // but for now just check for x.com links as that's the real pain in the ass
-    const siteArgs = buildSiteArgs(videoUrl, config);
-    if (siteArgs.length > 0) {
-      processArgs.unshift(...siteArgs);
-    }
-
-    // Quote arguments with spaces
-    const fullCommandString = [
-      "yt-dlp",
-      ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)), // quote args with spaces
-    ].join(" ");
-    logger.debug(`Starting listing for ${videoUrl}`, {
-      url: videoUrl,
-      fullCommand: fullCommandString,
-    });
-    // Spawn process
-    const listProcess = spawn("yt-dlp", processArgs);
-    const processEntry = listProcesses.get(processKey);
-    /*
-    processEntry: {
-      url: videoUrl,
-      type: itemType,
-      monitoringType: monitoringType,
-      lastActivity: Date.now(),
-      spawnTimeStamp: Date.now(),
-      status: "pending"
-    }
-    */
-    if (processEntry) {
-      processEntry.spawnedProcess = listProcess;
-      processEntry.status = "running";
-      processEntry.spawnTimeStamp = Date.now();
-      processEntry.lastActivity = Date.now();
-      listProcesses.set(processKey, processEntry);
-    } else {
-      logger.error(`Process entry not found: ${processKey}`);
-      return reject(new Error(`Process entry not found: ${processKey}`));
-    }
-
-    let responseData = "";
-
-    // Handle stdout
-    listProcess.stdout.setEncoding("utf8");
-    listProcess.stdout.on("data", (data) => {
-      responseData += data;
-      updateProcessActivity(processKey);
-    });
-
-    // Handle stderr
-    listProcess.stderr.setEncoding("utf8");
-    listProcess.stderr.on("data", (data) => {
-      logger.error("List process error", {
-        error: data,
-        pid: listProcess.pid,
-      });
-      updateProcessActivity(String(listProcess.pid));
-    });
-
-    // Handle process error
-    listProcess.on("error", (error) => {
-      logger.error("Failed to spawn list process", {
-        error: error.message,
-        pid: listProcess.pid,
-      });
-      const processEntryInt = listProcesses.get(processKey);
-      if (processEntryInt) {
-        processEntryInt.status = "errored";
-        processEntryInt.lastActivity = Date.now();
-        listProcesses.set(processKey, processEntryInt);
-      } else {
-        logger.error(`Process entry not found: ${processKey}`);
-        return reject(new Error(`Process entry not found: ${processKey}`));
-      }
-    });
-
-    // Handle process completion
-    listProcess.on("close", (code) => {
-      const processEntryInt = listProcesses.get(processKey);
-
-      if (code !== 0) {
-        logger.error("List process failed", {
-          code: code,
-          pid: listProcess.pid,
-        });
-
-        if (processEntryInt) {
-          processEntryInt.status = "failed";
-          processEntryInt.lastActivity = Date.now();
-          listProcesses.set(processKey, processEntryInt);
-        } else {
-          logger.error(`Process entry not found: ${processKey}`);
-          return reject(new Error(`Process entry not found: ${processKey}`));
-        }
-      } else {
-        if (processEntryInt) {
-          processEntryInt.status = "completed";
-          processEntryInt.lastActivity = Date.now();
-          listProcesses.set(processKey, processEntryInt);
-        } else {
-          logger.error(`Process entry not found: ${processKey}`);
-          return reject(new Error(`Process entry not found: ${processKey}`));
-        }
-      }
-      logger.debug(`Listing done for chunk ${processedChunks}`, {
-        pid: listProcess.pid,
-        code: code,
-      });
-
-      // Return filtered results
-      const items = responseData
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      // Items will always be an array, so no checks needed here
-      return resolve(items);
-    });
-  });
-}
-/**
- * Processes video information and updates database records
- *
- * @param {string[]} responseItems - Array of video information strings
- * @param {string} playlistUrl - URL of playlist being processed
- * @param {number} startIndex - Starting index for processing
- * @param {boolean} isUpdate - Whether this is an update operation
- * @returns {Promise<Object>} Processing results including counts and status
- */
-async function processVideoInformation(
-  responseItems: string[],
-  playlistUrl: string,
-  startIndex: number,
-  isUpdate: boolean,
-): Promise<any> {
-  logger.trace("Processing video information", {
-    playlistUrl,
-    startIndex,
-    isUpdate,
-    itemCount: responseItems.length,
-  });
-
-  const result = {
-    count: 0,
-    title: "",
-    responseUrl: playlistUrl,
-    startIndex: startIndex,
-    alreadyExisted: false,
-  };
-
-  // Get last processed index for updates
-  let lastProcessedIndex = 0;
-  if (isUpdate) {
-    logger.debug("Processing update for playlist", { playlistUrl });
-    // Get last processed index from database
-    const lastItem = await PlaylistVideoMapping.findOne({
-      where: { playlistUrl: playlistUrl },
-      order: [["positionInPlaylist", "DESC"]],
-      attributes: ["positionInPlaylist"],
-      limit: 1,
-    });
-
-    lastProcessedIndex = lastItem
-      ? (lastItem as any).positionInPlaylist + 1
-      : 1;
-    logger.debug("Found last processed index", { index: lastProcessedIndex });
-  }
-
-  // Check for existing items
-  const existingItems = await Promise.all([
-    // Check VideoMetadata table
-    Promise.all(responseItems.map(async (item) => {
-      const videoUrl = item.split("\t")[2];
-      return await VideoMetadata.findOne({
-        where: { videoUrl: videoUrl },
-      });
-    })),
-    // Check PlaylistVideoMapping table
-    Promise.all(responseItems.map(async (item) => {
-      const videoUrl = item.split("\t")[2];
-      return await PlaylistVideoMapping.findOne({
-        where: {
-          videoUrl: videoUrl,
-          playlistUrl: playlistUrl,
-        },
-      });
-    })),
-  ]);
-
-  const [existingVideos, existingIndexes] = existingItems;
-
-  const allExist = existingVideos.every((v: any) => v) &&
-    existingIndexes.every((i: any) => i);
-
-  if (allExist) {
-    logger.debug("All videos already exist in database", {
-      existingVideos: JSON.stringify(existingVideos),
-      existingIndexes: JSON.stringify(existingIndexes),
-    });
-    for (let i = 0; i < existingVideos.length; i++) {
-      if (existingVideos[i]) {
-        result.count++;
-
-        result.title = (existingVideos[i] as any).title;
-        result.alreadyExisted = true;
-      }
-    }
-    logger.debug("Returning result", { result: JSON.stringify(result) });
-    return result;
-  }
-
-  // Process items
-  await Promise.all(responseItems.map(async (item, index) => {
-    try {
-      const [title, videoId, videoUrl, approxSize] = item.split("\t");
-
-      // Prepare video data
-      const videoData = {
-        videoId: videoId.trim(),
-        title: await truncateText(
-          title === "NA" ? videoId.trim() : title,
-          config.maxTitleLength,
-        ),
-        approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
-        downloadStatus: false,
-        isAvailable: ![
-          "[Deleted video]",
-          "[Private video]",
-          "[Unavailable video]",
-        ].includes(title),
-      };
-
-      // Update or create video record
-      if (!existingVideos[index]) {
-        await VideoMetadata.create({
-          videoUrl: videoUrl,
-          ...videoData,
-        });
-      } else {
-        await updateVideoMetadata(existingVideos[index], videoData);
-      }
-
-      // Create index record if needed
-      if (!existingIndexes[index]) {
-        await PlaylistVideoMapping.create({
-          videoUrl: videoUrl,
-          playlistUrl: playlistUrl,
-          positionInPlaylist: startIndex + index + lastProcessedIndex,
-        });
-      }
-
-      result.count++;
-      result.title = videoData.title;
-      logger.debug("Processed video item", {
-        videoUrl: videoUrl,
-        title: videoData.title,
-        playlistUrl: playlistUrl,
-        index: startIndex + index + lastProcessedIndex,
-      });
-    } catch (error) {
-      logger.error("Failed to process video item", {
-        error: (error as Error).message,
-        item: item,
-      });
-    }
-  }));
-  logger.debug("Processed video information", {
-    result: JSON.stringify(result),
-  });
-
   return result as any;
 }
 /**
@@ -4436,9 +4282,8 @@ async function processDeleteVideosRequest(
 
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
-        "message": `Processed ${deleted.length} video(s) from playlist ${
-          (playlist as any).title
-        }`,
+        "message": `Processed ${deleted.length} video(s) from playlist ${(playlist as any).title
+          }`,
         "deleted": deleted,
         "failed": failed,
         "cleanUp": cleanUp,
@@ -5263,16 +5108,15 @@ server.listen(config.port, async () => {
   const elapsed = Date.now() - start;
   logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
   logger.debug(
-    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${
-      config.saveLocation.endsWith("/")
-        ? config.saveLocation
-        : config.saveLocation + "/"
+    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${config.saveLocation.endsWith("/")
+      ? config.saveLocation
+      : config.saveLocation + "/"
     }` +
-      `{playlist_dir}" "{url}"`,
+    `{playlist_dir}" "{url}"`,
   );
   logger.debug(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-      `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
+    `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
   );
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
