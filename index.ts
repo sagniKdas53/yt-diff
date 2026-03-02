@@ -44,10 +44,10 @@ const config = {
     password: Deno.env.get("DB_PASSWORD_FILE")
       ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
       : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
-      ? Deno.env.get("DB_PASSWORD")
-      : new Error(
-        "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
-      ),
+        ? Deno.env.get("DB_PASSWORD")
+        : new Error(
+          "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
+        ),
   },
   redis: {
     host: Deno.env.get("REDIS_HOST") || "localhost",
@@ -80,8 +80,8 @@ const config = {
     ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
       .replace(/['"\n]+/g, "")
     : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
-    ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
-    : "", // if both are not set, proxy will be empty i.e. direct connection
+      ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
+      : "", // if both are not set, proxy will be empty i.e. direct connection
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
@@ -99,10 +99,10 @@ const config = {
   secretKey: Deno.env.get("SECRET_KEY_FILE")
     ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
     : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
-    ? Deno.env.get("SECRET_KEY")!.trim()
-    : new Error(
-      "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
-    ),
+      ? Deno.env.get("SECRET_KEY")!.trim()
+      : new Error(
+        "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
+      ),
   maxClients: 10,
   connectedClients: 0,
 };
@@ -127,35 +127,31 @@ if (config.logDisableColors || !Deno.stdout.isTerminal()) {
  * @returns {string} The formatted log entry.
  */
 const logfmt = (level: string, message: string, fields: LogFields = {}) => {
-  let logEntry = `level=${level} msg="${
-    message
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"')
-      .replace(/\r?\n/g, "\\n")
-  }"`;
+  let logEntry = `level=${level} msg="${message
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, "\\n")
+    }"`;
   logEntry += ` ts=${new Date().toISOString()}`;
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value === "string") {
-      logEntry += ` ${key}="${
-        value
-          .replace(/\\/g, "\\\\")
-          .replace(/"/g, '\\"')
-          .replace(/\r?\n/g, "\\n")
-      }"`;
-    } else if (value instanceof Error) {
-      logEntry += ` ${key}="${
-        value.message
-          .replace(/\\/g, "\\\\")
-          .replace(/"/g, '\\"')
-          .replace(/\r?\n/g, "\\n")
-      }"`;
-      if (value.stack) {
-        logEntry += ` ${key}_stack="${
-          value.stack
-            .replace(/\\/g, "\\\\")
-            .replace(/"/g, '\\"')
-            .replace(/\r?\n/g, "\\n")
+      logEntry += ` ${key}="${value
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, "\\n")
         }"`;
+    } else if (value instanceof Error) {
+      logEntry += ` ${key}="${value.message
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, "\\n")
+        }"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${value.stack
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, "\\n")
+          }"`;
       }
     } else if (value === null || value === undefined) {
       logEntry += ` ${key}=null`;
@@ -923,6 +919,22 @@ function isSiteXDotCom(videoUrl: string) {
   const isAllowedXCom = hostname === allowedXHost ||
     hostname.endsWith("." + allowedXHost);
   return isAllowedXCom;
+}
+
+function isSiteIwaraDotTv(videoUrl: string) {
+  let hostname = "";
+  try {
+    hostname = (new URL(videoUrl)).hostname;
+  } catch (e) {
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
+      error: (e as Error).message,
+    });
+  }
+  // Only match iwara.tv or its subdomains (e.g. foo.iwara.tv)
+  const allowedIwaraHost = "iwara.tv";
+  const isAllowedIwaraDotTv = hostname === allowedIwaraHost ||
+    hostname.endsWith("." + allowedIwaraHost);
+  return isAllowedIwaraDotTv;
 }
 
 //Authentication functions
@@ -1771,8 +1783,7 @@ function cleanupStaleProcesses(
   let cleanedCount = 0;
 
   logger.info(
-    `Cleaning up processes older than ${
-      maxIdleTime / 1000
+    `Cleaning up processes older than ${maxIdleTime / 1000
     } seconds in ${processType} processes`,
   );
   logger.trace("Current process states:", {
@@ -1885,7 +1896,7 @@ async function processDownloadRequest(
         });
         saveDirectory =
           (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
-            "";
+          "";
       } catch (error) {
         logger.error(`Error getting playlist save directory`, {
           error: (error as Error).message,
@@ -2093,12 +2104,16 @@ function executeDownload(downloadItem: any, processKey: string) {
         processArgs.unshift(`--cookies`, config.cookiesFile);
       }
 
+      // Add impersonation for iwara.tv
+      if (isSiteIwaraDotTv(videoUrl)) {
+        processArgs.unshift(`--impersonate`, `Chrome-133`);
+      }
+
       logger.debug(`Starting download for ${videoUrl}`, {
         url: videoTitle,
         savePath,
-        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
-          processArgs.join(" ")
-        }`,
+        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${processArgs.join(" ")
+          }`,
       });
       // Spawn download process, by assembling full args
       const downloadProcess = spawn(
@@ -2512,9 +2527,8 @@ async function processListingRequest(
           });
           safeEmit("listing-playlist-skipped-because-same-monitoring", {
             // deno-lint-ignore no-explicit-any
-            message: `Playlist ${
-              (playlistEntry as any).title
-            } is already being monitored with type ${monitoringType}, skipping.`,
+            message: `Playlist ${(playlistEntry as any).title
+              } is already being monitored with type ${monitoringType}, skipping.`,
           });
           continue; // Skip as it's already monitored
           // deno-lint-ignore no-explicit-any
@@ -2546,9 +2560,8 @@ async function processListingRequest(
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
           safeEmit("listing-video-skipped-because-downloaded", {
             // deno-lint-ignore no-explicit-any
-            message: `Video ${
-              (videoEntry as any).title
-            } is already downloaded, skipping.`,
+            message: `Video ${(videoEntry as any).title
+              } is already downloaded, skipping.`,
           });
           continue; // Skip as it's already downloaded
         } else {
@@ -3457,6 +3470,10 @@ function fetchPlayListItems(
       processArgs.unshift(`--cookies`, config.cookiesFile as string);
     }
 
+    if (isSiteIwaraDotTv(videoUrl)) {
+      processArgs.unshift(`--impersonate`, `Chrome-133`);
+    }
+
     // Quote arguments with spaces
     const fullCommandString = [
       "yt-dlp",
@@ -3922,6 +3939,11 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
     logger.debug(`Using cookies file: ${config.cookiesFile}`);
     processArgs.unshift("--cookies", config.cookiesFile as string);
   }
+
+  if (isSiteIwaraDotTv(playlistUrl)) {
+    processArgs.unshift(`--impersonate`, `Chrome-133`);
+  }
+
   const fullCommandString = [
     "yt-dlp",
     ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)), // quote args with spaces
@@ -4393,9 +4415,8 @@ async function processDeleteVideosRequest(
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
         // deno-lint-ignore no-explicit-any
-        "message": `Processed ${deleted.length} video(s) from playlist ${
-          (playlist as any).title
-        }`,
+        "message": `Processed ${deleted.length} video(s) from playlist ${(playlist as any).title
+          }`,
         "deleted": deleted,
         "failed": failed,
         "cleanUp": cleanUp,
@@ -5233,16 +5254,15 @@ server.listen(config.port, async () => {
   const elapsed = Date.now() - start;
   logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
   logger.debug(
-    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${
-      config.saveLocation.endsWith("/")
-        ? config.saveLocation
-        : config.saveLocation + "/"
+    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${config.saveLocation.endsWith("/")
+      ? config.saveLocation
+      : config.saveLocation + "/"
     }` +
-      `{playlist_dir}" "{url}"`,
+    `{playlist_dir}" "{url}"`,
   );
   logger.debug(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-      `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
+    `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
   );
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
