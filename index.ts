@@ -263,7 +263,7 @@ if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
   downloadOptions.push(`${config.maxFileNameLength}`);
 }
 // Regex needs to be separate
-const playlistRegex = /(?:playlist|list=)\b/i;
+const playlistRegex = /(?:playlist|list=|videos$)\b/i;
 
 // Static content and server configuration
 const MIME_TYPES: Record<string, string> = {
