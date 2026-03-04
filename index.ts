@@ -1,4 +1,5 @@
 /// <reference lib="deno.ns" />
+// deno-lint-ignore-file no-explicit-any
 import { DataTypes, Op, Sequelize } from "sequelize";
 import { spawn } from "node:child_process";
 import color from "cli-color";
@@ -745,7 +746,7 @@ const jobs = {
         try {
           const allPlaylists = await PlaylistMetadata.findAll({
             where: {
-              monitoringType: ["Fast", "Full"],
+              monitoringType: "Fast", // Will implement a different update mechanism for "Full"
             },
           });
 
@@ -790,10 +791,13 @@ const jobs = {
 
           // Run Fast updates first (they exit early so they're cheaper).
           // Full updates run after so they don't hog the listing slots.
+          // We can wait for the results here as this is a background job so no need to be time-bound
+          // This is a note to myself to deter me form trying to make it a function().then().catch() thingy
           const results = await listItemsConcurrently(
             [...fastItems, ...fullItems],
             config.chunkSize,
             /* shouldSleep */ false,
+            /* isScheduledUpdate */ true,
           );
 
           const completedCount = results.filter(
@@ -2724,7 +2728,7 @@ async function processListingRequest(
     }
 
     // Start listing processes
-    listItemsConcurrently(itemsToList, chunkSize, shouldSleep);
+    listItemsConcurrently(itemsToList, chunkSize, shouldSleep, false);
     logger.debug(`Listing processes started`, {
       itemCount: itemsToList.length,
     });
@@ -2753,6 +2757,7 @@ async function processListingRequest(
  *   - reason: Reason for the item being added to the list
  * @param {number} chunkSize - Maximum number of concurrent listing operations
  * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
+ * @param {boolean} isScheduledUpdate - If true, the listing process will update the item
  * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
  */
 
@@ -2760,6 +2765,7 @@ async function listItemsConcurrently(
   items: Array<any>,
   chunkSize: number,
   shouldSleep: boolean,
+  isScheduledUpdate: boolean,
 ): Promise<any[]> {
   logger.trace(
     `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
@@ -2778,7 +2784,9 @@ async function listItemsConcurrently(
   // TODO: Fix the issue where if send playlists (since they take long time)
   // the semaphore behavior is not consistent, sometimes it gets un-tracked
   const listingResults = await Promise.all(
-    items.map((item) => listWithSemaphore(item, chunkSize, shouldSleep)),
+    items.map((item) =>
+      listWithSemaphore(item, chunkSize, shouldSleep, isScheduledUpdate)
+    ),
   );
 
   // Check for any failures  // Log results
@@ -2810,6 +2818,7 @@ async function listItemsConcurrently(
  *   - monitoringType: Current monitoring type of the item
  * @param {number} chunkSize - Maximum number of concurrent listing operations
  * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
+ * @param {boolean} isScheduledUpdate - If true, the listing process will update the item
  * @returns {Promise<Object>} Listing result containing:
  *   - url: Video URL
  *   - title: Video title
@@ -2821,6 +2830,7 @@ async function listWithSemaphore(
   item: Record<string, any>,
   chunkSize: number,
   shouldSleep: boolean,
+  isScheduledUpdate: boolean,
 ): Promise<any> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
@@ -2860,7 +2870,9 @@ async function listWithSemaphore(
       entryKey,
       chunkSize,
       shouldSleep,
-      item.isScheduledUpdate === true,
+      // I don't remember why item has a isScheduledUpdate property, but I'll keep it for now
+      // TODO: Remove it if not needed
+      item.isScheduledUpdate === true || isScheduledUpdate,
     );
     // Null out the spawned process as it's completed and we don't want to keep it in logs
 
@@ -2901,18 +2913,26 @@ async function executeListing(
   isScheduledUpdate: boolean = false,
 ): Promise<any> {
   // Allow the item itself to carry the flag (e.g. when called from the scheduler)
+  // I don't remember why item has a isScheduledUpdate property, but I'll keep it for now
+  // TODO: Remove it if not needed
   const resolvedIsScheduledUpdate = isScheduledUpdate ||
     item.isScheduledUpdate === true;
+  logger.debug(`isScheduledUpdate: ${resolvedIsScheduledUpdate}`, {
+    item: JSON.stringify(item),
+    isScheduledUpdate,
+  });
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
 
   try {
-    // Send initial status
-    safeEmit("listing-started", {
-      url: videoUrl,
-      type: itemType,
-      status: "started",
-    });
+    // Send initial status, if not an update
+    if (!resolvedIsScheduledUpdate) {
+      safeEmit("listing-started", {
+        url: videoUrl,
+        type: itemType,
+        status: "started",
+      });
+    }
 
     // Check if it's a playlist
     const isPlaylist = playlistRegex.test(videoUrl) || itemType === "playlist";
@@ -3040,15 +3060,16 @@ async function handlePlaylistStreaming(
 
         processedChunks++;
         chunkItems = []; // Reset chunk buffer
-
-        safeEmit("listing-playlist-chunk-complete", {
-          url: videoUrl,
-          type: "playlist-chunk",
-          status: "chunk-completed",
-          processedChunks,
-          playlistTitle,
-          seekPlaylistListTo,
-        });
+        if (!isScheduledUpdate) {
+          safeEmit("listing-playlist-chunk-complete", {
+            url: videoUrl,
+            type: "playlist-chunk",
+            status: "chunk-completed",
+            processedChunks,
+            playlistTitle,
+            seekPlaylistListTo,
+          });
+        }
 
         // If every single item in this chunk already existed, we might want to exit early for 'Fast' mode
         if (
@@ -3081,14 +3102,16 @@ async function handlePlaylistStreaming(
         isScheduledUpdate,
       );
       processedChunks++;
-      safeEmit("listing-playlist-chunk-complete", {
-        url: videoUrl,
-        type: "playlist-chunk",
-        status: "chunk-completed",
-        processedChunks,
-        playlistTitle,
-        seekPlaylistListTo,
-      });
+      if (!isScheduledUpdate) {
+        safeEmit("listing-playlist-chunk-complete", {
+          url: videoUrl,
+          type: "playlist-chunk",
+          status: "chunk-completed",
+          processedChunks,
+          playlistTitle,
+          seekPlaylistListTo,
+        });
+      }
     }
     processSucceeded = true;
   } catch (e) {
@@ -3109,6 +3132,7 @@ async function handlePlaylistStreaming(
     processedChunks,
     playlistTitle,
     seekPlaylistListTo,
+    isScheduledUpdate,
   );
 }
 
@@ -3707,6 +3731,7 @@ function handleListingError(error: Error, videoUrl: string, itemType: string) {
  * @param {number} processedChunks - Number of chunks that were processed
  * @param {string} playlistTitle - Title of the playlist
  * @param {number} seekPlaylistListTo - Position in the playlist list to seek to
+ * @param {boolean} isScheduledUpdate - Whether the listing was triggered by a scheduler
  * @returns {Object} Object containing url, title, status and processed chunk count
  */
 function completePlaylistListing(
@@ -3714,6 +3739,7 @@ function completePlaylistListing(
   processedChunks: number,
   playlistTitle: string,
   seekPlaylistListTo: number,
+  isScheduledUpdate: boolean,
 ) {
   // Log completion
   logger.info(`Playlist listing completed`, {
@@ -3724,14 +3750,16 @@ function completePlaylistListing(
   });
 
   // Emit completion event
-  safeEmit("listing-playlist-complete", {
-    url: videoUrl,
-    type: "playlist",
-    status: "completed",
-    processedChunks,
-    playlistTitle,
-    seekPlaylistListTo,
-  });
+  if (!isScheduledUpdate) {
+    safeEmit("listing-playlist-complete", {
+      url: videoUrl,
+      type: "playlist",
+      status: "completed",
+      processedChunks,
+      playlistTitle,
+      seekPlaylistListTo,
+    });
+  }
 
   // Return completion status
   return {
