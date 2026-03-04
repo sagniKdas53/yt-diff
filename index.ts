@@ -716,23 +716,55 @@ const jobs = {
     true,
     config.timeZone,
   ),
+  update: new CronJob(
+    config.scheduledUpdateStr,
+    () => {
+      logger.debug("Starting scheduled update", {
+        time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
+        timeZone: config.timeZone,
+        nextRun: jobs.update.nextDate().toLocaleString(
+          {
+            weekday: "short",
+            month: "short",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+        ),
+      });
+      // TODO: Implement scheduled updates to check playlists for new videos
+      // 1. Get all playlists from the database
+      // 2. Filter the playlists that have monitoringType as "Fast" or "Full"
+      // 3. For the "Fast" update one, fetch the new videos and update the playlist
+      // 4. For the "Full" update one, fetch the new videos and update the playlist
+      // (do these in the end and only once a day, generally this is not recommended as it takes too long
+      // and consumes too much bandwidth for both side and may get you banned)
+      // 5. Collect the details of the the updated in the formate {playlistUrl: string, videos: string[], added: string[], removed: string[]}
+      // (Remember don't delete local videos if they get removed online we are archiving afterall)
+      // 6. Return the details to the object that will get logged next line
+      // Note: Updating works by the same principle as listing, until now I have been manually updating the playlists by passing the same playlistUrl to the list endpoint with a different monitoringType parameter to trigger it to update and refetch the newly added items
+      // Note: For the "Fast" update one, works best for channels and playlists where new vidoes are added at the top, for the ones where items are added at the bottom like a playlist this one misses the updates completely so thats why "Full" mode was created, don't use "Full" mode for channels
+      // Note: Keep track of the proceeses spawned by the updater if they get stuck they should be killed by the cleanup job
+      logger.info("Completed scheduled updates", {
+        // Add any relevant information here, don't list out all the details just the count of playlists updated and how many items were added, updated or removed
+        nextRun: jobs.update.nextDate().toLocaleString(
+          {
+            weekday: "short",
+            month: "short",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+        ),
+      });
+    },
+    null,
+    true,
+    config.timeZone,
+  ),
 };
-// const jobs = {
-//    update: new CronJob(
-//      config.scheduledUpdateStr,
-//      () => {
-//        logger.info("Scheduled update", {
-//          time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
-//          timeZone: config.timeZone,
-//          nextRun: jobs.update.nextDate().toLocaleString("en-US", { timeZone: config.timeZone })
-//        });
-//
-//      },
-//      null,
-//      true,
-//      config.timeZone
-//    ),
-// };
 
 // Utility functions
 /**

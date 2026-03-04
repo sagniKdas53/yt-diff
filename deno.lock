@@ -13,7 +13,8 @@
     "npm:generate-password@^1.7.1": "1.7.1",
     "npm:he@*": "1.2.0",
     "npm:he@^1.2.0": "1.2.0",
-    "npm:ioredis@^5.9.3": "5.9.3",
+    "npm:ioredis@^5.10.0": "5.10.0",
+    "npm:ioredis@^5.9.3": "5.10.0",
     "npm:jsonwebtoken@^9.0.3": "9.0.3",
     "npm:node-cache@^5.1.2": "5.1.2",
     "npm:pg-hstore@^2.3.4": "2.3.4",
@@ -23,8 +24,8 @@
     "npm:uuid@13": "13.0.0"
   },
   "npm": {
-    "@ioredis/commands@1.5.0": {
-      "integrity": "sha512-eUgLqrMf8nJkZxT24JvVRrQya1vZkQh8BBeYNwGDqa5I0VUi8ACx7uFvAaLxintokpTenkK6DASvo/bvNbBGow=="
+    "@ioredis/commands@1.5.1": {
+      "integrity": "sha512-JH8ZL/ywcJyR9MmJ5BNqZllXNZQqQbnVZOqpPQqE1vHiFgAw4NHbvE0FOduNU8IX9babitBT46571OnPTT0Zcw=="
     },
     "@popperjs/core@2.11.8": {
       "integrity": "sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A=="
@@ -234,8 +235,8 @@
     "inflection@1.13.4": {
       "integrity": "sha512-6I/HUDeYFfuNCVS3td055BaXBwKYuzw7K3ExVMStBowKo9oOAMJIXIHvdyR3iboTCp1b+1i5DSkIZTcwIktuDw=="
     },
-    "ioredis@5.9.3": {
-      "integrity": "sha512-VI5tMCdeoxZWU5vjHWsiE/Su76JGhBvWF1MJnV9ZtGltHk9BmD48oDq8Tj8haZ85aceXZMxLNDQZRVo5QKNgXA==",
+    "ioredis@5.10.0": {
+      "integrity": "sha512-HVBe9OFuqs+Z6n64q09PQvP1/R4Bm+30PAyyD4wIEqssh3v9L21QjCVk4kRLucMBcDokJTcLjsGeVRlq/nH6DA==",
       "dependencies": [
         "@ioredis/commands",
         "cluster-key-slot",
@@ -580,7 +581,7 @@
         "npm:csv-parser@^3.2.0",
         "npm:generate-password@^1.7.1",
         "npm:he@^1.2.0",
-        "npm:ioredis@^5.9.3",
+        "npm:ioredis@^5.10.0",
         "npm:jsonwebtoken@^9.0.3",
         "npm:node-cache@^5.1.2",
         "npm:pg-hstore@^2.3.4",
