@@ -733,32 +733,95 @@ const jobs = {
           { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
         ),
       });
-      // TODO: Implement scheduled updates to check playlists for new videos
-      // 1. Get all playlists from the database
-      // 2. Filter the playlists that have monitoringType as "Fast" or "Full"
-      // 3. For the "Fast" update one, fetch the new videos and update the playlist
-      // 4. For the "Full" update one, fetch the new videos and update the playlist
-      // (do these in the end and only once a day, generally this is not recommended as it takes too long
-      // and consumes too much bandwidth for both side and may get you banned)
-      // 5. Collect the details of the the updated in the formate {playlistUrl: string, videos: string[], added: string[], removed: string[]}
-      // (Remember don't delete local videos if they get removed online we are archiving afterall)
-      // 6. Return the details to the object that will get logged next line
-      // Note: Updating works by the same principle as listing, until now I have been manually updating the playlists by passing the same playlistUrl to the list endpoint with a different monitoringType parameter to trigger it to update and refetch the newly added items
-      // Note: For the "Fast" update one, works best for channels and playlists where new vidoes are added at the top, for the ones where items are added at the bottom like a playlist this one misses the updates completely so thats why "Full" mode was created, don't use "Full" mode for channels
-      // Note: Keep track of the proceeses spawned by the updater if they get stuck they should be killed by the cleanup job
-      logger.info("Completed scheduled updates", {
-        // Add any relevant information here, don't list out all the details just the count of playlists updated and how many items were added, updated or removed
-        nextRun: jobs.update.nextDate().toLocaleString(
-          {
-            weekday: "short",
-            month: "short",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          },
-          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
-        ),
-      });
+      // Run scheduled playlist updates.
+      // Fast mode: best for channels/playlists where new items appear at the top.
+      //   - Streams from the beginning; exits early once 2 consecutive chunks
+      //     are fully duplicate (handled inside handlePlaylistStreaming).
+      // Full mode: full re-scan — use sparingly (bandwidth-intensive).
+      //   - Intended for playlists where items are appended at the bottom.
+      // Processes spawned here are tracked in listProcesses and killed by the
+      // cleanup job if they stall.
+      void (async () => {
+        try {
+          const allPlaylists = await PlaylistMetadata.findAll({
+            where: {
+              monitoringType: ["Fast", "Full"],
+            },
+          });
+
+          if (allPlaylists.length === 0) {
+            logger.info(
+              "No playlists with Fast/Full monitoring found; skipping update",
+            );
+            return;
+          }
+
+          // Separate fast and full playlists
+          const fastPlaylists = allPlaylists.filter(
+            (p) => p.getDataValue("monitoringType") === "Fast",
+          );
+          const fullPlaylists = allPlaylists.filter(
+            (p) => p.getDataValue("monitoringType") === "Full",
+          );
+
+          logger.info("Scheduler: starting playlist updates", {
+            fastCount: fastPlaylists.length,
+            fullCount: fullPlaylists.length,
+          });
+
+          // Build item descriptors for the listing pipeline.
+          // isScheduledUpdate=true bypasses the "same monitoringType → skip" guard
+          // inside executeListing so that re-listing actually occurs.
+          const fastItems = fastPlaylists.map((p) => ({
+            url: p.getDataValue("playlistUrl") as string,
+            type: "playlist",
+            currentMonitoringType: "Fast",
+            isScheduledUpdate: true,
+            reason: "Scheduled Fast update",
+          }));
+
+          const fullItems = fullPlaylists.map((p) => ({
+            url: p.getDataValue("playlistUrl") as string,
+            type: "playlist",
+            currentMonitoringType: "Full",
+            isScheduledUpdate: true,
+            reason: "Scheduled Full update",
+          }));
+
+          // Run Fast updates first (they exit early so they're cheaper).
+          // Full updates run after so they don't hog the listing slots.
+          const results = await listItemsConcurrently(
+            [...fastItems, ...fullItems],
+            config.chunkSize,
+            /* shouldSleep */ false,
+          );
+
+          // const completedCount = 0;
+          //(results as unknown[]).filter(
+          //   (r) => (r as { status: string }).status === "completed",
+          // ).length;
+
+          logger.info("Completed scheduled updates", {
+            totalPlaylists: allPlaylists.length,
+            results,
+            nextRun: jobs.update.nextDate().toLocaleString(
+              {
+                weekday: "short",
+                month: "short",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              },
+              { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+            ),
+          });
+        } catch (err) {
+          logger.error("Scheduled update failed", {
+            error: (err as Error).message,
+            stack: (err as Error).stack,
+          });
+        }
+      })();
     },
     null,
     true,
@@ -2797,8 +2860,14 @@ async function listWithSemaphore(
     const entryKey = `pending_${videoUrl}_${Date.now()}`;
     listProcesses.set(entryKey, listEntry);
 
-    // Execute listing process
-    const result = await executeListing(item, entryKey, chunkSize, shouldSleep);
+    // Execute listing process — honour any isScheduledUpdate flag carried on the item
+    const result = await executeListing(
+      item,
+      entryKey,
+      chunkSize,
+      shouldSleep,
+      item.isScheduledUpdate === true,
+    );
     // Null out the spawned process as it's completed and we don't want to keep it in logs
 
     (listEntry as any)["spawnedProcess"] = null;
@@ -2837,6 +2906,9 @@ async function executeListing(
   shouldSleep: boolean,
   isScheduledUpdate: boolean = false,
 ): Promise<any> {
+  // Allow the item itself to carry the flag (e.g. when called from the scheduler)
+  const resolvedIsScheduledUpdate = isScheduledUpdate ||
+    item.isScheduledUpdate === true;
   const { url: videoUrl, currentMonitoringType } = item;
   let itemType = item.type;
 
@@ -2868,8 +2940,10 @@ async function executeListing(
 
         if (
           existingPlaylist.getDataValue("monitoringType") ===
-            currentMonitoringType
+            currentMonitoringType && !resolvedIsScheduledUpdate
         ) {
+          // Only skip if this is NOT a scheduled update — the scheduler
+          // intentionally re-lists playlists that haven't changed type.
           logger.debug(`Playlist monitoring hasn't changed so skipping`, {
             url: videoUrl,
           });
@@ -2881,9 +2955,16 @@ async function executeListing(
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           await existingPlaylist.update({
             monitoringType: currentMonitoringType,
-            lastUpdatedByScheduler: Date.now(),
+            lastUpdatedByScheduler: resolvedIsScheduledUpdate
+              ? Date.now()
+              : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
+        } else if (resolvedIsScheduledUpdate) {
+          // Same type but triggered by scheduler — just update the timestamp
+          await existingPlaylist.update({
+            lastUpdatedByScheduler: Date.now(),
+          });
         }
         playlistTitle = existingPlaylist.getDataValue("title");
       } else {
@@ -2899,7 +2980,7 @@ async function executeListing(
         videoUrl,
         chunkSize,
         shouldSleep,
-        isScheduledUpdate,
+        isScheduledUpdate: resolvedIsScheduledUpdate,
         playlistTitle,
         seekPlaylistListTo,
         processKey,
