@@ -796,14 +796,14 @@ const jobs = {
             /* shouldSleep */ false,
           );
 
-          // const completedCount = 0;
-          //(results as unknown[]).filter(
-          //   (r) => (r as { status: string }).status === "completed",
-          // ).length;
+          const completedCount = results.filter(
+            (r: { status?: string }) =>
+              r && (r.status === "completed" || r.status === "success"),
+          ).length;
 
           logger.info("Completed scheduled updates", {
             totalPlaylists: allPlaylists.length,
-            results,
+            completedCount,
             nextRun: jobs.update.nextDate().toLocaleString(
               {
                 weekday: "short",
@@ -2760,7 +2760,7 @@ async function listItemsConcurrently(
   items: Array<any>,
   chunkSize: number,
   shouldSleep: boolean,
-): Promise<boolean> {
+): Promise<any[]> {
   logger.trace(
     `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
   );
@@ -2768,7 +2768,7 @@ async function listItemsConcurrently(
   // If no items to list, return
   if (items.length === 0) {
     logger.trace("No items to list");
-    return true;
+    return [];
   }
 
   // Update the semaphore's max concurrent value
@@ -2781,15 +2781,9 @@ async function listItemsConcurrently(
     items.map((item) => listWithSemaphore(item, chunkSize, shouldSleep)),
   );
 
-  // Check for any failures
-
-  const allSuccessful = listingResults.every((result: any) =>
-    result && result.status === "success"
-  );
-
-  // Log results
+  // Check for any failures  // Log results
   try {
-    listingResults.forEach((result: any) => {
+    listingResults.forEach((result: { status?: string; title?: string }) => {
       if (result.status === "completed") {
         logger.info(`Listed ${result.title} successfully`);
       } else {
@@ -2805,7 +2799,7 @@ async function listItemsConcurrently(
     });
   }
 
-  return allSuccessful;
+  return listingResults;
 }
 /**
  * Lists a single item with semaphore control to prevent excessive concurrent listing operations.
