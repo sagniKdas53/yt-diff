@@ -17,7 +17,7 @@
     "npm:jsonwebtoken@^9.0.3": "9.0.3",
     "npm:node-cache@^5.1.2": "5.1.2",
     "npm:pg-hstore@^2.3.4": "2.3.4",
-    "npm:pg@^8.19.0": "8.19.0",
+    "npm:pg@^8.20.0": "8.20.0",
     "npm:sequelize@^6.37.7": "6.37.7",
     "npm:socket.io@^4.8.3": "4.8.3",
     "npm:uuid@13": "13.0.0"
@@ -393,8 +393,8 @@
     "pg-cloudflare@1.3.0": {
       "integrity": "sha512-6lswVVSztmHiRtD6I8hw4qP/nDm1EJbKMRhf3HCYaqud7frGysPv7FYJ5noZQdhQtN2xJnimfMtvQq21pdbzyQ=="
     },
-    "pg-connection-string@2.11.0": {
-      "integrity": "sha512-kecgoJwhOpxYU21rZjULrmrBJ698U2RxXofKVzOn5UDj61BPj/qMb7diYUR1nLScCDbrztQFl1TaQZT0t1EtzQ=="
+    "pg-connection-string@2.12.0": {
+      "integrity": "sha512-U7qg+bpswf3Cs5xLzRqbXbQl85ng0mfSV/J0nnA31MCLgvEaAo7CIhmeyrmJpOr7o+zm0rXK+hNnT5l9RHkCkQ=="
     },
     "pg-hstore@2.3.4": {
       "integrity": "sha512-N3SGs/Rf+xA1M2/n0JBiXFDVMzdekwLZLAO0g7mpDY9ouX+fDI7jS6kTq3JujmYbtNSJ53TJ0q4G98KVZSM4EA==",
@@ -405,14 +405,14 @@
     "pg-int8@1.0.1": {
       "integrity": "sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw=="
     },
-    "pg-pool@3.12.0_pg@8.19.0": {
-      "integrity": "sha512-eIJ0DES8BLaziFHW7VgJEBPi5hg3Nyng5iKpYtj3wbcAUV9A1wLgWiY7ajf/f/oO1wfxt83phXPY8Emztg7ITg==",
+    "pg-pool@3.13.0_pg@8.20.0": {
+      "integrity": "sha512-gB+R+Xud1gLFuRD/QgOIgGOBE2KCQPaPwkzBBGC9oG69pHTkhQeIuejVIk3/cnDyX39av2AxomQiyPT13WKHQA==",
       "dependencies": [
         "pg"
       ]
     },
-    "pg-protocol@1.12.0": {
-      "integrity": "sha512-uOANXNRACNdElMXJ0tPz6RBM0XQ61nONGAwlt8da5zs/iUOOCLBQOHSXnrC6fMsvtjxbOJrZZl5IScGv+7mpbg=="
+    "pg-protocol@1.13.0": {
+      "integrity": "sha512-zzdvXfS6v89r6v7OcFCHfHlyG/wvry1ALxZo4LqgUoy7W9xhBDMaqOuMiF3qEV45VqsN6rdlcehHrfDtlCPc8w=="
     },
     "pg-types@2.2.0": {
       "integrity": "sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==",
@@ -424,8 +424,8 @@
         "postgres-interval"
       ]
     },
-    "pg@8.19.0": {
-      "integrity": "sha512-QIcLGi508BAHkQ3pJNptsFz5WQMlpGbuBGBaIaXsWK8mel2kQ/rThYI+DbgjUvZrIr7MiuEuc9LcChJoEZK1xQ==",
+    "pg@8.20.0": {
+      "integrity": "sha512-ldhMxz2r8fl/6QkXnBD3CR9/xg694oT6DZQ2s6c/RI28OjtSOpxnPrUCGOBJ46RCUxcWdx3p6kw/xnDHjKvaRA==",
       "dependencies": [
         "pg-connection-string",
         "pg-pool",
@@ -598,7 +598,7 @@
         "npm:jsonwebtoken@^9.0.3",
         "npm:node-cache@^5.1.2",
         "npm:pg-hstore@^2.3.4",
-        "npm:pg@^8.19.0",
+        "npm:pg@^8.20.0",
         "npm:sequelize@^6.37.7",
         "npm:socket.io@^4.8.3",
         "npm:uuid@13"
