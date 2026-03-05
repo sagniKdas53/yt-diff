@@ -142,7 +142,9 @@ RUN groupadd ytdiff --gid=1000 && \
     mkdir -p /home/ytdiff/.cache/yt-dlp && \
     chown -R ytdiff:ytdiff /home/ytdiff && \
     # Ensure the app directory exists and set ownership
-    mkdir -p /app && chown -R ytdiff:ytdiff /app
+    mkdir -p /app && chown -R ytdiff:ytdiff /app && \
+    # Deno install packages in the same layer
+    deno install
 
 USER ytdiff
 
