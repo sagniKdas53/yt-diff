@@ -1,5 +1,8 @@
 name: Build PR Docker Image
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches:
