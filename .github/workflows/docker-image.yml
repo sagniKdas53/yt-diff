@@ -5,10 +5,7 @@ on:
     branches:
       - master
     tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - master
+      - "v*"
 
 env:
   GHCR_REGISTRY: ghcr.io
@@ -100,13 +97,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           # If this is a personal repo, 'organization' is your username
           organization: ${{ github.repository_owner }}
-          repositories: 'yt-diff'
+          repositories: "yt-diff"
           # 1. Global retention for anything not matched by patterns below
           # (Matches your 'keep-younger-than: 7')
           sha-retention-days: 7
           # 2. Protected tags (Never delete)
           # (Matches your '^master$' and '^dev$')
-          protected-tags: 'master,dev,latest'
+          protected-tags: "master,dev,latest"
           # 3. Custom regex patterns with retention days
           # (Matches your '^v[0-9]+...' and '^sha-')
           custom-patterns: |
@@ -122,7 +119,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
             ${{ steps.meta-ghcr.outputs.tags }}
             ${{ steps.meta-dockerhub.outputs.tags }}

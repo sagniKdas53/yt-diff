@@ -746,39 +746,53 @@ const jobs = {
         try {
           const allPlaylists = await PlaylistMetadata.findAll({
             where: {
-              monitoringType: "Fast", // Will implement a different update mechanism for "Full"
+              monitoringType: {
+                [Op.in]: ["Start", "End", "Full"],
+              },
             },
           });
 
           if (allPlaylists.length === 0) {
             logger.info(
-              "No playlists with Fast/Full monitoring found; skipping update",
+              "No playlists with Start/End/Full monitoring found; skipping update",
             );
             return;
           }
 
-          // Separate fast and full playlists
-          const fastPlaylists = allPlaylists.filter(
-            (p) => p.getDataValue("monitoringType") === "Fast",
+          // Separate start, end, and full playlists
+          const startPlaylists = allPlaylists.filter(
+            (p) => p.getDataValue("monitoringType") === "Start",
+          );
+          const endPlaylists = allPlaylists.filter(
+            (p) => p.getDataValue("monitoringType") === "End",
           );
           const fullPlaylists = allPlaylists.filter(
             (p) => p.getDataValue("monitoringType") === "Full",
           );
 
           logger.info("Scheduler: starting playlist updates", {
-            fastCount: fastPlaylists.length,
+            startCount: startPlaylists.length,
+            endCount: endPlaylists.length,
             fullCount: fullPlaylists.length,
           });
 
           // Build item descriptors for the listing pipeline.
           // isScheduledUpdate=true bypasses the "same monitoringType → skip" guard
           // inside executeListing so that re-listing actually occurs.
-          const fastItems = fastPlaylists.map((p) => ({
+          const startItems = startPlaylists.map((p) => ({
             url: p.getDataValue("playlistUrl") as string,
             type: "playlist",
-            currentMonitoringType: "Fast",
+            currentMonitoringType: "Start",
             isScheduledUpdate: true,
-            reason: "Scheduled Fast update",
+            reason: "Scheduled Start update",
+          }));
+
+          const endItems = endPlaylists.map((p) => ({
+            url: p.getDataValue("playlistUrl") as string,
+            type: "playlist",
+            currentMonitoringType: "End",
+            isScheduledUpdate: true,
+            reason: "Scheduled End update",
           }));
 
           const fullItems = fullPlaylists.map((p) => ({
@@ -789,12 +803,12 @@ const jobs = {
             reason: "Scheduled Full update",
           }));
 
-          // Run Fast updates first (they exit early so they're cheaper).
+          // Run Start and End updates first (they are cheaper).
           // Full updates run after so they don't hog the listing slots.
           // We can wait for the results here as this is a background job so no need to be time-bound
           // This is a note to myself to deter me form trying to make it a function().then().catch() thingy
           const results = await listItemsConcurrently(
-            [...fastItems, ...fullItems],
+            [...startItems, ...endItems, ...fullItems],
             config.chunkSize,
             /* shouldSleep */ false,
             /* isScheduledUpdate */ true,
@@ -3034,15 +3048,37 @@ async function handlePlaylistStreaming(
 
   logger.info(`Starting streaming listing for playlist`, { url: videoUrl });
 
+  let startIndex = 1;
+
+  if (monitoringType === "End") {
+    const lastVideo = await PlaylistVideoMapping.findOne({
+      where: { playlistUrl: videoUrl },
+      order: [["positionInPlaylist", "DESC"]],
+      attributes: ["positionInPlaylist"],
+    });
+
+    const maxPosition = lastVideo
+      ? lastVideo.getDataValue("positionInPlaylist")
+      : 0;
+
+    if (maxPosition > 0) {
+      startIndex = Math.max(1, maxPosition - chunkSize + 1);
+    }
+  }
+
   let chunkItems: string[] = [];
-  let absoluteIndexCount = 0;
+  let absoluteIndexCount = startIndex - 1;
   let consecutiveDuplicateChunks = 0;
   let processSucceeded = false;
   let error: Error | undefined;
   let ytDlpProcess: any;
 
   try {
-    const streamProcessor = streamPlayListItems(videoUrl, processKey);
+    const streamProcessor = streamPlayListItems(
+      videoUrl,
+      processKey,
+      startIndex,
+    );
     ytDlpProcess = streamProcessor.process;
 
     for await (const line of streamProcessor.iterator) {
@@ -3071,14 +3107,14 @@ async function handlePlaylistStreaming(
           });
         }
 
-        // If every single item in this chunk already existed, we might want to exit early for 'Fast' mode
+        // If every single item in this chunk already existed, we might want to exit early for 'Start' mode
         if (
-          result.alreadyExistedCount === chunkSize && monitoringType === "Fast"
+          result.alreadyExistedCount === chunkSize && monitoringType === "Start"
         ) {
           consecutiveDuplicateChunks++;
           if (consecutiveDuplicateChunks >= 2) {
             logger.info(
-              `Fast mode incremental update found 2 consecutive chunks of already existing videos. Terminating stream.`,
+              `Start mode incremental update found 2 consecutive chunks of already existing videos. Terminating stream.`,
               { url: videoUrl },
             );
             // Kill process cleanly to exit stream
@@ -3111,6 +3147,18 @@ async function handlePlaylistStreaming(
           playlistTitle,
           seekPlaylistListTo,
         });
+      }
+    } else if (processedChunks === 0) {
+      if (monitoringType === "End" && startIndex > 1) {
+        logger.error(
+          "End mode index returned empty. Too many deletions may have occurred. Please remove and re-add the playlist to re-index.",
+          { url: videoUrl },
+        );
+        throw new Error(
+          "End mode index returned empty due to likely deletions.",
+        );
+      } else {
+        return handleEmptyResponse(videoUrl);
       }
     }
     processSucceeded = true;
@@ -3206,21 +3254,24 @@ async function handleSingleVideoStreaming(
  * Spawns an unending yt-dlp process to stream playlist/video information
  * @param {string} videoUrl - URL to fetch information from
  * @param {string} processKey - Unique key for the process
+ * @param {number} startIndex - Playist item start index (default 1)
  * @returns {Object} An object containing the un-finished process and an async iterator representing the lines
  */
 function streamPlayListItems(
   videoUrl: string,
   processKey: string,
+  startIndex: number = 1,
 ): { process: ReturnType<typeof spawn>; iterator: AsyncGenerator<string> } {
   logger.trace("Starting streaming fetch for items", {
     url: videoUrl,
     processKey,
+    startIndex,
   });
 
   const processArgs = [
     ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
     "--playlist-start",
-    "1",
+    startIndex.toString(),
     "--flat-playlist",
     "--print",
     "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
@@ -3428,6 +3479,16 @@ async function processStreamingVideoInformation(
       } else if (
         existingIndex.getDataValue("positionInPlaylist") !== absoluteIndex
       ) {
+        if (existingIndex.getDataValue("positionInPlaylist") > absoluteIndex) {
+          logger.warn(
+            "Video index decreased. Previous videos in the playlist may have been deleted.",
+            {
+              url: videoUrl,
+              currentIndex: absoluteIndex,
+              oldIndex: existingIndex.getDataValue("positionInPlaylist"),
+            },
+          );
+        }
         // The video index drifted, update the position
         await existingIndex.update({ positionInPlaylist: absoluteIndex });
       }
