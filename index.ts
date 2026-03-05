@@ -115,7 +115,7 @@ const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
 const orange = color.xterm(208);
 const honeyDew = color.xterm(194);
 if (config.logDisableColors || !Deno.stdout.isTerminal()) {
-  color.enabled = false;
+  (color as any).enabled = false;
 }
 
 /**
@@ -1125,8 +1125,8 @@ function generateAuthToken(
       id: user.id,
       lastPasswordChangeTime: user.updatedAt,
     },
-    config.secretKey,
-    { expiresIn: expiryDuration },
+    config.secretKey as string,
+    { expiresIn: expiryDuration as any },
   );
 }
 /**
@@ -1311,7 +1311,10 @@ async function authenticateRequest(
     }
 
     // Verify token
-    const decodedToken = jwt.verify(token, config.secretKey);
+    const decodedToken = jwt.verify(
+      token as string,
+      config.secretKey as string,
+    ) as jwt.JwtPayload;
 
     // Check cache first
     // Check cache first
@@ -1411,7 +1414,10 @@ async function authenticateRequest(
 async function authenticateSocket(socket: Socket): Promise<boolean> {
   try {
     const token = socket.handshake.auth.token;
-    const decodedToken = jwt.verify(token, config.secretKey);
+    const decodedToken = jwt.verify(
+      token,
+      config.secretKey as string,
+    ) as jwt.JwtPayload;
 
     // Check cache first
     // Check cache first
