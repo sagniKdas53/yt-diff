@@ -1,16 +1,4 @@
 {
-    "nodeModulesDir": "auto",
-    "imports": {
-        "sequelize": "npm:sequelize@^6.37.7",
-        "cli-color": "npm:cli-color@^2.0.4",
-        "cron": "npm:cron@^4.4.0",
-        "bcryptjs": "npm:bcryptjs@^3.0.3",
-        "jsonwebtoken": "npm:jsonwebtoken@^9.0.3",
-        "he": "npm:he@^1.2.0",
-        "pg": "npm:pg@^8.19.0",
-        "ioredis": "npm:ioredis@^5.9.3",
-        "socket.io": "npm:socket.io@^4.8.3"
-    },
     "tasks": {
         "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff deno run --allow-all --watch index.ts",
         "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",

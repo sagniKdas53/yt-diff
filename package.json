@@ -3,11 +3,7 @@
   "version": "1.3.0",
   "description": "downloads videos and watches for changes using yt-dlp and maintains a database",
   "main": "index.js",
-  "scripts": {
-    "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff node --watch index.js",
-    "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt node --watch index.js",
-    "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt node --watch index.js"
-  },
+  "scripts": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sagniKdas53/yt-diff.git"
@@ -27,6 +23,10 @@
   },
   "homepage": "https://github.com/sagniKdas53/yt-diff#readme",
   "dependencies": {
+    "@types/cli-color": "^2.0.6",
+    "@types/he": "^1.2.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.18.0",
     "bcryptjs": "^3.0.3",
     "bootstrap": "^5.3.8",
     "cli-color": "^2.0.4",
