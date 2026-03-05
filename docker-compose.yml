@@ -179,7 +179,6 @@ services:
       - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
       - POSTGRES_EXTRA_OPTS=-Z1 --schema=public --blobs
       - SCHEDULE=@daily
-      - BACKUP_ON_START=TRUE
       - BACKUP_KEEP_DAYS=7
       - HEALTHCHECK_PORT=8080
 

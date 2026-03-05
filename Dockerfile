@@ -130,6 +130,8 @@ COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
 COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
+COPY package.json ./
+COPY deno.lock ./
 COPY deno.json ./
 COPY index.ts ./
 
