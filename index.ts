@@ -2988,7 +2988,9 @@ async function executeListing(
         ) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           await existingPlaylist.update({
-            monitoringType: currentMonitoringType,
+            monitoringType: currentMonitoringType === "Refresh"
+              ? "N/A"
+              : currentMonitoringType,
             lastUpdatedByScheduler: resolvedIsScheduledUpdate
               ? Date.now()
               : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
@@ -3005,7 +3007,10 @@ async function executeListing(
         logger.debug(`Playlist not found in database, adding to database`, {
           url: videoUrl,
         });
-        const newPlaylist = await addPlaylist(videoUrl, currentMonitoringType);
+        const newPlaylist = await addPlaylist(
+          videoUrl,
+          currentMonitoringType === "Refresh" ? "N/A" : currentMonitoringType,
+        );
         playlistTitle = (newPlaylist as any).title;
         seekPlaylistListTo = (newPlaylist as any).sortOrder;
       }
