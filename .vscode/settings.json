@@ -39,5 +39,6 @@
         "websecure",
         "youtu",
         "ytdiff"
-    ]
+    ],
+    "makefile.configureOnOpen": false
 }
