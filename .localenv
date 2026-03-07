@@ -1,0 +1,4 @@
+DB_LOCATION=/home/sagnik/Documents/yt-data-new/
+HOSTNAME=ideapad.tail9ece4.ts.net
+LOG_LEVELS=debug
+HOST_SAVE_PATH=/home/sagnik/Documents/syncthing/pi5/yt-dlp/
