@@ -2854,17 +2854,6 @@ async function listWithSemaphore(
 ): Promise<any> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
-  // Check process limit before acquiring semaphore
-  if (listProcesses.size >= config.queue.maxListings) {
-    logger.info("Maximum listing processes reached", { url: item.url });
-    return {
-      url: item.url,
-      title: "Video",
-      status: "failed",
-      error: "Maximum listing processes reached",
-    };
-  }
-
   // Acquire semaphore before starting listing
   await ListingSemaphore.acquire();
 
@@ -4027,12 +4016,6 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
 
   if (lastPlaylist !== null) {
     nextPlaylistIndex = (lastPlaylist as any).sortOrder + 1;
-  }
-
-  // Check if we've hit the process limit
-  if (listProcesses.size >= config.queue.maxListings) {
-    logger.info("Maximum listing processes reached", { url: playlistUrl });
-    throw new Error("Maximum listing processes reached");
   }
 
   const processArgs = [
