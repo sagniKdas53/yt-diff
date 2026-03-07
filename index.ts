@@ -2991,9 +2991,10 @@ async function executeListing(
             monitoringType: currentMonitoringType === "Refresh"
               ? "N/A"
               : currentMonitoringType,
-            lastUpdatedByScheduler: resolvedIsScheduledUpdate
-              ? Date.now()
-              : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
+            lastUpdatedByScheduler:
+              resolvedIsScheduledUpdate || currentMonitoringType === "Refresh"
+                ? Date.now()
+                : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         } else if (resolvedIsScheduledUpdate) {
@@ -3003,6 +3004,7 @@ async function executeListing(
           });
         }
         playlistTitle = existingPlaylist.getDataValue("title");
+        seekPlaylistListTo = (existingPlaylist as any).sortOrder;
       } else {
         logger.debug(`Playlist not found in database, adding to database`, {
           url: videoUrl,
@@ -3103,6 +3105,7 @@ async function handlePlaylistStreaming(
           videoUrl,
           absoluteIndexCount - chunkSize + 1, // startIndex for this chunk
           isScheduledUpdate,
+          monitoringType,
         );
 
         processedChunks++;
@@ -3147,6 +3150,7 @@ async function handlePlaylistStreaming(
         videoUrl,
         absoluteIndexCount - chunkItems.length + 1,
         isScheduledUpdate,
+        monitoringType,
       );
       processedChunks++;
       if (!isScheduledUpdate) {
@@ -3402,6 +3406,7 @@ async function processStreamingVideoInformation(
   playlistUrl: string,
   chunkStartIndex: number,
   isUpdate: boolean,
+  monitoringType?: string,
 ): Promise<any> {
   logger.trace("Processing video information chunk", {
     playlistUrl,
@@ -3448,6 +3453,7 @@ async function processStreamingVideoInformation(
         : chunkStartIndex + index;
 
       if (
+        monitoringType !== "Refresh" &&
         existingVideo && existingIndex &&
         existingIndex.getDataValue("positionInPlaylist") === absoluteIndex
       ) {
