@@ -70,14 +70,8 @@ ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 WORKDIR /app
 
-# Install git for cloning the repository
-RUN apt-get update && \
-    apt-get install -y git ca-certificates --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
-
-# Clone the frontend repository, install dependencies, and build
-# Assuming the frontend has its own package.json
-RUN git clone -b material https://github.com/sagniKdas53/yt-diff-react ./frontend_src
+# Copy the frontend submodule source (checked out by CI with submodules: true)
+COPY frontend/ ./frontend_src/
 WORKDIR /app/frontend_src
 RUN npm install
 RUN npm run build
