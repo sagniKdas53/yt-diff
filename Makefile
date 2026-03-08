@@ -1,10 +1,16 @@
-.PHONY: local remote check-local check-remote down-local down-remote logs-local logs-remote
+.PHONY: local remote build-local build-remote check-local check-remote down-local down-remote logs-local logs-remote
 
 local:
-	docker compose --env-file .env --env-file .localenv up -d
+	docker compose --env-file .env --env-file .localenv up -d --build
 
 remote:
-	docker compose --env-file .env --env-file .remotenv up -d
+	docker compose --env-file .env --env-file .remotenv up -d --build
+
+build-local:
+	docker compose --env-file .env --env-file .localenv build --no-cache
+
+build-remote:
+	docker compose --env-file .env --env-file .remotenv build --no-cache
 
 check-local:
 	docker compose --env-file .env --env-file .localenv config
