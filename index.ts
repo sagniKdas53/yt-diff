@@ -72,7 +72,7 @@ const config = {
     maxUsers: +(Deno.env.get("MAX_USERS") || 15),
   },
   saveLocation: Deno.env.get("SAVE_PATH") ||
-    "/home/sagnik/Documents/syncthing/pi5/yt-dlp/",
+    "/home/sagnik/Documents/syncthing/pi5/yt-diff-data/",
   cookiesFile: Deno.env.get("COOKIES_FILE")
     ? fs.existsSync(Deno.env.get("COOKIES_FILE")!)
       ? Deno.env.get("COOKIES_FILE")
@@ -2257,7 +2257,7 @@ function executeDownload(
       const processArgs = ["-P", "home:" + savePath, videoUrl];
 
       // Notify frontend of download start
-      safeEmit("download-started", { percentage: 101 });
+      safeEmit("download-started", { url: videoUrl, percentage: 101 });
 
       // Add site-specific args (like cookies for x.com, impersonation for iwara.tv)
       const siteArgs = buildSiteArgs(videoUrl, config);
@@ -2314,7 +2314,10 @@ function executeDownload(
 
             // Emit progress update to frontend
             // TODO: Check if this is needed, as when multiple downloads are running this does not work properly
-            safeEmit("downloading-percent-update", { percentage: percent });
+            safeEmit("downloading-percent-update", {
+              url: videoUrl,
+              percentage: percent,
+            });
           }
 
           // Extract the title, no extension
