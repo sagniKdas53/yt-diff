@@ -457,6 +457,13 @@ const VideoMetadata = sequelize.define("video_metadata", {
     comment:
       "This will serve as a marker for other processes to know if they need to sync metadata from downloaded files",
   },
+  saveDirectory: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      "Directory relative to saveLocation where files are stored. null if not downloaded, empty string for root.",
+  },
   createdAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -2403,6 +2410,7 @@ function executeDownload(
               syncStatus.thumbNailFileFound;
 
             (updates as any).isMetaDataSynced = true;
+            (updates as any).saveDirectory = computeSaveDirectory(savePath);
 
             // Log metadata sync status
             if (allExtraFilesFound) {
@@ -4430,7 +4438,7 @@ async function processDeleteVideosRequest(
                 try {
                   const filePath = path.join(
                     config.saveLocation,
-                    (playlist as any).saveDirectory,
+                    video.saveDirectory || "",
                     value,
                   );
                   logger.debug("Removing file", {
@@ -4467,6 +4475,7 @@ async function processDeleteVideosRequest(
               video.subTitleFile = null;
               video.commentsFile = null;
               video.descriptionFile = null;
+              video.saveDirectory = null;
             }
           }
 
@@ -4721,6 +4730,7 @@ async function getSubListVideos(
           "subTitleFile",
           "descriptionFile",
           "isMetaDataSynced",
+          "saveDirectory",
         ],
         where: videoMetadataWhere,
         // Use Inner Join (strict) if searching, otherwise Left Join (loose)
@@ -4767,6 +4777,7 @@ async function getSubListVideos(
         subTitleFile: vm.subTitleFile,
         descriptionFile: vm.descriptionFile,
         isMetaDataSynced: vm.isMetaDataSynced,
+        saveDirectory: vm.saveDirectory,
       };
 
       return {

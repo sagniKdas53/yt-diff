@@ -3,6 +3,7 @@
         "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff deno run --allow-all --watch index.ts",
         "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",
         "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts",
-        "full": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts"
+        "full": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts",
+        "migrate": "DB_PASSWORD=ytd1ff deno run --allow-all migrate_save_directory.ts"
     }
 }
