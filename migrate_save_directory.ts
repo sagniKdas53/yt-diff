@@ -35,9 +35,10 @@ if (!dbPassword) {
   Deno.exit(1);
 }
 
-const saveLocation =
-  Deno.env.get("SAVE_PATH") ||
-  "/home/sagnik/Documents/syncthing/pi5/yt-diff-data/";
+const saveLocation = Deno.env.get("SAVE_PATH") ||
+  "/mnt/nvme/stuff/yt-diff/";
+const dryRun = Deno.env.get("DRY_RUN") === "true";
+const targetPlaylistUrl = Deno.env.get("PLAYLIST_URL");
 
 const sequelize = new Sequelize({
   host: Deno.env.get("DB_HOST") || "localhost",
@@ -75,12 +76,30 @@ async function main() {
   }
 
   // Step 2: Find downloaded videos with NULL saveDirectory using raw SQL
-  const videos = await sequelize.query(
-    `SELECT "videoUrl", "fileName"
-     FROM video_metadata
-     WHERE "downloadStatus" = true AND "saveDirectory" IS NULL`,
-    { type: QueryTypes.SELECT },
-  ) as { videoUrl: string; fileName: string | null }[];
+  let query = `
+    SELECT "videoUrl", "fileName"
+    FROM video_metadata
+    WHERE "downloadStatus" = true AND "saveDirectory" IS NULL
+  `;
+  const replacements: Record<string, any> = {};
+
+  if (targetPlaylistUrl) {
+    console.log(`  Filtering by playlist: ${targetPlaylistUrl}`);
+    query = `
+      SELECT DISTINCT vm."videoUrl", vm."fileName"
+      FROM video_metadata vm
+      JOIN playlist_video_mappings pvm ON vm."videoUrl" = pvm."videoUrl"
+      WHERE vm."downloadStatus" = true 
+        AND vm."saveDirectory" IS NULL 
+        AND pvm."playlistUrl" = :targetPlaylistUrl
+    `;
+    replacements.targetPlaylistUrl = targetPlaylistUrl;
+  }
+
+  const videos = await sequelize.query(query, {
+    replacements,
+    type: QueryTypes.SELECT,
+  }) as { videoUrl: string; fileName: string | null }[];
 
   console.log(
     `  Found ${videos.length} downloaded video(s) with NULL saveDirectory`,
@@ -99,6 +118,13 @@ async function main() {
     const fileName = video.fileName;
     if (!fileName) {
       // No fileName recorded — set to root as best guess
+      if (dryRun) {
+        console.log(
+          `  ⚠ ${video.videoUrl} → "" (no fileName, defaulting to root)`,
+        );
+        defaulted++;
+        continue;
+      }
       await sequelize.query(
         `UPDATE video_metadata SET "saveDirectory" = '' WHERE "videoUrl" = :url`,
         { replacements: { url: video.videoUrl }, type: QueryTypes.UPDATE },
@@ -120,7 +146,9 @@ async function main() {
     ) as { saveDirectory: string }[];
 
     console.log(
-      `  Checking ${video.videoUrl} (${fileName}) against ${playlistDirs.length} playlist dir(s): [${playlistDirs.map((d) => `"${d.saveDirectory}"`).join(", ")}]`,
+      `  Checking ${video.videoUrl} (${fileName}) against ${playlistDirs.length} playlist dir(s): [${
+        playlistDirs.map((d) => `"${d.saveDirectory}"`).join(", ")
+      }]`,
     );
 
     let found = false;
@@ -131,6 +159,14 @@ async function main() {
       const filePath = path.join(saveLocation, dir, fileName);
 
       if (fs.existsSync(filePath)) {
+        if (dryRun) {
+          console.log(
+            `  ✓ ${video.videoUrl} → "${dir}" (found at ${filePath})`,
+          );
+          found = true;
+          updated++;
+          break;
+        }
         await sequelize.query(
           `UPDATE video_metadata SET "saveDirectory" = :dir WHERE "videoUrl" = :url`,
           {
@@ -151,6 +187,11 @@ async function main() {
     if (!found) {
       const rootPath = path.join(saveLocation, fileName);
       if (fs.existsSync(rootPath)) {
+        if (dryRun) {
+          console.log(`  ✓ ${video.videoUrl} → "" (found at root)`);
+          updated++;
+          continue;
+        }
         await sequelize.query(
           `UPDATE video_metadata SET "saveDirectory" = '' WHERE "videoUrl" = :url`,
           { replacements: { url: video.videoUrl }, type: QueryTypes.UPDATE },
@@ -158,6 +199,13 @@ async function main() {
         console.log(`  ✓ ${video.videoUrl} → "" (found at root)`);
         updated++;
       } else {
+        if (dryRun) {
+          console.log(
+            `  ⚠ ${video.videoUrl} → "" (file not found anywhere, defaulting to root)`,
+          );
+          defaulted++;
+          continue;
+        }
         await sequelize.query(
           `UPDATE video_metadata SET "saveDirectory" = '' WHERE "videoUrl" = :url`,
           { replacements: { url: video.videoUrl }, type: QueryTypes.UPDATE },

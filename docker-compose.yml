@@ -161,7 +161,7 @@ services:
     restart: always
     volumes:
       - type: bind
-        source: ${BACKUP_LOCATION}
+        source: ${DB_BACKUP_LOCATION}
         target: /backups
     links:
       - yt-db

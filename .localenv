@@ -2,3 +2,5 @@ DB_LOCATION=/home/sagnik/Documents/yt-db-data/
 HOSTNAME=ideapad.tail9ece4.ts.net
 LOG_LEVELS=debug
 HOST_SAVE_PATH=/home/sagnik/Documents/syncthing/pi5/yt-diff-data/
+DB_BACKUP_LOCATION=/home/sagnik/Documents/yt-db-backups/
+HOST_COOKIES_FILE=/home/sagnik/Projects/docker-composes/yt-diff/cookie_secret.txt
