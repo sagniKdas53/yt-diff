@@ -4589,7 +4589,8 @@ async function getPlaylistsForDisplay(
 
     // Determine sort settings
     const sortDirection = sortOrder === 2 ? "DESC" : "ASC";
-    const sortBy = sortColumn === 3 ? "lastUpdatedByScheduler" : "createdAt";
+    // Playlists can be createdAt the same time but shouldn't have the same "sortOrder"
+    const sortBy = sortColumn === 3 ? "lastUpdatedByScheduler" : "sortOrder";
 
     logger.trace(
       `Fetching playlists for display`,
