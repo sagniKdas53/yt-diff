@@ -2585,6 +2585,11 @@ const listProcesses = new Map(); // Map to track listing processes
  * operations to start, queued operations are processed.
  * @param {number} max - The new maximum number of concurrent operations.
  */
+
+// Lazily initialized from DB; incremented synchronously in addPlaylist
+// so concurrent callers each get a distinct sortOrder.
+let pendingPlaylistSortCounter: number | null = null;
+
 const ListingSemaphore = {
   maxConcurrent: config.queue.maxListings,
   currentConcurrent: 0,
@@ -4016,18 +4021,20 @@ async function updatePlaylistMonitoring(
  */
 async function addPlaylist(playlistUrl: string, monitoringType: string) {
   let playlistTitle = "";
-  let nextPlaylistIndex = 0;
-
-  // Get the last playlist index
-  const lastPlaylist = await PlaylistMetadata.findOne({
-    order: [["sortOrder", "DESC"]],
-    attributes: ["sortOrder"],
-    limit: 1,
-  });
-
-  if (lastPlaylist !== null) {
-    nextPlaylistIndex = (lastPlaylist as any).sortOrder + 1;
+  // Initialize the counter from DB on first call, then increment atomically.
+  // Because Node is single-threaded, the increment happens before any await,
+  // so concurrent callers each get a distinct value.
+  if (pendingPlaylistSortCounter === null) {
+    const lastPlaylist = await PlaylistMetadata.findOne({
+      order: [["sortOrder", "DESC"]],
+      attributes: ["sortOrder"],
+      limit: 1,
+    });
+    pendingPlaylistSortCounter = lastPlaylist !== null
+      ? (lastPlaylist as any).sortOrder + 1
+      : 0;
   }
+  const nextPlaylistIndex = pendingPlaylistSortCounter++;
 
   const processArgs = [
     ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
@@ -4241,6 +4248,8 @@ async function processDeletePlaylistRequest(
             transaction,
           },
         );
+        // Invalidate the cached counter so next addPlaylist re-reads from DB
+        pendingPlaylistSortCounter = null;
         logger.debug("Updated sortOrder for playlists after deleted playlist", {
           deletedSortOrder,
         });
