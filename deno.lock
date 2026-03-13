@@ -18,7 +18,6 @@
     "npm:node-cache@^5.1.2": "5.1.2",
     "npm:pg-hstore@^2.3.4": "2.3.4",
     "npm:pg@^8.20.0": "8.20.0",
-    "npm:sequelize@^6.37.7": "6.37.7",
     "npm:socket.io@^4.8.3": "4.8.3",
     "npm:uuid@13": "13.0.0"
   },
@@ -599,7 +598,7 @@
         "npm:node-cache@^5.1.2",
         "npm:pg-hstore@^2.3.4",
         "npm:pg@^8.20.0",
-        "npm:sequelize@^6.37.7",
+        "npm:sequelize@^6.37.8",
         "npm:socket.io@^4.8.3",
         "npm:uuid@13"
       ]
