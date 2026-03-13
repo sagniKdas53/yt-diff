@@ -4,29 +4,26 @@
  *
  * How it works:
  *   1. Connects to the DB using the same env vars as index.ts.
- *   2. Adds the `saveDirectory` column if it doesn't already exist
- *      (Sequelize sync() would do this too, but this script can run
- *      independently before the app starts).
+ *   2. Adds the `saveDirectory` column if it doesn't already exist.
  *   3. For every downloaded video (downloadStatus = true) whose
- *      saveDirectory is NULL, it looks at each playlist the video
- *      belongs to and checks whether the file exists on disk under
- *      that playlist's saveDirectory.  The first match wins.
- *   4. If no match is found the video is assumed to be in the save
+ *      saveDirectory is NULL, it uses a raw SQL join to get all
+ *      playlist saveDirectories the video is mapped to.
+ *   4. Checks the filesystem for each candidate directory.
+ *      The first match wins.
+ *   5. If no match is found the video is assumed to be in the save
  *      root (saveDirectory = "").
  *
  * Usage:
- *   DB_HOST=... DB_USERNAME=... DB_PASSWORD=... SAVE_PATH=... \
- *     deno run --allow-all migrate_save_directory.ts
+ *   DB_PASSWORD=... deno run --allow-all migrate_save_directory.ts
  *
- *   Or, using the password-file pattern:
- *   DB_HOST=... DB_USERNAME=... DB_PASSWORD_FILE=./db_password.txt SAVE_PATH=... \
- *     deno run --allow-all migrate_save_directory.ts
+ *   Or with the deno task:
+ *   deno task migrate
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes, QueryTypes, Sequelize } from "sequelize";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 const dbPassword = Deno.env.get("DB_PASSWORD_FILE")
@@ -51,50 +48,6 @@ const sequelize = new Sequelize({
   password: dbPassword,
   database: "vidlist",
 });
-
-// ── Minimal model definitions (just what we need) ────────────────────────────
-const VideoMetadata = sequelize.define(
-  "video_metadata",
-  {
-    videoUrl: { type: DataTypes.STRING, primaryKey: true, allowNull: false },
-    fileName: { type: DataTypes.STRING, allowNull: true },
-    downloadStatus: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    saveDirectory: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
-  },
-  { timestamps: true },
-);
-
-const PlaylistMetadata = sequelize.define(
-  "playlist_metadata",
-  {
-    playlistUrl: { type: DataTypes.STRING, primaryKey: true, allowNull: false },
-    saveDirectory: { type: DataTypes.STRING, allowNull: false },
-  },
-  { timestamps: true },
-);
-
-const PlaylistVideoMapping = sequelize.define(
-  "playlist_video_mapping",
-  {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    videoUrl: { type: DataTypes.STRING, allowNull: false },
-    playlistUrl: { type: DataTypes.STRING, allowNull: false },
-  },
-  { timestamps: false },
-);
-
-PlaylistVideoMapping.belongsTo(VideoMetadata, { foreignKey: "videoUrl" });
-PlaylistVideoMapping.belongsTo(PlaylistMetadata, { foreignKey: "playlistUrl" });
-VideoMetadata.hasMany(PlaylistVideoMapping, { foreignKey: "videoUrl" });
-PlaylistMetadata.hasMany(PlaylistVideoMapping, { foreignKey: "playlistUrl" });
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
@@ -121,15 +74,17 @@ async function main() {
     console.log("✓ saveDirectory column already exists");
   }
 
-  // Step 2: Find downloaded videos with NULL saveDirectory
-  const videos = (await VideoMetadata.findAll({
-    where: {
-      downloadStatus: true,
-      saveDirectory: null,
-    },
-  })) as any[];
+  // Step 2: Find downloaded videos with NULL saveDirectory using raw SQL
+  const videos = await sequelize.query(
+    `SELECT "videoUrl", "fileName"
+     FROM video_metadata
+     WHERE "downloadStatus" = true AND "saveDirectory" IS NULL`,
+    { type: QueryTypes.SELECT },
+  ) as { videoUrl: string; fileName: string | null }[];
 
-  console.log(`  Found ${videos.length} downloaded video(s) with NULL saveDirectory`);
+  console.log(
+    `  Found ${videos.length} downloaded video(s) with NULL saveDirectory`,
+  );
 
   if (videos.length === 0) {
     console.log("✓ Nothing to migrate");
@@ -144,50 +99,79 @@ async function main() {
     const fileName = video.fileName;
     if (!fileName) {
       // No fileName recorded — set to root as best guess
-      await video.update({ saveDirectory: "" });
+      await sequelize.query(
+        `UPDATE video_metadata SET "saveDirectory" = '' WHERE "videoUrl" = :url`,
+        { replacements: { url: video.videoUrl }, type: QueryTypes.UPDATE },
+      );
+      console.log(
+        `  ⚠ ${video.videoUrl} → "" (no fileName, defaulting to root)`,
+      );
       defaulted++;
       continue;
     }
 
-    // Find all playlists this video belongs to
-    const mappings = await PlaylistVideoMapping.findAll({
-      where: { videoUrl: video.videoUrl },
-      include: [{ model: PlaylistMetadata, attributes: ["saveDirectory"] }],
-    });
+    // Get all playlist saveDirectories this video is mapped to via raw join
+    const playlistDirs = await sequelize.query(
+      `SELECT DISTINCT pm."saveDirectory"
+       FROM playlist_video_mappings pvm
+       JOIN playlist_metadata pm ON pvm."playlistUrl" = pm."playlistUrl"
+       WHERE pvm."videoUrl" = :url`,
+      { replacements: { url: video.videoUrl }, type: QueryTypes.SELECT },
+    ) as { saveDirectory: string }[];
+
+    console.log(
+      `  Checking ${video.videoUrl} (${fileName}) against ${playlistDirs.length} playlist dir(s): [${playlistDirs.map((d) => `"${d.saveDirectory}"`).join(", ")}]`,
+    );
 
     let found = false;
 
-    for (const mapping of mappings as any[]) {
-      const playlistDir = mapping.playlist_metadatum?.saveDirectory ?? "";
-      const filePath = path.join(saveLocation, playlistDir, fileName);
+    // Check each playlist's directory for the file
+    for (const row of playlistDirs) {
+      const dir = row.saveDirectory ?? "";
+      const filePath = path.join(saveLocation, dir, fileName);
 
       if (fs.existsSync(filePath)) {
-        await video.update({ saveDirectory: playlistDir });
-        console.log(`  ✓ ${video.videoUrl} → "${playlistDir}" (found at ${filePath})`);
+        await sequelize.query(
+          `UPDATE video_metadata SET "saveDirectory" = :dir WHERE "videoUrl" = :url`,
+          {
+            replacements: { dir, url: video.videoUrl },
+            type: QueryTypes.UPDATE,
+          },
+        );
+        console.log(`  ✓ ${video.videoUrl} → "${dir}" (found at ${filePath})`);
         found = true;
         updated++;
         break;
+      } else {
+        console.log(`    ✗ Not at ${filePath}`);
       }
     }
 
-    // Also check root if not found in any playlist dir
+    // Fallback: check root if not found in any playlist dir
     if (!found) {
       const rootPath = path.join(saveLocation, fileName);
       if (fs.existsSync(rootPath)) {
-        await video.update({ saveDirectory: "" });
+        await sequelize.query(
+          `UPDATE video_metadata SET "saveDirectory" = '' WHERE "videoUrl" = :url`,
+          { replacements: { url: video.videoUrl }, type: QueryTypes.UPDATE },
+        );
         console.log(`  ✓ ${video.videoUrl} → "" (found at root)`);
         updated++;
       } else {
-        // File not found anywhere — default to root
-        await video.update({ saveDirectory: "" });
-        console.log(`  ⚠ ${video.videoUrl} → "" (file not found, defaulting to root)`);
+        await sequelize.query(
+          `UPDATE video_metadata SET "saveDirectory" = '' WHERE "videoUrl" = :url`,
+          { replacements: { url: video.videoUrl }, type: QueryTypes.UPDATE },
+        );
+        console.log(
+          `  ⚠ ${video.videoUrl} → "" (file not found anywhere, defaulting to root)`,
+        );
         defaulted++;
       }
     }
   }
 
   console.log(
-    `\n✓ Migration complete: ${updated} located, ${defaulted} defaulted to root`,
+    `\n✓ Migration complete: ${updated} located on disk, ${defaulted} defaulted to root`,
   );
   await sequelize.close();
 }
