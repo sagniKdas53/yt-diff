@@ -4291,6 +4291,34 @@ async function processDeletePlaylistRequest(
             saveDirectory: playlist.saveDirectory,
           });
           message += " and cleaned up playlist directory";
+
+          // Mark any videos that shared this save directory as un-downloaded
+          // since their underlying files were just deleted
+          try {
+            const [updatedCount] = await VideoMetadata.update({
+              downloadStatus: false,
+              fileName: null,
+              thumbNailFile: null,
+              subTitleFile: null,
+              commentsFile: null,
+              descriptionFile: null,
+              saveDirectory: null
+            }, {
+              where: { saveDirectory: playlist.saveDirectory }
+            });
+
+            if (updatedCount > 0) {
+              logger.info(`Reset ${updatedCount} video(s) to un-downloaded state as their directory was deleted`, {
+                saveDirectory: playlist.saveDirectory
+              });
+              message += ` (and marked ${updatedCount} shared video(s) as un-downloaded)`;
+            }
+          } catch (updateError) {
+            logger.error("Failed to update shared video metadata after directory cleanup", {
+              saveDirectory: playlist.saveDirectory,
+              error: (updateError as Error).message,
+            });
+          }
         } catch (error) {
           logger.error("Failed to clean up playlist directory", {
             saveDirectory: playlist.saveDirectory,
