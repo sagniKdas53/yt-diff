@@ -34,6 +34,8 @@ services:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: ${DB_NAME}
+    # tmpfs:
+    #   - /var/lib/postgresql/data
     volumes:
       - ${DB_LOCATION}:/var/lib/postgresql/data
     labels:
@@ -62,6 +64,10 @@ services:
         source: ${HOST_SAVE_PATH}
         target: ${CONTAINER_SAVE_PATH}
         read_only: false
+      # - type: tmpfs
+      #   target: ${CONTAINER_SAVE_PATH}
+      #   tmpfs:
+      #     size: 2147483648 # 2GB
       - type: bind
         source: ${HOST_COOKIES_FILE}
         target: ${CONTAINER_COOKIES_FILE}
