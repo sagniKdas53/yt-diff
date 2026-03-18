@@ -817,7 +817,6 @@ const jobs = {
           const results = await listItemsConcurrently(
             [...startItems, ...endItems, ...fullItems],
             config.chunkSize,
-            /* shouldSleep */ false,
             /* isScheduledUpdate */ true,
           );
 
@@ -2663,7 +2662,7 @@ async function processListingRequest(
       config.chunkSize,
       +(requestBody.chunkSize ?? config.chunkSize),
     );
-    const shouldSleep = requestBody.sleep ?? false;
+
     const monitoringType = requestBody.monitoringType ?? "N/A";
     const itemsToList = [];
     const uniqueUrls = new Set();
@@ -2671,7 +2670,6 @@ async function processListingRequest(
     logger.trace("Processing URL list", {
       urlCount: requestBody.urlList.length,
       chunkSize,
-      shouldSleep,
       monitoringType,
     });
 
@@ -2765,7 +2763,7 @@ async function processListingRequest(
     }
 
     // Start listing processes
-    listItemsConcurrently(itemsToList, chunkSize, shouldSleep, false);
+    listItemsConcurrently(itemsToList, chunkSize, false);
     logger.debug(`Listing processes started`, {
       itemCount: itemsToList.length,
     });
@@ -2793,7 +2791,6 @@ async function processListingRequest(
  *   - currentMonitoringType: Current monitoring type of the item
  *   - reason: Reason for the item being added to the list
  * @param {number} chunkSize - Maximum number of concurrent listing operations
- * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
  * @param {boolean} isScheduledUpdate - If true, the listing process will update the item
  * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
  */
@@ -2801,7 +2798,6 @@ async function processListingRequest(
 async function listItemsConcurrently(
   items: Array<any>,
   chunkSize: number,
-  shouldSleep: boolean,
   isScheduledUpdate: boolean,
 ): Promise<any[]> {
   logger.trace(
@@ -2821,9 +2817,7 @@ async function listItemsConcurrently(
   // TODO: Fix the issue where if send playlists (since they take long time)
   // the semaphore behavior is not consistent, sometimes it gets un-tracked
   const listingResults = await Promise.all(
-    items.map((item) =>
-      listWithSemaphore(item, chunkSize, shouldSleep, isScheduledUpdate)
-    ),
+    items.map((item) => listWithSemaphore(item, chunkSize, isScheduledUpdate)),
   );
 
   // Check for any failures  // Log results
@@ -2854,7 +2848,6 @@ async function listItemsConcurrently(
  *   - type: Type of item (video, playlist, undownloaded, undetermined)
  *   - monitoringType: Current monitoring type of the item
  * @param {number} chunkSize - Maximum number of concurrent listing operations
- * @param {boolean} shouldSleep - If true, the listing process will sleep between each chunk
  * @param {boolean} isScheduledUpdate - If true, the listing process will update the item
  * @returns {Promise<Object>} Listing result containing:
  *   - url: Video URL
@@ -2866,7 +2859,6 @@ async function listItemsConcurrently(
 async function listWithSemaphore(
   item: Record<string, any>,
   chunkSize: number,
-  shouldSleep: boolean,
   isScheduledUpdate: boolean,
 ): Promise<any> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
@@ -2895,7 +2887,6 @@ async function listWithSemaphore(
       item,
       entryKey,
       chunkSize,
-      shouldSleep,
       // I don't remember why item has a isScheduledUpdate property, but I'll keep it for now
       // TODO: Remove it if not needed
       item.isScheduledUpdate === true || isScheduledUpdate,
@@ -2926,7 +2917,6 @@ async function listWithSemaphore(
  * @param {Object} item - The item to list
  * @param {string} processKey - The key to track the listing process
  * @param {number} chunkSize - The size of each chunk to process
- * @param {boolean} shouldSleep - Whether to introduce a delay between processing chunks
  * @param {boolean} isScheduledUpdate - Indicates if the listing is part of a scheduled update
  * @returns {Promise<Object>} The result of the listing process
  */
@@ -2935,7 +2925,6 @@ async function executeListing(
   item: Record<string, any>,
   processKey: string,
   chunkSize: number,
-  shouldSleep: boolean,
   isScheduledUpdate: boolean = false,
 ): Promise<any> {
   // Allow the item itself to carry the flag (e.g. when called from the scheduler)
@@ -3026,7 +3015,6 @@ async function executeListing(
       return await handlePlaylistStreaming({
         videoUrl,
         chunkSize,
-        shouldSleep,
         isScheduledUpdate: resolvedIsScheduledUpdate,
         playlistTitle,
         seekPlaylistListTo,
@@ -3055,7 +3043,6 @@ async function handlePlaylistStreaming(
   const {
     videoUrl,
     chunkSize,
-    shouldSleep,
     isScheduledUpdate,
     playlistTitle,
     seekPlaylistListTo,
@@ -3144,8 +3131,6 @@ async function handlePlaylistStreaming(
         } else {
           consecutiveDuplicateChunks = 0;
         }
-
-        if (shouldSleep) await sleep();
       }
     }
 
@@ -3433,8 +3418,11 @@ async function processStreamingVideoInformation(
       let itemData: any = {};
       try {
         itemData = JSON.parse(item);
-      } catch (_e) {
-        logger.error("Failed to parse JSON from stream", { item });
+      } catch (e) {
+        logger.error("Failed to parse JSON from stream", {
+          item,
+          error: e as Error,
+        });
       }
       const videoUrl = itemData.webpage_url || itemData.url || "";
       return await VideoMetadata.findOne({
@@ -3445,8 +3433,11 @@ async function processStreamingVideoInformation(
       let itemData: any = {};
       try {
         itemData = JSON.parse(item);
-      } catch (_e) {
-        logger.error("Failed to parse JSON from stream", { item });
+      } catch (e) {
+        logger.error("Failed to parse JSON from stream", {
+          item,
+          error: e as Error,
+        });
       }
       const videoUrl = itemData.webpage_url || itemData.url || "";
       return await PlaylistVideoMapping.findOne({
@@ -3465,8 +3456,11 @@ async function processStreamingVideoInformation(
       let itemData: any = {};
       try {
         itemData = JSON.parse(item);
-      } catch (_e) {
-        logger.error("Failed to parse JSON from stream", { item });
+      } catch (e) {
+        logger.error("Failed to parse JSON from stream", {
+          item,
+          error: e as Error,
+        });
         return;
       }
       const title = itemData.title || "";
@@ -4128,8 +4122,11 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
             playlistTitle = jsonData.playlist_title || jsonData.title ||
               playlistTitle;
           }
-        } catch (_e) {
-          logger.error("Failed to parse JSON from stream", { playlistTitle });
+        } catch (e) {
+          logger.error("Failed to parse playlist title JSON", {
+            playlistTitle,
+            error: e as Error,
+          });
         }
 
         if (!playlistTitle || playlistTitle.toString().trim() === "NA") {
