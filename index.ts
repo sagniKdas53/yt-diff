@@ -3293,9 +3293,8 @@ function streamPlayListItems(
     ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
     "--playlist-start",
     startIndex.toString(),
-    "--flat-playlist",
-    "--print",
-    "%(title)s\t%(id)s\t%(webpage_url)s\t%(filesize_approx)s",
+    "--dump-json",
+    "--no-download",
     videoUrl,
   ];
 
@@ -3431,13 +3430,25 @@ async function processStreamingVideoInformation(
   // Check for existing items in bulk
   const existingItems = await Promise.all([
     Promise.all(responseItems.map(async (item) => {
-      const videoUrl = item.split("\t")[2];
+      let itemData: any = {};
+      try {
+        itemData = JSON.parse(item);
+      } catch (_e) {
+        logger.error("Failed to parse JSON from stream", { item });
+      }
+      const videoUrl = itemData.webpage_url || itemData.url || "";
       return await VideoMetadata.findOne({
         where: { videoUrl: videoUrl },
       });
     })),
     Promise.all(responseItems.map(async (item) => {
-      const videoUrl = item.split("\t")[2];
+      let itemData: any = {};
+      try {
+        itemData = JSON.parse(item);
+      } catch (_e) {
+        logger.error("Failed to parse JSON from stream", { item });
+      }
+      const videoUrl = itemData.webpage_url || itemData.url || "";
       return await PlaylistVideoMapping.findOne({
         where: {
           videoUrl: videoUrl,
@@ -3451,7 +3462,17 @@ async function processStreamingVideoInformation(
 
   await Promise.all(responseItems.map(async (item, index) => {
     try {
-      const [title, videoId, videoUrl, approxSize] = item.split("\t");
+      let itemData: any = {};
+      try {
+        itemData = JSON.parse(item);
+      } catch (_e) {
+        logger.error("Failed to parse JSON from stream", { item });
+        return;
+      }
+      const title = itemData.title || "";
+      const videoId = itemData.id || "";
+      const videoUrl = itemData.webpage_url || itemData.url || "";
+      const approxSize = itemData.filesize_approx || "NA";
       const existingVideo = existingVideos[index];
       const existingIndex = existingIndexes[index];
       const absoluteIndex = playlistUrl === "None"
@@ -4047,9 +4068,8 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
     ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
     "--playlist-end",
     "1",
-    "--flat-playlist",
-    "--print",
-    "%(playlist_title)s",
+    "--dump-json",
+    "--no-download",
     playlistUrl,
   ];
   // Playlist are not something that exists on x.com but a post can have
@@ -4102,6 +4122,16 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
         }
 
         // Handle empty or NA title
+        try {
+          const jsonData = JSON.parse(playlistTitle.toString().trim());
+          if (jsonData) {
+            playlistTitle = jsonData.playlist_title || jsonData.title ||
+              playlistTitle;
+          }
+        } catch (_e) {
+          logger.error("Failed to parse JSON from stream", { playlistTitle });
+        }
+
         if (!playlistTitle || playlistTitle.toString().trim() === "NA") {
           try {
             playlistTitle = await urlToTitle(playlistUrl);
@@ -4302,22 +4332,29 @@ async function processDeletePlaylistRequest(
               subTitleFile: null,
               commentsFile: null,
               descriptionFile: null,
-              saveDirectory: null
+              saveDirectory: null,
             }, {
-              where: { saveDirectory: playlist.saveDirectory }
+              where: { saveDirectory: playlist.saveDirectory },
             });
 
             if (updatedCount > 0) {
-              logger.info(`Reset ${updatedCount} video(s) to un-downloaded state as their directory was deleted`, {
-                saveDirectory: playlist.saveDirectory
-              });
-              message += ` (and marked ${updatedCount} shared video(s) as un-downloaded)`;
+              logger.info(
+                `Reset ${updatedCount} video(s) to un-downloaded state as their directory was deleted`,
+                {
+                  saveDirectory: playlist.saveDirectory,
+                },
+              );
+              message +=
+                ` (and marked ${updatedCount} shared video(s) as un-downloaded)`;
             }
           } catch (updateError) {
-            logger.error("Failed to update shared video metadata after directory cleanup", {
-              saveDirectory: playlist.saveDirectory,
-              error: (updateError as Error).message,
-            });
+            logger.error(
+              "Failed to update shared video metadata after directory cleanup",
+              {
+                saveDirectory: playlist.saveDirectory,
+                error: (updateError as Error).message,
+              },
+            );
           }
         } catch (error) {
           logger.error("Failed to clean up playlist directory", {
@@ -5400,8 +5437,7 @@ server.listen(config.port, async () => {
       `{playlist_dir}" "{url}"`,
   );
   logger.debug(
-    "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --flat-playlist " +
-      `--print "%(title)s\\t%(id)s\\t%(webpage_url)s\\t%(filesize_approx)s" {bodyUrl}`,
+    "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --dump-json --no-download {bodyUrl}",
   );
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
