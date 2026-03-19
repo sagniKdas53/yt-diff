@@ -3890,7 +3890,7 @@ async function updateVideoMetadata(
   newData: Record<string, any>,
 ): Promise<void> {
   logger.trace("Checking video metadata for updates", {
-    videoId: existingVideo.videoId,
+    oldData: JSON.stringify(existingVideo),
     newData: JSON.stringify(newData),
   });
 
