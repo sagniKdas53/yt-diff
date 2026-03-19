@@ -87,6 +87,7 @@ const config = {
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
+  pruneInterval: Deno.env.get("PRUNE_INTERVAL") || "*/30 * * * *",
   timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
   saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
   saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
@@ -841,6 +842,90 @@ const jobs = {
           });
         } catch (err) {
           logger.error("Scheduled update failed", {
+            error: (err as Error).message,
+            stack: (err as Error).stack,
+          });
+        }
+      })();
+    },
+    null,
+    true,
+    config.timeZone,
+  ),
+  prune: new CronJob(
+    config.pruneInterval,
+    () => {
+      logger.debug("Starting scheduled DB prune process");
+      void (async () => {
+        try {
+          // Get all mapped video URLs
+          const mappedVideos = await PlaylistVideoMapping.findAll({
+            attributes: ["videoUrl"],
+            raw: true,
+          });
+          const mappedVideoUrls = mappedVideos.map((m: any) => m.videoUrl);
+
+          const whereClause = mappedVideoUrls.length > 0
+            ? {
+              videoUrl: {
+                [Op.notIn]: mappedVideoUrls,
+              },
+            }
+            : {};
+
+          const unreferencedVideos = await VideoMetadata.findAll({
+            where: whereClause,
+          });
+
+          if (unreferencedVideos.length === 0) {
+            logger.info("No unreferenced videos found to prune");
+            return;
+          }
+
+          let movedCount = 0;
+          let prunedCount = 0;
+
+          for (const video of unreferencedVideos) {
+            const isDownloaded = video.getDataValue("downloadStatus");
+            const videoUrl = video.getDataValue("videoUrl");
+
+            if (isDownloaded) {
+              await PlaylistVideoMapping.create({
+                videoUrl: videoUrl,
+                playlistUrl: "None",
+                positionInPlaylist: 0,
+              });
+              movedCount++;
+              logger.trace("Moved video to unreferenced", {
+                videoUrl: videoUrl,
+                movedCount,
+              });
+            } else {
+              await video.destroy();
+              prunedCount++;
+              logger.trace("Pruned video", {
+                videoUrl: videoUrl,
+                prunedCount,
+              });
+            }
+          }
+
+          logger.info("Completed DB prune process", {
+            movedCount,
+            prunedCount,
+            nextRun: jobs.prune.nextDate().toLocaleString(
+              {
+                weekday: "short",
+                month: "short",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              },
+              { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+            ),
+          });
+        } catch (err) {
+          logger.error("DB prune process failed", {
             error: (err as Error).message,
             stack: (err as Error).stack,
           });
