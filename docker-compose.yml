@@ -117,6 +117,7 @@ services:
       # Update configuration
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
+      - PRUNE_INTERVAL=${PRUNE_INTERVAL}
       # Proxy Info
       - PROXY_STRING_FILE=/run/secrets/proxy_string
       # Redis Configuration
