@@ -109,6 +109,8 @@ const config = {
   maxClients: 10,
   connectedClients: 0,
 };
+const YT_DLP_PATCHED_CMD =
+  "import curl_cffi.curl; curl_cffi.curl.Curl.reset = lambda self: None; import sys, yt_dlp; sys.exit(yt_dlp.main())";
 
 // Logging
 const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
@@ -2364,10 +2366,11 @@ function executeDownload(
         }`,
       });
       // Spawn download process, by assembling full args
-      const downloadProcess = spawn(
-        "yt-dlp",
-        downloadOptions.concat(processArgs),
-      );
+      const downloadProcess = spawn("python3", [
+        "-c",
+        YT_DLP_PATCHED_CMD,
+        ...downloadOptions.concat(processArgs),
+      ]);
 
       // Update process tracking
       const processEntry = downloadProcesses.get(processKey);
@@ -2909,7 +2912,11 @@ async function listItemsConcurrently(
   try {
     listingResults.forEach((result: { status?: string; title?: string }) => {
       if (result.status === "completed") {
-        logger.info(`Listed ${result.title} successfully`);
+        logger.info(
+          `Listed ${
+            result.title || (result as any).playlistTitle
+          } successfully`,
+        );
       } else {
         logger.error(
           `Failed to list ${result.title}: ${JSON.stringify(result)}`,
@@ -3383,7 +3390,11 @@ function streamPlayListItems(
     fullCommand: fullCommandString,
   });
 
-  const listProcess = spawn("yt-dlp", processArgs);
+  const listProcess = spawn("python3", [
+    "-c",
+    YT_DLP_PATCHED_CMD,
+    ...processArgs,
+  ]);
   const processEntry = listProcesses.get(processKey);
 
   if (processEntry) {
@@ -3439,7 +3450,7 @@ function streamPlayListItems(
       // Wait for exit code to ensure no unexpected failures happened, but only if we didn't deliberately kill it
       const exitCode = listProcess.killed ? null : await exitCodePromise;
 
-      if (exitCode !== null && exitCode !== 0) {
+      if (!listProcess.killed && exitCode !== 0) {
         const processEntryInt = listProcesses.get(processKey);
         if (processEntryInt) {
           processEntryInt.status = "failed";
@@ -4171,7 +4182,11 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
     fullCommand: fullCommandString,
   });
   // Spawn process to get playlist title
-  const titleProcess = spawn("yt-dlp", processArgs);
+  const titleProcess = spawn("python3", [
+    "-c",
+    YT_DLP_PATCHED_CMD,
+    ...processArgs,
+  ]);
 
   return new Promise((resolve, reject) => {
     // Handle stdout
@@ -4906,7 +4921,6 @@ async function getSubListVideos(
       },
       limit: endIndex - startIndex,
       offset: startIndex,
-
       order: [sortOrder] as any,
     };
 
