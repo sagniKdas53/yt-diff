@@ -373,6 +373,12 @@ const sequelize = new Sequelize({
   username: config.db.user,
   password: config.db.password,
   database: config.db.name,
+  pool: {
+    max: 15,
+    min: 0,
+    acquire: 30000,
+    idle: 10000,
+  },
 });
 try {
   sequelize.authenticate().then(() => {
@@ -565,6 +571,12 @@ const PlaylistVideoMapping = sequelize.define("playlist_video_mapping", {
     defaultValue: 0,
     comment: "Order of video within playlist",
   },
+}, {
+  indexes: [
+    {
+      fields: ["playlistUrl", "positionInPlaylist"],
+    },
+  ],
 });
 
 /**
@@ -641,6 +653,23 @@ sequelize
         ]),
       },
     );
+
+    // Phase 2: Strategic Indexing - Trigram Indexes for Search
+    try {
+      await sequelize.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_video_metadata_title_trgm ON video_metadata USING gin (title gin_trgm_ops);",
+      );
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_metadata_title_trgm ON playlist_metadata USING gin (title gin_trgm_ops);",
+      );
+      logger.info("Trigram indexes checked/created successfully");
+    } catch (err) {
+      logger.error("Failed to create Trigram indexes", {
+        error: (err as Error).message,
+      });
+    }
+
     // Making the unlisted playlist
     const [unlistedPlaylist, created] = await PlaylistMetadata.findOrCreate({
       where: { playlistUrl: "None" },
@@ -860,23 +889,12 @@ const jobs = {
       logger.debug("Starting scheduled DB prune process");
       void (async () => {
         try {
-          // Get all mapped video URLs
-          const mappedVideos = await PlaylistVideoMapping.findAll({
-            attributes: ["videoUrl"],
-            raw: true,
-          });
-          const mappedVideoUrls = mappedVideos.map((m: any) => m.videoUrl);
-
-          const whereClause = mappedVideoUrls.length > 0
-            ? {
-              videoUrl: {
-                [Op.notIn]: mappedVideoUrls,
-              },
-            }
-            : {};
-
+          // Find unreferenced videos using a NOT EXISTS subquery to avoid loading large arrays into memory
           const unreferencedVideos = await VideoMetadata.findAll({
-            where: whereClause,
+            where: sequelize.literal(`NOT EXISTS (
+              SELECT 1 FROM playlist_video_mappings 
+              WHERE playlist_video_mappings."videoUrl" = video_metadata."videoUrl"
+            )`),
           });
 
           if (unreferencedVideos.length === 0) {
@@ -884,33 +902,45 @@ const jobs = {
             return;
           }
 
-          let movedCount = 0;
-          let prunedCount = 0;
+          const mappingsToCreate = [];
+          const videoUrlsToDestroy = [];
 
           for (const video of unreferencedVideos) {
             const isDownloaded = video.getDataValue("downloadStatus");
             const videoUrl = video.getDataValue("videoUrl");
 
             if (isDownloaded) {
-              await PlaylistVideoMapping.create({
+              mappingsToCreate.push({
                 videoUrl: videoUrl,
                 playlistUrl: "None",
                 positionInPlaylist: 0,
               });
-              movedCount++;
-              logger.trace("Moved video to unreferenced", {
-                videoUrl: videoUrl,
-                movedCount,
-              });
             } else {
-              await video.destroy();
-              prunedCount++;
-              logger.trace("Pruned video", {
-                videoUrl: videoUrl,
-                prunedCount,
-              });
+              videoUrlsToDestroy.push(videoUrl);
             }
           }
+
+          if (mappingsToCreate.length > 0) {
+            await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
+            logger.info(
+              "Moved unreferenced downloaded videos to 'None' playlist",
+              {
+                count: mappingsToCreate.length,
+              },
+            );
+          }
+
+          if (videoUrlsToDestroy.length > 0) {
+            await VideoMetadata.destroy({
+              where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
+            });
+            logger.info("Pruned unreferenced non-downloaded videos", {
+              count: videoUrlsToDestroy.length,
+            });
+          }
+
+          const movedCount = mappingsToCreate.length;
+          const prunedCount = videoUrlsToDestroy.length;
 
           logger.info("Completed DB prune process", {
             movedCount,
@@ -3508,139 +3538,150 @@ async function processStreamingVideoInformation(
     alreadyExistedCount: 0,
   };
 
-  // Check for existing items in bulk
-  const existingItems = await Promise.all([
-    Promise.all(responseItems.map(async (item) => {
-      let itemData: any = {};
-      try {
-        itemData = JSON.parse(item);
-      } catch (e) {
-        logger.error("Failed to parse JSON from stream", {
-          item,
-          error: e as Error,
-        });
-      }
+  // Batch process parsing and metadata extraction
+  const parsedItems = responseItems.map((item, index) => {
+    try {
+      const itemData = JSON.parse(item);
       const videoUrl = itemData.webpage_url || itemData.url || "";
-      return await VideoMetadata.findOne({
-        where: { videoUrl: videoUrl },
+      return { itemData, videoUrl, index };
+    } catch (e) {
+      logger.error("Failed to parse JSON from stream", {
+        item,
+        error: e as Error,
       });
-    })),
-    Promise.all(responseItems.map(async (item) => {
-      let itemData: any = {};
-      try {
-        itemData = JSON.parse(item);
-      } catch (e) {
-        logger.error("Failed to parse JSON from stream", {
-          item,
-          error: e as Error,
-        });
-      }
-      const videoUrl = itemData.webpage_url || itemData.url || "";
-      return await PlaylistVideoMapping.findOne({
-        where: {
-          videoUrl: videoUrl,
-          playlistUrl: playlistUrl,
-        },
-      });
-    })),
+      return null;
+    }
+  }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+  if (parsedItems.length === 0) return result;
+
+  const videoUrls = parsedItems.map((p: any) => p.videoUrl);
+
+  // Fetch all existing meta and mappings for the chunk
+  const [existingVideos, existingMappings] = await Promise.all([
+    VideoMetadata.findAll({ where: { videoUrl: { [Op.in]: videoUrls } } }),
+    PlaylistVideoMapping.findAll({
+      where: {
+        videoUrl: { [Op.in]: videoUrls },
+        playlistUrl: playlistUrl,
+      },
+    }),
   ]);
 
-  const [existingVideos, existingIndexes] = existingItems;
+  const existingVideosMap = new Map(
+    existingVideos.map((v: any) => [v.getDataValue("videoUrl"), v]),
+  );
+  const existingMappingsMap = new Map(
+    existingMappings.map((m: any) => [m.getDataValue("videoUrl"), m]),
+  );
 
-  await Promise.all(responseItems.map(async (item, index) => {
-    try {
-      let itemData: any = {};
-      try {
-        itemData = JSON.parse(item);
-      } catch (e) {
-        logger.error("Failed to parse JSON from stream", {
-          item,
-          error: e as Error,
-        });
-        return;
-      }
-      const title = itemData.title || "";
-      const videoId = itemData.id || "";
-      const videoUrl = itemData.webpage_url || itemData.url || "";
-      const approxSize = itemData.filesize_approx || "NA";
-      const existingVideo = existingVideos[index];
-      const existingIndex = existingIndexes[index];
-      const absoluteIndex = playlistUrl === "None"
-        ? chunkStartIndex
-        : chunkStartIndex + index;
+  const videosToUpsert: any[] = [];
+  const mappingsToCreate: any[] = [];
+  const mappingsToUpdate: { instance: any; position: number }[] = [];
 
-      if (
-        monitoringType !== "Refresh" &&
-        existingVideo && existingIndex &&
-        existingIndex.getDataValue("positionInPlaylist") === absoluteIndex
-      ) {
-        result.alreadyExistedCount++;
-        result.count++;
-        result.title = existingVideo.getDataValue("title");
-        return; // Skip full process if completely matches
-      }
+  for (const { itemData, videoUrl, index } of parsedItems) {
+    const title = itemData.title || "";
+    const videoId = itemData.id || "";
+    const approxSize = itemData.filesize_approx || "NA";
+    const existingVideo = existingVideosMap.get(videoUrl);
+    const existingMapping = existingMappingsMap.get(videoUrl);
+    const absoluteIndex = playlistUrl === "None"
+      ? chunkStartIndex
+      : chunkStartIndex + index;
 
-      const videoData = {
-        videoId: videoId.trim(),
-        title: await truncateText(
-          title === "NA" ? videoId.trim() : title,
-          config.maxTitleLength,
-        ),
-        approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
-        downloadStatus: false,
-        isAvailable: ![
-          "[Deleted video]",
-          "[Private video]",
-          "[Unavailable video]",
-        ].includes(title),
-      };
-
-      if (!existingVideo) {
-        await VideoMetadata.create({
-          videoUrl: videoUrl,
-          ...videoData,
-        });
-      } else {
-        await updateVideoMetadata(existingVideo, videoData);
-      }
-
-      if (!existingIndex) {
-        await PlaylistVideoMapping.create({
-          videoUrl: videoUrl,
-          playlistUrl: playlistUrl,
-          positionInPlaylist: absoluteIndex,
-        });
-      } else if (
-        existingIndex.getDataValue("positionInPlaylist") !== absoluteIndex
-      ) {
-        if (existingIndex.getDataValue("positionInPlaylist") > absoluteIndex) {
-          logger.warn(
-            "Video index decreased. Previous videos in the playlist may have been deleted.",
-            {
-              url: videoUrl,
-              currentIndex: absoluteIndex,
-              oldIndex: existingIndex.getDataValue("positionInPlaylist"),
-            },
-          );
-        }
-        // The video index drifted, update the position
-        await existingIndex.update({ positionInPlaylist: absoluteIndex });
-      }
-
+    // Fast skip logic for unchanged records
+    if (
+      monitoringType !== "Refresh" &&
+      existingVideo && existingMapping &&
+      existingMapping.getDataValue("positionInPlaylist") === absoluteIndex
+    ) {
+      result.alreadyExistedCount++;
       result.count++;
-      result.title = videoData.title;
-      logger.debug("Processed video item", {
-        videoUrl,
-        title: videoData.title,
-        playlistUrl,
-        index: absoluteIndex,
-      });
-    } catch (error) {
-      logger.error(
-        `Failed to process video mapping: ${(error as Error).message}`,
-      );
+      result.title = existingVideo.getDataValue("title");
+      continue;
     }
-  }));
+
+    const videoData = {
+      videoUrl: videoUrl,
+      videoId: videoId.trim(),
+      title: await truncateText(
+        title === "NA" ? videoId.trim() : title,
+        config.maxTitleLength,
+      ),
+      approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
+      downloadStatus: existingVideo
+        ? existingVideo.getDataValue("downloadStatus")
+        : false,
+      isAvailable: ![
+        "[Deleted video]",
+        "[Private video]",
+        "[Unavailable video]",
+      ].includes(title),
+    };
+
+    videosToUpsert.push(videoData);
+
+    if (!existingMapping) {
+      mappingsToCreate.push({
+        videoUrl: videoUrl,
+        playlistUrl: playlistUrl,
+        positionInPlaylist: absoluteIndex,
+      });
+    } else if (
+      existingMapping.getDataValue("positionInPlaylist") !== absoluteIndex
+    ) {
+      if (existingMapping.getDataValue("positionInPlaylist") > absoluteIndex) {
+        logger.warn(
+          "Video index decreased. Previous videos in the playlist may have been deleted.",
+          {
+            url: videoUrl,
+            currentIndex: absoluteIndex,
+            oldIndex: existingMapping.getDataValue("positionInPlaylist"),
+          },
+        );
+      }
+      mappingsToUpdate.push({
+        instance: existingMapping,
+        position: absoluteIndex,
+      });
+    }
+
+    result.count++;
+    result.title = videoData.title;
+    logger.debug("Processed video item in memory", {
+      videoUrl,
+      title: videoData.title,
+      playlistUrl,
+      index: absoluteIndex,
+    });
+  }
+
+  // Execute bulk DB operations
+  if (videosToUpsert.length > 0) {
+    await VideoMetadata.bulkCreate(videosToUpsert, {
+      updateOnDuplicate: [
+        "videoId",
+        "title",
+        "approximateSize",
+        "isAvailable",
+        "updatedAt",
+      ],
+    });
+  }
+
+  if (mappingsToCreate.length > 0) {
+    await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
+  }
+
+  if (mappingsToUpdate.length > 0) {
+    // Sequential updates for drifter positions to avoid complexity,
+    // but these are typicaly few compared to total items.
+    await Promise.all(
+      mappingsToUpdate.map((m) =>
+        m.instance.update({ positionInPlaylist: m.position })
+      ),
+    );
+  }
 
   return result;
 }
@@ -3981,7 +4022,7 @@ function completePlaylistListing(
  * @returns {Promise<void>} Resolves when update complete
  */
 
-async function updateVideoMetadata(
+async function _updateVideoMetadata(
   existingVideo: Record<string, any>,
   newData: Record<string, any>,
 ): Promise<void> {
@@ -4585,9 +4626,21 @@ async function processDeleteVideosRequest(
       const deleted = [];
       const failed = [];
 
+      // Fetch all target videos at once
+      const videos = await VideoMetadata.findAll({
+        where: { videoUrl: { [Op.in]: videoUrls } },
+        transaction,
+      });
+
+      const videoUrlsToDestroy = [];
+      const videoUrlsToReset = [];
+      const videoUrlsToDeleteMapping = [];
+
       for (const videoUrl of videoUrls) {
         try {
-          const video = await VideoMetadata.findByPk(videoUrl) as any;
+          const video = videos.find((v: any) =>
+            v.getDataValue("videoUrl") === videoUrl
+          ) as any;
 
           if (!video) {
             logger.warn("Video not found", { videoUrl });
@@ -4598,13 +4651,13 @@ async function processDeleteVideosRequest(
           let allFilesRemoved = true;
 
           // Clean up downloaded files if requested
-          if (cleanUp && video.downloadStatus) {
+          if (cleanUp && video.getDataValue("downloadStatus")) {
             const filesToRemove: Record<string, string | null> = {
-              "fileName": video.fileName,
-              "thumbNailFile": video.thumbNailFile,
-              "subTitleFile": video.subTitleFile,
-              "commentsFile": video.commentsFile,
-              "descriptionFile": video.descriptionFile,
+              "fileName": video.getDataValue("fileName"),
+              "thumbNailFile": video.getDataValue("thumbNailFile"),
+              "subTitleFile": video.getDataValue("subTitleFile"),
+              "commentsFile": video.getDataValue("commentsFile"),
+              "descriptionFile": video.getDataValue("descriptionFile"),
             };
 
             logger.debug("Removing files for video", {
@@ -4617,7 +4670,7 @@ async function processDeleteVideosRequest(
                 try {
                   const filePath = path.join(
                     config.saveLocation,
-                    video.saveDirectory || "",
+                    video.getDataValue("saveDirectory") || "",
                     value,
                   );
                   logger.debug("Removing file", {
@@ -4626,14 +4679,22 @@ async function processDeleteVideosRequest(
                     value,
                     filePath,
                   });
-                  fs.unlinkSync(filePath);
-                  logger.debug("Removed file", {
-                    videoUrl,
-                    key,
-                    value,
-                    filePath,
-                  });
-                  filesToRemove[key] = null;
+                  if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    logger.debug("Removed file", {
+                      videoUrl,
+                      key,
+                      value,
+                      filePath,
+                    });
+                  } else {
+                    logger.warn("File to remove not found", {
+                      videoUrl,
+                      key,
+                      value,
+                      filePath,
+                    });
+                  }
                 } catch (error) {
                   logger.error("Failed to remove file", {
                     videoUrl,
@@ -4645,37 +4706,19 @@ async function processDeleteVideosRequest(
                 }
               }
             }
-
-            // Update video metadata if files were cleaned up
-            if (allFilesRemoved) {
-              video.downloadStatus = false;
-              video.fileName = null;
-              video.thumbNailFile = null;
-              video.subTitleFile = null;
-              video.commentsFile = null;
-              video.descriptionFile = null;
-              video.saveDirectory = null;
-            }
-          }
-
-          // Delete the video from DB if requested
-          if (deleteVideosInDB) {
-            await video.destroy({ transaction });
-            // Mappings will be cascade deleted
-          } else {
-            // Save updated video metadata
-            await video.save({ transaction });
-
-            // Remove mapping if requested and all files were cleaned up (or cleanup wasn't requested)
-            if (deleteVideoMappings && (!cleanUp || allFilesRemoved)) {
-              await PlaylistVideoMapping.destroy({
-                where: { videoUrl, playlistUrl: playListUrl },
-                transaction,
-              });
-            }
           }
 
           if (allFilesRemoved || !cleanUp) {
+            if (deleteVideosInDB) {
+              videoUrlsToDestroy.push(videoUrl);
+            } else {
+              if (cleanUp && allFilesRemoved) {
+                videoUrlsToReset.push(videoUrl);
+              }
+              if (deleteVideoMappings) {
+                videoUrlsToDeleteMapping.push(videoUrl);
+              }
+            }
             deleted.push(videoUrl);
           } else {
             failed.push({
@@ -4690,6 +4733,39 @@ async function processDeleteVideosRequest(
           });
           failed.push({ videoUrl, reason: (error as Error).message });
         }
+      }
+
+      // Execute batched DB operations
+      if (videoUrlsToDestroy.length > 0) {
+        await VideoMetadata.destroy({
+          where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
+          transaction,
+        });
+      }
+
+      if (videoUrlsToReset.length > 0) {
+        await VideoMetadata.update({
+          downloadStatus: false,
+          fileName: null,
+          thumbNailFile: null,
+          subTitleFile: null,
+          commentsFile: null,
+          descriptionFile: null,
+          saveDirectory: null,
+        }, {
+          where: { videoUrl: { [Op.in]: videoUrlsToReset } },
+          transaction,
+        });
+      }
+
+      if (videoUrlsToDeleteMapping.length > 0) {
+        await PlaylistVideoMapping.destroy({
+          where: {
+            videoUrl: { [Op.in]: videoUrlsToDeleteMapping },
+            playlistUrl: playListUrl,
+          },
+          transaction,
+        });
       }
 
       await transaction.commit();
