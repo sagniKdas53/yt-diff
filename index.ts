@@ -106,6 +106,10 @@ const config = {
     : new Error(
       "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
     ),
+  iwara: {
+    username: Deno.env.get("IWARA_USERNAME") || "",
+    password: Deno.env.get("IWARA_PASSWORD") || "",
+  },
   maxClients: 10,
   connectedClients: 0,
 };
@@ -259,7 +263,6 @@ const downloadOptions = [
     : 'post_process:"fileName:%(title)s[%(id)s].%(ext)s"',
   "--progress-template",
   "download-title:%(info.id)s-%(progress.eta)s",
-  ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
 ].filter(Boolean) as string[];
 // Check if file name length limit is set and valid
 if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
@@ -1196,16 +1199,24 @@ const siteArgBuilders: SiteArgBuilder[] = [
     return [];
   },
   // iwara.tv
-  (url) => {
+  (url, config) => {
     if (isSiteIwaraDotTv(url)) {
-      return ["--impersonate", "Chrome-133"];
+      const args = ["--impersonate", "Chrome-133"];
+      if (config.iwara && config.iwara.username && config.iwara.password) {
+        args.push("--username", config.iwara.username, "--password", config.iwara.password);
+      }
+      return args;
     }
     return [];
   },
 ];
 
 export function buildSiteArgs(url: string, config: any): string[] {
-  return siteArgBuilders.flatMap((builder) => builder(url, config));
+  const args = siteArgBuilders.flatMap((builder) => builder(url, config));
+  if (config.proxy_string && !isSiteIwaraDotTv(url)) {
+    args.push("--proxy", config.proxy_string);
+  }
+  return args;
 }
 
 //Authentication functions
@@ -3397,7 +3408,6 @@ function streamPlayListItems(
   });
 
   const processArgs = [
-    ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
     "--playlist-start",
     startIndex.toString(),
     "--dump-json",
@@ -4199,7 +4209,6 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   const nextPlaylistIndex = pendingPlaylistSortCounter!++;
 
   const processArgs = [
-    ...(config.proxy_string ? ["--proxy", config.proxy_string] : []),
     "--playlist-end",
     "1",
     "--dump-json",
