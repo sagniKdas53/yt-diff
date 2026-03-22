@@ -3468,19 +3468,22 @@ function streamPlayListItems(
       crlfDelay: Infinity,
     });
 
+    let linesYielded = 0;
     try {
       for await (const line of rl) {
         const trimmed = line.trim();
         if (trimmed.length > 0) {
           updateProcessActivity(processKey);
+          linesYielded++;
           yield trimmed;
         }
       }
 
       // Wait for exit code to ensure no unexpected failures happened, but only if we didn't deliberately kill it
       const exitCode = listProcess.killed ? null : await exitCodePromise;
+      const isAllowedError = exitCode === 1 && linesYielded > 0;
 
-      if (!listProcess.killed && exitCode !== 0) {
+      if (!listProcess.killed && exitCode !== 0 && !isAllowedError) {
         const processEntryInt = listProcesses.get(processKey);
         if (processEntryInt) {
           processEntryInt.status = "failed";
@@ -5087,7 +5090,7 @@ function generateCorsHeaders(
   return {
     "Access-Control-Allow-Origin": allowedOrigins.join(", "),
     "Access-Control-Allow-Methods": allowedMethods.join(", "),
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": maxAge,
     "Content-Type": contentType,
   };
