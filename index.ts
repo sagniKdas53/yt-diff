@@ -908,6 +908,14 @@ const jobs = {
           const mappingsToCreate = [];
           const videoUrlsToDestroy = [];
 
+          const maxPositionResult = await PlaylistVideoMapping.max("positionInPlaylist", {
+            where: { playlistUrl: "None" },
+          });
+          const maxPosition = typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
+            ? maxPositionResult
+            : -1;
+          let nextPosition = maxPosition;
+
           for (const video of unreferencedVideos) {
             const isDownloaded = video.getDataValue("downloadStatus");
             const videoUrl = video.getDataValue("videoUrl");
@@ -916,7 +924,7 @@ const jobs = {
               mappingsToCreate.push({
                 videoUrl: videoUrl,
                 playlistUrl: "None",
-                positionInPlaylist: 0,
+                positionInPlaylist: ++nextPosition,
               });
             } else {
               videoUrlsToDestroy.push(videoUrl);
