@@ -43,13 +43,19 @@ const config = {
     host: Deno.env.get("DB_HOST") || "localhost",
     user: Deno.env.get("DB_USERNAME") || "ytdiff",
     name: "vidlist",
-    password: Deno.env.get("DB_PASSWORD_FILE")
-      ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
-      : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
-      ? Deno.env.get("DB_PASSWORD")
-      : new Error(
-        "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
-      ),
+    password: (() => {
+      try {
+        return Deno.env.get("DB_PASSWORD_FILE")
+          ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
+          : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
+          ? Deno.env.get("DB_PASSWORD")
+          : new Error(
+            "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
+          );
+      } catch (e) {
+        return e instanceof Error ? e : new Error(String(e));
+      }
+    })(),
   },
   redis: {
     host: Deno.env.get("REDIS_HOST") || "localhost",
@@ -78,12 +84,18 @@ const config = {
       ? Deno.env.get("COOKIES_FILE")
       : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
     : false,
-  proxy_string: Deno.env.get("PROXY_STRING_FILE")
-    ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
-      .replace(/['"\n]+/g, "")
-    : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
-    ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
-    : "", // if both are not set, proxy will be empty i.e. direct connection
+  proxy_string: (() => {
+    try {
+      return Deno.env.get("PROXY_STRING_FILE")
+        ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
+          .replace(/['"\n]+/g, "")
+        : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
+        ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
+        : ""; // if both are not set, proxy will be empty i.e. direct connection
+    } catch (e) {
+      return e instanceof Error ? e : new Error(String(e));
+    }
+  })(),
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
@@ -99,15 +111,22 @@ const config = {
   logDisableColors: Deno.env.get("NO_COLOR") === "true",
   maxTitleLength: 255,
   saltRounds: 10,
-  secretKey: Deno.env.get("SECRET_KEY_FILE")
-    ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
-    : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
-    ? Deno.env.get("SECRET_KEY")!.trim()
-    : new Error(
-      "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
-    ),
+  secretKey: (() => {
+    try {
+      return Deno.env.get("SECRET_KEY_FILE")
+        ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
+        : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
+        ? Deno.env.get("SECRET_KEY")!.trim()
+        : new Error(
+          "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
+        );
+    } catch (e) {
+      return e instanceof Error ? e : new Error(String(e));
+    }
+  })(),
   iwara: (() => {
     let conf: any = {};
+    let parseError: Error | null = null;
     try {
       // IWARA_CONF_FILE takes precedence over IWARA_CONF (you can pass the json string as well)
       const confStr = Deno.env.get("IWARA_CONF_FILE")
@@ -119,15 +138,13 @@ const config = {
         conf = JSON.parse(confStr);
       }
     } catch (e) {
-      console.error(
-        "Failed to parse IWARA config:",
-        e instanceof Error ? e.message : e,
-      );
+      parseError = e instanceof Error ? e : new Error(String(e));
     }
     return {
       // Finally we check for IWARA_USERNAME and IWARA_PASSWORD if not found then empty string
       username: Deno.env.get("IWARA_USERNAME") || conf.username || "",
       password: Deno.env.get("IWARA_PASSWORD") || conf.password || "",
+      _parseError: parseError,
     };
   })(),
   maxClients: 10,
@@ -322,15 +339,29 @@ const CORS_ALLOWED_HEADERS = [
 ];
 
 if (config.secretKey instanceof Error) {
+  logger.error("Configuration error", { error: config.secretKey });
   throw config.secretKey;
 }
 if (config.db.password instanceof Error) {
+  logger.error("Configuration error", { error: config.db.password });
   throw config.db.password;
 }
 if (config.cookiesFile instanceof Error) {
-  const error = config.cookiesFile;
+  logger.warn("Cookies file configuration error, proceeding without cookies", { 
+    error: config.cookiesFile 
+  });
   config.cookiesFile = false;
-  throw error;
+}
+if (config.proxy_string instanceof Error) {
+  logger.warn("Proxy string configuration error, proceeding with direct connection", { 
+    error: config.proxy_string 
+  });
+  config.proxy_string = "";
+}
+if (config.iwara._parseError) {
+  logger.error("Failed to parse IWARA config", {
+    error: config.iwara._parseError,
+  });
 }
 if (!fs.existsSync(config.saveLocation)) {
   logger.info("Save location doesn't exists", {
