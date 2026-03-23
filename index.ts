@@ -106,10 +106,30 @@ const config = {
     : new Error(
       "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
     ),
-  iwara: {
-    username: Deno.env.get("IWARA_USERNAME") || "",
-    password: Deno.env.get("IWARA_PASSWORD") || "",
-  },
+  iwara: (() => {
+    let conf: any = {};
+    try {
+      // IWARA_CONF_FILE takes precedence over IWARA_CONF (you can pass the json string as well)
+      const confStr = Deno.env.get("IWARA_CONF_FILE")
+        ? fs.readFileSync(Deno.env.get("IWARA_CONF_FILE")!, "utf8").trim()
+        : Deno.env.get("IWARA_CONF") && Deno.env.get("IWARA_CONF")!.trim()
+        ? Deno.env.get("IWARA_CONF")!.trim()
+        : "";
+      if (confStr) {
+        conf = JSON.parse(confStr);
+      }
+    } catch (e) {
+      console.error(
+        "Failed to parse IWARA config:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return {
+      // Finally we check for IWARA_USERNAME and IWARA_PASSWORD if not found then empty string
+      username: Deno.env.get("IWARA_USERNAME") || conf.username || "",
+      password: Deno.env.get("IWARA_PASSWORD") || conf.password || "",
+    };
+  })(),
   maxClients: 10,
   connectedClients: 0,
 };
@@ -908,12 +928,16 @@ const jobs = {
           const mappingsToCreate = [];
           const videoUrlsToDestroy = [];
 
-          const maxPositionResult = await PlaylistVideoMapping.max("positionInPlaylist", {
-            where: { playlistUrl: "None" },
-          });
-          const maxPosition = typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
-            ? maxPositionResult
-            : -1;
+          const maxPositionResult = await PlaylistVideoMapping.max(
+            "positionInPlaylist",
+            {
+              where: { playlistUrl: "None" },
+            },
+          );
+          const maxPosition =
+            typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
+              ? maxPositionResult
+              : -1;
           let nextPosition = maxPosition;
 
           for (const video of unreferencedVideos) {
@@ -1211,7 +1235,12 @@ const siteArgBuilders: SiteArgBuilder[] = [
     if (isSiteIwaraDotTv(url)) {
       const args = ["--impersonate", "Chrome-133"];
       if (config.iwara && config.iwara.username && config.iwara.password) {
-        args.push("--username", config.iwara.username, "--password", config.iwara.password);
+        args.push(
+          "--username",
+          config.iwara.username,
+          "--password",
+          config.iwara.password,
+        );
       }
       return args;
     }
