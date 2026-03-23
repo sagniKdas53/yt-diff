@@ -1,8 +1,9 @@
 {
     "tasks": {
-        "dev": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff deno run --allow-all --watch index.ts",
-        "cookies": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",
-        "proxy": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts",
-        "full": "SECRET_KEY=ytd1ff DB_PASSWORD=ytd1ff COOKIES_FILE=cookie_secret.txt PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts"
+        "dev": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt deno run --allow-all --watch index.ts",
+        "cookies": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",
+        "proxy": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts",
+        "iwara": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt IWARA_CONF_FILE=iwara.json deno run --allow-all --watch index.ts",
+        "full": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt PROXY_STRING_FILE=proxy_string.txt IWARA_CONF_FILE=iwara.json deno run --allow-all --watch index.ts"
     }
 }
