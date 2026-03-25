@@ -13,6 +13,8 @@ secrets:
     file: openvpn_password.txt
   proxy_string:
     file: proxy_string.txt
+  iwara_config:
+    file: iwara.json
 
 volumes:
   pgadmin-data:
@@ -85,6 +87,7 @@ services:
       - db_password
       - secret_key
       - proxy_string
+      - iwara_config
     environment:
       - PROTOCOL=${PROTOCOL}
       - HOSTNAME=${HOSTNAME}
@@ -114,8 +117,6 @@ services:
       - MAX_DOWNLOADS=${MAX_DOWNLOADS}
       - CLEANUP_INTERVAL=${CLEANUP_INTERVAL}
       - PROCESS_MAX_AGE=${PROCESS_MAX_AGE}
-      - IWARA_USERNAME=${IWARA_USERNAME:-}
-      - IWARA_PASSWORD=${IWARA_PASSWORD:-}
       # Update configuration
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
@@ -125,6 +126,8 @@ services:
       # Redis Configuration
       - REDIS_HOST=valkey
       - REDIS_PORT=6379
+      # Iwara Configuration
+      - IWARA_CONF_FILE=/run/secrets/iwara_config
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ytdiff.entryPoints=web,websecure"
