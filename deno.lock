@@ -5,7 +5,7 @@
     "npm:@types/cron@^2.4.3": "2.4.3",
     "npm:@types/he@^1.2.3": "1.2.3",
     "npm:@types/jsonwebtoken@^9.0.10": "9.0.10",
-    "npm:@types/pg@^8.18.0": "8.18.0",
+    "npm:@types/pg@^8.20.0": "8.20.0",
     "npm:bcryptjs@^3.0.3": "3.0.3",
     "npm:bootstrap@^5.3.8": "5.3.8_@popperjs+core@2.11.8",
     "npm:cli-color@^2.0.4": "2.0.4",
@@ -13,11 +13,12 @@
     "npm:csv-parser@^3.2.0": "3.2.0",
     "npm:generate-password@^1.7.1": "1.7.1",
     "npm:he@^1.2.0": "1.2.0",
-    "npm:ioredis@^5.10.0": "5.10.0",
+    "npm:ioredis@^5.10.1": "5.10.1",
     "npm:jsonwebtoken@^9.0.3": "9.0.3",
     "npm:node-cache@^5.1.2": "5.1.2",
     "npm:pg-hstore@^2.3.4": "2.3.4",
     "npm:pg@^8.20.0": "8.20.0",
+    "npm:sequelize@^6.37.8": "6.37.8",
     "npm:socket.io@^4.8.3": "4.8.3",
     "npm:uuid@13": "13.0.0"
   },
@@ -47,8 +48,8 @@
       ],
       "deprecated": true
     },
-    "@types/debug@4.1.12": {
-      "integrity": "sha512-vIChWdVG3LG1SMxEvI/AK+FWJthlrqlTu7fbrlywTkkaONwk/UAGaULXRlf8vkzFBLVm0zkMdCquhL5aOjhXPQ==",
+    "@types/debug@4.1.13": {
+      "integrity": "sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==",
       "dependencies": [
         "@types/ms"
       ]
@@ -75,8 +76,8 @@
         "undici-types"
       ]
     },
-    "@types/pg@8.18.0": {
-      "integrity": "sha512-gT+oueVQkqnj6ajGJXblFR4iavIXWsGAFCk3dP4Kki5+a9R4NMt0JARdk6s8cUKcfUoqP5dAtDSLU8xYUTFV+Q==",
+    "@types/pg@8.20.0": {
+      "integrity": "sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==",
       "dependencies": [
         "@types/node",
         "pg-protocol",
@@ -254,8 +255,8 @@
     "inflection@1.13.4": {
       "integrity": "sha512-6I/HUDeYFfuNCVS3td055BaXBwKYuzw7K3ExVMStBowKo9oOAMJIXIHvdyR3iboTCp1b+1i5DSkIZTcwIktuDw=="
     },
-    "ioredis@5.10.0": {
-      "integrity": "sha512-HVBe9OFuqs+Z6n64q09PQvP1/R4Bm+30PAyyD4wIEqssh3v9L21QjCVk4kRLucMBcDokJTcLjsGeVRlq/nH6DA==",
+    "ioredis@5.10.1": {
+      "integrity": "sha512-HuEDBTI70aYdx1v6U97SbNx9F1+svQKBDo30o0b9fw055LMepzpOOd0Ccg9Q6tbqmBSJaMuY0fB7yw9/vjBYCA==",
       "dependencies": [
         "@ioredis/commands",
         "cluster-key-slot",
@@ -479,8 +480,8 @@
     "sequelize-pool@7.1.0": {
       "integrity": "sha512-G9c0qlIWQSK29pR/5U2JF5dDQeqqHRragoyahj/Nx4KOOQ3CPPfzxnfqFPCSB7x5UgjOgnZ61nSxz+fjDpRlJg=="
     },
-    "sequelize@6.37.7": {
-      "integrity": "sha512-mCnh83zuz7kQxxJirtFD7q6Huy6liPanI67BSlbzSYgVNl5eXVdE2CN1FuAeZwG1SNpGsNRCV+bJAVVnykZAFA==",
+    "sequelize@6.37.8": {
+      "integrity": "sha512-HJ0IQFqcTsTiqbEgiuioYFMSD00TP6Cz7zoTti+zVVBwVe9fEhev9cH6WnM3XU31+ABS356durAb99ZuOthnKw==",
       "dependencies": [
         "@types/debug",
         "@types/validator",
@@ -585,7 +586,7 @@
         "npm:@types/cron@^2.4.3",
         "npm:@types/he@^1.2.3",
         "npm:@types/jsonwebtoken@^9.0.10",
-        "npm:@types/pg@^8.18.0",
+        "npm:@types/pg@^8.20.0",
         "npm:bcryptjs@^3.0.3",
         "npm:bootstrap@^5.3.8",
         "npm:cli-color@^2.0.4",
@@ -593,7 +594,7 @@
         "npm:csv-parser@^3.2.0",
         "npm:generate-password@^1.7.1",
         "npm:he@^1.2.0",
-        "npm:ioredis@^5.10.0",
+        "npm:ioredis@^5.10.1",
         "npm:jsonwebtoken@^9.0.3",
         "npm:node-cache@^5.1.2",
         "npm:pg-hstore@^2.3.4",
