@@ -2245,20 +2245,26 @@ async function processDownloadRequest(
         }));
       }
 
-      // Get save directory from playlist if available
-      let saveDirectory = "";
-      try {
-        const playlist = await PlaylistMetadata.findOne({
-          where: { playlistUrl: playlistUrl },
-        });
-        saveDirectory =
-          (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
-            "";
-      } catch (error) {
-        logger.error(`Error getting playlist save directory`, {
-          error: (error as Error).message,
-          playlistUrl,
-        });
+      // Get save directory from video entry as fallback
+      let saveDirectory = (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ?? "";
+
+      // Override with playlist save directory if a specific playlist is provided
+      if (playlistUrl !== "init" && playlistUrl !== "None") {
+        try {
+          const playlist = await PlaylistMetadata.findOne({
+            where: { playlistUrl: playlistUrl },
+          });
+          if (playlist) {
+            saveDirectory =
+              (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
+                saveDirectory;
+          }
+        } catch (error) {
+          logger.error(`Error getting playlist save directory`, {
+            error: (error as Error).message,
+            playlistUrl,
+          });
+        }
       }
 
       // Add to download queue
@@ -4970,15 +4976,6 @@ async function getPlaylistsForDisplay(
         } else {
           logger.debug("No title provided", { searchQuery });
         }
-      } else if (searchQuery.startsWith("global:")) {
-        const globalSearch = searchQuery.slice(7);
-        if (globalSearch.length > 0) {
-          queryOptions.where.title = {
-            [Op.iRegexp]: globalSearch,
-          };
-        } else {
-          logger.debug("No title provided", { searchQuery });
-        }
       } else {
         queryOptions.where.title = {
           [Op.iLike]: `%${searchQuery}%`,
@@ -5079,14 +5076,21 @@ async function getSubListVideos(
         }
       } else if (searchQuery.startsWith("global:")) {
         const globalSearch = searchQuery.slice(7);
-        delete mappingWhere.playlistUrl;
+        if (playlistUrl === "init" || playlistUrl === "None") {
+          delete mappingWhere.playlistUrl;
+        }
         if (globalSearch.length > 0) {
           videoMetadataWhere.title = {
             [Op.iRegexp]: globalSearch,
           };
-        } else {
+        } else if (playlistUrl === "init" || playlistUrl === "None") {
           logger.debug(
             "No regex provided for global sublist query, returning all videos",
+            { searchQuery },
+          );
+        } else {
+          logger.debug(
+            "No regex provided for scoped global sublist query",
             { searchQuery },
           );
         }
