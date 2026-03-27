@@ -2265,6 +2265,32 @@ async function processDownloadRequest(
             playlistUrl,
           });
         }
+      } else if (!saveDirectory || saveDirectory === "None") {
+        try {
+          const mapping = await PlaylistVideoMapping.findOne({
+            where: {
+              videoUrl: videoUrl,
+              playlistUrl: {
+                [Op.notIn]: ["init", "None"]
+              }
+            }
+          });
+          if (mapping) {
+            const playlist = await PlaylistMetadata.findOne({
+              where: { playlistUrl: (mapping as any).playlistUrl },
+            });
+            if (playlist) {
+              saveDirectory =
+                (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
+                  saveDirectory;
+            }
+          }
+        } catch (error) {
+          logger.error(`Error getting fallback playlist save directory`, {
+            error: (error as Error).message,
+            videoUrl,
+          });
+        }
       }
 
       // Add to download queue
