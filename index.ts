@@ -4961,6 +4961,24 @@ async function getPlaylistsForDisplay(
         } else {
           logger.debug("No url provided", { searchQuery });
         }
+      } else if (searchQuery.startsWith("title:")) {
+        const titleSearch = searchQuery.slice(6);
+        if (titleSearch.length > 0) {
+          queryOptions.where.title = {
+            [Op.iRegexp]: titleSearch,
+          };
+        } else {
+          logger.debug("No title provided", { searchQuery });
+        }
+      } else if (searchQuery.startsWith("global:")) {
+        const globalSearch = searchQuery.slice(7);
+        if (globalSearch.length > 0) {
+          queryOptions.where.title = {
+            [Op.iRegexp]: globalSearch,
+          };
+        } else {
+          logger.debug("No title provided", { searchQuery });
+        }
       } else {
         queryOptions.where.title = {
           [Op.iLike]: `%${searchQuery}%`,
@@ -5030,6 +5048,9 @@ async function getSubListVideos(
     // Build base query options
 
     const videoMetadataWhere: any = {};
+    const mappingWhere: any = {
+      playlistUrl: playlistUrl,
+    };
 
     if (searchQuery && searchQuery.length > 0) {
       if (searchQuery.startsWith("url:")) {
@@ -5041,6 +5062,31 @@ async function getSubListVideos(
         } else {
           logger.debug(
             "No url provided for sublist query, despite using url: prefix",
+            { searchQuery },
+          );
+        }
+      } else if (searchQuery.startsWith("title:")) {
+        const titleSearch = searchQuery.slice(6);
+        if (titleSearch.length > 0) {
+          videoMetadataWhere.title = {
+            [Op.iRegexp]: titleSearch,
+          };
+        } else {
+          logger.debug(
+            "No title provided for sublist query, despite using title: prefix",
+            { searchQuery },
+          );
+        }
+      } else if (searchQuery.startsWith("global:")) {
+        const globalSearch = searchQuery.slice(7);
+        delete mappingWhere.playlistUrl;
+        if (globalSearch.length > 0) {
+          videoMetadataWhere.title = {
+            [Op.iRegexp]: globalSearch,
+          };
+        } else {
+          logger.debug(
+            "No regex provided for global sublist query, returning all videos",
             { searchQuery },
           );
         }
@@ -5072,9 +5118,7 @@ async function getSubListVideos(
         // Use Inner Join (strict) if searching, otherwise Left Join (loose)
         required: !!(searchQuery && searchQuery.length > 0),
       }],
-      where: {
-        playlistUrl: playlistUrl,
-      },
+      where: mappingWhere,
       limit: endIndex - startIndex,
       offset: startIndex,
       order: [sortOrder] as any,
