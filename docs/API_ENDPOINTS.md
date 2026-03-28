@@ -25,8 +25,9 @@ dependencies minimal.
   - **Frontend Usage**: `PlayList.jsx` triggers this when the user adds a new
     URL through the interface.
 - **`/delplay`**
-  - **Description**: Deletes a playlist from tracking and removes associated
-    metadata.
+  - **Description**: Deletes a playlist from tracking and optionally removes
+    associated video mappings and downloaded files on disk. See
+    [DELETION_BEHAVIOR.md](DELETION_BEHAVIOR.md) for the full flow.
   - **Frontend Usage**: `PlayList.jsx` calls this when a user clicks delete on a
     playlist row.
 - **`/watch`**
@@ -49,7 +50,9 @@ dependencies minimal.
     download for an unavailable/missing video.
 - **`/delsub`**
   - **Description**: Deletes metadata and physically removes downloaded files
-    for specific videos.
+    for specific videos. Supports granular control over file cleanup, mapping
+    removal, and full DB deletion. See
+    [DELETION_BEHAVIOR.md](DELETION_BEHAVIOR.md) for the full flow.
   - **Frontend Usage**: `SubList.jsx` accesses this to remove specific videos
     from the database and disk.
 
@@ -73,6 +76,13 @@ dependencies minimal.
   - **Description**: Handles user authentication, registration queries, and
     determining if new signups are permitted based on server configurations.
   - **Frontend Usage**: Extensively utilized in `Login.jsx` and `Signup.jsx`.
+
+### 5. Health Check
+
+- **`/ping`** (GET)
+  - **Description**: Returns `"pong"`. Used by the Docker healthcheck to verify
+    the server is alive.
+  - **Usage**: `curl -f http://127.0.0.1:8888/ytdiff/ping`
 
 ## Websockets
 

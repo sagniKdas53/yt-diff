@@ -25,6 +25,9 @@ of individual videos, independent of any playlist.
 | **`commentsFile`**                | `STRING`  | Path/Name to the downloaded JSON comments file.                                                                               |
 | **`descriptionFile`**             | `STRING`  | Path/Name to the downloaded text description file.                                                                            |
 | **`isMetaDataSynced`**            | `BOOLEAN` | Marker for secondary asynchronous processes to verify if they have finished migrating metadata from the filesystem to the DB. |
+| **`onlineThumbnail`**             | `STRING`  | Online thumbnail URL scraped from `yt-dlp` output. Used as a fallback when `thumbNailFile` is not available.                  |
+| **`saveDirectory`**               | `STRING`  | Directory relative to `saveLocation` where this video's files are stored. `null` if not downloaded, empty string for root.    |
+| **`raw_metadata`**                | `JSONB`   | Full pruned `yt-dlp` JSON output (bulky arrays like `formats`, `thumbnails`, `subtitles` are removed before storage). **Excluded from the default Sequelize scope** — must be explicitly requested in queries. |
 | **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                                                               |
 
 ---

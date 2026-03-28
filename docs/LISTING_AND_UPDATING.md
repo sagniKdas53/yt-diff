@@ -19,8 +19,10 @@ When a user submits a URL via the UI (using the Add Dialog) or through the
 
 ### The Extraction Process
 
-- The system spawns `yt-dlp` using the `--flat-playlist` argument to stream the
-  videos sequentially as fast as possible.
+- The system spawns `yt-dlp` via a **Python monkey-patch wrapper** (see
+  [curl_cffi_segfault_analysis.md](curl_cffi_segfault_analysis.md)) using the
+  `--flat-playlist` argument to stream the videos sequentially as fast as
+  possible.
 - Videos are output as JSON/Tab-separated lines containing `title`, `id`, `url`,
   and `approximateSize`.
 - As the video items are returned line-by-line, they are grouped into **chunks**
@@ -35,6 +37,13 @@ When a user submits a URL via the UI (using the Add Dialog) or through the
 - **Index Mapping**: `yt-diff` creates a relational mapping between the video
   and the playlist by saving the exact index (`positionInPlaylist`) at which the
   video was discovered. This index tracks the order of videos inside a playlist.
+- **Online Thumbnail**: The `thumbnail` field from `yt-dlp` output is stored in
+  the `onlineThumbnail` column as a fallback URL when a local thumbnail file is
+  not available.
+- **Raw Metadata Storage**: The full `yt-dlp` JSON output is pruned (bulky
+  arrays like `formats`, `thumbnails`, `subtitles`, `automatic_captions`, and
+  `requested_formats` are removed) and stored in the `raw_metadata` JSONB
+  column for future use.
 
 ---
 
