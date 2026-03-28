@@ -59,7 +59,10 @@ This serves as the atomic lock handler controlling process creation timing.
 
 This is where the child shells are instantiated interacting with `yt-dlp`.
 
-1. **Spawn**: `spawn("./yt-dlp", args)` initializes. The global tracking map
+1. **Spawn**: `spawn("python3", ["-c", YT_DLP_PATCHED_CMD, ...args])`
+   initializes (see
+   [curl_cffi_segfault_analysis.md](curl_cffi_segfault_analysis.md) for the
+   monkey-patch rationale). The global tracking map
    updates the entry to `"running"` and specifically attaches the raw
    `ChildProcess` object into the Map. This allows cleanup workers to target and
    defensively kill stalled/zombie `yt-dlp` instances directly using
