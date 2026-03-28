@@ -219,4 +219,8 @@ make logs                  # Follow container logs
 
 ## License
 
-ISC — see [LICENSE](LICENSE) for details.
+Copyright © 2026 Sagnik Das
+
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3.0** as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+See [LICENSE](LICENSE) for the full text, or visit <https://www.gnu.org/licenses/gpl-3.0.html>.
