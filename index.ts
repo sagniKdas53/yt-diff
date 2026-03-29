@@ -1245,7 +1245,7 @@ function isSiteXDotCom(videoUrl: string): boolean {
 /**
  * Checks if the given video URL belongs to a site whose thumbnail URLs are
  * ephemeral (signed CDN URLs that expire within hours/days).
- * Currently covers: facebook.com, instagram.com and their subdomains.
+ * Currently covers: facebook.com, instagram.com, pornhub.com and their subdomains.
  *
  * @param {string} videoUrl - The URL of the video to check.
  * @returns {boolean} True if the site's thumbnails are known to be ephemeral.
@@ -1257,7 +1257,7 @@ function hasEphemeralThumbnails(videoUrl: string): boolean {
   } catch {
     return false;
   }
-  const ephemeralHosts = ["facebook.com", "instagram.com"];
+  const ephemeralHosts = ["facebook.com", "instagram.com", "pornhub.com"];
   return ephemeralHosts.some(
     (h) => hostname === h || hostname.endsWith("." + h),
   );
