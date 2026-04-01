@@ -5,15 +5,15 @@ improvements identified through an analysis of `index.ts`.
 
 ## 1. Authentication & Security
 
-- **Rate Limiting Gaps**: The custom `rateLimit` function is selectively applied
+- ~~**Rate Limiting Gaps**: The custom `rateLimit` function is selectively applied
   only to `/login`, `/register`, and `/isregallowed`. Other resource-intensive
   endpoints (like `/download` or `/list`) lack strict rate limiting, potentially
   making the server vulnerable to resource exhaustion (e.g., maliciously
-  triggering a massive `yt-dlp` download queue).
-- **Socket Authority**: `authenticateSocket` validates tokens on initial
+  triggering a massive `yt-dlp` download queue).~~
+- ~~**Socket Authority**: `authenticateSocket` validates tokens on initial
   connection but lacks scheduled verification to forcefully disconnect anomalous
   users or users whose tokens expire mid-session. Active socket streams assume
-  the initial connection's validity perpetually.
+  the initial connection's validity perpetually.~~
 
 ## 2. Input Validation (Edge Cases)
 

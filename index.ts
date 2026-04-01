@@ -66,6 +66,8 @@ const config = {
     maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 100),
     maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
     reqPerIP: +(Deno.env.get("MAX_REQUESTS_PER_IP") || 10),
+    actionReqPerIP: +(Deno.env.get("ACTION_MAX_REQS") || 20),
+    actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
   },
   queue: {
     maxListings: +(Deno.env.get("MAX_LISTINGS") || 2),
@@ -5656,20 +5658,26 @@ const server = (serverObj as any).createServer(
       res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
       res.end();
     } else if (req.url === config.urlBase + "/list" && req.method === "POST") {
-      authenticateRequest(
+      rateLimit(
         req,
         res,
+        authenticateRequest,
         (data: unknown, res: ServerResponse) =>
           processListingRequest(data as any, res),
+        config.cache.actionReqPerIP,
+        config.cache.actionWindowSec,
       );
     } else if (
       req.url === config.urlBase + "/download" && req.method === "POST"
     ) {
-      authenticateRequest(
+      rateLimit(
         req,
         res,
+        authenticateRequest,
         (data: unknown, res: ServerResponse) =>
           processDownloadRequest(data as any, res),
+        config.cache.actionReqPerIP,
+        config.cache.actionWindowSec,
       );
     } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
       authenticateRequest(
