@@ -1972,7 +1972,7 @@ async function makeSignedUrl(
     `signed:${signedUrlId}`,
     JSON.stringify({
       filePath: absolutePath,
-      mimeType: "application/octet-stream",
+      mimeType: MIME_TYPES[path.extname(absolutePath)] || "application/octet-stream",
       expiry,
     }),
     "EX",
@@ -5491,9 +5491,10 @@ const server = (serverObj as any).createServer(
                 const fallbackName = safeName.replace(/[^\x20-\x7E]/g, "_");
                 const encodedName = encodeURIComponent(safeName);
 
-                const contentType = signedEntry.mimeType ||
-                  MIME_TYPES[path.extname(safeName)] ||
-                  "application/octet-stream";
+                let contentType = signedEntry.mimeType;
+                if (!contentType || contentType === "application/octet-stream") {
+                  contentType = MIME_TYPES[path.extname(safeName)] || "application/octet-stream";
+                }
                 // Common headers (CORS + content-type + disposition + accept-ranges)
                 const cors = generateCorsHeaders(contentType);
                 Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
