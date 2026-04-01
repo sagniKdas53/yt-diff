@@ -5831,6 +5831,65 @@ const sock = io.on("connection", (socket: Socket) => {
     return;
   }
 
+  // Set up socket authentication lifecycle management
+  const token = socket.handshake.auth.token;
+  let decodedToken: jwt.JwtPayload | null = null;
+  let expiryTimeout: ReturnType<typeof setTimeout> | null = null;
+  let verificationInterval: ReturnType<typeof setInterval> | null = null;
+
+  try {
+    decodedToken = jwt.verify(token, config.secretKey as string) as jwt.JwtPayload;
+    if (decodedToken && decodedToken.exp) {
+      const timeUntilExpiry = (decodedToken.exp * 1000) - Date.now();
+      if (timeUntilExpiry > 0) {
+        expiryTimeout = setTimeout(() => {
+          logger.info(`Token expired for socket ${socket.id}, disconnecting`);
+          socket.emit("token-expired", { message: "Your session has expired." });
+          socket.disconnect(true);
+        }, timeUntilExpiry);
+      } else {
+        socket.emit("token-expired", { message: "Your session has expired." });
+        socket.disconnect(true);
+        return;
+      }
+    }
+
+    if (decodedToken) {
+      // User verification interval (matches config.cache.maxAge as requested)
+      const pingInterval = config.cache.maxAge * 1000;
+      verificationInterval = setInterval(async () => {
+        try {
+          const cachedUser = await redis.get(`user:${decodedToken?.id}`);
+          if (cachedUser) {
+            const user = JSON.parse(cachedUser);
+            if (user.updatedAt !== decodedToken?.lastPasswordChangeTime) {
+              logger.error("Socket auth check failed mid-session - password changed");
+              socket.emit("token-expired", { message: "Authentication invalidated." });
+              socket.disconnect(true);
+            }
+          } else {
+            // Cache expired, check database to ensure user hasn't been removed/changed
+            const user = await UserAccount.findByPk(decodedToken?.id);
+            if (!user) {
+              logger.error("Socket auth check failed mid-session - user not found");
+              socket.emit("token-expired", { message: "Authentication invalidated." });
+              socket.disconnect(true);
+            } else {
+              // Refresh cache if successfully found
+              await redis.set(`user:${decodedToken?.id}`, JSON.stringify(user), "EX", config.cache.maxAge);
+            }
+          }
+        } catch (error) {
+          logger.error("Mid-session socket verification error", { error: (error as Error).message });
+        }
+      }, pingInterval);
+    }
+  } catch (e) {
+    logger.error("Failed to decode token on active connection.", { error: (e as Error).message });
+    socket.disconnect(true);
+    return;
+  }
+
   // Increment the count of connected clients
   socket.emit("init", { message: "Connected", id: socket.id });
   socket.on("acknowledge", ({ data, id }: { data: string; id: string }) => {
@@ -5843,6 +5902,10 @@ const sock = io.on("connection", (socket: Socket) => {
   });
 
   socket.on("disconnect", () => {
+    // Clean up lifecycle timers
+    if (expiryTimeout) clearTimeout(expiryTimeout);
+    if (verificationInterval) clearInterval(verificationInterval);
+    
     // Decrement the count of connected clients when a client disconnects
     logger.info(`Disconnected from client id ${socket.id}`, {
       id: socket.id,
