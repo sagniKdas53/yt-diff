@@ -5,11 +5,6 @@ improvements identified through an analysis of `index.ts`.
 
 ## 1. Authentication & Security
 
-- **Non-Standard Token Passing**: `authenticateRequest` expects the JWT token to
-  be embedded directly inside the `POST` request JSON payload (e.g.,
-  `data.token`). This deviates from industry-standard practices of using the
-  `Authorization: Bearer <token>` HTTP header, introducing minor caching and
-  structured logging difficulties.
 - **Rate Limiting Gaps**: The custom `rateLimit` function is selectively applied
   only to `/login`, `/register`, and `/isregallowed`. Other resource-intensive
   endpoints (like `/download` or `/list`) lack strict rate limiting, potentially
@@ -65,3 +60,9 @@ improvements identified through an analysis of `index.ts`.
   `downloadOptions.push('--trim-filenames')` are fine, but can become unruly
   over time if the scope of `yt-dlp` arguments grows dynamically per-video
   rather than globally.
+- **Fragile `yt-dlp` Execution Workaround**: The codebase currently uses a Python monkey patch (`YT_DLP_PATCHED_CMD`) injected directly via `python3 -c` to bypass a segmentation fault in `curl_cffi` during `yt-dlp` execution.
+  - **Suggested Improvement**: Track the upstream `curl_cffi` and `yt-dlp` repositories for a permanent fix. Once resolved, revert the extraction process to invoke the standard `yt-dlp` executable cleanly rather than patching Python's context at runtime.
+- **Large JSONB Payload Storage**: The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSONB structures. While bulky arrays (formats/thumbnails) are pruned, accumulating this across thousands of videos might bloat PostgreSQL storage unnecessarily if the fields are never queried.
+  - **Suggested Improvement**: Periodically review whether `raw_metadata` is actively utilized. If not, consider extracting only specific metadata keys explicitly rather than a catch-all JSON dump, or offload this archival data to file-based cache.
+- **Process Exit Handling**: Parsing of process exits checks numeric codes (`0`, `1`) and explicit strings (e.g., `Segmentation fault`) directly from the spawned streams.
+  - **Suggested Improvement**: Standardize an error-code mapping constant or object, which simplifies the monolithic process error parsing logic across different download/metadata tasks.

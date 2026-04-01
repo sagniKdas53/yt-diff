@@ -323,6 +323,10 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".json": "application/json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
+  ".avi": "video/x-msvideo",
 };
 const CORS_ALLOWED_ORIGINS = [
   "http://localhost:5173",
@@ -1978,6 +1982,47 @@ async function makeSignedUrl(
   response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
   response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
 }
+
+/**
+ * Refreshes the expiry of an existing signed URL to keep it alive during active watching.
+ *
+ * @param {Object} requestBody - Parsed request payload.
+ * @param {string} requestBody.fileId - The file ID to refresh.
+ * @param {import('http').ServerResponse} response - The Node.js HTTP response object.
+ */
+async function refreshSignedUrl(
+  requestBody: { fileId?: string },
+  response: ServerResponse,
+) {
+  if (!requestBody || !requestBody.fileId || typeof requestBody.fileId !== "string") {
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({ status: "error", message: "fileId is required" })
+    );
+  }
+
+  const cachedEntry = await redis.get(`signed:${requestBody.fileId}`);
+  if (cachedEntry) {
+    await redis.expire(`signed:${requestBody.fileId}`, config.cache.maxAge);
+    const now = Date.now();
+    const expiry = now + config.cache.maxAge * 1000;
+    
+    // We also need to update the expiry in the JSON payload stored, so subsequent reads are accurate if they use it.
+    // Wait, the original code had expiry in JSON. Let's update it.
+    const parsedEntry = JSON.parse(cachedEntry);
+    parsedEntry.expiry = expiry;
+    await redis.set(`signed:${requestBody.fileId}`, JSON.stringify(parsedEntry), "EX", config.cache.maxAge);
+    
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({ status: "success", expiry }));
+  } else {
+    response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({ status: "error", message: "fileId not found or expired" })
+    );
+  }
+}
+
 
 /**
  * Generates signed URLs for a list of files.
@@ -5421,6 +5466,8 @@ const server = (serverObj as any).createServer(
           // If fileId is present, try to serve from signedUrlCache
           const cachedEntry = await redis.get(`signed:${fileId}`);
           if (cachedEntry) {
+            // refresh expiry on access to keep it alive while actively watched
+            await redis.expire(`signed:${fileId}`, config.cache.maxAge);
             const signedEntry = JSON.parse(cachedEntry);
             // Serve the file from the signed URL cache
             logger.trace("Serving file from signed URL cache", {
@@ -5451,9 +5498,11 @@ const server = (serverObj as any).createServer(
                 const cors = generateCorsHeaders(contentType);
                 Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
                 res.setHeader("Content-Type", contentType);
+                
+                const dispositionType = urlParams.get("inline") === "true" ? "inline" : "attachment";
                 res.setHeader(
                   "Content-Disposition",
-                  `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+                  `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
                 );
                 res.setHeader("Accept-Ranges", "bytes");
 
@@ -5671,6 +5720,14 @@ const server = (serverObj as any).createServer(
         req,
         res,
         (data: unknown, res: ServerResponse) => makeSignedUrl(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/refreshfile" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) => refreshSignedUrl(data as any, res),
       );
     } else if (
       req.url === config.urlBase + "/getfiles" && req.method === "POST"
