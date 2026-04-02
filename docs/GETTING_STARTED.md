@@ -298,6 +298,8 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | `RATE_LIMIT_GLOBAL_MAX_REQUESTS` | `10` | Rate limit: max requests per IP per window. Set to 0 to disable throttling. |
 | `RATE_LIMIT_ACTION_MAX_REQUESTS` | `10` | Rate limit: max requests for actions per window. Set to 0 to disable throttling. |
 | `CACHE_MAX_AGE` | `3600` | Rate limit window in seconds |
+| `CACHE_MAX_ITEMS` | `100` | Max entries in the rate limit cache in memory |
+| `ACTION_WINDOW_SEC` | `3600` | Rate limit window for specific actions in seconds |
 
 ### Iwara (Optional)
 
