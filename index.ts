@@ -66,7 +66,7 @@ const config = {
     maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 100),
     maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
     reqPerIP: +(Deno.env.get("MAX_REQUESTS_PER_IP") || 10),
-    actionReqPerIP: +(Deno.env.get("ACTION_MAX_REQS") || 20),
+    actionReqPerIP: +(Deno.env.get("ACTION_MAX_REQS") || 30),
     actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
   },
   queue: {
@@ -353,15 +353,18 @@ if (config.db.password instanceof Error) {
   throw config.db.password;
 }
 if (config.cookiesFile instanceof Error) {
-  logger.warn("Cookies file configuration error, proceeding without cookies", { 
-    error: config.cookiesFile 
+  logger.warn("Cookies file configuration error, proceeding without cookies", {
+    error: config.cookiesFile,
   });
   config.cookiesFile = false;
 }
 if (config.proxy_string instanceof Error) {
-  logger.warn("Proxy string configuration error, proceeding with direct connection", { 
-    error: config.proxy_string 
-  });
+  logger.warn(
+    "Proxy string configuration error, proceeding with direct connection",
+    {
+      error: config.proxy_string,
+    },
+  );
   config.proxy_string = "";
 }
 if (config.iwara._parseError) {
@@ -1567,8 +1570,10 @@ async function authenticateRequest(
     if (cachedUser) {
       user = JSON.parse(cachedUser);
       // Verify password hasn't changed, keep it here to avoid the scenario where user is null
-      const lastPasswordUpdate = user.updatedAt;
-      if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
+      const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
+      const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
+        .getTime();
+      if (lastPasswordUpdate !== tokenTime) {
         logger.error("Token invalid - password changed");
         response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
         return response.end(JSON.stringify({
@@ -1670,8 +1675,10 @@ async function authenticateSocket(socket: Socket): Promise<boolean> {
     if (cachedUser) {
       user = JSON.parse(cachedUser);
       // Verify password hasn't changed, keep it here to avoid the scenario where user is null
-      const lastPasswordUpdate = user.updatedAt;
-      if (lastPasswordUpdate !== decodedToken.lastPasswordChangeTime) {
+      const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
+      const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
+        .getTime();
+      if (lastPasswordUpdate !== tokenTime) {
         logger.error("Socket auth failed - password changed");
         return false;
       }
@@ -1974,7 +1981,8 @@ async function makeSignedUrl(
     `signed:${signedUrlId}`,
     JSON.stringify({
       filePath: absolutePath,
-      mimeType: MIME_TYPES[path.extname(absolutePath)] || "application/octet-stream",
+      mimeType: MIME_TYPES[path.extname(absolutePath)] ||
+        "application/octet-stream",
       expiry,
     }),
     "EX",
@@ -1996,10 +2004,13 @@ async function refreshSignedUrl(
   requestBody: { fileId?: string },
   response: ServerResponse,
 ) {
-  if (!requestBody || !requestBody.fileId || typeof requestBody.fileId !== "string") {
+  if (
+    !requestBody || !requestBody.fileId ||
+    typeof requestBody.fileId !== "string"
+  ) {
     response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(
-      JSON.stringify({ status: "error", message: "fileId is required" })
+      JSON.stringify({ status: "error", message: "fileId is required" }),
     );
   }
 
@@ -2008,23 +2019,30 @@ async function refreshSignedUrl(
     await redis.expire(`signed:${requestBody.fileId}`, config.cache.maxAge);
     const now = Date.now();
     const expiry = now + config.cache.maxAge * 1000;
-    
+
     // We also need to update the expiry in the JSON payload stored, so subsequent reads are accurate if they use it.
     // Wait, the original code had expiry in JSON. Let's update it.
     const parsedEntry = JSON.parse(cachedEntry);
     parsedEntry.expiry = expiry;
-    await redis.set(`signed:${requestBody.fileId}`, JSON.stringify(parsedEntry), "EX", config.cache.maxAge);
-    
+    await redis.set(
+      `signed:${requestBody.fileId}`,
+      JSON.stringify(parsedEntry),
+      "EX",
+      config.cache.maxAge,
+    );
+
     response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(JSON.stringify({ status: "success", expiry }));
   } else {
     response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
     return response.end(
-      JSON.stringify({ status: "error", message: "fileId not found or expired" })
+      JSON.stringify({
+        status: "error",
+        message: "fileId not found or expired",
+      }),
     );
   }
 }
-
 
 /**
  * Generates signed URLs for a list of files.
@@ -2329,7 +2347,9 @@ async function processDownloadRequest(
       }
 
       // Get save directory from video entry as fallback
-      let saveDirectory = (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ?? "";
+      let saveDirectory =
+        (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ??
+          "";
 
       // Override with playlist save directory if a specific playlist is provided
       if (playlistUrl !== "init" && playlistUrl !== "None") {
@@ -2338,9 +2358,9 @@ async function processDownloadRequest(
             where: { playlistUrl: playlistUrl },
           });
           if (playlist) {
-            saveDirectory =
-              (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
-                saveDirectory;
+            saveDirectory = (playlist as unknown as { saveDirectory: string })
+              ?.saveDirectory ??
+              saveDirectory;
           }
         } catch (error) {
           logger.error(`Error getting playlist save directory`, {
@@ -2354,18 +2374,18 @@ async function processDownloadRequest(
             where: {
               videoUrl: videoUrl,
               playlistUrl: {
-                [Op.notIn]: ["init", "None"]
-              }
-            }
+                [Op.notIn]: ["init", "None"],
+              },
+            },
           });
           if (mapping) {
             const playlist = await PlaylistMetadata.findOne({
               where: { playlistUrl: (mapping as any).playlistUrl },
             });
             if (playlist) {
-              saveDirectory =
-                (playlist as unknown as { saveDirectory: string })?.saveDirectory ??
-                  saveDirectory;
+              saveDirectory = (playlist as unknown as { saveDirectory: string })
+                ?.saveDirectory ??
+                saveDirectory;
             }
           }
         } catch (error) {
@@ -3742,8 +3762,9 @@ async function processStreamingVideoInformation(
 
       // Extract online thumbnail before pruning
       // Skip ephemeral thumbnails (FB/IG signed CDN URLs expire in hours)
-      const onlineThumbnail =
-        hasEphemeralThumbnails(videoUrl) ? null : (itemData.thumbnail || null);
+      const onlineThumbnail = hasEphemeralThumbnails(videoUrl)
+        ? null
+        : (itemData.thumbnail || null);
 
       // Prune bulky arrays from yt-dlp JSON to reduce storage size
       // (~62KB -> ~12KB per video)
@@ -5494,15 +5515,20 @@ const server = (serverObj as any).createServer(
                 const encodedName = encodeURIComponent(safeName);
 
                 let contentType = signedEntry.mimeType;
-                if (!contentType || contentType === "application/octet-stream") {
-                  contentType = MIME_TYPES[path.extname(safeName)] || "application/octet-stream";
+                if (
+                  !contentType || contentType === "application/octet-stream"
+                ) {
+                  contentType = MIME_TYPES[path.extname(safeName)] ||
+                    "application/octet-stream";
                 }
                 // Common headers (CORS + content-type + disposition + accept-ranges)
                 const cors = generateCorsHeaders(contentType);
                 Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
                 res.setHeader("Content-Type", contentType);
-                
-                const dispositionType = urlParams.get("inline") === "true" ? "inline" : "attachment";
+
+                const dispositionType = urlParams.get("inline") === "true"
+                  ? "inline"
+                  : "attachment";
                 res.setHeader(
                   "Content-Disposition",
                   `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
@@ -5736,7 +5762,8 @@ const server = (serverObj as any).createServer(
       authenticateRequest(
         req,
         res,
-        (data: unknown, res: ServerResponse) => refreshSignedUrl(data as any, res),
+        (data: unknown, res: ServerResponse) =>
+          refreshSignedUrl(data as any, res),
       );
     } else if (
       req.url === config.urlBase + "/getfiles" && req.method === "POST"
@@ -5846,15 +5873,22 @@ const sock = io.on("connection", (socket: Socket) => {
   let verificationInterval: ReturnType<typeof setInterval> | null = null;
 
   try {
-    decodedToken = jwt.verify(token, config.secretKey as string) as jwt.JwtPayload;
+    decodedToken = jwt.verify(
+      token,
+      config.secretKey as string,
+    ) as jwt.JwtPayload;
     if (decodedToken && decodedToken.exp) {
       const timeUntilExpiry = (decodedToken.exp * 1000) - Date.now();
       if (timeUntilExpiry > 0) {
+        // setTimeout max limits to 32-bit signed int (approx 24.8 days)
+        const delay = Math.min(timeUntilExpiry, 2147483647);
         expiryTimeout = setTimeout(() => {
           logger.info(`Token expired for socket ${socket.id}, disconnecting`);
-          socket.emit("token-expired", { message: "Your session has expired." });
+          socket.emit("token-expired", {
+            message: "Your session has expired.",
+          });
           socket.disconnect(true);
-        }, timeUntilExpiry);
+        }, delay);
       } else {
         socket.emit("token-expired", { message: "Your session has expired." });
         socket.disconnect(true);
@@ -5870,30 +5904,51 @@ const sock = io.on("connection", (socket: Socket) => {
           const cachedUser = await redis.get(`user:${decodedToken?.id}`);
           if (cachedUser) {
             const user = JSON.parse(cachedUser);
-            if (user.updatedAt !== decodedToken?.lastPasswordChangeTime) {
-              logger.error("Socket auth check failed mid-session - password changed");
-              socket.emit("token-expired", { message: "Authentication invalidated." });
+            const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
+            const tokenTime = new Date(
+              decodedToken?.lastPasswordChangeTime || 0,
+            ).getTime();
+            if (lastPasswordUpdate !== tokenTime) {
+              logger.error(
+                "Socket auth check failed mid-session - password changed",
+              );
+              socket.emit("token-expired", {
+                message: "Authentication invalidated.",
+              });
               socket.disconnect(true);
             }
           } else {
             // Cache expired, check database to ensure user hasn't been removed/changed
             const user = await UserAccount.findByPk(decodedToken?.id);
             if (!user) {
-              logger.error("Socket auth check failed mid-session - user not found");
-              socket.emit("token-expired", { message: "Authentication invalidated." });
+              logger.error(
+                "Socket auth check failed mid-session - user not found",
+              );
+              socket.emit("token-expired", {
+                message: "Authentication invalidated.",
+              });
               socket.disconnect(true);
             } else {
               // Refresh cache if successfully found
-              await redis.set(`user:${decodedToken?.id}`, JSON.stringify(user), "EX", config.cache.maxAge);
+              await redis.set(
+                `user:${decodedToken?.id}`,
+                JSON.stringify(user),
+                "EX",
+                config.cache.maxAge,
+              );
             }
           }
         } catch (error) {
-          logger.error("Mid-session socket verification error", { error: (error as Error).message });
+          logger.error("Mid-session socket verification error", {
+            error: (error as Error).message,
+          });
         }
       }, pingInterval);
     }
   } catch (e) {
-    logger.error("Failed to decode token on active connection.", { error: (e as Error).message });
+    logger.error("Failed to decode token on active connection.", {
+      error: (e as Error).message,
+    });
     socket.disconnect(true);
     return;
   }
@@ -5913,7 +5968,7 @@ const sock = io.on("connection", (socket: Socket) => {
     // Clean up lifecycle timers
     if (expiryTimeout) clearTimeout(expiryTimeout);
     if (verificationInterval) clearInterval(verificationInterval);
-    
+
     // Decrement the count of connected clients when a client disconnects
     logger.info(`Disconnected from client id ${socket.id}`, {
       id: socket.id,
