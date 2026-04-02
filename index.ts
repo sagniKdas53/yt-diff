@@ -66,11 +66,11 @@ const config = {
     maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 500),
     maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
     reqPerIP: parseInt(
-      Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "10",
+      Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0",
       10,
     ),
     actionReqPerIP: parseInt(
-      Deno.env.get("RATE_LIMIT_ACTION_MAX_REQUESTS") ?? "10",
+      Deno.env.get("RATE_LIMIT_ACTION_MAX_REQUESTS") ?? "0",
       10,
     ),
     actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
