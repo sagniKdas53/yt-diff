@@ -65,8 +65,8 @@ const config = {
   cache: {
     maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 100),
     maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
-    reqPerIP: +(Deno.env.get("MAX_REQUESTS_PER_IP") || 10),
-    actionReqPerIP: +(Deno.env.get("ACTION_MAX_REQS") || 30),
+    reqPerIP: parseInt(Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "10", 10),
+    actionReqPerIP: parseInt(Deno.env.get("RATE_LIMIT_ACTION_MAX_REQUESTS") ?? "10", 10),
     actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
   },
   queue: {
@@ -1741,6 +1741,11 @@ async function rateLimit(
 ) {
   const clientIp = request.socket.remoteAddress;
   logger.trace(`Rate limit check for IP ${clientIp}`);
+
+  if (maxRequestsPerWindow === 0) {
+    logger.debug(`Rate limiting disabled (maxRequestsPerWindow is 0)`);
+    return currentHandler(request, response, nextHandler);
+  }
 
   // Check current request count
   const currentRequests = +(await redis.get(`ip:${clientIp}`)) || 0;
