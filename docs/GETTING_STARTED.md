@@ -295,7 +295,8 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | `SECRET_KEY` | — | Direct JWT key (fallback) |
 | `ALLOW_REGISTRATION` | `true` | Allow new user sign-ups |
 | `MAX_USERS` | `15` | Maximum number of allowed user accounts |
-| `MAX_REQUESTS_PER_IP` | `10` | Rate limit: max requests per IP per window |
+| `RATE_LIMIT_GLOBAL_MAX_REQUESTS` | `10` | Rate limit: max requests per IP per window. Set to 0 to disable throttling. |
+| `RATE_LIMIT_ACTION_MAX_REQUESTS` | `10` | Rate limit: max requests for actions per window. Set to 0 to disable throttling. |
 | `CACHE_MAX_AGE` | `3600` | Rate limit window in seconds |
 
 ### Iwara (Optional)
