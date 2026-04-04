@@ -878,7 +878,7 @@ const jobs = {
 
           if (allPlaylists.length === 0) {
             logger.info(
-              "No playlists with Start/End/Full monitoring found; skipping update",
+              "No playlists with Start/End monitoring found; skipping update",
             );
             return;
           }
@@ -890,14 +890,10 @@ const jobs = {
           const endPlaylists = allPlaylists.filter(
             (p) => p.getDataValue("monitoringType") === "End",
           );
-          const fullPlaylists = allPlaylists.filter(
-            (p) => p.getDataValue("monitoringType") === "Full",
-          );
 
           logger.info("Scheduler: starting playlist updates", {
             startCount: startPlaylists.length,
             endCount: endPlaylists.length,
-            fullCount: fullPlaylists.length,
           });
 
           // Build item descriptors for the listing pipeline.
@@ -919,20 +915,12 @@ const jobs = {
             reason: "Scheduled End update",
           }));
 
-          const fullItems = fullPlaylists.map((p) => ({
-            url: p.getDataValue("playlistUrl") as string,
-            type: "playlist",
-            currentMonitoringType: "Full",
-            isScheduledUpdate: true,
-            reason: "Scheduled Full update",
-          }));
-
           // Run Start and End updates first (they are cheaper).
           // Full updates run after so they don't hog the listing slots.
           // We can wait for the results here as this is a background job so no need to be time-bound
           // This is a note to myself to deter me form trying to make it a function().then().catch() thingy
           const results = await listItemsConcurrently(
-            [...startItems, ...endItems, ...fullItems],
+            [...startItems, ...endItems],
             config.chunkSize,
             /* isScheduledUpdate */ true,
           );
