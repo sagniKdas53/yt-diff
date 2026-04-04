@@ -9,3 +9,9 @@ ssl/
 .git/
 .vscode/
 .github/
+.kilo/
+docs/
+tests/
+*.log
+*.json
+*.md
