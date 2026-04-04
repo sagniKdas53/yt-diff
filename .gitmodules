@@ -2,3 +2,7 @@
 	path = frontend
 	url = https://github.com/sagniKdas53/yt-diff-react
 	branch = material
+[submodule "tests"]
+	path = tests
+	url = https://github.com/sagniKdas53/yt-diff-tests.git
+	branch = main
