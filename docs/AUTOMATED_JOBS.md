@@ -68,7 +68,7 @@ videos that were added since the last check.
 | :--- | :------- | :------- |
 | **Start** | Scans from index 1 forward; exits early after 2 consecutive fully-duplicate chunks | Channels where new videos appear at the **top** |
 | **End** | Scans from `(max index - chunk size + 1)` onward | Playlists where new videos are **appended** at the bottom |
-| **Full** | Complete start-to-end re-scan; no early-exit optimization | Playlists with arbitrary insertions, deletions, or reordering |
+| **Full** | Complete start-to-end re-scan; resets to `N/A` after success | Playlists with arbitrary insertions, deletions, or reordering |
 | **N/A** | Ignored by the scheduler entirely | Completed archives, single videos |
 
 > [!TIP]

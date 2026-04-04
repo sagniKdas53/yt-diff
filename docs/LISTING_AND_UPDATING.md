@@ -90,6 +90,9 @@ the configured **Monitoring Type**.
   from beginning to end, ignoring any duplicate chunk early-exit optimizations.
   This acts similarly to `Refresh`, but runs automatically on the scheduled
   interval.
+- **Auto-Fallback**: To prevent repeated, bandwidth-heavy full scans, the system
+  forcefully resets the `monitoringType` to `N/A` after a successful `Full`
+  update completion.
 - **Performance Consideration**: Due to its high bandwidth usage and processing
   time, `Full` mode updates are triggered in the background only after all
   `Start` and `End` updates have completed, preventing queue blockages.
@@ -120,3 +123,22 @@ comprehensive re-index of an entire playlist.
   `Refresh` monitoring type and forcefully falls back the database record to
   `"N/A"`. This guarantees an expensive full-scan does not become permanently
   trapped in the persistent background queue loops.
+
+---
+
+## 4. Performance Optimizations
+
+### Fast Skip Optimization
+
+To reduce database load and log noise, `yt-diff` implements a "Fast Skip"
+mechanism during playlist scans (except for `Refresh` mode):
+
+- **Mechanism**: For every video returned by `yt-dlp`, the system compares its
+  current index and metadata against what is already stored in the database.
+- **Silent Skip**: If the video already exists and its position in the playlist
+  has **not changed**, the system silently ignores it and moves to the next
+  item.
+- **Result**: In `Full` mode, if a playlist has not changed at all since the
+  last scan, the logs will appear silent (no `"Processed video item"` traces),
+  even though the scan was successful. Use `Refresh` mode if you need to see
+  explicit logs for every item.
