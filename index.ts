@@ -3334,7 +3334,8 @@ async function executeListing(
               ? "N/A"
               : currentMonitoringType,
             lastUpdatedByScheduler:
-              resolvedIsScheduledUpdate || ["Refresh", "Full"].includes(currentMonitoringType)
+              resolvedIsScheduledUpdate ||
+                ["Refresh", "Full"].includes(currentMonitoringType)
                 ? Date.now()
                 : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
           });
@@ -3342,7 +3343,9 @@ async function executeListing(
         } else if (resolvedIsScheduledUpdate) {
           // Same type but triggered by scheduler — just update the timestamp
           await existingPlaylist.update({
-            monitoringType: currentMonitoringType === "Full" ? "N/A" : existingPlaylist.getDataValue("monitoringType"),
+            monitoringType: currentMonitoringType === "Full"
+              ? "N/A"
+              : existingPlaylist.getDataValue("monitoringType"),
             lastUpdatedByScheduler: Date.now(),
           });
         }
@@ -3354,7 +3357,9 @@ async function executeListing(
         });
         const newPlaylist = await addPlaylist(
           videoUrl,
-          ["Refresh", "Full"].includes(currentMonitoringType) ? "N/A" : currentMonitoringType,
+          ["Refresh", "Full"].includes(currentMonitoringType)
+            ? "N/A"
+            : currentMonitoringType,
         );
         playlistTitle = (newPlaylist as any).title;
         seekPlaylistListTo = (newPlaylist as any).sortOrder;
@@ -3814,8 +3819,14 @@ async function processStreamingVideoInformation(
   const existingVideosMap = new Map(
     existingVideos.map((v: any) => [v.getDataValue("videoUrl"), v]),
   );
+  // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
+  // positions (allowed by the schema) each get their own map entry.
+  // Although not a real concern, youtube supports it so I added it just in case
   const existingMappingsMap = new Map(
-    existingMappings.map((m: any) => [m.getDataValue("videoUrl"), m]),
+    existingMappings.map((m: any) => [
+      `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
+      m,
+    ]),
   );
 
   const videosToUpsert: any[] = [];
@@ -3827,10 +3838,12 @@ async function processStreamingVideoInformation(
     const videoId = itemData.id || "";
     const approxSize = itemData.filesize_approx || "NA";
     const existingVideo = existingVideosMap.get(videoUrl);
-    const existingMapping = existingMappingsMap.get(videoUrl);
     const absoluteIndex = playlistUrl === "None"
       ? chunkStartIndex
       : chunkStartIndex + index;
+    const existingMapping = existingMappingsMap.get(
+      `${videoUrl}|${absoluteIndex}`,
+    );
 
     // Fast skip logic for unchanged records
     if (
@@ -3903,7 +3916,15 @@ async function processStreamingVideoInformation(
 
   // Execute bulk DB operations
   if (videosToUpsert.length > 0) {
-    await (VideoMetadata as any).unscoped().bulkCreate(videosToUpsert, {
+    // Deduplicate by videoUrl: a playlist can contain the same video at multiple
+    // positions. PostgreSQL's ON CONFLICT DO UPDATE cannot touch the same row
+    // twice in a single statement, so we keep only the last occurrence per URL.
+    const deduplicatedVideos = [
+      ...new Map(
+        videosToUpsert.map((v: any) => [v.videoUrl, v]),
+      ).values(),
+    ];
+    await (VideoMetadata as any).unscoped().bulkCreate(deduplicatedVideos, {
       updateOnDuplicate: [
         "videoId",
         "title",
@@ -4682,6 +4703,7 @@ async function processDeletePlaylistRequest(
         await transaction.commit();
         response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
         return response.end(JSON.stringify({
+          "status": "success",
           "message": `No deletion performed for playlist ${playlist.title}`,
           "cleanUp": false,
           "deletePlaylist": false,
@@ -4753,6 +4775,7 @@ async function processDeletePlaylistRequest(
       await transaction.commit();
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(JSON.stringify({
+        "status": "success",
         "message": message,
         "cleanUp": cleanUp,
         "deletePlaylist": deletePlaylist,
