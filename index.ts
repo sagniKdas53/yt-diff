@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore-file no-explicit-any
-import { DataTypes, Op, Sequelize } from "sequelize";
+import { DataTypes, Model, Op, Sequelize } from "sequelize";
 import { spawn } from "node:child_process";
 import color from "cli-color";
 import { CronJob } from "cron";
@@ -885,13 +885,13 @@ const jobs = {
 
           // Separate start, end, and full playlists
           const startPlaylists = allPlaylists.filter(
-            (p) => p.getDataValue("monitoringType") === "Start",
+            (p: Model) => p.getDataValue("monitoringType") === "Start",
           );
           const endPlaylists = allPlaylists.filter(
-            (p) => p.getDataValue("monitoringType") === "End",
+            (p: Model) => p.getDataValue("monitoringType") === "End",
           );
           const fullPlaylists = allPlaylists.filter(
-            (p) => p.getDataValue("monitoringType") === "Full",
+            (p: Model) => p.getDataValue("monitoringType") === "Full",
           );
 
           logger.info("Scheduler: starting playlist updates", {
@@ -903,7 +903,7 @@ const jobs = {
           // Build item descriptors for the listing pipeline.
           // isScheduledUpdate=true bypasses the "same monitoringType → skip" guard
           // inside executeListing so that re-listing actually occurs.
-          const startItems = startPlaylists.map((p) => ({
+          const startItems = startPlaylists.map((p: Model) => ({
             url: p.getDataValue("playlistUrl") as string,
             type: "playlist",
             currentMonitoringType: "Start",
@@ -911,7 +911,7 @@ const jobs = {
             reason: "Scheduled Start update",
           }));
 
-          const endItems = endPlaylists.map((p) => ({
+          const endItems = endPlaylists.map((p: Model) => ({
             url: p.getDataValue("playlistUrl") as string,
             type: "playlist",
             currentMonitoringType: "End",
@@ -919,7 +919,7 @@ const jobs = {
             reason: "Scheduled End update",
           }));
 
-          const fullItems = fullPlaylists.map((p) => ({
+          const fullItems = fullPlaylists.map((p: Model) => ({
             url: p.getDataValue("playlistUrl") as string,
             type: "playlist",
             currentMonitoringType: "Full",
@@ -3817,7 +3817,7 @@ async function processStreamingVideoInformation(
   ]);
 
   const existingVideosMap = new Map(
-    existingVideos.map((v: any) => [v.getDataValue("videoUrl"), v]),
+    existingVideos.map((v: any) => [v.getDataValue("videoUrl"), v] as [string, Model]),
   );
   // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
   // positions (allowed by the schema) each get their own map entry.
@@ -3826,7 +3826,7 @@ async function processStreamingVideoInformation(
     existingMappings.map((m: any) => [
       `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
       m,
-    ]),
+    ] as [string, Model]),
   );
 
   const videosToUpsert: any[] = [];
@@ -4451,7 +4451,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
         order: [["sortOrder", "DESC"]],
         attributes: ["sortOrder"],
         limit: 1,
-      }).then((lastPlaylist) => {
+      }).then((lastPlaylist: Model | null) => {
         const initialValue = lastPlaylist !== null
           ? (lastPlaylist as any).sortOrder + 1
           : 0;
