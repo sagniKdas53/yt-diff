@@ -106,8 +106,8 @@ const config = {
   })(),
   sleepTime: Deno.env.get("SLEEP") ?? 3,
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
-  scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/30 * * * *",
-  pruneInterval: Deno.env.get("PRUNE_INTERVAL") || "*/30 * * * *",
+  scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/10 * * * *",
+  pruneInterval: Deno.env.get("PRUNE_INTERVAL") || "*/10 * * * *",
   timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
   saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
   saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
@@ -3330,11 +3330,11 @@ async function executeListing(
         ) {
           logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
           await existingPlaylist.update({
-            monitoringType: currentMonitoringType === "Refresh"
+            monitoringType: ["Refresh", "Full"].includes(currentMonitoringType)
               ? "N/A"
               : currentMonitoringType,
             lastUpdatedByScheduler:
-              resolvedIsScheduledUpdate || currentMonitoringType === "Refresh"
+              resolvedIsScheduledUpdate || ["Refresh", "Full"].includes(currentMonitoringType)
                 ? Date.now()
                 : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
           });
@@ -3342,6 +3342,7 @@ async function executeListing(
         } else if (resolvedIsScheduledUpdate) {
           // Same type but triggered by scheduler — just update the timestamp
           await existingPlaylist.update({
+            monitoringType: currentMonitoringType === "Full" ? "N/A" : existingPlaylist.getDataValue("monitoringType"),
             lastUpdatedByScheduler: Date.now(),
           });
         }
@@ -3353,7 +3354,7 @@ async function executeListing(
         });
         const newPlaylist = await addPlaylist(
           videoUrl,
-          currentMonitoringType === "Refresh" ? "N/A" : currentMonitoringType,
+          ["Refresh", "Full"].includes(currentMonitoringType) ? "N/A" : currentMonitoringType,
         );
         playlistTitle = (newPlaylist as any).title;
         seekPlaylistListTo = (newPlaylist as any).sortOrder;
