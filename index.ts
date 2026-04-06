@@ -4860,6 +4860,90 @@ async function processDeletePlaylistRequest(
 }
 
 /**
+ * Re-indexes all playlists using Full mode.
+ * Queues every playlist for re-indexing via listItemsConcurrently
+ * and returns immediately.  The actual re-index runs in the
+ * background, respecting the listing semaphore to avoid overload.
+ */
+async function processReindexAllRequest(
+  _requestBody: Record<string, any>,
+  response: ServerResponse,
+) {
+  try {
+    const allPlaylists = await PlaylistMetadata.findAll();
+
+    if (allPlaylists.length === 0) {
+      response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          status: "success",
+          message: "No playlists found to re-index",
+          queued: 0,
+        }),
+      );
+    }
+
+    // Build item descriptors — use Full mode with isScheduledUpdate=true
+    // so the listing pipeline treats this like a scheduler-triggered refresh.
+    const items = allPlaylists.map((p: Model) => ({
+      url: p.getDataValue("playlistUrl") as string,
+      type: "playlist",
+      currentMonitoringType: "Full",
+      isScheduledUpdate: true,
+      reason: "Batch re-index all",
+    }));
+
+    // Respond immediately; re-indexing runs in the background.
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(
+      JSON.stringify({
+        status: "success",
+        message: `Queued ${items.length} playlist(s) for re-indexing`,
+        queued: items.length,
+      }),
+    );
+
+    // Fire-and-forget — errors are logged internally by the listing pipeline.
+    void (async () => {
+      try {
+        logger.info("Starting batch re-index of all playlists", {
+          count: items.length,
+        });
+        const results = await listItemsConcurrently(
+          items,
+          config.chunkSize,
+          true,
+        );
+        const completedCount = results.filter(
+          (r: { status?: string }) =>
+            r && (r.status === "completed" || r.status === "success"),
+        ).length;
+        logger.info("Batch re-index completed", {
+          total: items.length,
+          completedCount,
+        });
+      } catch (err) {
+        logger.error("Batch re-index failed", {
+          error: (err as Error).message,
+          stack: (err as Error).stack,
+        });
+      }
+    })();
+  } catch (error) {
+    logger.error("processReindexAllRequest failed", {
+      error: (error as Error).message,
+    });
+    response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        status: "error",
+        message: (error as Error).message,
+      }),
+    );
+  }
+}
+
+/**
  * Handles deletion of specific videos from a playlist
  *
  * @param {Object} requestBody - Body of the request containing parameters
@@ -5856,6 +5940,15 @@ const server = (serverObj as any).createServer(
         res,
         (data: unknown, res: ServerResponse) =>
           makeSignedUrls(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/reindexall" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processReindexAllRequest(data as any, res),
       );
     } else if (
       req.url === config.urlBase + "/register" && req.method === "POST"
