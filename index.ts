@@ -3583,16 +3583,33 @@ async function handleSingleVideoStreaming(
       return handleEmptyResponse(videoUrl);
     }
 
-    const lastVideo = await PlaylistVideoMapping.findOne({
-      where: { playlistUrl },
-      order: [["positionInPlaylist", "DESC"]],
-      attributes: ["positionInPlaylist"],
-      limit: 1,
+    // For single videos going into the "None" playlist, check if a mapping
+    // already exists to prevent duplicates when the same URL is added again.
+    const existingMapping = await PlaylistVideoMapping.findOne({
+      where: {
+        videoUrl: chunkItems.length === 1
+          ? (JSON.parse(chunkItems[0]).webpage_url || JSON.parse(chunkItems[0]).url || "")
+          : "",
+        playlistUrl,
+      },
     });
 
-    const newStartIndex = lastVideo
-      ? lastVideo.getDataValue("positionInPlaylist") + 1
-      : 1;
+    let newStartIndex: number;
+    if (existingMapping) {
+      // Re-use the existing position so processStreamingVideoInformation
+      // sees it as an "already existed" record and just updates metadata.
+      newStartIndex = existingMapping.getDataValue("positionInPlaylist") as number;
+    } else {
+      const lastVideo = await PlaylistVideoMapping.findOne({
+        where: { playlistUrl },
+        order: [["positionInPlaylist", "DESC"]],
+        attributes: ["positionInPlaylist"],
+        limit: 1,
+      });
+      newStartIndex = lastVideo
+        ? lastVideo.getDataValue("positionInPlaylist") + 1
+        : 1;
+    }
 
     const result = await processStreamingVideoInformation(
       chunkItems,
@@ -3834,10 +3851,17 @@ async function processStreamingVideoInformation(
   );
   // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
   // positions (allowed by the schema) each get their own map entry.
-  // Although not a real concern, youtube supports it so I added it just in case
   const existingMappingsMap = new Map(
     existingMappings.map((m: any) => [
       `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
+      m,
+    ] as [string, Model]),
+  );
+  // Secondary lookup by videoUrl only — used by Start/End modes to find a
+  // mapping at a *different* position so we update it instead of creating a dupe.
+  const existingMappingsByUrl = new Map(
+    existingMappings.map((m: any) => [
+      m.getDataValue("videoUrl") as string,
       m,
     ] as [string, Model]),
   );
@@ -3893,11 +3917,22 @@ async function processStreamingVideoInformation(
     videosToUpsert.push(videoData);
 
     if (!existingMapping) {
-      mappingsToCreate.push({
-        videoUrl: videoUrl,
-        playlistUrl: playlistUrl,
-        positionInPlaylist: absoluteIndex,
-      });
+      // Before creating a new mapping, check if this video already has a
+      // mapping at a different position in the same playlist (position drift
+      // during Start/End incremental updates).  If so, update it instead.
+      const driftedMapping = existingMappingsByUrl.get(videoUrl);
+      if (driftedMapping && driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex) {
+        mappingsToUpdate.push({
+          instance: driftedMapping,
+          position: absoluteIndex,
+        });
+      } else if (!driftedMapping) {
+        mappingsToCreate.push({
+          videoUrl: videoUrl,
+          playlistUrl: playlistUrl,
+          positionInPlaylist: absoluteIndex,
+        });
+      }
     } else if (
       existingMapping.getDataValue("positionInPlaylist") !== absoluteIndex
     ) {
