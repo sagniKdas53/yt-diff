@@ -4866,8 +4866,9 @@ async function processDeletePlaylistRequest(
  * background, respecting the listing semaphore to avoid overload.
  *
  * @param {Object}  requestBody
+ * @param {number}  [requestBody.start]       - Start offset (0-based, default 0)
+ * @param {number}  [requestBody.stop]        - End offset (exclusive). Subset = playlists[start..stop). Omit for all from start.
  * @param {string}  [requestBody.siteFilter]  - Only re-index playlists whose URL contains this substring (e.g. "youtube.com")
- * @param {number}  [requestBody.batchSize]   - Max playlists to queue in this call (default: all). Call again to page through the rest.
  * @param {number}  [requestBody.chunkSize]   - Override the default chunk size for the listing pipeline
  */
 async function processReindexAllRequest(
@@ -4875,51 +4876,59 @@ async function processReindexAllRequest(
   response: ServerResponse,
 ) {
   try {
+    const startIndex: number = requestBody.start !== undefined
+      ? Math.max(0, parseInt(requestBody.start))
+      : 0;
+    const stopIndex: number | null = requestBody.stop !== undefined
+      ? Math.max(startIndex, parseInt(requestBody.stop))
+      : null; // null = no upper bound
     const siteFilter: string = requestBody.siteFilter || "";
-    const batchSize: number = requestBody.batchSize
-      ? Math.max(1, parseInt(requestBody.batchSize))
-      : 0; // 0 = unlimited
     const chunkSizeOverride: number = requestBody.chunkSize
       ? Math.max(1, parseInt(requestBody.chunkSize))
       : config.chunkSize;
 
-    let allPlaylists = await PlaylistMetadata.findAll();
+    // Fetch all playlists sorted by sortOrder (same order as getplay)
+    const allPlaylists = await PlaylistMetadata.findAll({
+      where: { sortOrder: { [Op.gte]: 0 } },
+      order: [["sortOrder", "ASC"]],
+    });
 
-    // Apply site filter if provided
-    if (siteFilter) {
-      allPlaylists = allPlaylists.filter((p: Model) =>
-        (p.getDataValue("playlistUrl") as string).includes(siteFilter)
-      );
-    }
+    const totalCount = allPlaylists.length;
 
-    if (allPlaylists.length === 0) {
+    // Slice to [start, stop) window
+    const subset = stopIndex !== null
+      ? allPlaylists.slice(startIndex, stopIndex)
+      : allPlaylists.slice(startIndex);
+
+    // Apply site filter on the subset
+    const filtered = siteFilter
+      ? subset.filter((p: Model) =>
+          (p.getDataValue("playlistUrl") as string).includes(siteFilter)
+        )
+      : subset;
+
+    if (filtered.length === 0) {
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(
         JSON.stringify({
           status: "success",
           message: siteFilter
-            ? `No playlists matching "${siteFilter}" found to re-index`
-            : "No playlists found to re-index",
+            ? `No playlists matching "${siteFilter}" in range [${startIndex}, ${stopIndex ?? totalCount})`
+            : `No playlists in range [${startIndex}, ${stopIndex ?? totalCount})`,
           queued: 0,
-          remaining: 0,
+          total: totalCount,
         }),
       );
     }
 
-    // Apply batch size limit
-    const remaining = batchSize > 0 ? Math.max(0, allPlaylists.length - batchSize) : 0;
-    const playlistsToQueue = batchSize > 0
-      ? allPlaylists.slice(0, batchSize)
-      : allPlaylists;
-
     // Build item descriptors — use Full mode with isScheduledUpdate=true
     // so the listing pipeline treats this like a scheduler-triggered refresh.
-    const items = playlistsToQueue.map((p: Model) => ({
+    const items = filtered.map((p: Model) => ({
       url: p.getDataValue("playlistUrl") as string,
       type: "playlist",
       currentMonitoringType: "Full",
       isScheduledUpdate: true,
-      reason: "Batch re-index all",
+      reason: "Batch re-index",
     }));
 
     // Respond immediately; re-indexing runs in the background.
@@ -4929,7 +4938,9 @@ async function processReindexAllRequest(
         status: "success",
         message: `Queued ${items.length} playlist(s) for re-indexing`,
         queued: items.length,
-        remaining,
+        total: totalCount,
+        start: startIndex,
+        stop: stopIndex ?? totalCount,
         siteFilter: siteFilter || undefined,
         chunkSize: chunkSizeOverride,
       }),
@@ -4940,6 +4951,8 @@ async function processReindexAllRequest(
       try {
         logger.info("Starting batch re-index of playlists", {
           count: items.length,
+          start: startIndex,
+          stop: stopIndex ?? totalCount,
           siteFilter: siteFilter || "none",
           chunkSize: chunkSizeOverride,
         });
