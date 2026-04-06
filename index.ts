@@ -3407,6 +3407,19 @@ async function handlePlaylistStreaming(
 
   logger.info(`Starting streaming listing for playlist`, { url: videoUrl });
 
+  // For Full and Refresh modes, clear all existing mappings first so the
+  // re-index starts clean.  Downloaded-but-missing videos will be picked up
+  // by the periodic prune job and moved to the "None" playlist.
+  if (monitoringType === "Full" || monitoringType === "Refresh") {
+    const deletedCount = await PlaylistVideoMapping.destroy({
+      where: { playlistUrl: videoUrl },
+    });
+    logger.info(
+      `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index`,
+      { url: videoUrl },
+    );
+  }
+
   let startIndex = 1;
 
   if (monitoringType === "End") {
