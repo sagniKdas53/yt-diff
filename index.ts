@@ -4860,32 +4860,61 @@ async function processDeletePlaylistRequest(
 }
 
 /**
- * Re-indexes all playlists using Full mode.
- * Queues every playlist for re-indexing via listItemsConcurrently
+ * Re-indexes playlists using Full mode.
+ * Queues playlists for re-indexing via listItemsConcurrently
  * and returns immediately.  The actual re-index runs in the
  * background, respecting the listing semaphore to avoid overload.
+ *
+ * @param {Object}  requestBody
+ * @param {string}  [requestBody.siteFilter]  - Only re-index playlists whose URL contains this substring (e.g. "youtube.com")
+ * @param {number}  [requestBody.batchSize]   - Max playlists to queue in this call (default: all). Call again to page through the rest.
+ * @param {number}  [requestBody.chunkSize]   - Override the default chunk size for the listing pipeline
  */
 async function processReindexAllRequest(
-  _requestBody: Record<string, any>,
+  requestBody: Record<string, any>,
   response: ServerResponse,
 ) {
   try {
-    const allPlaylists = await PlaylistMetadata.findAll();
+    const siteFilter: string = requestBody.siteFilter || "";
+    const batchSize: number = requestBody.batchSize
+      ? Math.max(1, parseInt(requestBody.batchSize))
+      : 0; // 0 = unlimited
+    const chunkSizeOverride: number = requestBody.chunkSize
+      ? Math.max(1, parseInt(requestBody.chunkSize))
+      : config.chunkSize;
+
+    let allPlaylists = await PlaylistMetadata.findAll();
+
+    // Apply site filter if provided
+    if (siteFilter) {
+      allPlaylists = allPlaylists.filter((p: Model) =>
+        (p.getDataValue("playlistUrl") as string).includes(siteFilter)
+      );
+    }
 
     if (allPlaylists.length === 0) {
       response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
       return response.end(
         JSON.stringify({
           status: "success",
-          message: "No playlists found to re-index",
+          message: siteFilter
+            ? `No playlists matching "${siteFilter}" found to re-index`
+            : "No playlists found to re-index",
           queued: 0,
+          remaining: 0,
         }),
       );
     }
 
+    // Apply batch size limit
+    const remaining = batchSize > 0 ? Math.max(0, allPlaylists.length - batchSize) : 0;
+    const playlistsToQueue = batchSize > 0
+      ? allPlaylists.slice(0, batchSize)
+      : allPlaylists;
+
     // Build item descriptors — use Full mode with isScheduledUpdate=true
     // so the listing pipeline treats this like a scheduler-triggered refresh.
-    const items = allPlaylists.map((p: Model) => ({
+    const items = playlistsToQueue.map((p: Model) => ({
       url: p.getDataValue("playlistUrl") as string,
       type: "playlist",
       currentMonitoringType: "Full",
@@ -4900,18 +4929,23 @@ async function processReindexAllRequest(
         status: "success",
         message: `Queued ${items.length} playlist(s) for re-indexing`,
         queued: items.length,
+        remaining,
+        siteFilter: siteFilter || undefined,
+        chunkSize: chunkSizeOverride,
       }),
     );
 
     // Fire-and-forget — errors are logged internally by the listing pipeline.
     void (async () => {
       try {
-        logger.info("Starting batch re-index of all playlists", {
+        logger.info("Starting batch re-index of playlists", {
           count: items.length,
+          siteFilter: siteFilter || "none",
+          chunkSize: chunkSizeOverride,
         });
         const results = await listItemsConcurrently(
           items,
-          config.chunkSize,
+          chunkSizeOverride,
           true,
         );
         const completedCount = results.filter(
