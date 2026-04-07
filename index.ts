@@ -2277,9 +2277,9 @@ function cleanupStaleProcesses(
     }
 
     // Handle stale processes
-    if (status === "running" && (now - spawnTimeStamp > maxIdleTime)) {
+    if (status === "running" && (now - lastActivity > maxIdleTime)) {
       logger.warn(`Found stale process: ${processId}`, {
-        idleTime: (now - spawnTimeStamp) / 1000,
+        idleTime: (now - lastActivity) / 1000,
         lastActivity: new Date(lastActivity).toISOString(),
       });
 
@@ -2886,9 +2886,13 @@ function executeDownload(
  * @param {string} processKey - Key of the process entry to update
  */
 function updateProcessActivity(processKey: string) {
-  const processEntry = downloadProcesses.get(processKey);
-  if (processEntry) {
-    processEntry.lastActivity = Date.now();
+  const downloadEntry = downloadProcesses.get(processKey);
+  if (downloadEntry) {
+    downloadEntry.lastActivity = Date.now();
+  }
+  const listEntry = listProcesses.get(processKey);
+  if (listEntry) {
+    listEntry.lastActivity = Date.now();
   }
 }
 // Helper function to cleanup process entry
@@ -3658,6 +3662,7 @@ function streamPlayListItems(
   });
 
   const processArgs = [
+    "--flat-playlist",
     "--playlist-start",
     startIndex.toString(),
     "--dump-json",
@@ -3704,7 +3709,7 @@ function streamPlayListItems(
       error: data,
       pid: listProcess.pid,
     });
-    updateProcessActivity(String(listProcess.pid));
+    updateProcessActivity(processKey);
   });
 
   let _exitStatus: number | null = null;
@@ -4512,6 +4517,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   const nextPlaylistIndex = pendingPlaylistSortCounter!++;
 
   const processArgs = [
+    "--flat-playlist",
     "--playlist-end",
     "1",
     "--dump-json",
