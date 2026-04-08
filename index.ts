@@ -23,7 +23,12 @@ import {
   sequelize,
   VideoMetadata,
 } from "./src/db/models.ts";
-import { createFileHandlers } from "./src/handlers/files.ts";
+import {
+  type BulkSignedFilesRequestBody,
+  createFileHandlers,
+  type RefreshSignedUrlRequestBody,
+  type SignedFileRequestBody,
+} from "./src/handlers/files.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
@@ -564,12 +569,41 @@ interface PlaylistDisplayRequest {
   order?: string;
   query?: string;
 }
+interface ListingRequestBody {
+  urlList?: string[];
+  chunkSize?: number | string;
+  sleep?: boolean;
+  monitoringType?: string;
+}
 interface SubListRequest {
   url?: string;
   start?: number;
   stop?: number;
   query?: string;
   sortDownloaded?: boolean;
+}
+interface UpdatePlaylistMonitoringRequest {
+  url?: string;
+  watch?: string;
+}
+interface DeletePlaylistRequestBody {
+  playListUrl?: string;
+  deleteAllVideosInPlaylist?: boolean;
+  deletePlaylist?: boolean;
+  cleanUp?: boolean;
+}
+interface ReindexAllRequestBody {
+  start?: string | number;
+  stop?: string | number;
+  siteFilter?: string;
+  chunkSize?: string | number;
+}
+interface DeleteVideosRequestBody {
+  playListUrl?: string;
+  videoUrls?: string[];
+  cleanUp?: boolean;
+  deleteVideoMappings?: boolean;
+  deleteVideosInDB?: boolean;
 }
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
@@ -1429,7 +1463,7 @@ const ListingSemaphore = {
  */
 
 async function processListingRequest(
-  requestBody: Record<string, any>,
+  requestBody: ListingRequestBody,
   response: ServerResponse,
 ): Promise<void> {
   try {
@@ -2867,7 +2901,7 @@ async function _updateVideoMetadata(
  */
 
 async function updatePlaylistMonitoring(
-  requestBody: Record<string, any>,
+  requestBody: UpdatePlaylistMonitoringRequest,
   response: ServerResponse,
 ): Promise<void> {
   try {
@@ -3101,7 +3135,7 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
  */
 
 async function processDeletePlaylistRequest(
-  requestBody: Record<string, any>,
+  requestBody: DeletePlaylistRequestBody,
   response: ServerResponse,
 ) {
   try {
@@ -3321,19 +3355,19 @@ async function processDeletePlaylistRequest(
  * @param {number}  [requestBody.chunkSize]   - Override the default chunk size for the listing pipeline
  */
 async function processReindexAllRequest(
-  requestBody: Record<string, any>,
+  requestBody: ReindexAllRequestBody,
   response: ServerResponse,
 ) {
   try {
     const startIndex: number = requestBody.start !== undefined
-      ? Math.max(0, parseInt(requestBody.start))
+      ? Math.max(0, parseInt(String(requestBody.start), 10))
       : 0;
     const stopIndex: number | null = requestBody.stop !== undefined
-      ? Math.max(startIndex, parseInt(requestBody.stop))
+      ? Math.max(startIndex, parseInt(String(requestBody.stop), 10))
       : null; // null = no upper bound
     const siteFilter: string = requestBody.siteFilter || "";
     const chunkSizeOverride: number = requestBody.chunkSize
-      ? Math.max(1, parseInt(requestBody.chunkSize))
+      ? Math.max(1, parseInt(String(requestBody.chunkSize), 10))
       : config.chunkSize;
 
     // Fetch all playlists sorted by sortOrder (same order as getplay)
@@ -3457,7 +3491,7 @@ async function processReindexAllRequest(
  */
 
 async function processDeleteVideosRequest(
-  requestBody: Record<string, any>,
+  requestBody: DeleteVideosRequestBody,
   response: ServerResponse,
 ) {
   try {
@@ -4225,23 +4259,29 @@ const apiRoutes = createApiRoutes({
   isRegistrationAllowed,
   rateLimit,
   registerUser,
-  processListingRequest: (data, res) => processListingRequest(data as any, res),
+  processListingRequest: (data, res) =>
+    processListingRequest(data as ListingRequestBody, res),
   processDownloadRequest: (data, res) =>
-    processDownloadRequest(data as any, res),
+    processDownloadRequest(
+      data as { urlList: string[]; playListUrl?: string },
+      res,
+    ),
   updatePlaylistMonitoring: (data, res) =>
-    updatePlaylistMonitoring(data as any, res),
+    updatePlaylistMonitoring(data as UpdatePlaylistMonitoringRequest, res),
   getPlaylistsForDisplay: (data, res) =>
-    getPlaylistsForDisplay(data as any, res),
+    getPlaylistsForDisplay(data as PlaylistDisplayRequest, res),
   processDeletePlaylistRequest: (data, res) =>
-    processDeletePlaylistRequest(data as any, res),
-  getSubListVideos: (data, res) => getSubListVideos(data as any, res),
+    processDeletePlaylistRequest(data as DeletePlaylistRequestBody, res),
+  getSubListVideos: (data, res) => getSubListVideos(data as SubListRequest, res),
   processDeleteVideosRequest: (data, res) =>
-    processDeleteVideosRequest(data as any, res),
-  makeSignedUrl: (data, res) => makeSignedUrl(data as any, res),
-  refreshSignedUrl: (data, res) => refreshSignedUrl(data as any, res),
-  makeSignedUrls: (data, res) => makeSignedUrls(data as any, res),
+    processDeleteVideosRequest(data as DeleteVideosRequestBody, res),
+  makeSignedUrl: (data, res) => makeSignedUrl(data as SignedFileRequestBody, res),
+  refreshSignedUrl: (data, res) =>
+    refreshSignedUrl(data as RefreshSignedUrlRequestBody, res),
+  makeSignedUrls: (data, res) =>
+    makeSignedUrls(data as BulkSignedFilesRequestBody, res),
   processReindexAllRequest: (data, res) =>
-    processReindexAllRequest(data as any, res),
+    processReindexAllRequest(data as ReindexAllRequestBody, res),
 });
 
 const jobs = createJobs({

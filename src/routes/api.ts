@@ -1,32 +1,24 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { config } from "../config.ts";
+import type {
+  RateLimitFunction,
+  RequestHandler,
+} from "../middleware/rateLimit.ts";
 import type { RouteDefinition } from "./http.ts";
 
 type BodyHandler = (data: unknown, res: ServerResponse) => unknown;
-type RequestHandler = (
-  req: IncomingMessage,
-  res: ServerResponse,
-) => unknown;
 type AuthenticatedMiddleware = (
   req: IncomingMessage,
   res: ServerResponse,
   next: BodyHandler,
-) => unknown;
-type RateLimitMiddleware = (
-  req: IncomingMessage,
-  res: ServerResponse,
-  currentHandler: RequestHandler | AuthenticatedMiddleware,
-  nextHandler: BodyHandler | RequestHandler,
-  maxRequestsPerWindow: number,
-  windowSeconds: number,
 ) => unknown;
 
 interface ApiRouteDependencies {
   authenticateRequest: AuthenticatedMiddleware;
   authenticateUser: RequestHandler;
   isRegistrationAllowed: RequestHandler;
-  rateLimit: RateLimitMiddleware;
+  rateLimit: RateLimitFunction;
   registerUser: RequestHandler;
   processListingRequest: BodyHandler;
   processDownloadRequest: BodyHandler;

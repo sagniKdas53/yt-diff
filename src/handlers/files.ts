@@ -18,6 +18,19 @@ interface FileHandlerDependencies {
   mimeTypes: Record<string, string>;
 }
 
+export interface SignedFileRequestBody {
+  saveDirectory?: string;
+  fileName?: string;
+}
+
+export interface RefreshSignedUrlRequestBody {
+  fileId?: string;
+}
+
+export interface BulkSignedFilesRequestBody {
+  files?: SignedFileRequestBody[];
+}
+
 export function createFileHandlers({
   redis,
   generateCorsHeaders,
@@ -25,7 +38,7 @@ export function createFileHandlers({
   mimeTypes,
 }: FileHandlerDependencies) {
   async function makeSignedUrl(
-    requestBody: { saveDirectory?: string; fileName?: string },
+    requestBody: SignedFileRequestBody,
     response: ServerResponse,
   ) {
     let absolutePath = null;
@@ -108,7 +121,7 @@ export function createFileHandlers({
   }
 
   async function refreshSignedUrl(
-    requestBody: { fileId?: string },
+    requestBody: RefreshSignedUrlRequestBody,
     response: ServerResponse,
   ) {
     if (
@@ -150,7 +163,7 @@ export function createFileHandlers({
   }
 
   async function makeSignedUrls(
-    requestBody: { files?: { saveDirectory?: string; fileName?: string }[] },
+    requestBody: BulkSignedFilesRequestBody,
     response: ServerResponse,
   ) {
     if (
