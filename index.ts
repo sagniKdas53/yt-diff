@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore-file no-explicit-any
-import { Model, Op } from "sequelize";
+import { FindAndCountOptions, Model, Op, WhereOptions } from "sequelize";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http, { IncomingMessage, ServerResponse } from "node:http";
@@ -605,6 +605,54 @@ interface DeleteVideosRequestBody {
   deleteVideoMappings?: boolean;
   deleteVideosInDB?: boolean;
 }
+interface PlaylistVideoRowShape {
+  positionInPlaylist: number;
+  playlistUrl: string;
+  video_metadatum?: {
+    title?: string;
+    videoId?: string;
+    videoUrl?: string;
+    downloadStatus?: boolean;
+    isAvailable?: boolean;
+    fileName?: string | null;
+    thumbNailFile?: string | null;
+    onlineThumbnail?: string | null;
+    subTitleFile?: string | null;
+    descriptionFile?: string | null;
+    isMetaDataSynced?: boolean;
+    saveDirectory?: string | null;
+  };
+}
+
+interface SafePlaylistVideoMeta {
+  title?: string;
+  videoId?: string;
+  videoUrl?: string;
+  downloadStatus?: boolean;
+  isAvailable?: boolean;
+  fileName?: string | null;
+  thumbNailFile?: string | null;
+  onlineThumbnail?: string | null;
+  subTitleFile?: string | null;
+  descriptionFile?: string | null;
+  isMetaDataSynced?: boolean;
+  saveDirectory?: string | null;
+}
+
+interface SafePlaylistVideoRow {
+  positionInPlaylist: number;
+  playlistUrl: string;
+  video_metadatum: SafePlaylistVideoMeta;
+}
+
+interface PlaylistWhereShape {
+  sortOrder: { [Op.gte]: number };
+  playlistUrl?: { [Op.iLike]: string };
+  title?: { [Op.iLike]?: string; [Op.iRegexp]?: string };
+}
+
+type HttpError = Error & { status?: number };
+
 interface ListingItem {
   url: string;
   type: string;
@@ -3846,12 +3894,14 @@ async function getPlaylistsForDisplay(
 
     // Build base query
 
-    const queryOptions: any = {
-      where: {
-        sortOrder: {
-          [Op.gte]: 0, // Filter out system playlists
-        },
+    const playlistWhere: PlaylistWhereShape = {
+      sortOrder: {
+        [Op.gte]: 0, // Filter out system playlists
       },
+    };
+
+    const queryOptions: FindAndCountOptions = {
+      where: playlistWhere as unknown as WhereOptions,
       limit: pageSize,
       offset: startIndex,
       order: [[sortBy, sortDirection]],
@@ -3861,7 +3911,7 @@ async function getPlaylistsForDisplay(
     if (searchQuery && searchQuery.length > 0) {
       if (searchQuery.startsWith("url:")) {
         if (searchQuery.slice(4).length > 0) {
-          queryOptions.where.playlistUrl = {
+          playlistWhere.playlistUrl = {
             [Op.iLike]: `%${searchQuery.slice(4)}%`,
           };
         } else {
@@ -3870,14 +3920,14 @@ async function getPlaylistsForDisplay(
       } else if (searchQuery.startsWith("title:")) {
         const titleSearch = searchQuery.slice(6);
         if (titleSearch.length > 0) {
-          queryOptions.where.title = {
+          playlistWhere.title = {
             [Op.iRegexp]: titleSearch,
           };
         } else {
           logger.debug("No title provided", { searchQuery });
         }
       } else {
-        queryOptions.where.title = {
+        playlistWhere.title = {
           [Op.iLike]: `%${searchQuery}%`,
         };
       }
@@ -3893,7 +3943,7 @@ async function getPlaylistsForDisplay(
       stack: (error as Error).stack,
     });
 
-    const statusCode = (error as any).status || 500;
+    const statusCode = (error as HttpError).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       error: he.escape((error as Error).message),
@@ -3944,8 +3994,8 @@ async function getSubListVideos(
 
     // Build base query options
 
-    const videoMetadataWhere: any = {};
-    const mappingWhere: any = {
+    const videoMetadataWhere: WhereOptions = {};
+    const mappingWhere: WhereOptions = {
       playlistUrl: playlistUrl,
     };
 
@@ -4001,7 +4051,7 @@ async function getSubListVideos(
       }
     }
 
-    const queryOptions = {
+    const queryOptions: FindAndCountOptions = {
       attributes: ["positionInPlaylist", "playlistUrl"],
       include: [{
         model: VideoMetadata,
@@ -4026,7 +4076,7 @@ async function getSubListVideos(
       where: mappingWhere,
       limit: endIndex - startIndex,
       offset: startIndex,
-      order: [sortOrder] as any,
+      order: [sortOrder as [string | typeof VideoMetadata, string, string]],
     };
 
     // Execute query
@@ -4039,7 +4089,9 @@ async function getSubListVideos(
         where: { playlistUrl },
       });
 
-      playlistSaveDir = (playlist as any)?.saveDirectory ?? "";
+      playlistSaveDir =
+        (playlist as unknown as { saveDirectory?: string } | null)
+          ?.saveDirectory ?? "";
     } catch (err) {
       logger.warn("Could not fetch playlist saveDirectory", {
         playlistUrl,
@@ -4047,10 +4099,11 @@ async function getSubListVideos(
       });
     }
 
-    const safeRows = results.rows.map((row: any) => {
-      const vm = row.video_metadatum || {};
+    const safeRows: SafePlaylistVideoRow[] = results.rows.map((row) => {
+      const typedRow = row as unknown as PlaylistVideoRowShape;
+      const vm = typedRow.video_metadatum || {};
       // Build a sanitized video_metadatum to return to client
-      const safeVideoMeta = {
+      const safeVideoMeta: SafePlaylistVideoMeta = {
         title: vm.title,
         videoId: vm.videoId,
         videoUrl: vm.videoUrl,
@@ -4066,8 +4119,8 @@ async function getSubListVideos(
       };
 
       return {
-        positionInPlaylist: row.positionInPlaylist,
-        playlistUrl: row.playlistUrl,
+        positionInPlaylist: typedRow.positionInPlaylist,
+        playlistUrl: typedRow.playlistUrl,
         video_metadatum: safeVideoMeta,
       };
     });
@@ -4087,7 +4140,7 @@ async function getSubListVideos(
       stack: (error as Error).stack,
     });
 
-    const statusCode = (error as any).status || 500;
+    const statusCode = (error as HttpError).status || 500;
     response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
     response.end(JSON.stringify({
       error: he.escape((error as Error).message),
