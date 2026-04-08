@@ -605,6 +605,39 @@ interface DeleteVideosRequestBody {
   deleteVideoMappings?: boolean;
   deleteVideosInDB?: boolean;
 }
+interface ListingItem {
+  url: string;
+  type: string;
+  currentMonitoringType: string;
+  previousMonitoringType?: string;
+  reason: string;
+  isScheduledUpdate?: boolean;
+}
+
+interface ListingResult {
+  url: string;
+  status: string;
+  title?: string;
+  playlistTitle?: string;
+  type?: string;
+  processedChunks?: number;
+  seekPlaylistListTo?: number;
+  error?: string;
+}
+
+interface DownloadItem {
+  url: string;
+  title: string;
+  saveDirectory: string;
+  videoId: string;
+}
+
+interface DownloadResult {
+  url: string;
+  title: string;
+  status: string;
+  error?: string;
+}
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
 /**
@@ -800,7 +833,7 @@ async function processDownloadRequest(
 ) {
   try {
     // Initialize download tracking
-    const videosToDownload = [];
+    const videosToDownload: DownloadItem[] = [];
     const uniqueUrls = new Set();
     const playlistUrl = requestBody.playListUrl ?? "None";
 
@@ -925,7 +958,7 @@ async function processDownloadRequest(
  */
 
 async function downloadItemsConcurrently(
-  items: Array<any>,
+  items: DownloadItem[],
   maxConcurrent: number = 2,
 ): Promise<boolean> {
   logger.trace(
@@ -956,13 +989,13 @@ async function downloadItemsConcurrently(
 
   // Check for any failures
 
-  const allSuccessful = downloadResults.every((result: any) =>
+  const allSuccessful = downloadResults.every((result) =>
     result && result.status === "success"
   );
 
   // Log results
 
-  downloadResults.forEach((result: any) => {
+  downloadResults.forEach((result) => {
     if (result.status === "success") {
       logger.info(`Downloaded ${result.title} successfully`);
     } else {
@@ -988,8 +1021,8 @@ async function downloadItemsConcurrently(
  */
 
 async function downloadWithSemaphore(
-  downloadItem: Record<string, any>,
-): Promise<any> {
+  downloadItem: DownloadItem,
+): Promise<DownloadResult> {
   logger.trace(
     `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
   );
@@ -1043,9 +1076,9 @@ async function downloadWithSemaphore(
  */
 
 function executeDownload(
-  downloadItem: Record<string, any>,
+  downloadItem: DownloadItem,
   processKey: string,
-) {
+): Promise<DownloadResult> {
   const {
     url: videoUrl,
     title: videoTitle,
@@ -1065,7 +1098,7 @@ function executeDownload(
       fs.mkdirSync(savePath, { recursive: true });
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<DownloadResult>((resolve, reject) => {
       let progressPercent: number | null = null;
       let capturedTitle: string | null = null;
       let capturedFileName: string | null = null;
@@ -1339,12 +1372,12 @@ function executeDownload(
     });
   } catch (error) {
     logger.error(`Download error: ${(error as Error).message}`);
-    return {
+    return Promise.resolve({
       url: videoUrl,
       title: videoTitle,
       status: "failed",
       error: (error as Error).message,
-    };
+    });
   }
 }
 // Helper function to update process activity timestamp
@@ -1479,7 +1512,7 @@ async function processListingRequest(
     );
 
     const monitoringType = requestBody.monitoringType ?? "N/A";
-    const itemsToList = [];
+    const itemsToList: ListingItem[] = [];
     const uniqueUrls = new Set();
 
     logger.trace("Processing URL list", {
@@ -1611,10 +1644,10 @@ async function processListingRequest(
  */
 
 async function listItemsConcurrently(
-  items: Array<any>,
+  items: ListingItem[],
   chunkSize: number,
   isScheduledUpdate: boolean,
-): Promise<any[]> {
+): Promise<ListingResult[]> {
   logger.trace(
     `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
   );
@@ -1637,12 +1670,10 @@ async function listItemsConcurrently(
 
   // Check for any failures  // Log results
   try {
-    listingResults.forEach((result: { status?: string; title?: string }) => {
+    listingResults.forEach((result) => {
       if (result.status === "completed") {
         logger.info(
-          `Listed ${
-            result.title || (result as any).playlistTitle
-          } successfully`,
+          `Listed ${result.title || result.playlistTitle} successfully`,
         );
       } else {
         logger.error(
@@ -1676,23 +1707,23 @@ async function listItemsConcurrently(
  */
 
 async function listWithSemaphore(
-  item: Record<string, any>,
+  item: ListingItem,
   chunkSize: number,
   isScheduledUpdate: boolean,
-): Promise<any> {
+): Promise<ListingResult> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
   // Acquire semaphore before starting listing
   await ListingSemaphore.acquire();
 
   try {
-    const { url: videoUrl, type: itemType, monitoringType } = item;
+    const { url: videoUrl, type: itemType, currentMonitoringType } = item;
 
     // Create pending listing entry
     const listEntry = {
       url: videoUrl,
       type: itemType,
-      monitoringType: monitoringType,
+      monitoringType: currentMonitoringType,
       lastActivity: Date.now(),
       spawnTimeStamp: null,
       status: "pending",
@@ -1741,11 +1772,11 @@ async function listWithSemaphore(
  */
 
 async function executeListing(
-  item: Record<string, any>,
+  item: ListingItem,
   processKey: string,
   chunkSize: number,
   isScheduledUpdate: boolean = false,
-): Promise<any> {
+): Promise<ListingResult> {
   // Allow the item itself to carry the flag (e.g. when called from the scheduler)
   // I don't remember why item has a isScheduledUpdate property, but I'll keep it for now
   // TODO: Remove it if not needed
@@ -1862,8 +1893,16 @@ async function executeListing(
 // Helpers for streaming execution
 
 async function handlePlaylistStreaming(
-  item: Record<string, any>,
-): Promise<any> {
+  item: {
+    videoUrl: string;
+    chunkSize: number;
+    isScheduledUpdate: boolean;
+    playlistTitle: string;
+    seekPlaylistListTo: number;
+    processKey: string;
+    monitoringType: string;
+  },
+): Promise<ListingResult> {
   const {
     videoUrl,
     chunkSize,
@@ -2028,8 +2067,13 @@ async function handlePlaylistStreaming(
 }
 
 async function handleSingleVideoStreaming(
-  item: Record<string, any>,
-): Promise<any> {
+  item: {
+    videoUrl: string;
+    itemType: string;
+    isScheduledUpdate: boolean;
+    processKey: string;
+  },
+): Promise<ListingResult> {
   const { videoUrl, itemType, isScheduledUpdate, processKey } = item;
   const playlistUrl = "None";
 
@@ -2108,6 +2152,13 @@ async function handleSingleVideoStreaming(
         processedChunks: 1,
       };
     }
+
+    return {
+      url: videoUrl,
+      title: result.title,
+      status: "completed",
+      processedChunks: result.count,
+    };
   } catch (error) {
     return handleListingError(error as Error, videoUrl, itemType);
   }
