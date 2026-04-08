@@ -7,12 +7,36 @@ import { logger } from "../logger.ts";
 type GenerateCorsHeaders = (
   contentType: string,
 ) => Record<string, string | number>;
-type MiddlewareHandler = (
+export type MiddlewareNext = (data: unknown, res: ServerResponse) => void;
+export type MiddlewareHandler = (
   req: IncomingMessage,
   res: ServerResponse,
-  next: (data: any, res: ServerResponse) => void,
+  next: MiddlewareNext,
 ) => unknown;
-type NextHandler = (data: any, res: ServerResponse) => unknown;
+export type RequestHandler = (
+  req: IncomingMessage,
+  res: ServerResponse,
+) => unknown;
+export type NextHandler = MiddlewareNext;
+
+export interface RateLimitFunction {
+  (
+    request: IncomingMessage,
+    response: ServerResponse,
+    currentHandler: MiddlewareHandler,
+    nextHandler: NextHandler,
+    maxRequestsPerWindow: number,
+    windowSeconds: number,
+  ): Promise<unknown>;
+  (
+    request: IncomingMessage,
+    response: ServerResponse,
+    currentHandler: RequestHandler,
+    nextHandler: RequestHandler,
+    maxRequestsPerWindow: number,
+    windowSeconds: number,
+  ): Promise<unknown>;
+}
 
 interface RateLimitDependencies {
   redis: Redis;
@@ -25,11 +49,11 @@ export function createRateLimit({
   generateCorsHeaders,
   jsonMimeType,
 }: RateLimitDependencies) {
-  return async function rateLimit(
+  const rateLimit: RateLimitFunction = async function rateLimit(
     request: IncomingMessage,
     response: ServerResponse,
-    currentHandler: MiddlewareHandler,
-    nextHandler: NextHandler,
+    currentHandler: MiddlewareHandler | RequestHandler,
+    nextHandler: NextHandler | RequestHandler,
     maxRequestsPerWindow: number,
     windowSeconds: number,
   ) {
@@ -38,7 +62,15 @@ export function createRateLimit({
 
     if (maxRequestsPerWindow === 0) {
       logger.debug("Rate limiting disabled (maxRequestsPerWindow is 0)");
-      return currentHandler(request, response, nextHandler);
+      if (currentHandler.length >= 3) {
+        return (currentHandler as MiddlewareHandler)(
+          request,
+          response,
+          nextHandler as MiddlewareNext,
+        );
+      }
+
+      return (currentHandler as RequestHandler)(request, response);
     }
 
     const currentRequests = Number((await redis.get(`ip:${clientIp}`)) ?? 0);
@@ -55,6 +87,16 @@ export function createRateLimit({
     await redis.set(`ip:${clientIp}`, currentRequests + 1, "EX", windowSeconds);
 
     logger.debug(`Request count for ${clientIp}: ${currentRequests + 1}`);
-    return currentHandler(request, response, nextHandler);
+    if (currentHandler.length >= 3) {
+      return (currentHandler as MiddlewareHandler)(
+        request,
+        response,
+        nextHandler as MiddlewareNext,
+      );
+    }
+
+    return (currentHandler as RequestHandler)(request, response);
   };
+
+  return rateLimit;
 }

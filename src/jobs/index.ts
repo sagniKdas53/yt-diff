@@ -29,11 +29,13 @@ type CleanupStaleProcesses = (
   processType: string,
 ) => number;
 
+type JobResult = { status?: string };
+
 type ListItemsConcurrently = (
-  items: Array<any>,
+  items: unknown[],
   chunkSize: number,
   isScheduledUpdate: boolean,
-) => Promise<any[]>;
+) => Promise<JobResult[]>;
 
 interface JobDependencies {
   cleanupStaleProcesses: CleanupStaleProcesses;
@@ -282,8 +284,9 @@ export function createJobs({
 export function startJobs(jobs: AppJobs) {
   for (const [name, job] of Object.entries(jobs)) {
     job.start();
+    const jobWithCronTime = job as unknown as { cronTime: { source: string } };
     logger.info(`Started ${name} job`, {
-      schedule: (job as any).cronTime.source,
+      schedule: jobWithCronTime.cronTime.source,
       nextRun: formatNextRun(job),
     });
   }
