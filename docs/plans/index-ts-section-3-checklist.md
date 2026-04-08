@@ -20,9 +20,9 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 ## Phase 3: Route structure
 
 - [x] Replace the `if/else if` POST router with a route registry.
-- [ ] Move each endpoint handler into a dedicated backend module.
-- [ ] Preserve current request/response behavior while shrinking `index.ts`.
-- [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
+- [x] Move each endpoint handler into a dedicated backend module.
+- [x] Preserve current request/response behavior while shrinking `index.ts`.
+- [x] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
 
 ## Phase 4: Typing cleanup
 

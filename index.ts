@@ -23,11 +23,13 @@ import {
   sequelize,
   VideoMetadata,
 } from "./src/db/models.ts";
+import { createFileHandlers } from "./src/handlers/files.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
-import { dispatchRoute, type RouteDefinition } from "./src/routes/http.ts";
+import { createApiRoutes } from "./src/routes/api.ts";
+import { dispatchRoute } from "./src/routes/http.ts";
 import { tryServeSignedFile } from "./src/routes/helpers/serveSignedFile.ts";
 import { serveStaticAsset, type StaticAsset } from "./src/routes/helpers/serveStaticAsset.ts";
 import { createSocketServer } from "./src/socket/index.ts";
@@ -541,238 +543,13 @@ const rateLimit = createRateLimit({
   jsonMimeType: MIME_TYPES[".json"],
 });
 
-// Download functions
-/**
- * Create a time-limited, signed identifier for serving a file and write the result to the HTTP response.
- *
- * Validations and behavior:
- * - Expects a requestBody with at least `fileName` (string). `saveDirectory` is optional.
- * - Validates `fileName` is a non-empty string; responds with 400 if missing/invalid.
- * - Joins `config.saveLocation`, `saveDirectory` and `fileName` using path_fs.join, resolves the result,
- *   and verifies the resolved path is inside the configured save root (path traversal protection).
- *   If the resolved path is outside the save root, responds with 400.
- * - Checks if a valid (non-expired) signed URL already exists for this file path. If found, reuses it.
- * - On success, generates a UUID (via crypto.randomUUID()), computes an expiry timestamp (Date.now() + config.cache.maxAge * 1000),
- *   and stores an entry in `signedUrlCache` with key = UUID and value = { filePath, mimeType, expiry }.
- *   The cache entry is stored with a TTL equal to `config.cache.maxAge` (the code treats this value as seconds).
- * - Responds with 200 and a JSON body: { status: 'success', signedUrlId, expiry } where `expiry` is an epoch timestamp in milliseconds.
- *
- * Side effects:
- * - Writes HTTP headers and body to the provided `response` (uses response.writeHead and response.end).
- * - Emits warnings via `logger.warn` on invalid input or path traversal attempts.
- * - Mutates `signedUrlCache` by inserting the signed URL mapping.
- *
- * Notes:
- * - The function is async and resolves after writing to the response, but it handles error responses itself (no exceptions propagated).
- * - Default MIME type for the cached entry is "application/octet-stream".
- * - The implementation relies on external symbols: config, path_fs, signedUrlCache, logger, generateCorsHeaders, MIME_TYPES, crypto.
- *
- * @async
- * @param {Object} requestBody - Parsed request payload.
- * @param {string} [requestBody.saveDirectory] - Optional subdirectory (relative to config.saveLocation) containing the file.
- * @param {string} requestBody.fileName - Name of the file to serve; must be a non-empty string.
- * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body.
- * @returns {Promise<void>} Resolves after sending the HTTP response. On success sends JSON with { status, signedUrlId, expiry }. On error sends a 400 JSON error.
- */
-async function makeSignedUrl(
-  requestBody: { saveDirectory?: string; fileName?: string },
-  response: ServerResponse,
-) {
-  let absolutePath = null;
-  if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
-    const saveDirectory = requestBody.saveDirectory || "";
-    const fileName = requestBody.fileName;
-    if (!fileName || typeof fileName !== "string") {
-      logger.warn("serveFileByPath invalid fileName", {
-        saveDirectory,
-        fileName,
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(
-        JSON.stringify({ status: "error", message: "fileName is required" }),
-      );
-    }
+const { makeSignedUrl, makeSignedUrls, refreshSignedUrl } = createFileHandlers({
+  redis,
+  generateCorsHeaders,
+  jsonMimeType: MIME_TYPES[".json"],
+  mimeTypes: MIME_TYPES,
+});
 
-    // Construct the absolute path using configured saveLocation. Use path_fs.join and
-    // then verify that the resolved path is within config.saveLocation to avoid traversal.
-    const joined = path.join(
-      config.saveLocation,
-      saveDirectory || "",
-      fileName,
-    );
-    const resolved = path.resolve(joined);
-    const saveRoot = path.resolve(config.saveLocation);
-    if (!resolved.startsWith(saveRoot)) {
-      logger.warn("serveFileByPath attempted path traversal", {
-        saveDirectory,
-        fileName,
-        resolved,
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(
-        JSON.stringify({ status: "error", message: "Invalid file path" }),
-      );
-    }
-    logger.debug(`Resolved Path ${resolved}`, {
-      joined,
-      resolved,
-      saveRoot,
-    });
-    if (fs.existsSync(resolved)) {
-      absolutePath = resolved;
-    } else {
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(
-        JSON.stringify({ status: "error", message: "File could not be found" }),
-      );
-    }
-  } else {
-    logger.warn("makeSignedUrl missing parameters", {
-      requestBody: JSON.stringify(requestBody),
-    });
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(
-      JSON.stringify({
-        status: "error",
-        message: "saveDirectory and fileName are required",
-      }),
-    );
-  }
-
-  // Check if a valid signed URL already exists for this file path
-  const now = Date.now();
-  // Redis replacement: Create new signed URL
-  const signedUrlId = crypto.randomUUID();
-  const expiry = now + config.cache.maxAge * 1000;
-
-  await redis.set(
-    `signed:${signedUrlId}`,
-    JSON.stringify({
-      filePath: absolutePath,
-      mimeType: MIME_TYPES[path.extname(absolutePath)] ||
-        "application/octet-stream",
-      expiry,
-    }),
-    "EX",
-    config.cache.maxAge,
-  );
-
-  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-  response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
-}
-
-/**
- * Refreshes the expiry of an existing signed URL to keep it alive during active watching.
- *
- * @param {Object} requestBody - Parsed request payload.
- * @param {string} requestBody.fileId - The file ID to refresh.
- * @param {import('http').ServerResponse} response - The Node.js HTTP response object.
- */
-async function refreshSignedUrl(
-  requestBody: { fileId?: string },
-  response: ServerResponse,
-) {
-  if (
-    !requestBody || !requestBody.fileId ||
-    typeof requestBody.fileId !== "string"
-  ) {
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(
-      JSON.stringify({ status: "error", message: "fileId is required" }),
-    );
-  }
-
-  const cachedEntry = await redis.get(`signed:${requestBody.fileId}`);
-  if (cachedEntry) {
-    await redis.expire(`signed:${requestBody.fileId}`, config.cache.maxAge);
-    const now = Date.now();
-    const expiry = now + config.cache.maxAge * 1000;
-
-    // We also need to update the expiry in the JSON payload stored, so subsequent reads are accurate if they use it.
-    // Wait, the original code had expiry in JSON. Let's update it.
-    const parsedEntry = JSON.parse(cachedEntry);
-    parsedEntry.expiry = expiry;
-    await redis.set(
-      `signed:${requestBody.fileId}`,
-      JSON.stringify(parsedEntry),
-      "EX",
-      config.cache.maxAge,
-    );
-
-    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({ status: "success", expiry }));
-  } else {
-    response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(
-      JSON.stringify({
-        status: "error",
-        message: "fileId not found or expired",
-      }),
-    );
-  }
-}
-
-/**
- * Generates signed URLs for a list of files.
- *
- * @param {Object} requestBody - The request body containing the list of files.
- * @param {http.ServerResponse} response - The HTTP response object.
- */
-async function makeSignedUrls(
-  requestBody: { files?: { saveDirectory?: string; fileName?: string }[] },
-  response: ServerResponse,
-) {
-  if (!requestBody || !requestBody.files || !Array.isArray(requestBody.files)) {
-    logger.warn("makeSignedUrls missing or invalid parameters", {
-      requestBody: JSON.stringify(requestBody),
-    });
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(
-      JSON.stringify({ status: "error", message: "files array is required" }),
-    );
-  }
-
-  const results: Record<string, string | null> = {};
-  const now = Date.now();
-
-  for (const file of requestBody.files) {
-    const { saveDirectory, fileName } = file;
-    if (!fileName || typeof fileName !== "string") continue;
-
-    // Construct the absolute path using configured saveLocation.
-    const joined = path.join(
-      config.saveLocation,
-      saveDirectory || "",
-      fileName,
-    );
-    const resolved = path.resolve(joined);
-    const saveRoot = path.resolve(config.saveLocation);
-
-    if (!resolved.startsWith(saveRoot) || !fs.existsSync(resolved)) {
-      results[fileName] = null;
-      continue;
-    }
-
-    const signedUrlId = crypto.randomUUID();
-    const expiry = now + config.cache.maxAge * 1000;
-
-    await redis.set(
-      `signed:${signedUrlId}`,
-      JSON.stringify({
-        filePath: resolved,
-        mimeType: "application/octet-stream",
-        expiry,
-      }),
-      "EX",
-      config.cache.maxAge,
-    );
-
-    results[fileName] = signedUrlId;
-  }
-
-  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-  response.end(JSON.stringify({ status: "success", files: results }));
-}
 interface Process {
   status: string;
   spawnType: string;
@@ -4412,178 +4189,6 @@ const server = (serverObj as any).createServer(
       res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
       res.end();
     } else if (req.method === "POST") {
-      const apiRoutes: RouteDefinition[] = [
-        {
-          method: "POST",
-          path: config.urlBase + "/list",
-          run: (req, res) =>
-            rateLimit(
-              req,
-              res,
-              authenticateRequest,
-              (data: unknown, res: ServerResponse) =>
-                processListingRequest(data as any, res),
-              config.cache.actionReqPerIP,
-              config.cache.actionWindowSec,
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/download",
-          run: (req, res) =>
-            rateLimit(
-              req,
-              res,
-              authenticateRequest,
-              (data: unknown, res: ServerResponse) =>
-                processDownloadRequest(data as any, res),
-              config.cache.actionReqPerIP,
-              config.cache.actionWindowSec,
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/watch",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                updatePlaylistMonitoring(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/getplay",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                getPlaylistsForDisplay(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/delplay",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                processDeletePlaylistRequest(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/getsub",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                getSubListVideos(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/delsub",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                processDeleteVideosRequest(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/getfile",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                makeSignedUrl(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/refreshfile",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                refreshSignedUrl(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/getfiles",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                makeSignedUrls(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/reindexall",
-          run: (req, res) =>
-            authenticateRequest(
-              req,
-              res,
-              (data: unknown, res: ServerResponse) =>
-                processReindexAllRequest(data as any, res),
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/register",
-          run: (req, res) =>
-            rateLimit(
-              req,
-              res,
-              registerUser,
-              (req: IncomingMessage, res: ServerResponse) =>
-                isRegistrationAllowed(req, res),
-              config.cache.reqPerIP,
-              config.cache.maxAge,
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/login",
-          run: (req, res) =>
-            rateLimit(
-              req,
-              res,
-              authenticateUser,
-              (req: IncomingMessage, res: ServerResponse) =>
-                authenticateUser(req, res),
-              config.cache.reqPerIP,
-              config.cache.maxAge,
-            ),
-        },
-        {
-          method: "POST",
-          path: config.urlBase + "/isregallowed",
-          run: (req, res) =>
-            rateLimit(
-              req,
-              res,
-              isRegistrationAllowed,
-              (req: IncomingMessage, res: ServerResponse) =>
-                isRegistrationAllowed(req, res),
-              config.cache.reqPerIP,
-              config.cache.maxAge,
-            ),
-        },
-      ];
-
       if (dispatchRoute(req, res, apiRoutes)) {
         return;
       }
@@ -4612,6 +4217,31 @@ const { io: _io, sock } = createSocketServer({
   corsAllowedOrigins: CORS_ALLOWED_ORIGINS,
   authenticateSocket,
   redis,
+});
+
+const apiRoutes = createApiRoutes({
+  authenticateRequest,
+  authenticateUser,
+  isRegistrationAllowed,
+  rateLimit,
+  registerUser,
+  processListingRequest: (data, res) => processListingRequest(data as any, res),
+  processDownloadRequest: (data, res) =>
+    processDownloadRequest(data as any, res),
+  updatePlaylistMonitoring: (data, res) =>
+    updatePlaylistMonitoring(data as any, res),
+  getPlaylistsForDisplay: (data, res) =>
+    getPlaylistsForDisplay(data as any, res),
+  processDeletePlaylistRequest: (data, res) =>
+    processDeletePlaylistRequest(data as any, res),
+  getSubListVideos: (data, res) => getSubListVideos(data as any, res),
+  processDeleteVideosRequest: (data, res) =>
+    processDeleteVideosRequest(data as any, res),
+  makeSignedUrl: (data, res) => makeSignedUrl(data as any, res),
+  refreshSignedUrl: (data, res) => refreshSignedUrl(data as any, res),
+  makeSignedUrls: (data, res) => makeSignedUrls(data as any, res),
+  processReindexAllRequest: (data, res) =>
+    processReindexAllRequest(data as any, res),
 });
 
 const jobs = createJobs({
