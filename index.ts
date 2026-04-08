@@ -686,6 +686,90 @@ interface DownloadResult {
   status: string;
   error?: string;
 }
+
+interface VideoEntrySnapshot {
+  videoId: string;
+  approximateSize: number | string;
+  title: string;
+  isAvailable: boolean;
+}
+
+interface VideoEntryRecord extends VideoEntrySnapshot {
+  downloadStatus?: boolean;
+  fileName?: string | null;
+  save: () => Promise<unknown>;
+}
+
+interface StreamedItemData extends Record<string, unknown> {
+  webpage_url?: string;
+  url?: string;
+  thumbnail?: string | null;
+  title?: string;
+  id?: string;
+  filesize_approx?: number | string;
+  formats?: unknown;
+  requested_formats?: unknown;
+  thumbnails?: unknown;
+  subtitles?: unknown;
+  automatic_captions?: unknown;
+}
+
+interface ParsedStreamItem {
+  itemData: StreamedItemData;
+  videoUrl: string;
+  index: number;
+  onlineThumbnail: string | null;
+}
+
+interface StreamingVideoProcessingResult {
+  count: number;
+  title: string;
+  responseUrl: string;
+  alreadyExistedCount: number;
+}
+
+interface VideoUpsertData extends VideoEntrySnapshot {
+  videoUrl: string;
+  downloadStatus: boolean;
+  isAvailable: boolean;
+  onlineThumbnail: string | null;
+  raw_metadata: StreamedItemData;
+}
+
+interface PlaylistMappingCreate {
+  videoUrl: string;
+  playlistUrl: string;
+  positionInPlaylist: number;
+}
+
+interface PlaylistMappingUpdate {
+  instance: Model;
+  position: number;
+}
+
+interface DiscoveredMetadata {
+  fileName: string | null;
+  descriptionFile: string | null;
+  commentsFile: string | null;
+  subTitleFile: string | null;
+  thumbNailFile: string | null;
+}
+
+interface FileSyncStatus {
+  videoFileFound: boolean;
+  descriptionFileFound: boolean;
+  commentsFileFound: boolean;
+  subTitleFileFound: boolean;
+  thumbNailFileFound: boolean;
+}
+
+interface DownloadCompletionUpdates extends DiscoveredMetadata {
+  downloadStatus: boolean;
+  isAvailable: boolean;
+  title: string;
+  isMetaDataSynced: boolean;
+  saveDirectory: string;
+}
 // Download process tracking
 const downloadProcesses = new Map(); // Map to track download processes
 /**
@@ -1277,17 +1361,30 @@ function executeDownload(
             const fallbackTitle = capturedTitle || videoTitle;
 
             // Build initial updates object
-            const updates = {
+            const updates: DownloadCompletionUpdates = {
               downloadStatus: true,
               isAvailable: true,
               title: unhelpfulTitle ? fallbackTitle : videoTitle,
+              fileName: null,
+              descriptionFile: null,
+              commentsFile: null,
+              subTitleFile: null,
+              thumbNailFile: null,
+              isMetaDataSynced: true,
+              saveDirectory: computeSaveDirectory(savePath),
             };
 
             // Discover associated metadata files
+            const videoEntryForDiscovery = videoEntry
+              ? {
+                downloadStatus: Boolean(videoEntry.getDataValue("downloadStatus")),
+                fileName: videoEntry.getDataValue("fileName") as string | null,
+              }
+              : null;
             const { metadata, syncStatus } = discoverFiles(
               capturedFileName,
               savePath,
-              videoEntry,
+              videoEntryForDiscovery,
             );
 
             // Add discovered metadata files to updates
@@ -1299,9 +1396,6 @@ function executeDownload(
               syncStatus.commentsFileFound &&
               syncStatus.subTitleFileFound &&
               syncStatus.thumbNailFileFound;
-
-            (updates as any).isMetaDataSynced = true;
-            (updates as any).saveDirectory = computeSaveDirectory(savePath);
 
             // Log metadata sync status
             if (allExtraFilesFound) {
@@ -1322,15 +1416,11 @@ function executeDownload(
 
             // Notify frontend: send saveDirectory and fileName
             try {
-              const fileName = (updates as any).fileName;
-
-              const thumbNailFile = (updates as any).thumbNailFile;
-
-              const subTitleFile = (updates as any).subTitleFile;
-
-              const descriptionFile = (updates as any).descriptionFile;
-
-              const isMetaDataSynced = (updates as any).isMetaDataSynced;
+              const fileName = updates.fileName;
+              const thumbNailFile = updates.thumbNailFile;
+              const subTitleFile = updates.subTitleFile;
+              const descriptionFile = updates.descriptionFile;
+              const isMetaDataSynced = updates.isMetaDataSynced;
               const saveDir = computeSaveDirectory(savePath);
 
               // Check if computed saveDir matches expected saveDirectory (if available)
@@ -1373,8 +1463,7 @@ function executeDownload(
               safeEmit("download-done", {
                 url: videoUrl,
                 title: updates.title,
-
-                fileName: (updates as any).fileName,
+                fileName: updates.fileName,
                 saveDirectory: "",
               });
             }
@@ -1397,7 +1486,9 @@ function executeDownload(
             });
 
             safeEmit("download-failed", {
-              title: videoEntry ? (videoEntry as any).title : videoTitle,
+              title: videoEntry
+                ? videoEntry.getDataValue("title") as string
+                : videoTitle,
               url: videoUrl,
             });
 
@@ -2359,7 +2450,7 @@ async function processStreamingVideoInformation(
   chunkStartIndex: number,
   isUpdate: boolean,
   monitoringType?: string,
-): Promise<any> {
+): Promise<StreamingVideoProcessingResult> {
   logger.trace("Processing video information chunk", {
     playlistUrl,
     chunkStartIndex,
@@ -2367,7 +2458,7 @@ async function processStreamingVideoInformation(
     itemCount: responseItems.length,
   });
 
-  const result = {
+  const result: StreamingVideoProcessingResult = {
     count: 0,
     title: "",
     responseUrl: playlistUrl,
@@ -2375,9 +2466,9 @@ async function processStreamingVideoInformation(
   };
 
   // Batch process parsing and metadata extraction
-  const parsedItems = responseItems.map((item, index) => {
+  const parsedItems = responseItems.map((item, index): ParsedStreamItem | null => {
     try {
-      const itemData = JSON.parse(item);
+      const itemData = JSON.parse(item) as StreamedItemData;
       const videoUrl = itemData.webpage_url || itemData.url || "";
 
       // Extract online thumbnail before pruning
@@ -2406,7 +2497,7 @@ async function processStreamingVideoInformation(
 
   if (parsedItems.length === 0) return result;
 
-  const videoUrls = parsedItems.map((p: any) => p.videoUrl);
+  const videoUrls = parsedItems.map((parsedItem) => parsedItem.videoUrl);
 
   // Fetch all existing meta and mappings for the chunk
   const [existingVideos, existingMappings] = await Promise.all([
@@ -2419,35 +2510,38 @@ async function processStreamingVideoInformation(
     }),
   ]);
 
-  const existingVideosMap = new Map(
-    existingVideos.map((v: any) =>
-      [v.getDataValue("videoUrl"), v] as [string, Model]
-    ),
+  const existingVideosMap = new Map<string, Model>(
+    existingVideos.map((video) => [
+      video.getDataValue("videoUrl") as string,
+      video,
+    ]),
   );
   // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
   // positions (allowed by the schema) each get their own map entry.
-  const existingMappingsMap = new Map(
-    existingMappings.map((m: any) =>
+  const existingMappingsMap = new Map<string, Model>(
+    existingMappings.map((mapping) =>
       [
-        `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
-        m,
-      ] as [string, Model]
+        `${mapping.getDataValue("videoUrl")}|${
+          mapping.getDataValue("positionInPlaylist")
+        }`,
+        mapping,
+      ]
     ),
   );
   // Secondary lookup by videoUrl only — used by Start/End modes to find a
   // mapping at a *different* position so we update it instead of creating a dupe.
-  const existingMappingsByUrl = new Map(
-    existingMappings.map((m: any) =>
+  const existingMappingsByUrl = new Map<string, Model>(
+    existingMappings.map((mapping) =>
       [
-        m.getDataValue("videoUrl") as string,
-        m,
-      ] as [string, Model]
+        mapping.getDataValue("videoUrl") as string,
+        mapping,
+      ]
     ),
   );
 
-  const videosToUpsert: any[] = [];
-  const mappingsToCreate: any[] = [];
-  const mappingsToUpdate: { instance: any; position: number }[] = [];
+  const videosToUpsert: VideoUpsertData[] = [];
+  const mappingsToCreate: PlaylistMappingCreate[] = [];
+  const mappingsToUpdate: PlaylistMappingUpdate[] = [];
 
   for (const { itemData, videoUrl, index, onlineThumbnail } of parsedItems) {
     const title = itemData.title || "";
@@ -2473,16 +2567,16 @@ async function processStreamingVideoInformation(
       continue;
     }
 
-    const videoData = {
+    const videoData: VideoUpsertData = {
       videoUrl: videoUrl,
       videoId: videoId.trim(),
       title: await truncateText(
         title === "NA" ? videoId.trim() : title,
         config.maxTitleLength,
       ),
-      approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
+      approximateSize: approxSize === "NA" ? -1 : parseInt(String(approxSize)),
       downloadStatus: existingVideo
-        ? existingVideo.getDataValue("downloadStatus")
+        ? Boolean(existingVideo.getDataValue("downloadStatus"))
         : false,
       isAvailable: ![
         "[Deleted video]",
@@ -2551,10 +2645,12 @@ async function processStreamingVideoInformation(
     // twice in a single statement, so we keep only the last occurrence per URL.
     const deduplicatedVideos = [
       ...new Map(
-        videosToUpsert.map((v: any) => [v.videoUrl, v]),
+        videosToUpsert.map((video) => [video.videoUrl, video]),
       ).values(),
     ];
-    await (VideoMetadata as any).unscoped().bulkCreate(deduplicatedVideos, {
+    await VideoMetadata.unscoped().bulkCreate(
+      deduplicatedVideos as unknown as Array<Record<string, unknown>>,
+      {
       updateOnDuplicate: [
         "videoId",
         "title",
@@ -2564,11 +2660,14 @@ async function processStreamingVideoInformation(
         "onlineThumbnail",
         "raw_metadata",
       ],
-    });
+      },
+    );
   }
 
   if (mappingsToCreate.length > 0) {
-    await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
+    await PlaylistVideoMapping.bulkCreate(
+      mappingsToCreate as unknown as Array<Record<string, unknown>>,
+    );
   }
 
   if (mappingsToUpdate.length > 0) {
@@ -2594,18 +2693,18 @@ async function processStreamingVideoInformation(
 function discoverFiles(
   mainFileName: string | null,
   savePath: string,
-  videoEntry: any,
-) {
-  const metadata = {
-    fileName: null as string | null,
-    descriptionFile: null as string | null,
-    commentsFile: null as string | null,
-    subTitleFile: null as string | null,
-    thumbNailFile: null as string | null,
+  videoEntry: Pick<VideoEntryRecord, "downloadStatus" | "fileName"> | null,
+): { metadata: DiscoveredMetadata; syncStatus: FileSyncStatus } {
+  const metadata: DiscoveredMetadata = {
+    fileName: null,
+    descriptionFile: null,
+    commentsFile: null,
+    subTitleFile: null,
+    thumbNailFile: null,
   };
 
   // Track which files were expected vs found
-  const syncStatus = {
+  const syncStatus: FileSyncStatus = {
     videoFileFound: false,
     descriptionFileFound: !config.saveDescription,
     commentsFileFound: !config.saveComments,
@@ -2618,7 +2717,7 @@ function discoverFiles(
     logger.debug("No main file name provided for metadata discovery");
     // Check if video is already downloaded, and if it has a download status as true
     if (videoEntry && videoEntry.downloadStatus) {
-      mainFileName = videoEntry.fileName;
+      mainFileName = videoEntry.fileName ?? null;
       logger.debug("Using main file name from database", { mainFileName });
     } else {
       logger.debug("No main file name found in database");
@@ -2906,9 +3005,6 @@ function completePlaylistListing(
   };
 }
 /**
-  return result as any;
-}
-/**
  * Updates video metadata in database if changes detected
  *
  * @param {Object} existingVideo - Current video record from database
@@ -2921,8 +3017,8 @@ function completePlaylistListing(
  */
 
 async function _updateVideoMetadata(
-  existingVideo: Record<string, any>,
-  newData: Record<string, any>,
+  existingVideo: VideoEntryRecord,
+  newData: VideoEntrySnapshot,
 ): Promise<void> {
   logger.trace("Checking video metadata for updates", {
     oldData: JSON.stringify(existingVideo),

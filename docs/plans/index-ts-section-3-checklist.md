@@ -26,8 +26,8 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 ## Phase 4: Typing cleanup
 
-- [ ] Add typed request DTOs for each API boundary.
-- [ ] Replace high-value `any` usages in auth, routing, signed URL, listing, and download flows.
+- [x] Add typed request DTOs for each API boundary.
+- [x] Replace high-value `any` usages in auth, routing, signed URL, listing, and download flows.
 - [ ] Type Redis cache payloads and socket auth payloads.
 - [ ] Leave deep yt-dlp/raw metadata typing for a later targeted pass.
 
