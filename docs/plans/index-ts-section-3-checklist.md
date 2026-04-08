@@ -12,14 +12,14 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 ## Phase 2: Runtime module boundaries
 
-- [ ] Extract auth and rate-limiting helpers into `src/middleware/`.
-- [ ] Extract cron job construction into `src/jobs/`.
-- [ ] Extract socket authentication and connection lifecycle into `src/socket/`.
+- [x] Extract auth and rate-limiting helpers into `src/middleware/`.
+- [x] Extract cron job construction into `src/jobs/`.
+- [x] Extract socket authentication and connection lifecycle into `src/socket/`.
 - [ ] Extract signed file streaming and static asset serving into dedicated route helpers.
 
 ## Phase 3: Route structure
 
-- [ ] Replace the `if/else if` POST router with a route registry.
+- [x] Replace the `if/else if` POST router with a route registry.
 - [ ] Move each endpoint handler into a dedicated backend module.
 - [ ] Preserve current request/response behavior while shrinking `index.ts`.
 - [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
