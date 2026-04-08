@@ -5,6 +5,7 @@ dist/
 ssl/
 gluetun/
 *.log
+.codex
 db_password.txt
 secret_key.txt
 cookie_secret.txt
