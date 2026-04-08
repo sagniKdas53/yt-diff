@@ -15,7 +15,7 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [x] Extract auth and rate-limiting helpers into `src/middleware/`.
 - [x] Extract cron job construction into `src/jobs/`.
 - [x] Extract socket authentication and connection lifecycle into `src/socket/`.
-- [ ] Extract signed file streaming and static asset serving into dedicated route helpers.
+- [x] Extract signed file streaming and static asset serving into dedicated route helpers.
 
 ## Phase 3: Route structure
 
