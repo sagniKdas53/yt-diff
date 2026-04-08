@@ -106,7 +106,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
     # Install yt-dlp with default dependencies, yt-dlp-ejs, and curl_cffi
     echo "DEBUG: Installing yt-dlp, ejs, and curl_cffi into venv" && \
-    /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default]' yt-dlp-ejs curl_cffi && \
+    /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default,curl-cffi]' yt-dlp-ejs && \
     # Verify yt-dlp installation
     echo "DEBUG: Checking yt-dlp version:" && \
     /opt/venv/bin/yt-dlp --version && \

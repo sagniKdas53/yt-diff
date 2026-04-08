@@ -3337,11 +3337,10 @@ async function executeListing(
             monitoringType: ["Refresh", "Full"].includes(currentMonitoringType)
               ? "N/A"
               : currentMonitoringType,
-            lastUpdatedByScheduler:
-              resolvedIsScheduledUpdate ||
+            lastUpdatedByScheduler: resolvedIsScheduledUpdate ||
                 ["Refresh", "Full"].includes(currentMonitoringType)
-                ? Date.now()
-                : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
+              ? Date.now()
+              : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
           });
           logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
         } else if (resolvedIsScheduledUpdate) {
@@ -3592,7 +3591,8 @@ async function handleSingleVideoStreaming(
     const existingMapping = await PlaylistVideoMapping.findOne({
       where: {
         videoUrl: chunkItems.length === 1
-          ? (JSON.parse(chunkItems[0]).webpage_url || JSON.parse(chunkItems[0]).url || "")
+          ? (JSON.parse(chunkItems[0]).webpage_url ||
+            JSON.parse(chunkItems[0]).url || "")
           : "",
         playlistUrl,
       },
@@ -3602,7 +3602,9 @@ async function handleSingleVideoStreaming(
     if (existingMapping) {
       // Re-use the existing position so processStreamingVideoInformation
       // sees it as an "already existed" record and just updates metadata.
-      newStartIndex = existingMapping.getDataValue("positionInPlaylist") as number;
+      newStartIndex = existingMapping.getDataValue(
+        "positionInPlaylist",
+      ) as number;
     } else {
       const lastVideo = await PlaylistVideoMapping.findOne({
         where: { playlistUrl },
@@ -3662,7 +3664,6 @@ function streamPlayListItems(
   });
 
   const processArgs = [
-    "--flat-playlist",
     "--playlist-start",
     startIndex.toString(),
     "--dump-json",
@@ -3852,23 +3853,29 @@ async function processStreamingVideoInformation(
   ]);
 
   const existingVideosMap = new Map(
-    existingVideos.map((v: any) => [v.getDataValue("videoUrl"), v] as [string, Model]),
+    existingVideos.map((v: any) =>
+      [v.getDataValue("videoUrl"), v] as [string, Model]
+    ),
   );
   // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
   // positions (allowed by the schema) each get their own map entry.
   const existingMappingsMap = new Map(
-    existingMappings.map((m: any) => [
-      `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
-      m,
-    ] as [string, Model]),
+    existingMappings.map((m: any) =>
+      [
+        `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
+        m,
+      ] as [string, Model]
+    ),
   );
   // Secondary lookup by videoUrl only — used by Start/End modes to find a
   // mapping at a *different* position so we update it instead of creating a dupe.
   const existingMappingsByUrl = new Map(
-    existingMappings.map((m: any) => [
-      m.getDataValue("videoUrl") as string,
-      m,
-    ] as [string, Model]),
+    existingMappings.map((m: any) =>
+      [
+        m.getDataValue("videoUrl") as string,
+        m,
+      ] as [string, Model]
+    ),
   );
 
   const videosToUpsert: any[] = [];
@@ -3926,7 +3933,10 @@ async function processStreamingVideoInformation(
       // mapping at a different position in the same playlist (position drift
       // during Start/End incremental updates).  If so, update it instead.
       const driftedMapping = existingMappingsByUrl.get(videoUrl);
-      if (driftedMapping && driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex) {
+      if (
+        driftedMapping &&
+        driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex
+      ) {
         mappingsToUpdate.push({
           instance: driftedMapping,
           position: absoluteIndex,
@@ -4517,7 +4527,6 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
   const nextPlaylistIndex = pendingPlaylistSortCounter!++;
 
   const processArgs = [
-    "--flat-playlist",
     "--playlist-end",
     "1",
     "--dump-json",
@@ -4909,8 +4918,8 @@ async function processReindexAllRequest(
     // Apply site filter on the subset
     const filtered = siteFilter
       ? subset.filter((p: Model) =>
-          (p.getDataValue("playlistUrl") as string).includes(siteFilter)
-        )
+        (p.getDataValue("playlistUrl") as string).includes(siteFilter)
+      )
       : subset;
 
     if (filtered.length === 0) {
@@ -4919,8 +4928,12 @@ async function processReindexAllRequest(
         JSON.stringify({
           status: "success",
           message: siteFilter
-            ? `No playlists matching "${siteFilter}" in range [${startIndex}, ${stopIndex ?? totalCount})`
-            : `No playlists in range [${startIndex}, ${stopIndex ?? totalCount})`,
+            ? `No playlists matching "${siteFilter}" in range [${startIndex}, ${
+              stopIndex ?? totalCount
+            })`
+            : `No playlists in range [${startIndex}, ${
+              stopIndex ?? totalCount
+            })`,
           queued: 0,
           total: totalCount,
         }),
