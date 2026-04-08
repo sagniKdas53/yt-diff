@@ -28,6 +28,8 @@ import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import { dispatchRoute, type RouteDefinition } from "./src/routes/http.ts";
+import { tryServeSignedFile } from "./src/routes/helpers/serveSignedFile.ts";
+import { serveStaticAsset, type StaticAsset } from "./src/routes/helpers/serveStaticAsset.ts";
 import { createSocketServer } from "./src/socket/index.ts";
 
 const pipelineAsync = promisify(pipeline);
@@ -4318,7 +4320,7 @@ function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
 }
 
 const filesList = getFiles("dist");
-const staticAssets = makeAssets(filesList);
+const staticAssets: Record<string, StaticAsset> = makeAssets(filesList);
 let serverOptions = {};
 let serverObj = null;
 
@@ -4363,195 +4365,33 @@ const server = (serverObj as any).createServer(
   async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
       try {
-        const get = req.url;
         const reqEncoding = req.headers["accept-encoding"] || "";
         logger.trace(`Request Received`, {
           url: req.url,
           method: req.method,
           encoding: reqEncoding,
         });
-        // Check if the request is for a file from the signedUrlCache
-        const urlParams = new URLSearchParams(req.url.split("?")[1]);
-        if (urlParams.has("fileId")) {
-          const fileId = urlParams.get("fileId");
-          // If fileId is present, try to serve from signedUrlCache
-          const cachedEntry = await redis.get(`signed:${fileId}`);
-          if (cachedEntry) {
-            // refresh expiry on access to keep it alive while actively watched
-            await redis.expire(`signed:${fileId}`, config.cache.maxAge);
-            const signedEntry = JSON.parse(cachedEntry);
-            // Serve the file from the signed URL cache
-            logger.trace("Serving file from signed URL cache", {
-              url: req.url,
-            });
-
-            // Improved streaming for large files: Range support, pipeline, backpressure
-            logger.trace("Serving signed file", {
-              fileId,
-              filePath: signedEntry.filePath,
-            });
-            (async () => {
-              try {
-                const stats = await fs.promises.stat(signedEntry.filePath);
-                const total = stats.size;
-
-                const originalName = path.basename(signedEntry.filePath || "");
-                // Remove potentially dangerous characters
-                const safeName = originalName.replace(/[\r\n"]/g, "");
-                // ASCII fallback for older clients
-                const fallbackName = safeName.replace(/[^\x20-\x7E]/g, "_");
-                const encodedName = encodeURIComponent(safeName);
-
-                let contentType = signedEntry.mimeType;
-                if (
-                  !contentType || contentType === "application/octet-stream"
-                ) {
-                  contentType = MIME_TYPES[path.extname(safeName)] ||
-                    "application/octet-stream";
-                }
-                // Common headers (CORS + content-type + disposition + accept-ranges)
-                const cors = generateCorsHeaders(contentType);
-                Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
-                res.setHeader("Content-Type", contentType);
-
-                const dispositionType = urlParams.get("inline") === "true"
-                  ? "inline"
-                  : "attachment";
-                res.setHeader(
-                  "Content-Disposition",
-                  `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
-                );
-                res.setHeader("Accept-Ranges", "bytes");
-
-                // Parse Range header
-                const range = req.headers.range;
-                let start = 0;
-                let end = total - 1;
-                let statusCode = 200;
-                if (range) {
-                  const m = /^bytes=(\d*)-(\d*)$/.exec(range);
-                  if (m) {
-                    if (m[1]) start = parseInt(m[1], 10);
-                    if (m[2]) end = parseInt(m[2], 10);
-                    // Validate
-                    if (
-                      Number.isNaN(start) || Number.isNaN(end) || start > end ||
-                      start < 0 || end > total - 1
-                    ) {
-                      res.writeHead(416, {
-                        "Content-Range": `bytes */${total}`,
-                      });
-                      return res.end();
-                    }
-                    statusCode = 206;
-                    res.setHeader(
-                      "Content-Range",
-                      `bytes ${start}-${end}/${total}`,
-                    );
-                  }
-                }
-
-                const chunkSize = end - start + 1;
-                res.setHeader("Content-Length", String(chunkSize));
-                res.writeHead(statusCode);
-
-                const readStream = fs.createReadStream(signedEntry.filePath, {
-                  start,
-                  end,
-                  // Larger buffer for fewer syscall's on big files (tune as needed)
-                  highWaterMark: 1024 * 1024,
-                });
-
-                const onClose = () => {
-                  // Destroy the stream if client disconnects
-                  try {
-                    readStream.destroy();
-                  } catch (err: unknown) {
-                    logger.error(
-                      "Error destroying read stream on client disconnect",
-                      { error: (err as Error)?.message || String(err), fileId },
-                    );
-                  }
-                };
-                req.on("close", onClose);
-                req.on("aborted", onClose);
-
-                try {
-                  // Use pipeline to forward errors and handle backpressure
-                  await pipelineAsync(readStream, res);
-                  logger.trace("Finished streaming signed file", { fileId });
-                } catch (err) {
-                  logger.error("Error during streaming signed file", {
-                    error: (err as Error)?.message || String(err),
-                    fileId,
-                  });
-                  if (!res.headersSent) {
-                    res.writeHead(
-                      500,
-                      generateCorsHeaders(MIME_TYPES[".html"]),
-                    );
-                  }
-                  try {
-                    res.end("Error reading file");
-                  } catch (error: unknown) {
-                    logger.error(
-                      "Error ending response after streaming failure",
-                      {
-                        error: (error as Error)?.message || String(error),
-                        fileId,
-                      },
-                    );
-                  }
-                } finally {
-                  req.removeListener("close", onClose);
-                  req.removeListener("aborted", onClose);
-                  // Note: keep signedUrlCache entry to allow multiple downloads within expiry
-                }
-              } catch (err) {
-                logger.error("Error getting file stats", {
-                  error: (err as Error).message,
-                  fileId,
-                });
-                if (!res.headersSent) {
-                  res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
-                }
-                res.end("Error reading file");
-              }
-            })();
-            return;
-            // If you want to just return the file path instead of streaming
-            // (not recommended for large files or production use)
-            // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
-            // res.write(signedEntry.filePath);
-            // return res.end();
-          }
-        }
-        // Check if the GET request is for a static asset
-        if (!get || !staticAssets[get]) {
-          logger.error("Requested Resource couldn't be found", {
-            url: req.url,
-            method: req.method,
-            encoding: reqEncoding,
-          });
-          res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-          res.write("Not Found");
-          return res.end();
+        if (
+          await tryServeSignedFile(req, res, {
+            redis,
+            cacheMaxAge: config.cache.maxAge,
+            mimeTypes: MIME_TYPES,
+            generateCorsHeaders,
+            pipelineAsync,
+            htmlMimeType: MIME_TYPES[".html"],
+          })
+        ) {
+          return;
         }
 
-        const resHeaders: any = generateCorsHeaders(staticAssets[get]!.type);
-        if (reqEncoding.includes("br") && staticAssets[get + ".br"]) {
-          resHeaders["Content-Encoding"] = "br";
-          res.writeHead(200, resHeaders);
-          res.write(staticAssets[get + ".br"].file);
-          return res.end();
-        } else if (reqEncoding.includes("gzip") && staticAssets[get + ".gz"]) {
-          resHeaders["Content-Encoding"] = "gzip";
-          res.writeHead(200, resHeaders);
-          res.write(staticAssets[get + ".gz"].file);
-          return res.end();
-        } else {
-          res.writeHead(200, resHeaders);
-          res.write(staticAssets[get].file);
+        if (
+          serveStaticAsset(req, res, {
+            staticAssets,
+            generateCorsHeaders,
+            htmlMimeType: MIME_TYPES[".html"],
+          })
+        ) {
+          return;
         }
       } catch (error) {
         logger.error("Error in processing request", {
