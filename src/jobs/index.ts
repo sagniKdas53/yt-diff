@@ -30,9 +30,16 @@ type CleanupStaleProcesses = (
 ) => number;
 
 type JobResult = { status?: string };
+type JobListingItem = {
+  url: string;
+  type: string;
+  currentMonitoringType: string;
+  isScheduledUpdate?: boolean;
+  reason: string;
+};
 
 type ListItemsConcurrently = (
-  items: unknown[],
+  items: JobListingItem[],
   chunkSize: number,
   isScheduledUpdate: boolean,
 ) => Promise<JobResult[]>;
