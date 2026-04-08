@@ -2,7 +2,6 @@
 // deno-lint-ignore-file no-explicit-any
 import { Model, Op } from "sequelize";
 import { spawn } from "node:child_process";
-import { CronJob } from "cron";
 import fs from "node:fs";
 import http, { IncomingMessage, ServerResponse } from "node:http";
 import https from "node:https";
@@ -11,7 +10,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import he from "he";
 import Redis from "ioredis";
-import { Server, Socket } from "socket.io";
 import { pipeline } from "node:stream";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
@@ -23,10 +21,14 @@ import {
   PlaylistMetadata,
   PlaylistVideoMapping,
   sequelize,
-  UserAccount,
   VideoMetadata,
 } from "./src/db/models.ts";
+import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
+import { createAuthMiddleware } from "./src/middleware/auth.ts";
+import { createRateLimit } from "./src/middleware/rateLimit.ts";
+import { dispatchRoute, type RouteDefinition } from "./src/routes/http.ts";
+import { createSocketServer } from "./src/socket/index.ts";
 
 const pipelineAsync = promisify(pipeline);
 
@@ -200,277 +202,6 @@ function safeEmit(event: string, payload: unknown) {
 }
 
 void initializeDatabase();
-
-// Scheduler
-const jobs = {
-  // TODO:
-  // 1. Implement scheduled updates to check playlists for new videos
-  cleanup: new CronJob(
-    config.queue.cleanUpInterval,
-    () => {
-      logger.debug("Starting scheduled process cleanup");
-      // Cleanup download processes
-      const cleanedDownloads = cleanupStaleProcesses(
-        downloadProcesses,
-        {
-          maxIdleTime: config.queue.maxIdle,
-          forceKill: true,
-        },
-        "download",
-      );
-      // Cleanup list processes
-      const cleanedLists = cleanupStaleProcesses(
-        listProcesses,
-        {
-          maxIdleTime: config.queue.maxIdle,
-          forceKill: true,
-        },
-        "list",
-      );
-      logger.info("Completed scheduled process cleanup", {
-        cleanedDownloads,
-        cleanedLists,
-        nextRun: jobs.cleanup.nextDate().toLocaleString(
-          {
-            weekday: "short",
-            month: "short",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          },
-          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
-        ),
-      });
-    },
-    null,
-    true,
-    config.timeZone,
-  ),
-  update: new CronJob(
-    config.scheduledUpdateStr,
-    () => {
-      logger.debug("Starting scheduled update", {
-        time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
-        timeZone: config.timeZone,
-        nextRun: jobs.update.nextDate().toLocaleString(
-          {
-            weekday: "short",
-            month: "short",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          },
-          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
-        ),
-      });
-      // Run scheduled playlist updates.
-      // Fast mode: best for channels/playlists where new items appear at the top.
-      //   - Streams from the beginning; exits early once 2 consecutive chunks
-      //     are fully duplicate (handled inside handlePlaylistStreaming).
-      // Full mode: full re-scan — use sparingly (bandwidth-intensive).
-      //   - Intended for playlists where items are appended at the bottom.
-      // Processes spawned here are tracked in listProcesses and killed by the
-      // cleanup job if they stall.
-      void (async () => {
-        try {
-          const allPlaylists = await PlaylistMetadata.findAll({
-            where: {
-              monitoringType: {
-                [Op.in]: ["Start", "End", "Full"],
-              },
-            },
-          });
-
-          if (allPlaylists.length === 0) {
-            logger.info(
-              "No playlists with Start/End/Full monitoring found; skipping update",
-            );
-            return;
-          }
-
-          // Separate start, end, and full playlists
-          const startPlaylists = allPlaylists.filter(
-            (p: Model) => p.getDataValue("monitoringType") === "Start",
-          );
-          const endPlaylists = allPlaylists.filter(
-            (p: Model) => p.getDataValue("monitoringType") === "End",
-          );
-          const fullPlaylists = allPlaylists.filter(
-            (p: Model) => p.getDataValue("monitoringType") === "Full",
-          );
-
-          logger.info("Scheduler: starting playlist updates", {
-            startCount: startPlaylists.length,
-            endCount: endPlaylists.length,
-            fullCount: fullPlaylists.length,
-          });
-
-          // Build item descriptors for the listing pipeline.
-          // isScheduledUpdate=true bypasses the "same monitoringType → skip" guard
-          // inside executeListing so that re-listing actually occurs.
-          const startItems = startPlaylists.map((p: Model) => ({
-            url: p.getDataValue("playlistUrl") as string,
-            type: "playlist",
-            currentMonitoringType: "Start",
-            isScheduledUpdate: true,
-            reason: "Scheduled Start update",
-          }));
-
-          const endItems = endPlaylists.map((p: Model) => ({
-            url: p.getDataValue("playlistUrl") as string,
-            type: "playlist",
-            currentMonitoringType: "End",
-            isScheduledUpdate: true,
-            reason: "Scheduled End update",
-          }));
-
-          const fullItems = fullPlaylists.map((p: Model) => ({
-            url: p.getDataValue("playlistUrl") as string,
-            type: "playlist",
-            currentMonitoringType: "Full",
-            isScheduledUpdate: true,
-            reason: "Scheduled Full update",
-          }));
-
-          // Run Start and End updates first (they are cheaper).
-          // Full updates run after so they don't hog the listing slots.
-          // We can wait for the results here as this is a background job so no need to be time-bound
-          // This is a note to myself to deter me form trying to make it a function().then().catch() thingy
-          const results = await listItemsConcurrently(
-            [...startItems, ...endItems, ...fullItems],
-            config.chunkSize,
-            /* isScheduledUpdate */ true,
-          );
-
-          const completedCount = results.filter(
-            (r: { status?: string }) =>
-              r && (r.status === "completed" || r.status === "success"),
-          ).length;
-
-          logger.info("Completed scheduled updates", {
-            totalPlaylists: allPlaylists.length,
-            completedCount,
-            nextRun: jobs.update.nextDate().toLocaleString(
-              {
-                weekday: "short",
-                month: "short",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              },
-              { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
-            ),
-          });
-        } catch (err) {
-          logger.error("Scheduled update failed", {
-            error: (err as Error).message,
-            stack: (err as Error).stack,
-          });
-        }
-      })();
-    },
-    null,
-    true,
-    config.timeZone,
-  ),
-  prune: new CronJob(
-    config.pruneInterval,
-    () => {
-      logger.debug("Starting scheduled DB prune process");
-      void (async () => {
-        try {
-          // Find unreferenced videos using a NOT EXISTS subquery to avoid loading large arrays into memory
-          const unreferencedVideos = await VideoMetadata.findAll({
-            where: sequelize.literal(`NOT EXISTS (
-              SELECT 1 FROM playlist_video_mappings 
-              WHERE playlist_video_mappings."videoUrl" = video_metadata."videoUrl"
-            )`),
-          });
-
-          if (unreferencedVideos.length === 0) {
-            logger.info("No unreferenced videos found to prune");
-            return;
-          }
-
-          const mappingsToCreate = [];
-          const videoUrlsToDestroy = [];
-
-          const maxPositionResult = await PlaylistVideoMapping.max(
-            "positionInPlaylist",
-            {
-              where: { playlistUrl: "None" },
-            },
-          );
-          const maxPosition =
-            typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
-              ? maxPositionResult
-              : -1;
-          let nextPosition = maxPosition;
-
-          for (const video of unreferencedVideos) {
-            const isDownloaded = video.getDataValue("downloadStatus");
-            const videoUrl = video.getDataValue("videoUrl");
-
-            if (isDownloaded) {
-              mappingsToCreate.push({
-                videoUrl: videoUrl,
-                playlistUrl: "None",
-                positionInPlaylist: ++nextPosition,
-              });
-            } else {
-              videoUrlsToDestroy.push(videoUrl);
-            }
-          }
-
-          if (mappingsToCreate.length > 0) {
-            await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
-            logger.info(
-              "Moved unreferenced downloaded videos to 'None' playlist",
-              {
-                count: mappingsToCreate.length,
-              },
-            );
-          }
-
-          if (videoUrlsToDestroy.length > 0) {
-            await VideoMetadata.destroy({
-              where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
-            });
-            logger.info("Pruned unreferenced non-downloaded videos", {
-              count: videoUrlsToDestroy.length,
-            });
-          }
-
-          const movedCount = mappingsToCreate.length;
-          const prunedCount = videoUrlsToDestroy.length;
-
-          logger.info("Completed DB prune process", {
-            movedCount,
-            prunedCount,
-            nextRun: jobs.prune.nextDate().toLocaleString(
-              {
-                weekday: "short",
-                month: "short",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              },
-              { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
-            ),
-          });
-        } catch (err) {
-          logger.error("DB prune process failed", {
-            error: (err as Error).message,
-            stack: (err as Error).stack,
-          });
-        }
-      })();
-    },
-    null,
-    true,
-    config.timeZone,
-  ),
-};
 
 // Utility functions
 /**
@@ -787,507 +518,26 @@ function generateAuthToken(
     { expiresIn: expiryDuration as any },
   );
 }
-/**
- * Handles user registration with password validation and duplicate checks
- *
- * @param {Object} request - HTTP request object
- * @param {Object} response - HTTP response object
- * @returns {Promise<void>} Resolves when registration completes
- */
-async function registerUser(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  try {
-    // Check if registration is enabled
-    if (!config.registration.allowed) {
-      response.writeHead(403, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Registration is currently disabled",
-      }));
-    }
-
-    // Check user limit
-    const userCount = await UserAccount.count();
-    if (userCount >= config.registration.maxUsers) {
-      response.writeHead(403, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Maximum number of users reached",
-      }));
-    }
-    let requestData = {};
-    try {
-      requestData = await parseRequestJson(request) as Record<string, unknown>;
-    } catch (error) {
-      logger.error("Failed to parse request JSON", {
-        error: (error as Error).message,
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: `${(error as Error).message || "Invalid request"}`,
-      }));
-    }
-    const { userName, password } = requestData as {
-      userName: string;
-      password: string;
-    };
-
-    // Validate password length (bcrypt limit is 72 bytes)
-    if (Buffer.byteLength(password, "utf8") > 72) {
-      logger.error("Password too long", {
-        userName,
-        passwordLength: Buffer.byteLength(password, "utf8"),
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Password exceeds maximum length",
-      }));
-    }
-
-    // Check for existing user
-    const existingUser = await UserAccount.findOne({
-      where: { username: userName },
-    });
-
-    if (existingUser) {
-      response.writeHead(409, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Username already exists",
-      }));
-    }
-
-    // Create new user
-    const [salt, hashedPassword] = await hashPassword(password);
-    await UserAccount.create({
-      username: userName,
-      passwordSalt: salt,
-      passwordHash: hashedPassword,
-    });
-
-    response.writeHead(201, generateCorsHeaders(MIME_TYPES[".json"]));
-    response.end(JSON.stringify({
-      status: "success",
-      message: "User registered successfully",
-    }));
-  } catch (error) {
-    logger.error("Registration failed", { error: (error as Error).message });
-    response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
-    response.end(JSON.stringify({
-      status: "error",
-      message: "Registration failed",
-    }));
-  }
+function emitTokenExpired(payload: { error: string }) {
+  sock.emit("token-expired", payload);
 }
-/**
- * Checks if user registration is allowed based on current settings
- *
- * @param {*} request Request object to read any parameters
- * @param {*} response Response object to send result
- * @returns {Promise<void>} Resolves with registration status
- */
-async function isRegistrationAllowed(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  let allow = true;
-  if (!config.registration.allowed) {
-    allow = false;
-  }
-  let requestData = {};
-  try {
-    requestData = await parseRequestJson(request) as Record<string, unknown>;
-  } catch (err) {
-    logger.error("Failed to parse request JSON", {
-      error: (err as Error).message,
-    });
-    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({
-      status: "error",
-      message: `${(err as Error).message || "Invalid request"}`,
-    }));
-  }
-  const { sendStats } = (requestData as { sendStats?: boolean }) ||
-    { sendStats: false };
-  const userCount = await UserAccount.count();
-  if (userCount >= config.registration.maxUsers) {
-    allow = false;
-  }
-  if (sendStats === true) {
-    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({
-      registrationAllowed: allow,
-      currentUsers: userCount,
-      maxUsers: config.registration.maxUsers,
-    }));
-  } else {
-    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({
-      registrationAllowed: allow,
-    }));
-  }
-}
-/**
- * Middleware to verify JWT tokens and check user authentication
- *
- * @param {Object} request - HTTP request object
- * @param {Object} response - HTTP response object
- * @param {Function} next - Next middleware function
- * @returns {Promise<void>} Resolves when verification completes
- */
-async function authenticateRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  next: (data: unknown, res: ServerResponse) => void,
-) {
-  try {
-    // Try to get token from Authorization header (Bearer) first, fall back to body
-    const authHeader = request.headers &&
-      (request.headers.authorization || request.headers.Authorization);
-    let headerToken = null;
-    if (authHeader && typeof authHeader === "string") {
-      const parts = authHeader.split(" ");
-      if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
-        headerToken = parts[1];
-      } else {
-        // If header contains token without scheme, use it directly
-        headerToken = authHeader;
-      }
-    }
 
-    const token = headerToken;
+const { authenticateRequest, authenticateSocket, authenticateUser, isRegistrationAllowed, registerUser } =
+  createAuthMiddleware({
+    parseRequestJson,
+    generateCorsHeaders,
+    jsonMimeType: MIME_TYPES[".json"],
+    redis,
+    generateAuthToken,
+    hashPassword,
+    emitTokenExpired,
+  });
 
-    if (!token) {
-      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(
-        JSON.stringify({ status: "error", message: "Token required" }),
-      );
-    }
-
-    // Verify token
-    const decodedToken = jwt.verify(
-      token as string,
-      config.secretKey as string,
-    ) as jwt.JwtPayload;
-
-    // Check cache first
-    // Check cache first
-    let user = null;
-    const cachedUser = await redis.get(`user:${decodedToken.id}`);
-    if (cachedUser) {
-      user = JSON.parse(cachedUser);
-      // Verify password hasn't changed, keep it here to avoid the scenario where user is null
-      const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
-      const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
-        .getTime();
-      if (lastPasswordUpdate !== tokenTime) {
-        logger.error("Token invalid - password changed");
-        response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
-        return response.end(JSON.stringify({
-          status: "error",
-          message: "Token expired",
-        }));
-      }
-    }
-
-    if (!user) {
-      logger.debug(`Fetching user data for ID ${decodedToken.id}`);
-      user = await UserAccount.findByPk(decodedToken.id);
-      if (user) {
-        await redis.set(
-          `user:${decodedToken.id}`,
-          JSON.stringify(user),
-          "EX",
-          config.cache.maxAge,
-        );
-      }
-    }
-
-    if (!user) {
-      logger.error("User not found");
-      response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "User not found",
-      }));
-    }
-
-    let requestData = {};
-    try {
-      requestData = await parseRequestJson(request) as Record<string, unknown>;
-    } catch (error) {
-      logger.error("Failed to parse request JSON", {
-        error: (error as Error).message,
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: `${(error as Error).message || "Invalid request"}`,
-      }));
-    }
-    // Continue to next middleware
-    next(requestData, response);
-  } catch (error) {
-    logger.error("Token verification failed", {
-      error: (error as Error).message,
-    });
-
-    const statusCode = (error as Error).name === "TokenExpiredError"
-      ? 401
-      : 500;
-    const message = (error as Error).name === "TokenExpiredError"
-      ? "Token expired"
-      : "Authentication failed";
-
-    if ((error as Error).name === "TokenExpiredError") {
-      if (
-        typeof sock !== "undefined" && sock && typeof sock.emit === "function"
-      ) {
-        try {
-          sock.emit("token-expired", { error: (error as Error).message });
-        } catch (e) {
-          logger.warn("Failed to emit token-expired on sock", {
-            error: (e as Error).message,
-          });
-        }
-      }
-    }
-
-    response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({
-      status: "error",
-      message: he.escape(message),
-    }));
-  }
-}
-/**
- * Verifies socket.io connection authentication
- *
- * @param {Object} socket - Socket.io socket object
- * @param {Object} socket.handshake - Connection handshake data
- * @returns {Promise<boolean>} Resolves to true if authentication valid
- */
-async function authenticateSocket(socket: Socket): Promise<boolean> {
-  try {
-    const token = socket.handshake.auth.token;
-    const decodedToken = jwt.verify(
-      token,
-      config.secretKey as string,
-    ) as jwt.JwtPayload;
-
-    // Check cache first
-    // Check cache first
-    let user = null;
-    const cachedUser = await redis.get(`user:${decodedToken.id}`);
-    if (cachedUser) {
-      user = JSON.parse(cachedUser);
-      // Verify password hasn't changed, keep it here to avoid the scenario where user is null
-      const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
-      const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
-        .getTime();
-      if (lastPasswordUpdate !== tokenTime) {
-        logger.error("Socket auth failed - password changed");
-        return false;
-      }
-    }
-
-    if (!user) {
-      logger.debug(`Fetching user data for ID ${decodedToken.id}`);
-      user = await UserAccount.findByPk(decodedToken.id);
-      if (user) {
-        await redis.set(
-          `user:${decodedToken.id}`,
-          JSON.stringify(user),
-          "EX",
-          config.cache.maxAge,
-        );
-      }
-    }
-
-    if (!user) {
-      logger.error("Socket auth failed - user not found");
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    if ((error as Error).name === "JsonWebTokenError") {
-      logger.error("Invalid token format");
-    } else if ((error as Error).name === "TokenExpiredError") {
-      logger.error("Token expired");
-    } else {
-      logger.error("Socket authentication failed", {
-        error: (error as Error).message,
-      });
-    }
-    return false;
-  }
-}
-/**
- * Rate limiting middleware for API endpoints
- *
- * @param {Object} request - HTTP request object
- * @param {Object} response - HTTP response object
- * @param {Function} currentHandler - Current route handler
- * @param {Function} nextHandler - Next middleware function
- * @param {number} maxRequestsPerWindow - Maximum requests allowed per time window
- * @param {number} windowSeconds - Time window in seconds
- * @returns {Promise<void>} Resolves when rate limiting check completes
- */
-async function rateLimit(
-  request: IncomingMessage,
-  response: ServerResponse,
-  currentHandler: (
-    req: IncomingMessage,
-    res: ServerResponse,
-    next: (data: any, res: ServerResponse) => void,
-  ) => void,
-  nextHandler: (data: any, res: ServerResponse) => void,
-  maxRequestsPerWindow: number,
-  windowSeconds: number,
-) {
-  const clientIp = request.socket.remoteAddress;
-  logger.trace(`Rate limit check for IP ${clientIp}`);
-
-  if (maxRequestsPerWindow === 0) {
-    logger.debug(`Rate limiting disabled (maxRequestsPerWindow is 0)`);
-    return currentHandler(request, response, nextHandler);
-  }
-
-  // Check current request count
-  const currentRequests = +(await redis.get(`ip:${clientIp}`)) || 0;
-
-  if (currentRequests >= maxRequestsPerWindow) {
-    logger.debug(`Rate limit exceeded for ${clientIp}`);
-    response.writeHead(429, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({
-      status: "error",
-      message: "Too many requests",
-    }));
-  }
-
-  // Update request count
-  await redis.set(`ip:${clientIp}`, currentRequests + 1, "EX", windowSeconds);
-
-  logger.debug(`Request count for ${clientIp}: ${currentRequests + 1}`);
-
-  // Continue to handler
-  currentHandler(request, response, nextHandler);
-}
-/**
- * Handles user authentication and token generation
- *
- * @param {Object} request - HTTP request object
- * @param {Object} response - HTTP response object
- * @returns {Promise<void>} Resolves when authentication completes
- */
-async function authenticateUser(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  try {
-    let requestData = {};
-    try {
-      requestData = await parseRequestJson(request) as Record<string, unknown>;
-    } catch (error) {
-      logger.error("Failed to parse request JSON", {
-        error: (error as Error).message,
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: `${(error as Error).message || "Invalid request"}`,
-      }));
-    }
-
-    // Extract and validate fields
-    const data = requestData as {
-      userName?: string;
-      password?: string;
-      expiry_time?: string;
-    };
-    if (!data.userName || !data.password) {
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "userName and password are required",
-      }));
-    }
-
-    // Destructure with defaults
-    const {
-      userName,
-      password,
-      expiry_time: expiryTime = "31d",
-    } = data;
-
-    // Validate password length
-    if (Buffer.byteLength(password, "utf8") > 72) {
-      logger.error("Password too long", {
-        userName,
-        passwordLength: Buffer.byteLength(password, "utf8"),
-      });
-      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Password exceeds maximum length",
-      }));
-    }
-
-    // Find user
-    const user = await UserAccount.findOne({
-      where: { username: userName },
-    });
-
-    if (!user) {
-      logger.warn(`Authentication failed for user ${userName}`);
-      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Invalid credentials",
-      }));
-    }
-
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      (user as unknown as { passwordHash: string }).passwordHash,
-    );
-
-    if (!isPasswordValid) {
-      logger.warn(`Authentication failed for user ${userName}`);
-      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
-      return response.end(JSON.stringify({
-        status: "error",
-        message: "Invalid credentials",
-      }));
-    }
-
-    // Generate token
-    const token = generateAuthToken(
-      user as unknown as { id: string; updatedAt: Date },
-      expiryTime,
-    );
-    logger.info(`Authentication successful for user ${userName}`);
-
-    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-    return response.end(JSON.stringify({
-      status: "success",
-      token: he.escape(token),
-    }));
-  } catch (error) {
-    logger.error("Authentication failed", { error: (error as Error).message });
-    response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
-    response.end(JSON.stringify({
-      status: "error",
-      message: "Authentication failed",
-    }));
-  }
-}
+const rateLimit = createRateLimit({
+  redis,
+  generateCorsHeaders,
+  jsonMimeType: MIME_TYPES[".json"],
+});
 
 // Download functions
 /**
@@ -5321,140 +4571,190 @@ const server = (serverObj as any).createServer(
       // necessary for health check
       res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
       res.end();
-    } else if (req.url === config.urlBase + "/list" && req.method === "POST") {
-      rateLimit(
-        req,
-        res,
-        authenticateRequest,
-        (data: unknown, res: ServerResponse) =>
-          processListingRequest(data as any, res),
-        config.cache.actionReqPerIP,
-        config.cache.actionWindowSec,
-      );
-    } else if (
-      req.url === config.urlBase + "/download" && req.method === "POST"
-    ) {
-      rateLimit(
-        req,
-        res,
-        authenticateRequest,
-        (data: unknown, res: ServerResponse) =>
-          processDownloadRequest(data as any, res),
-        config.cache.actionReqPerIP,
-        config.cache.actionWindowSec,
-      );
-    } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          updatePlaylistMonitoring(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/getplay" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          getPlaylistsForDisplay(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/delplay" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          processDeletePlaylistRequest(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/getsub" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          getSubListVideos(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/delsub" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          processDeleteVideosRequest(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/getfile" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) => makeSignedUrl(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/refreshfile" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          refreshSignedUrl(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/getfiles" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          makeSignedUrls(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/reindexall" && req.method === "POST"
-    ) {
-      authenticateRequest(
-        req,
-        res,
-        (data: unknown, res: ServerResponse) =>
-          processReindexAllRequest(data as any, res),
-      );
-    } else if (
-      req.url === config.urlBase + "/register" && req.method === "POST"
-    ) {
-      rateLimit(
-        req,
-        res,
-        registerUser,
-        (req: IncomingMessage, res: ServerResponse) =>
-          isRegistrationAllowed(req, res),
-        config.cache.reqPerIP,
-        config.cache.maxAge,
-      );
-    } else if (req.url === config.urlBase + "/login" && req.method === "POST") {
-      rateLimit(
-        req,
-        res,
-        authenticateUser,
-        (req: IncomingMessage, res: ServerResponse) =>
-          authenticateUser(req, res),
-        config.cache.reqPerIP,
-        config.cache.maxAge,
-      );
-    } else if (
-      req.url === config.urlBase + "/isregallowed" && req.method === "POST"
-    ) {
-      rateLimit(
-        req,
-        res,
-        isRegistrationAllowed,
-        (req: IncomingMessage, res: ServerResponse) =>
-          isRegistrationAllowed(req, res),
-        config.cache.reqPerIP,
-        config.cache.maxAge,
-      );
+    } else if (req.method === "POST") {
+      const apiRoutes: RouteDefinition[] = [
+        {
+          method: "POST",
+          path: config.urlBase + "/list",
+          run: (req, res) =>
+            rateLimit(
+              req,
+              res,
+              authenticateRequest,
+              (data: unknown, res: ServerResponse) =>
+                processListingRequest(data as any, res),
+              config.cache.actionReqPerIP,
+              config.cache.actionWindowSec,
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/download",
+          run: (req, res) =>
+            rateLimit(
+              req,
+              res,
+              authenticateRequest,
+              (data: unknown, res: ServerResponse) =>
+                processDownloadRequest(data as any, res),
+              config.cache.actionReqPerIP,
+              config.cache.actionWindowSec,
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/watch",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                updatePlaylistMonitoring(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/getplay",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                getPlaylistsForDisplay(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/delplay",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                processDeletePlaylistRequest(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/getsub",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                getSubListVideos(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/delsub",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                processDeleteVideosRequest(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/getfile",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                makeSignedUrl(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/refreshfile",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                refreshSignedUrl(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/getfiles",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                makeSignedUrls(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/reindexall",
+          run: (req, res) =>
+            authenticateRequest(
+              req,
+              res,
+              (data: unknown, res: ServerResponse) =>
+                processReindexAllRequest(data as any, res),
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/register",
+          run: (req, res) =>
+            rateLimit(
+              req,
+              res,
+              registerUser,
+              (req: IncomingMessage, res: ServerResponse) =>
+                isRegistrationAllowed(req, res),
+              config.cache.reqPerIP,
+              config.cache.maxAge,
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/login",
+          run: (req, res) =>
+            rateLimit(
+              req,
+              res,
+              authenticateUser,
+              (req: IncomingMessage, res: ServerResponse) =>
+                authenticateUser(req, res),
+              config.cache.reqPerIP,
+              config.cache.maxAge,
+            ),
+        },
+        {
+          method: "POST",
+          path: config.urlBase + "/isregallowed",
+          run: (req, res) =>
+            rateLimit(
+              req,
+              res,
+              isRegistrationAllowed,
+              (req: IncomingMessage, res: ServerResponse) =>
+                isRegistrationAllowed(req, res),
+              config.cache.reqPerIP,
+              config.cache.maxAge,
+            ),
+        },
+      ];
+
+      if (dispatchRoute(req, res, apiRoutes)) {
+        return;
+      }
+
+      logger.error("Requested Resource couldn't be found", {
+        url: req.url,
+        method: req.method,
+      });
+      res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+      res.write("Not Found");
+      res.end();
     } else {
       logger.error("Requested Resource couldn't be found", {
         url: req.url,
@@ -5467,163 +4767,18 @@ const server = (serverObj as any).createServer(
   },
 );
 
-const io = new Server(server, {
-  path: config.urlBase + "/socket.io/",
-  cors: {
-    // cors will only happen on these so it's best to keep it limited
-    origin: CORS_ALLOWED_ORIGINS,
-  },
+const { io: _io, sock } = createSocketServer({
+  server,
+  corsAllowedOrigins: CORS_ALLOWED_ORIGINS,
+  authenticateSocket,
+  redis,
 });
 
-io.use((socket: Socket, next: (err?: Error) => void) => {
-  authenticateSocket(socket).then((result) => {
-    if (result) {
-      logger.debug("Valid socket", {
-        id: socket.id,
-        ip: socket.handshake.address,
-      });
-      next();
-    } else {
-      logger.error("Invalid socket", {
-        id: socket.id,
-        ip: socket.handshake.address,
-      });
-      next(new Error("Invalid socket"));
-    }
-  }).catch((err) => {
-    logger.error("Error in verifying socket", {
-      id: socket.id,
-      ip: socket.handshake.address,
-      error: err as Error,
-    });
-    next(new Error((err as Error).message));
-  });
-});
-
-const sock = io.on("connection", (socket: Socket) => {
-  if (config.connectedClients >= config.maxClients) {
-    logger.info("Rejecting client", {
-      id: socket.id,
-      ip: socket.handshake.address,
-      reason: "Server full",
-    });
-    socket.emit("connection-error", "Server full");
-    // Disconnect the client
-    socket.disconnect(true);
-    return;
-  }
-
-  // Set up socket authentication lifecycle management
-  const token = socket.handshake.auth.token;
-  let decodedToken: jwt.JwtPayload | null = null;
-  let expiryTimeout: ReturnType<typeof setTimeout> | null = null;
-  let verificationInterval: ReturnType<typeof setInterval> | null = null;
-
-  try {
-    decodedToken = jwt.verify(
-      token,
-      config.secretKey as string,
-    ) as jwt.JwtPayload;
-    if (decodedToken && decodedToken.exp) {
-      const timeUntilExpiry = (decodedToken.exp * 1000) - Date.now();
-      if (timeUntilExpiry > 0) {
-        // setTimeout max limits to 32-bit signed int (approx 24.8 days)
-        const delay = Math.min(timeUntilExpiry, 2147483647);
-        expiryTimeout = setTimeout(() => {
-          logger.info(`Token expired for socket ${socket.id}, disconnecting`);
-          socket.emit("token-expired", {
-            message: "Your session has expired.",
-          });
-          socket.disconnect(true);
-        }, delay);
-      } else {
-        socket.emit("token-expired", { message: "Your session has expired." });
-        socket.disconnect(true);
-        return;
-      }
-    }
-
-    if (decodedToken) {
-      // User verification interval (matches config.cache.maxAge as requested)
-      const pingInterval = config.cache.maxAge * 1000;
-      verificationInterval = setInterval(async () => {
-        try {
-          const cachedUser = await redis.get(`user:${decodedToken?.id}`);
-          if (cachedUser) {
-            const user = JSON.parse(cachedUser);
-            const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
-            const tokenTime = new Date(
-              decodedToken?.lastPasswordChangeTime || 0,
-            ).getTime();
-            if (lastPasswordUpdate !== tokenTime) {
-              logger.error(
-                "Socket auth check failed mid-session - password changed",
-              );
-              socket.emit("token-expired", {
-                message: "Authentication invalidated.",
-              });
-              socket.disconnect(true);
-            }
-          } else {
-            // Cache expired, check database to ensure user hasn't been removed/changed
-            const user = await UserAccount.findByPk(decodedToken?.id);
-            if (!user) {
-              logger.error(
-                "Socket auth check failed mid-session - user not found",
-              );
-              socket.emit("token-expired", {
-                message: "Authentication invalidated.",
-              });
-              socket.disconnect(true);
-            } else {
-              // Refresh cache if successfully found
-              await redis.set(
-                `user:${decodedToken?.id}`,
-                JSON.stringify(user),
-                "EX",
-                config.cache.maxAge,
-              );
-            }
-          }
-        } catch (error) {
-          logger.error("Mid-session socket verification error", {
-            error: (error as Error).message,
-          });
-        }
-      }, pingInterval);
-    }
-  } catch (e) {
-    logger.error("Failed to decode token on active connection.", {
-      error: (e as Error).message,
-    });
-    socket.disconnect(true);
-    return;
-  }
-
-  // Increment the count of connected clients
-  socket.emit("init", { message: "Connected", id: socket.id });
-  socket.on("acknowledge", ({ data, id }: { data: string; id: string }) => {
-    logger.info(`Acknowledged from client id ${id}`, {
-      id: id,
-      ip: socket.handshake.address,
-      data: data,
-    });
-    config.connectedClients++;
-  });
-
-  socket.on("disconnect", () => {
-    // Clean up lifecycle timers
-    if (expiryTimeout) clearTimeout(expiryTimeout);
-    if (verificationInterval) clearInterval(verificationInterval);
-
-    // Decrement the count of connected clients when a client disconnects
-    logger.info(`Disconnected from client id ${socket.id}`, {
-      id: socket.id,
-      ip: socket.handshake.address,
-    });
-    config.connectedClients--;
-  });
-  return socket;
+const jobs = createJobs({
+  cleanupStaleProcesses,
+  downloadProcesses: downloadProcesses as Map<string, any>,
+  listProcesses: listProcesses as Map<string, any>,
+  listItemsConcurrently,
 });
 
 server.listen(config.port, async () => {
@@ -5652,20 +4807,5 @@ server.listen(config.port, async () => {
   logger.debug(
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --dump-json --no-download {bodyUrl}",
   );
-  for (const [name, job] of Object.entries(jobs)) {
-    job.start();
-    logger.info(`Started ${name} job`, {
-      schedule: (job as any).cronTime.source,
-      nextRun: job.nextDate().toLocaleString(
-        {
-          weekday: "short",
-          month: "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        },
-        { timeZone: config.timeZone } as any,
-      ),
-    });
-  }
+  startJobs(jobs);
 });
