@@ -34,7 +34,8 @@ import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
 import { dispatchRoute } from "./src/routes/http.ts";
-import { tryServeSignedFile } from "./src/routes/helpers/serveSignedFile.ts";
+import { getSignedFileMetadata } from "./src/routes/helpers/getSignedFileMetadata.ts";
+import { tryServeNativeFile } from "./src/routes/helpers/serveNativeFile.ts";
 import {
   serveStaticAsset,
   type StaticAsset,
@@ -3482,7 +3483,7 @@ const jobs = createJobs({
   listItemsConcurrently,
 });
 
-async function handleRequest(
+function handleRequest(
   req: HttpRequestLike,
   res: HttpResponseLike,
 ) {
@@ -3494,17 +3495,8 @@ async function handleRequest(
         method: req.method,
         encoding: reqEncoding,
       });
-      if (
-        await tryServeSignedFile(req, res, {
-          redis,
-          cacheMaxAge: config.cache.maxAge,
-          mimeTypes: MIME_TYPES,
-          generateCorsHeaders,
-          htmlMimeType: MIME_TYPES[".html"],
-        })
-      ) {
-        return;
-      }
+      // File streaming is now handled natively in the Deno.serve callback.
+      // This section now only handles other GET requests like static assets.
 
       if (
         serveStaticAsset(req, res, {
@@ -3602,6 +3594,23 @@ Deno.serve(
         return proxyWebSocketRequest(request, socketSidecarOrigin);
       }
       return await proxyHttpRequest(request, socketSidecarOrigin);
+    }
+
+    // High-performance native file streaming
+    const metadata = await getSignedFileMetadata(
+      request,
+      redis,
+      config.cache.maxAge,
+    );
+    if (metadata) {
+      const nativeResponse = await tryServeNativeFile(
+        request,
+        metadata,
+        generateCorsHeaders,
+      );
+      if (nativeResponse) {
+        return nativeResponse;
+      }
     }
 
     return await handleNodeStyleRequest(request, info, handleRequest);
