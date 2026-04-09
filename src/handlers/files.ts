@@ -1,11 +1,16 @@
-import fs from "node:fs";
 import type { ServerResponse } from "node:http";
-import path from "node:path";
 
 import type Redis from "ioredis";
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
+import { existsSync } from "../utils/fs.ts";
+import {
+  extname,
+  isWithinPath,
+  join,
+  resolve,
+} from "../utils/path.ts";
 
 type GenerateCorsHeaders = (
   contentType: string,
@@ -56,31 +61,31 @@ export function createFileHandlers({
         );
       }
 
-      const joined = path.join(
+      const joined = join(
         config.saveLocation,
         saveDirectory || "",
         fileName,
       );
-      const resolved = path.resolve(joined);
-      const saveRoot = path.resolve(config.saveLocation);
-      if (!resolved.startsWith(saveRoot)) {
+      const resolvedPath = resolve(joined);
+      const saveRoot = resolve(config.saveLocation);
+      if (!isWithinPath(saveRoot, resolvedPath)) {
         logger.warn("serveFileByPath attempted path traversal", {
           saveDirectory,
           fileName,
-          resolved,
+          resolved: resolvedPath,
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
           JSON.stringify({ status: "error", message: "Invalid file path" }),
         );
       }
-      logger.debug(`Resolved Path ${resolved}`, {
+      logger.debug(`Resolved Path ${resolvedPath}`, {
         joined,
-        resolved,
+        resolved: resolvedPath,
         saveRoot,
       });
-      if (fs.existsSync(resolved)) {
-        absolutePath = resolved;
+      if (existsSync(resolvedPath)) {
+        absolutePath = resolvedPath;
       } else {
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
@@ -108,7 +113,7 @@ export function createFileHandlers({
       `signed:${signedUrlId}`,
       JSON.stringify({
         filePath: absolutePath,
-        mimeType: mimeTypes[path.extname(absolutePath)] ||
+        mimeType: mimeTypes[extname(absolutePath)] ||
           "application/octet-stream",
         expiry,
       }),
@@ -185,15 +190,15 @@ export function createFileHandlers({
       const { saveDirectory, fileName } = file;
       if (!fileName || typeof fileName !== "string") continue;
 
-      const joined = path.join(
+      const joined = join(
         config.saveLocation,
         saveDirectory || "",
         fileName,
       );
-      const resolved = path.resolve(joined);
-      const saveRoot = path.resolve(config.saveLocation);
+      const resolvedPath = resolve(joined);
+      const saveRoot = resolve(config.saveLocation);
 
-      if (!resolved.startsWith(saveRoot) || !fs.existsSync(resolved)) {
+      if (!isWithinPath(saveRoot, resolvedPath) || !existsSync(resolvedPath)) {
         results[fileName] = null;
         continue;
       }
@@ -204,7 +209,7 @@ export function createFileHandlers({
       await redis.set(
         `signed:${signedUrlId}`,
         JSON.stringify({
-          filePath: resolved,
+          filePath: resolvedPath,
           mimeType: "application/octet-stream",
           expiry,
         }),
