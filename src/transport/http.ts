@@ -27,9 +27,3 @@ export interface HttpResponseLike {
   write(chunk: string | Uint8Array): unknown;
   end(chunk?: string | Uint8Array): unknown;
 }
-
-export interface ReadableLike {
-  destroy(): void;
-}
-
-export interface WritableLike {}

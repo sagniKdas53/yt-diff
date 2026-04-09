@@ -8,8 +8,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import he from "he";
 import Redis from "ioredis";
-import { pipeline } from "node:stream";
-import { promisify } from "node:util";
 import { createInterface } from "node:readline";
 
 import { config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
@@ -66,8 +64,6 @@ import type {
   HttpRequestLike,
   HttpResponseLike,
 } from "./src/transport/http.ts";
-
-const pipelineAsync = promisify(pipeline);
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
 
@@ -3379,7 +3375,6 @@ const server = (serverObj as any).createServer(
             cacheMaxAge: config.cache.maxAge,
             mimeTypes: MIME_TYPES,
             generateCorsHeaders,
-            pipelineAsync,
             htmlMimeType: MIME_TYPES[".html"],
           })
         ) {

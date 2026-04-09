@@ -1,13 +1,9 @@
-import fs from "node:fs";
-
 import type Redis from "ioredis";
 
 import { logger } from "../../logger.ts";
 import type {
   HttpRequestLike,
   HttpResponseLike,
-  ReadableLike,
-  WritableLike,
 } from "../../transport/http.ts";
 import { stat } from "../../utils/fs.ts";
 import { basename, extname } from "../../utils/path.ts";
@@ -21,10 +17,6 @@ interface SignedFileDependencies {
   cacheMaxAge: number;
   mimeTypes: Record<string, string>;
   generateCorsHeaders: GenerateCorsHeaders;
-  pipelineAsync: (
-    source: ReadableLike,
-    destination: WritableLike,
-  ) => Promise<unknown>;
   htmlMimeType: string;
 }
 
@@ -36,7 +28,6 @@ export async function tryServeSignedFile(
     cacheMaxAge,
     mimeTypes,
     generateCorsHeaders,
-    pipelineAsync,
     htmlMimeType,
   }: SignedFileDependencies,
 ): Promise<boolean> {
@@ -124,18 +115,15 @@ export async function tryServeSignedFile(
     const chunkSize = end - start + 1;
     res.setHeader("Content-Length", String(chunkSize));
     res.writeHead(statusCode);
-
-    const readStream = fs.createReadStream(signedEntry.filePath, {
-      start,
-      end,
-      highWaterMark: 1024 * 1024,
-    });
+    const file = await Deno.open(signedEntry.filePath, { read: true });
+    let clientDisconnected = false;
 
     const onClose = () => {
       try {
-        readStream.destroy();
+        clientDisconnected = true;
+        file.close();
       } catch (err: unknown) {
-        logger.error("Error destroying read stream on client disconnect", {
+        logger.error("Error closing file on client disconnect", {
           error: (err as Error)?.message || String(err),
           fileId,
         });
@@ -145,8 +133,25 @@ export async function tryServeSignedFile(
     req.on("aborted", onClose);
 
     try {
-      await pipelineAsync(readStream, res);
-      logger.trace("Finished streaming signed file", { fileId });
+      await file.seek(start, Deno.SeekMode.Start);
+      let remaining = chunkSize;
+      const bufferSize = Math.min(1024 * 1024, chunkSize);
+      const buffer = new Uint8Array(bufferSize);
+
+      while (remaining > 0 && !clientDisconnected) {
+        const bytesToRead = Math.min(buffer.length, remaining);
+        const bytesRead = await file.read(buffer.subarray(0, bytesToRead));
+        if (bytesRead === null) {
+          break;
+        }
+        res.write(buffer.subarray(0, bytesRead));
+        remaining -= bytesRead;
+      }
+
+      if (!clientDisconnected) {
+        res.end();
+        logger.trace("Finished streaming signed file", { fileId });
+      }
     } catch (err) {
       logger.error("Error during streaming signed file", {
         error: (err as Error)?.message || String(err),
@@ -164,6 +169,13 @@ export async function tryServeSignedFile(
         });
       }
     } finally {
+      try {
+        if (!clientDisconnected) {
+          file.close();
+        }
+      } catch {
+        // Ignore double-close or close-after-error cleanup noise.
+      }
       req.removeListener("close", onClose);
       req.removeListener("aborted", onClose);
     }
