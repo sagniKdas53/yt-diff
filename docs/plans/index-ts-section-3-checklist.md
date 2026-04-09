@@ -20,9 +20,12 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 ## Phase 3: Route structure
 
 - [x] Replace the `if/else if` POST router with a route registry.
-- [x] Move each endpoint handler into a dedicated backend module.
-- [x] Preserve current request/response behavior while shrinking `index.ts`.
-- [x] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
+- [ ] Move each endpoint handler into a dedicated backend module.
+- [ ] Preserve current request/response behavior while shrinking `index.ts`.
+- [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
+- [x] Extract playlist/query/delete route handlers into `src/handlers/playlists.ts`.
+- [ ] Extract remaining listing/download pipeline handlers out of `index.ts`.
+- [ ] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
 
 ## Phase 4: Typing cleanup
 
