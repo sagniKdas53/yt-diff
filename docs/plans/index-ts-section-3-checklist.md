@@ -21,10 +21,10 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 - [x] Replace the `if/else if` POST router with a route registry.
 - [ ] Move each endpoint handler into a dedicated backend module.
-- [ ] Preserve current request/response behavior while shrinking `index.ts`.
+- [x] Preserve current request/response behavior while shrinking `index.ts`.
 - [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
 - [x] Extract playlist/query/delete route handlers into `src/handlers/playlists.ts`.
-- [ ] Extract remaining listing/download pipeline handlers out of `index.ts`.
+- [ ] Extract remaining listing/download pipeline handlers out of `index.ts` (~900 LOC in processListingRequest and processDownloadRequest).
 - [ ] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
 
 ## Phase 4: Typing cleanup
@@ -36,7 +36,7 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 ## Phase 5: Deno-native runtime cleanup
 
-- [ ] Replace remaining `node:` imports with Deno-native APIs or vendored Deno std modules where practical.
+- [x] Replace remaining `node:` imports with Deno-native APIs or vendored Deno std modules where practical.
 - [x] Replace low-risk `Buffer`-only usages with `Uint8Array`/`TextEncoder`.
 - [x] Replace config file reads from `node:fs` with Deno file APIs.
 - [x] Replace `node:fs`/`node:path` usage with local Deno-friendly helper modules.
@@ -47,9 +47,9 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 ## Acceptance checks
 
-- [ ] `index.ts` is reduced to thin bootstrap/orchestration responsibilities.
-- [ ] Existing HTTP and socket behavior is preserved.
-- [ ] Cron jobs still start normally.
+- [ ] `index.ts` is reduced to thin bootstrap/orchestration responsibilities (pending handler extraction).
+- [x] Existing HTTP and socket behavior is preserved.
+- [x] Cron jobs still start normally (cleanup, update, prune all running).
 - [x] `deno check index.ts` passes.
-- [ ] `deno task dev` still starts.
-- [ ] Existing test flows still pass.
+- [x] `deno task dev` still starts (active and listening on :8888).
+- [ ] Existing test flows still pass (not verified - requires test stack).
