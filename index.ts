@@ -1,14 +1,12 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore-file no-explicit-any
 import { Model, Op } from "sequelize";
-import { spawn } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import he from "he";
 import Redis from "ioredis";
-import { createInterface } from "node:readline";
 
 import { config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
 import {
@@ -231,6 +229,86 @@ function safeEmit(event: string, payload: unknown) {
       event,
       error: e instanceof Error ? e.message : "Unknown error",
     });
+  }
+}
+
+interface ManagedProcess {
+  pid: number;
+  readonly killed: boolean;
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  readonly status: Promise<Deno.CommandStatus>;
+  kill(signal?: Deno.Signal): boolean;
+}
+
+function spawnPythonProcess(args: string[]): ManagedProcess {
+  const child = new Deno.Command("python3", {
+    args: ["-c", YT_DLP_PATCHED_CMD, ...args],
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+
+  let wasKilled = false;
+
+  return {
+    pid: child.pid,
+    get killed() {
+      return wasKilled;
+    },
+    stdout: child.stdout,
+    stderr: child.stderr,
+    status: child.status,
+    kill(signal: Deno.Signal = "SIGTERM") {
+      try {
+        wasKilled = true;
+        child.kill(signal);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
+async function* streamTextChunks(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value) {
+        yield decoder.decode(value, { stream: true });
+      }
+    }
+    const trailing = decoder.decode();
+    if (trailing) {
+      yield trailing;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function* streamLines(stream: ReadableStream<Uint8Array>) {
+  let buffered = "";
+  for await (const chunk of streamTextChunks(stream)) {
+    buffered += chunk;
+    let newlineIndex = buffered.indexOf("\n");
+    while (newlineIndex !== -1) {
+      const line = buffered.slice(0, newlineIndex).replace(/\r$/, "");
+      buffered = buffered.slice(newlineIndex + 1);
+      yield line;
+      newlineIndex = buffered.indexOf("\n");
+    }
+  }
+
+  const trailing = buffered.trim();
+  if (trailing.length > 0) {
+    yield trailing;
   }
 }
 
@@ -1217,11 +1295,9 @@ function executeDownload(
         }`,
       });
       // Spawn download process, by assembling full args
-      const downloadProcess = spawn("python3", [
-        "-c",
-        YT_DLP_PATCHED_CMD,
-        ...downloadOptions.concat(processArgs),
-      ]);
+      const downloadProcess = spawnPythonProcess(
+        downloadOptions.concat(processArgs),
+      );
 
       // Update process tracking
       const processEntry = downloadProcesses.get(processKey);
@@ -1235,82 +1311,75 @@ function executeDownload(
         return reject(new Error(`Process entry not found: ${processKey}`));
       }
 
-      // Handle stdout for progress tracking
-      downloadProcess.stdout.setEncoding("utf8");
-      downloadProcess.stdout.on("data", (data) => {
+      void (async () => {
         try {
-          const output = data.toString().trim();
+          for await (const data of streamTextChunks(downloadProcess.stdout)) {
+            try {
+              const output = data.toString().trim();
 
-          // Track download progress
-          const percentMatch = /(\d{1,3}\.\d)/.exec(output);
-          if (percentMatch) {
-            const percent = parseFloat(percentMatch[0]);
-            const progressBlock = Math.floor(percent / 10);
+              const percentMatch = /(\d{1,3}\.\d)/.exec(output);
+              if (percentMatch) {
+                const percent = parseFloat(percentMatch[0]);
+                const progressBlock = Math.floor(percent / 10);
 
-            if (progressBlock === 0 && progressPercent === null) {
-              progressPercent = 0;
-              logger.debug(output, { pid: downloadProcess.pid });
-            } else if (
-              progressPercent !== null && progressBlock > progressPercent
-            ) {
-              progressPercent = progressBlock;
-              logger.debug(output, { pid: downloadProcess.pid });
+                if (progressBlock === 0 && progressPercent === null) {
+                  progressPercent = 0;
+                  logger.debug(output, { pid: downloadProcess.pid });
+                } else if (
+                  progressPercent !== null && progressBlock > progressPercent
+                ) {
+                  progressPercent = progressBlock;
+                  logger.debug(output, { pid: downloadProcess.pid });
+                }
+
+                safeEmit("downloading-percent-update", {
+                  url: videoUrl,
+                  percentage: percent,
+                });
+              }
+
+              const itemTitle = /title:(.+)/m.exec(output);
+              if (itemTitle?.[1] && !capturedFileName) {
+                capturedTitle = itemTitle[1].trim();
+                logger.debug(`Video Title from process ${capturedTitle}`, {
+                  pid: downloadProcess.pid,
+                });
+              }
+
+              const fileNameInDest = /fileName:(.+)"/m.exec(output);
+              if (fileNameInDest?.[1]) {
+                const finalFileName = fileNameInDest[1].trim();
+                capturedFileName = basename(finalFileName);
+                logger.debug(
+                  `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
+                  { pid: downloadProcess.pid },
+                );
+              }
+              updateProcessActivity(processKey);
+            } catch (error) {
+              if (!(error instanceof TypeError)) {
+                safeEmit("error", { message: (error as Error).message });
+              }
             }
-
-            // Emit progress update to frontend
-            // TODO: Check if this is needed, as when multiple downloads are running this does not work properly
-            safeEmit("downloading-percent-update", {
-              url: videoUrl,
-              percentage: percent,
-            });
           }
-
-          // Extract the title, no extension
-          const itemTitle = /title:(.+)/m.exec(output);
-          if (itemTitle?.[1] && !capturedFileName) {
-            capturedTitle = itemTitle[1].trim();
-            logger.debug(`Video Title from process ${capturedTitle}`, {
-              pid: downloadProcess.pid,
-            });
-          }
-
-          // Get the final file name (only the video) from that we can get the rest
-          const fileNameInDest = /fileName:(.+)"/m.exec(output);
-          if (fileNameInDest?.[1]) {
-            const finalFileName = fileNameInDest[1].trim();
-            capturedFileName = basename(finalFileName);
-            logger.debug(
-              `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
-              { pid: downloadProcess.pid },
-            );
-          }
-          // Update activity timestamp
-          updateProcessActivity(processKey);
         } catch (error) {
-          if (!(error instanceof TypeError)) {
-            safeEmit("error", { message: (error as Error).message });
-          }
+          logger.error(`Download stdout processing error: ${(error as Error).message}`, {
+            pid: downloadProcess.pid,
+          });
+          updateProcessActivity(processKey);
+          reject(error);
         }
-      });
+      })();
 
-      // Handle stderr
-      downloadProcess.stderr.setEncoding("utf8");
-      downloadProcess.stderr.on("data", (error) => {
-        logger.error(`Download error: ${error}`, { pid: downloadProcess.pid });
-        updateProcessActivity(processKey);
-      });
+      void (async () => {
+        for await (const error of streamTextChunks(downloadProcess.stderr)) {
+          logger.error(`Download error: ${error}`, { pid: downloadProcess.pid });
+          updateProcessActivity(processKey);
+        }
+      })();
 
-      // Handle process errors
-      downloadProcess.on("error", (error) => {
-        logger.error(`Download process error: ${error.message}`, {
-          pid: downloadProcess.pid,
-        });
-        updateProcessActivity(processKey);
-        reject(error);
-      });
-
-      // Handle process completion
-      downloadProcess.on("close", async (code) => {
+      void (async () => {
+        const { code } = await downloadProcess.status;
         try {
           const videoEntry = await VideoMetadata.findOne({
             where: { videoUrl: videoUrl },
@@ -1472,6 +1541,12 @@ function executeDownload(
           );
           reject(error);
         }
+      })().catch((error) => {
+        logger.error(`Download process error: ${(error as Error).message}`, {
+          pid: downloadProcess.pid,
+        });
+        updateProcessActivity(processKey);
+        reject(error);
       });
     });
   } catch (error) {
@@ -2279,7 +2354,7 @@ function streamPlayListItems(
   videoUrl: string,
   processKey: string,
   startIndex: number = 1,
-): { process: ReturnType<typeof spawn>; iterator: AsyncGenerator<string> } {
+): { process: ManagedProcess; iterator: AsyncGenerator<string> } {
   logger.trace("Starting streaming fetch for items", {
     url: videoUrl,
     processKey,
@@ -2309,11 +2384,7 @@ function streamPlayListItems(
     fullCommand: fullCommandString,
   });
 
-  const listProcess = spawn("python3", [
-    "-c",
-    YT_DLP_PATCHED_CMD,
-    ...processArgs,
-  ]);
+  const listProcess = spawnPythonProcess(processArgs);
   const processEntry = listProcesses.get(processKey);
 
   if (processEntry) {
@@ -2327,39 +2398,20 @@ function streamPlayListItems(
     throw new Error(`Process entry not found: ${processKey}`);
   }
 
-  listProcess.stderr.setEncoding("utf8");
-  listProcess.stderr.on("data", (data) => {
-    logger.error("List process error", {
-      error: data,
-      pid: listProcess.pid,
-    });
-    updateProcessActivity(processKey);
-  });
-
-  let _exitStatus: number | null = null;
-  let exitCodePromiseResolve: ((code: number | null) => void) | null = null;
-  const exitCodePromise = new Promise<number | null>((resolve) => {
-    exitCodePromiseResolve = resolve;
-  });
-
-  listProcess.on("close", (code) => {
-    _exitStatus = code;
-    logger.debug("List process closed", {
-      pid: listProcess.pid,
-      code: code,
-    });
-    if (exitCodePromiseResolve) exitCodePromiseResolve(code);
-  });
+  void (async () => {
+    for await (const data of streamTextChunks(listProcess.stderr)) {
+      logger.error("List process error", {
+        error: data,
+        pid: listProcess.pid,
+      });
+      updateProcessActivity(processKey);
+    }
+  })();
 
   async function* lineIterator() {
-    const rl = createInterface({
-      input: listProcess.stdout,
-      crlfDelay: Infinity,
-    });
-
     let linesYielded = 0;
     try {
-      for await (const line of rl) {
+      for await (const line of streamLines(listProcess.stdout)) {
         const trimmed = line.trim();
         if (trimmed.length > 0) {
           updateProcessActivity(processKey);
@@ -2369,7 +2421,9 @@ function streamPlayListItems(
       }
 
       // Wait for exit code to ensure no unexpected failures happened, but only if we didn't deliberately kill it
-      const exitCode = listProcess.killed ? null : await exitCodePromise;
+      const exitCode = listProcess.killed
+        ? null
+        : (await listProcess.status).code;
       const isAllowedError = exitCode === 1 && linesYielded > 0;
 
       if (!listProcess.killed && exitCode !== 0 && !isAllowedError) {
@@ -3116,33 +3170,23 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
     fullCommand: fullCommandString,
   });
   // Spawn process to get playlist title
-  const titleProcess = spawn("python3", [
-    "-c",
-    YT_DLP_PATCHED_CMD,
-    ...processArgs,
-  ]);
+  const titleProcess = spawnPythonProcess(processArgs);
 
   return new Promise((resolve, reject) => {
-    // Handle stdout
-    titleProcess.stdout.setEncoding("utf8");
-    titleProcess.stdout.on("data", (data) => {
-      playlistTitle += data;
-    });
+    void (async () => {
+      for await (const data of streamTextChunks(titleProcess.stdout)) {
+        playlistTitle += data;
+      }
+    })();
 
-    // Handle stderr
-    titleProcess.stderr.setEncoding("utf8");
-    titleProcess.stderr.on("data", (data) => {
-      logger.error(`Error getting playlist title: ${data}`);
-    });
+    void (async () => {
+      for await (const data of streamTextChunks(titleProcess.stderr)) {
+        logger.error(`Error getting playlist title: ${data}`);
+      }
+    })();
 
-    // Handle process errors
-    titleProcess.on("error", (error) => {
-      logger.error(`Title process error: ${error.message}`);
-      reject(error);
-    });
-
-    // Handle process completion
-    titleProcess.on("close", async (code) => {
+    void (async () => {
+      const { code } = await titleProcess.status;
       try {
         if (code !== 0) {
           logger.error(`Title process failed with code: ${code}`);
@@ -3212,6 +3256,9 @@ async function addPlaylist(playlistUrl: string, monitoringType: string) {
         });
         reject(error);
       }
+    })().catch((error) => {
+      logger.error(`Title process error: ${(error as Error).message}`);
+      reject(error);
     });
   });
 }
