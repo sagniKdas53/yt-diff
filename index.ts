@@ -1,8 +1,6 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore-file no-explicit-any
 import { Model, Op } from "sequelize";
-import http from "node:http";
-import https from "node:https";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import he from "he";
@@ -62,6 +60,11 @@ import type {
   HttpRequestLike,
   HttpResponseLike,
 } from "./src/transport/http.ts";
+import {
+  handleNodeStyleRequest,
+  proxyHttpRequest,
+  proxyWebSocketRequest,
+} from "./src/transport/denoHttp.ts";
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
 
@@ -3366,16 +3369,14 @@ function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
 
 const filesList = getFiles("dist");
 const staticAssets: Record<string, StaticAsset> = makeAssets(filesList);
-let serverOptions = {};
-let serverObj = null;
+const socketPathPrefix = `${config.urlBase}/socket.io`;
+let tlsOptions: { cert: string; key: string } | undefined;
 
 if (config.nativeHttps) {
   try {
-    serverOptions = {
+    tlsOptions = {
       key: readTextFileSync(config.ssl.key as string),
       cert: readTextFileSync(config.ssl.cert as string),
-      // If passphrase is not set, don't include it in options
-      ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase }),
     };
   } catch (error) {
     logger.error("Error reading SSL key and/or certificate files:", {
@@ -3384,7 +3385,9 @@ if (config.nativeHttps) {
     Deno.exit(1);
   }
   if (config.ssl.passphrase) {
-    logger.info("SSL passphrase is set");
+    logger.warn(
+      "SSL passphrase is configured, but Deno native TLS expects an unencrypted PEM private key.",
+    );
   }
   if (config.protocol === "http") {
     logger.warn(
@@ -3393,7 +3396,6 @@ if (config.nativeHttps) {
     config.protocol = "https";
   }
   logger.info("Starting server in HTTPS mode");
-  serverObj = https;
 } else {
   if (config.protocol === "https") {
     logger.warn(
@@ -3402,89 +3404,43 @@ if (config.nativeHttps) {
     config.protocol = "http";
   }
   logger.info("Starting server in HTTP mode");
-  serverObj = http;
 }
 
-const server = (serverObj as any).createServer(
-  serverOptions,
-  async (req: HttpRequestLike, res: HttpResponseLike) => {
-    if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
-      try {
-        const reqEncoding = req.headers["accept-encoding"] || "";
-        logger.trace(`Request Received`, {
-          url: req.url,
-          method: req.method,
-          encoding: reqEncoding,
-        });
-        if (
-          await tryServeSignedFile(req, res, {
-            redis,
-            cacheMaxAge: config.cache.maxAge,
-            mimeTypes: MIME_TYPES,
-            generateCorsHeaders,
-            htmlMimeType: MIME_TYPES[".html"],
-          })
-        ) {
-          return;
-        }
-
-        if (
-          serveStaticAsset(req, res, {
-            staticAssets,
-            generateCorsHeaders,
-            htmlMimeType: MIME_TYPES[".html"],
-          })
-        ) {
-          return;
-        }
-      } catch (error) {
-        logger.error("Error in processing request", {
-          url: req.url,
-          method: req.method,
-          error: error as Error,
-        });
-        res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-        res.write("Not Found");
-      }
-      res.end();
-    } else if (req.method === "OPTIONS") {
-      // necessary for cors
-      res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
-      res.end();
-    } else if (req.method === "HEAD") {
-      // necessary for health check
-      res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
-      res.end();
-    } else if (req.method === "POST") {
-      if (dispatchRoute(req, res, apiRoutes)) {
-        return;
-      }
-
-      logger.error("Requested Resource couldn't be found", {
-        url: req.url,
-        method: req.method,
-      });
-      res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-      res.write("Not Found");
-      res.end();
-    } else {
-      logger.error("Requested Resource couldn't be found", {
-        url: req.url,
-        method: req.method,
-      });
-      res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-      res.write("Not Found");
-      res.end();
-    }
-  },
-);
-
 const { io: _io, sock } = createSocketServer({
-  server,
+  server: 0,
   corsAllowedOrigins: CORS_ALLOWED_ORIGINS,
   authenticateSocket,
   redis,
 });
+
+const socketSidecarPort = await new Promise<number>((resolve, reject) => {
+  const socketServer = _io.httpServer as {
+    address?: () => { port?: number } | string | null;
+    listening?: boolean;
+    once: (event: string, listener: (...args: any[]) => void) => void;
+  };
+
+  const resolvePort = () => {
+    const address = socketServer.address?.();
+    if (address && typeof address === "object" && typeof address.port === "number") {
+      resolve(address.port);
+      return;
+    }
+    reject(new Error("Failed to resolve Socket.IO sidecar port"));
+  };
+
+  if (socketServer.listening) {
+    resolvePort();
+    return;
+  }
+
+  socketServer.once("listening", resolvePort);
+  socketServer.once("error", (error: unknown) => {
+    reject(error instanceof Error ? error : new Error(String(error)));
+  });
+});
+
+const socketSidecarOrigin = `http://127.0.0.1:${socketSidecarPort}`;
 
 const apiRoutes = createApiRoutes({
   authenticateRequest,
@@ -3526,7 +3482,79 @@ const jobs = createJobs({
   listItemsConcurrently,
 });
 
-server.listen(config.port, async () => {
+async function handleRequest(
+  req: HttpRequestLike,
+  res: HttpResponseLike,
+) {
+  if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
+    try {
+      const reqEncoding = req.headers["accept-encoding"] || "";
+      logger.trace(`Request Received`, {
+        url: req.url,
+        method: req.method,
+        encoding: reqEncoding,
+      });
+      if (
+        await tryServeSignedFile(req, res, {
+          redis,
+          cacheMaxAge: config.cache.maxAge,
+          mimeTypes: MIME_TYPES,
+          generateCorsHeaders,
+          htmlMimeType: MIME_TYPES[".html"],
+        })
+      ) {
+        return;
+      }
+
+      if (
+        serveStaticAsset(req, res, {
+          staticAssets,
+          generateCorsHeaders,
+          htmlMimeType: MIME_TYPES[".html"],
+        })
+      ) {
+        return;
+      }
+    } catch (error) {
+      logger.error("Error in processing request", {
+        url: req.url,
+        method: req.method,
+        error: error as Error,
+      });
+      res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+      res.write("Not Found");
+    }
+    res.end();
+  } else if (req.method === "OPTIONS") {
+    res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
+    res.end();
+  } else if (req.method === "HEAD") {
+    res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
+    res.end();
+  } else if (req.method === "POST") {
+    if (dispatchRoute(req, res, apiRoutes)) {
+      return;
+    }
+
+    logger.error("Requested Resource couldn't be found", {
+      url: req.url,
+      method: req.method,
+    });
+    res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+    res.write("Not Found");
+    res.end();
+  } else {
+    logger.error("Requested Resource couldn't be found", {
+      url: req.url,
+      method: req.method,
+    });
+    res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+    res.write("Not Found");
+    res.end();
+  }
+}
+
+async function bootstrapRuntime() {
   if (config.hidePorts) {
     logger.info(
       `Server listening on ${config.protocol}://${config.host}${config.urlBase}`,
@@ -3553,4 +3581,29 @@ server.listen(config.port, async () => {
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --dump-json --no-download {bodyUrl}",
   );
   startJobs(jobs);
-});
+}
+
+Deno.serve(
+  {
+    port: config.port,
+    ...(tlsOptions ?? {}),
+    onListen: () => {
+      void bootstrapRuntime();
+    },
+  },
+  async (request, info) => {
+    const url = new URL(request.url);
+    const isSocketRoute = url.pathname === socketPathPrefix ||
+      url.pathname.startsWith(`${socketPathPrefix}/`);
+
+    if (isSocketRoute) {
+      const upgradeHeader = request.headers.get("upgrade");
+      if (upgradeHeader?.toLowerCase() === "websocket") {
+        return proxyWebSocketRequest(request, socketSidecarOrigin);
+      }
+      return await proxyHttpRequest(request, socketSidecarOrigin);
+    }
+
+    return await handleNodeStyleRequest(request, info, handleRequest);
+  },
+);
