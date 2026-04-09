@@ -1,4 +1,5 @@
 import type { HttpRequestLike, HttpResponseLike } from "./http.ts";
+import { logger } from "../logger.ts";
 
 type Listener = (...args: any[]) => void;
 
@@ -32,7 +33,9 @@ class DenoRequestAdapter implements HttpRequestLike {
     this.#request = request;
     this.method = request.method;
     this.url = `${url.pathname}${url.search}`;
-    this.headers = normalizeHeaders(request.headers) as HttpRequestLike["headers"];
+    this.headers = normalizeHeaders(
+      request.headers,
+    ) as HttpRequestLike["headers"];
     this.socket = { remoteAddress };
   }
 
@@ -161,8 +164,8 @@ class DenoResponseAdapter implements HttpResponseLike {
       },
     });
 
-    const shouldSendBody =
-      this.#requestMethod !== "HEAD" && this.#status !== 204;
+    const shouldSendBody = this.#requestMethod !== "HEAD" &&
+      this.#status !== 204;
     this.#resolveResponse?.(
       new Response(shouldSendBody ? stream : null, {
         status: this.#status,
@@ -192,8 +195,8 @@ class DenoResponseAdapter implements HttpResponseLike {
     if (!this.#streamStarted) {
       // No prior write() — send a simple, non-streaming Response.
       // This is the common path for JSON API responses.
-      const shouldSendBody =
-        this.#requestMethod !== "HEAD" && this.#status !== 204;
+      const shouldSendBody = this.#requestMethod !== "HEAD" &&
+        this.#status !== 204;
       let body: BodyInit | null = null;
       if (shouldSendBody && chunk !== undefined) {
         const bytes = toUint8Array(chunk);
@@ -228,7 +231,10 @@ class DenoResponseAdapter implements HttpResponseLike {
 export async function handleNodeStyleRequest(
   request: Request,
   info: Deno.ServeHandlerInfo<Deno.NetAddr>,
-  handler: (req: HttpRequestLike, res: HttpResponseLike) => Promise<void> | void,
+  handler: (
+    req: HttpRequestLike,
+    res: HttpResponseLike,
+  ) => Promise<void> | void,
 ): Promise<Response> {
   const remoteAddress = info.remoteAddr.transport === "tcp"
     ? info.remoteAddr.hostname
@@ -317,7 +323,25 @@ export function proxyWebSocketRequest(
       upstreamSocket.readyState === WebSocket.OPEN ||
       upstreamSocket.readyState === WebSocket.CONNECTING
     ) {
-      upstreamSocket.close(event.code, event.reason);
+      try {
+        upstreamSocket.close(event.code, event.reason);
+      } catch (error) {
+        // WebSocket close code 1000 = normal closure.
+        // 1001 = server shutting down or user navigating away.
+        // 1006 = abnormal close (network drop, no close frame received).
+        // 1008 = policy violation.
+        // Codes 4000-4999 are available for your application.
+        if (event.code == 1001 || event.code == 1006 || event.code == 1008) {
+          logger.warn("Error closing upstream websocket", {
+            code: event.code,
+            reason: event.reason,
+          });
+          return;
+        }
+        logger.error("Error closing upstream websocket", {
+          error: error as Error,
+        });
+      }
     }
   };
 
