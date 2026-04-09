@@ -1,6 +1,4 @@
-import fs from "node:fs";
 import type { ServerResponse } from "node:http";
-import path from "node:path";
 
 import he from "he";
 import {
@@ -18,6 +16,8 @@ import {
   VideoMetadata,
 } from "../db/models.ts";
 import { logger } from "../logger.ts";
+import { existsSync, rmSync, unlinkSync } from "../utils/fs.ts";
+import { join } from "../utils/path.ts";
 
 export interface PlaylistDisplayRequest {
   start?: number;
@@ -294,7 +294,7 @@ export function createPlaylistHandlers({
 
         if (cleanUp) {
           try {
-            const playListDir = path.join(
+            const playListDir = join(
               config.saveLocation,
               playlist.saveDirectory,
             );
@@ -302,7 +302,7 @@ export function createPlaylistHandlers({
               saveDirectory: playlist.saveDirectory,
               absolutePath: playListDir,
             });
-            fs.rmSync(playListDir, { recursive: true, force: true });
+            rmSync(playListDir, { recursive: true, force: true });
             logger.debug("Playlist directory cleaned up", {
               saveDirectory: playlist.saveDirectory,
             });
@@ -610,7 +610,7 @@ export function createPlaylistHandlers({
               for (const [key, value] of Object.entries(filesToRemove)) {
                 if (value) {
                   try {
-                    const filePath = path.join(
+                    const filePath = join(
                       config.saveLocation,
                       video.getDataValue("saveDirectory") || "",
                       value,
@@ -621,8 +621,8 @@ export function createPlaylistHandlers({
                       value,
                       filePath,
                     });
-                    if (fs.existsSync(filePath)) {
-                      fs.unlinkSync(filePath);
+                    if (existsSync(filePath)) {
+                      unlinkSync(filePath);
                       logger.debug("Removed file", {
                         videoUrl,
                         key,

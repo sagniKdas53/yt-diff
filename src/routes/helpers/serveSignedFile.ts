@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import path from "node:path";
 
 import type Redis from "ioredis";
 
 import { logger } from "../../logger.ts";
+import { stat } from "../../utils/fs.ts";
+import { basename, extname } from "../../utils/path.ts";
 
 type GenerateCorsHeaders = (
   contentType: string,
@@ -64,17 +65,17 @@ export async function tryServeSignedFile(
   });
 
   try {
-    const stats = await fs.promises.stat(signedEntry.filePath);
+    const stats = await stat(signedEntry.filePath);
     const total = stats.size;
 
-    const originalName = path.basename(signedEntry.filePath || "");
+    const originalName = basename(signedEntry.filePath || "");
     const safeName = originalName.replace(/[\r\n"]/g, "");
     const fallbackName = safeName.replace(/[^\x20-\x7E]/g, "_");
     const encodedName = encodeURIComponent(safeName);
 
     let contentType = signedEntry.mimeType;
     if (!contentType || contentType === "application/octet-stream") {
-      contentType = mimeTypes[path.extname(safeName)] ||
+      contentType = mimeTypes[extname(safeName)] ||
         "application/octet-stream";
     }
 
