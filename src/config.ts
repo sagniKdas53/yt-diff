@@ -1,4 +1,18 @@
-import fs from "node:fs";
+function readTrimmedFile(filePath: string): string {
+  return Deno.readTextFileSync(filePath).trim();
+}
+
+function fileExists(filePath: string): boolean {
+  try {
+    Deno.statSync(filePath);
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw error;
+  }
+}
 
 export interface AppConfig {
   protocol: string;
@@ -94,7 +108,7 @@ export const config: AppConfig = {
     password: (() => {
       try {
         return Deno.env.get("DB_PASSWORD_FILE")
-          ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
+          ? readTrimmedFile(Deno.env.get("DB_PASSWORD_FILE")!)
           : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
           ? Deno.env.get("DB_PASSWORD")
           : new Error(
@@ -136,14 +150,14 @@ export const config: AppConfig = {
   saveLocation: Deno.env.get("SAVE_PATH") ||
     "/home/sagnik/Documents/syncthing/pi5/yt-diff-data/",
   cookiesFile: Deno.env.get("COOKIES_FILE")
-    ? fs.existsSync(Deno.env.get("COOKIES_FILE")!)
+    ? fileExists(Deno.env.get("COOKIES_FILE")!)
       ? Deno.env.get("COOKIES_FILE")
       : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
     : false,
   proxy_string: (() => {
     try {
       return Deno.env.get("PROXY_STRING_FILE")
-        ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
+        ? readTrimmedFile(Deno.env.get("PROXY_STRING_FILE")!)
           .replace(/['"\n]+/g, "")
         : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
         ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}`
@@ -170,7 +184,7 @@ export const config: AppConfig = {
   secretKey: (() => {
     try {
       return Deno.env.get("SECRET_KEY_FILE")
-        ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
+        ? readTrimmedFile(Deno.env.get("SECRET_KEY_FILE")!)
         : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
         ? Deno.env.get("SECRET_KEY")!.trim()
         : new Error(
@@ -185,7 +199,7 @@ export const config: AppConfig = {
     let parseError: Error | null = null;
     try {
       const confStr = Deno.env.get("IWARA_CONF_FILE")
-        ? fs.readFileSync(Deno.env.get("IWARA_CONF_FILE")!, "utf8").trim()
+        ? readTrimmedFile(Deno.env.get("IWARA_CONF_FILE")!)
         : Deno.env.get("IWARA_CONF") && Deno.env.get("IWARA_CONF")!.trim()
         ? Deno.env.get("IWARA_CONF")!.trim()
         : "";

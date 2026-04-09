@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { logger } from "../../logger.ts";
@@ -8,7 +7,7 @@ type GenerateCorsHeaders = (
 ) => Record<string, string | number>;
 
 export interface StaticAsset {
-  file: Buffer | string;
+  file: Uint8Array | string;
   type: string;
 }
 

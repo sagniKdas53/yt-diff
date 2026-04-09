@@ -34,6 +34,14 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [ ] Type Redis cache payloads and socket auth payloads.
 - [ ] Leave deep yt-dlp/raw metadata typing for a later targeted pass.
 
+## Phase 5: Deno-native runtime cleanup
+
+- [ ] Replace remaining `node:` imports with Deno-native APIs or vendored Deno std modules where practical.
+- [x] Replace low-risk `Buffer`-only usages with `Uint8Array`/`TextEncoder`.
+- [x] Replace config file reads from `node:fs` with Deno file APIs.
+- [ ] Replace `node:path` usage with vendored Deno std path helpers.
+- [ ] Reduce or eliminate `node:http`-specific request/response types as part of a broader server abstraction pass.
+
 ## Acceptance checks
 
 - [ ] `index.ts` is reduced to thin bootstrap/orchestration responsibilities.
