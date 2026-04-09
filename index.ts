@@ -2,10 +2,8 @@
 // deno-lint-ignore-file no-explicit-any
 import { Model, Op } from "sequelize";
 import { spawn } from "node:child_process";
-import fs from "node:fs";
 import http, { IncomingMessage, ServerResponse } from "node:http";
 import https from "node:https";
-import path from "node:path";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import he from "he";
@@ -44,8 +42,27 @@ import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
 import { dispatchRoute } from "./src/routes/http.ts";
 import { tryServeSignedFile } from "./src/routes/helpers/serveSignedFile.ts";
-import { serveStaticAsset, type StaticAsset } from "./src/routes/helpers/serveStaticAsset.ts";
+import {
+  serveStaticAsset,
+  type StaticAsset,
+} from "./src/routes/helpers/serveStaticAsset.ts";
 import { createSocketServer } from "./src/socket/index.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readTextFileSync,
+  readdirSync,
+  statSync,
+} from "./src/utils/fs.ts";
+import {
+  basename,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "./src/utils/path.ts";
 
 const pipelineAsync = promisify(pipeline);
 
@@ -163,7 +180,7 @@ if (config.iwara._parseError) {
     error: config.iwara._parseError,
   });
 }
-if (!fs.existsSync(config.saveLocation)) {
+if (!existsSync(config.saveLocation)) {
   logger.info("Save location doesn't exists", {
     saveLocation: config.saveLocation,
   });
@@ -171,7 +188,7 @@ if (!fs.existsSync(config.saveLocation)) {
     logger.info("Creating save location", {
       saveLocation: config.saveLocation,
     });
-    fs.mkdirSync(config.saveLocation, { recursive: true });
+    mkdirSync(config.saveLocation, { recursive: true });
   } catch (error) {
     logger.error("Failed to create save location", {
       saveLocation: config.saveLocation,
@@ -359,9 +376,7 @@ async function sleep(seconds = Number(config.sleepTime)) {
   logger.trace(`Sleeping for ${seconds} seconds`);
 
   const start = Date.now();
-  await new Promise((resolve) =>
-    setTimeout(resolve, seconds * 1000)
-  );
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   const duration = (Date.now() - start) / 1000;
 
   logger.trace(`Sleep completed after ${duration} seconds`);
@@ -542,16 +557,21 @@ function emitTokenExpired(payload: { error: string }) {
   sock.emit("token-expired", payload);
 }
 
-const { authenticateRequest, authenticateSocket, authenticateUser, isRegistrationAllowed, registerUser } =
-  createAuthMiddleware({
-    parseRequestJson,
-    generateCorsHeaders,
-    jsonMimeType: MIME_TYPES[".json"],
-    redis,
-    generateAuthToken,
-    hashPassword,
-    emitTokenExpired,
-  });
+const {
+  authenticateRequest,
+  authenticateSocket,
+  authenticateUser,
+  isRegistrationAllowed,
+  registerUser,
+} = createAuthMiddleware({
+  parseRequestJson,
+  generateCorsHeaders,
+  jsonMimeType: MIME_TYPES[".json"],
+  redis,
+  generateAuthToken,
+  hashPassword,
+  emitTokenExpired,
+});
 
 const rateLimit = createRateLimit({
   redis,
@@ -1166,12 +1186,12 @@ function executeDownload(
     // Trim the saveDirectory just as a precaution
     const saveDirectoryTrimmed = saveDirectory.trim();
     // Prepare save path
-    const savePath = path.join(config.saveLocation, saveDirectoryTrimmed);
+    const savePath = join(config.saveLocation, saveDirectoryTrimmed);
     logger.debug(`Downloading to path: ${savePath}`);
 
     // Create directory if needed, good to have
-    if (savePath !== config.saveLocation && !fs.existsSync(savePath)) {
-      fs.mkdirSync(savePath, { recursive: true });
+    if (savePath !== config.saveLocation && !existsSync(savePath)) {
+      mkdirSync(savePath, { recursive: true });
     }
 
     return new Promise<DownloadResult>((resolve, reject) => {
@@ -1259,7 +1279,7 @@ function executeDownload(
           const fileNameInDest = /fileName:(.+)"/m.exec(output);
           if (fileNameInDest?.[1]) {
             const finalFileName = fileNameInDest[1].trim();
-            capturedFileName = path.basename(finalFileName);
+            capturedFileName = basename(finalFileName);
             logger.debug(
               `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
               { pid: downloadProcess.pid },
@@ -1321,7 +1341,9 @@ function executeDownload(
             // Discover associated metadata files
             const videoEntryForDiscovery = videoEntry
               ? {
-                downloadStatus: Boolean(videoEntry.getDataValue("downloadStatus")),
+                downloadStatus: Boolean(
+                  videoEntry.getDataValue("downloadStatus"),
+                ),
                 fileName: videoEntry.getDataValue("fileName") as string | null,
               }
               : null;
@@ -2410,34 +2432,36 @@ async function processStreamingVideoInformation(
   };
 
   // Batch process parsing and metadata extraction
-  const parsedItems = responseItems.map((item, index): ParsedStreamItem | null => {
-    try {
-      const itemData = JSON.parse(item) as StreamedItemData;
-      const videoUrl = itemData.webpage_url || itemData.url || "";
+  const parsedItems = responseItems.map(
+    (item, index): ParsedStreamItem | null => {
+      try {
+        const itemData = JSON.parse(item) as StreamedItemData;
+        const videoUrl = itemData.webpage_url || itemData.url || "";
 
-      // Extract online thumbnail before pruning
-      // Skip ephemeral thumbnails (FB/IG signed CDN URLs expire in hours)
-      const onlineThumbnail = hasEphemeralThumbnails(videoUrl)
-        ? null
-        : (itemData.thumbnail || null);
+        // Extract online thumbnail before pruning
+        // Skip ephemeral thumbnails (FB/IG signed CDN URLs expire in hours)
+        const onlineThumbnail = hasEphemeralThumbnails(videoUrl)
+          ? null
+          : (itemData.thumbnail || null);
 
-      // Prune bulky arrays from yt-dlp JSON to reduce storage size
-      // (~62KB -> ~12KB per video)
-      delete itemData.formats;
-      delete itemData.requested_formats;
-      delete itemData.thumbnails;
-      delete itemData.subtitles;
-      delete itemData.automatic_captions;
+        // Prune bulky arrays from yt-dlp JSON to reduce storage size
+        // (~62KB -> ~12KB per video)
+        delete itemData.formats;
+        delete itemData.requested_formats;
+        delete itemData.thumbnails;
+        delete itemData.subtitles;
+        delete itemData.automatic_captions;
 
-      return { itemData, videoUrl, index, onlineThumbnail };
-    } catch (e) {
-      logger.error("Failed to parse JSON from stream", {
-        item,
-        error: e as Error,
-      });
-      return null;
-    }
-  }).filter((item): item is NonNullable<typeof item> => item !== null);
+        return { itemData, videoUrl, index, onlineThumbnail };
+      } catch (e) {
+        logger.error("Failed to parse JSON from stream", {
+          item,
+          error: e as Error,
+        });
+        return null;
+      }
+    },
+  ).filter((item): item is NonNullable<typeof item> => item !== null);
 
   if (parsedItems.length === 0) return result;
 
@@ -2463,24 +2487,20 @@ async function processStreamingVideoInformation(
   // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
   // positions (allowed by the schema) each get their own map entry.
   const existingMappingsMap = new Map<string, Model>(
-    existingMappings.map((mapping) =>
-      [
-        `${mapping.getDataValue("videoUrl")}|${
-          mapping.getDataValue("positionInPlaylist")
-        }`,
-        mapping,
-      ]
-    ),
+    existingMappings.map((mapping) => [
+      `${mapping.getDataValue("videoUrl")}|${
+        mapping.getDataValue("positionInPlaylist")
+      }`,
+      mapping,
+    ]),
   );
   // Secondary lookup by videoUrl only — used by Start/End modes to find a
   // mapping at a *different* position so we update it instead of creating a dupe.
   const existingMappingsByUrl = new Map<string, Model>(
-    existingMappings.map((mapping) =>
-      [
-        mapping.getDataValue("videoUrl") as string,
-        mapping,
-      ]
-    ),
+    existingMappings.map((mapping) => [
+      mapping.getDataValue("videoUrl") as string,
+      mapping,
+    ]),
   );
 
   const videosToUpsert: VideoUpsertData[] = [];
@@ -2595,15 +2615,15 @@ async function processStreamingVideoInformation(
     await VideoMetadata.unscoped().bulkCreate(
       deduplicatedVideos as unknown as Array<Record<string, unknown>>,
       {
-      updateOnDuplicate: [
-        "videoId",
-        "title",
-        "approximateSize",
-        "isAvailable",
-        "updatedAt",
-        "onlineThumbnail",
-        "raw_metadata",
-      ],
+        updateOnDuplicate: [
+          "videoId",
+          "title",
+          "approximateSize",
+          "isAvailable",
+          "updatedAt",
+          "onlineThumbnail",
+          "raw_metadata",
+        ],
       },
     );
   }
@@ -2670,7 +2690,7 @@ function discoverFiles(
   }
 
   try {
-    const mainFileExt = path.extname(mainFileName!).toLowerCase();
+    const mainFileExt = extname(mainFileName!).toLowerCase();
     const mainFileBase = mainFileName!.replace(mainFileExt, "");
     logger.debug("Scanning savePath for extra metadata files", {
       savePath,
@@ -2689,8 +2709,8 @@ function discoverFiles(
     // Optimistically check for known file patterns first
     const checkFile = (baseName: string, extensions: string[]) => {
       for (const ext of extensions) {
-        const filePath = path.join(savePath, baseName + ext);
-        if (fs.existsSync(filePath)) {
+        const filePath = join(savePath, baseName + ext);
+        if (existsSync(filePath)) {
           return baseName + ext;
         }
       }
@@ -2773,7 +2793,7 @@ function discoverFiles(
       logger.trace(
         "Video file not found with common extensions, scanning directory",
       );
-      const files = fs.readdirSync(savePath);
+      const files = readdirSync(savePath);
 
       // Filter out only the ones we need
       const filesOfInterest = files.filter((file) =>
@@ -2825,23 +2845,23 @@ function discoverFiles(
  */
 function computeSaveDirectory(savePath: string) {
   try {
-    let saveDir = path.relative(
-      path.resolve(config.saveLocation),
-      path.resolve(savePath),
+    let saveDir = relative(
+      resolve(config.saveLocation),
+      resolve(savePath),
     );
 
     // Normalize: convert "." to empty string
-    if (saveDir === path.sep || saveDir === ".") {
+    if (saveDir === sep || saveDir === ".") {
       saveDir = "";
     }
 
     // Remove leading separator
-    if (saveDir.startsWith(path.sep)) {
+    if (saveDir.startsWith(sep)) {
       saveDir = saveDir.slice(1);
     }
 
     // Remove trailing separator
-    if (saveDir.endsWith(path.sep)) {
+    if (saveDir.endsWith(sep)) {
       saveDir = saveDir.slice(0, -1);
     }
 
@@ -3245,15 +3265,15 @@ function generateCorsHeaders(
  * @return {Array<{filePath: string, extension: string}>} An array of objects containing the file path and extension of each file found in the directory and its subdirectories.
  */
 function getFiles(dir: string): Array<{ filePath: string; extension: string }> {
-  const files = fs.readdirSync(dir);
+  const files = readdirSync(dir);
   let fileList: Array<{ filePath: string; extension: string }> = [];
 
   files.forEach((file) => {
-    const filePath = path.join(dir, file);
-    const extension = path.extname(filePath);
-    const stat = fs.statSync(filePath);
+    const filePath = join(dir, file);
+    const extension = extname(filePath);
+    const stat = statSync(filePath);
 
-    if (stat.isDirectory()) {
+    if (stat.isDirectory) {
       fileList = fileList.concat(getFiles(filePath));
     } else {
       fileList.push({ filePath, extension });
@@ -3270,11 +3290,13 @@ function getFiles(dir: string): Array<{ filePath: string; extension: string }> {
  * @return {Object<string, {file: Uint8Array, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
  */
 function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
-  const staticAssets: Record<string, { file: Uint8Array | string; type: string }> =
-    {};
+  const staticAssets: Record<
+    string,
+    { file: Uint8Array | string; type: string }
+  > = {};
   fileList.forEach((element) => {
     staticAssets[element.filePath.replace("dist", config.urlBase)] = {
-      file: fs.readFileSync(element.filePath),
+      file: readFileSync(element.filePath),
       type: MIME_TYPES[element.extension],
     };
   });
@@ -3304,8 +3326,8 @@ let serverObj = null;
 if (config.nativeHttps) {
   try {
     serverOptions = {
-      key: fs.readFileSync(config.ssl.key as string, "utf8"),
-      cert: fs.readFileSync(config.ssl.cert as string, "utf8"),
+      key: readTextFileSync(config.ssl.key as string),
+      cert: readTextFileSync(config.ssl.cert as string),
       // If passphrase is not set, don't include it in options
       ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase }),
     };
@@ -3438,10 +3460,12 @@ const apiRoutes = createApiRoutes({
     getPlaylistsForDisplay(data as PlaylistDisplayRequest, res),
   processDeletePlaylistRequest: (data, res) =>
     processDeletePlaylistRequest(data as DeletePlaylistRequestBody, res),
-  getSubListVideos: (data, res) => getSubListVideos(data as SubListRequest, res),
+  getSubListVideos: (data, res) =>
+    getSubListVideos(data as SubListRequest, res),
   processDeleteVideosRequest: (data, res) =>
     processDeleteVideosRequest(data as DeleteVideosRequestBody, res),
-  makeSignedUrl: (data, res) => makeSignedUrl(data as SignedFileRequestBody, res),
+  makeSignedUrl: (data, res) =>
+    makeSignedUrl(data as SignedFileRequestBody, res),
   refreshSignedUrl: (data, res) =>
     refreshSignedUrl(data as RefreshSignedUrlRequestBody, res),
   makeSignedUrls: (data, res) =>
