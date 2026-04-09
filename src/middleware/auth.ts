@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Buffer } from "node:buffer";
 
 import bcrypt from "bcryptjs";
 import he from "he";
@@ -32,6 +31,8 @@ interface AuthDependencies {
   hashPassword: HashPassword;
   emitTokenExpired?: TokenExpiredEmitter;
 }
+
+const utf8Encoder = new TextEncoder();
 
 async function getAuthenticatedUser(
   redis: Redis,
@@ -116,10 +117,11 @@ export function createAuthMiddleware({
         password: string;
       };
 
-      if (Buffer.byteLength(password, "utf8") > 72) {
+      const passwordLength = utf8Encoder.encode(password).byteLength;
+      if (passwordLength > 72) {
         logger.error("Password too long", {
           userName,
-          passwordLength: Buffer.byteLength(password, "utf8"),
+          passwordLength,
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
@@ -383,10 +385,11 @@ export function createAuthMiddleware({
         expiry_time: expiryTime = "31d",
       } = data;
 
-      if (Buffer.byteLength(password, "utf8") > 72) {
+      const passwordLength = utf8Encoder.encode(password).byteLength;
+      if (passwordLength > 72) {
         logger.error("Password too long", {
           userName,
-          passwordLength: Buffer.byteLength(password, "utf8"),
+          passwordLength,
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({

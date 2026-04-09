@@ -12,7 +12,6 @@ import he from "he";
 import Redis from "ioredis";
 import { pipeline } from "node:stream";
 import { promisify } from "node:util";
-import { Buffer } from "node:buffer";
 import { createInterface } from "node:readline";
 
 import { config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
@@ -233,9 +232,10 @@ function parseRequestJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let requestBody = "";
     const maxRequestSize = 1e6; // 1MB limit
+    const textDecoder = new TextDecoder();
 
-    request.on("data", (chunk: Buffer) => {
-      requestBody += chunk;
+    request.on("data", (chunk: Uint8Array) => {
+      requestBody += textDecoder.decode(chunk, { stream: true });
 
       // Check request size
       if (requestBody.length > maxRequestSize) {
@@ -252,6 +252,8 @@ function parseRequestJson(request: IncomingMessage): Promise<unknown> {
     });
 
     request.on("end", () => {
+      requestBody += textDecoder.decode();
+
       if (requestBody.length === 0) {
         logger.warn("Empty request body", {
           ip: request.socket.remoteAddress,
@@ -3265,10 +3267,10 @@ function getFiles(dir: string): Array<{ filePath: string; extension: string }> {
  * Generates a dictionary of static assets from a list of file objects.
  *
  * @param {Array<{filePath: string, extension: string}>} fileList - The list of file objects containing the file path and extension.
- * @return {Object<string, {file: Buffer, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
+ * @return {Object<string, {file: Uint8Array, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
  */
 function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
-  const staticAssets: Record<string, { file: Buffer | string; type: string }> =
+  const staticAssets: Record<string, { file: Uint8Array | string; type: string }> =
     {};
   fileList.forEach((element) => {
     staticAssets[element.filePath.replace("dist", config.urlBase)] = {
