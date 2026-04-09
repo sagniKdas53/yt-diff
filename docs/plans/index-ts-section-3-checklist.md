@@ -43,7 +43,7 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [x] Reduce or eliminate `node:http`-specific request/response types behind local transport interfaces.
 - [x] Replace `node:child_process`/`node:readline` process handling with `Deno.Command` and stream readers.
 - [x] Replace signed-file Node stream piping with Deno file streaming.
-- [ ] Replace the remaining Node-based HTTP/HTTPS server bootstrap and stream/process runtime integrations where still justified.
+- [x] Replace the remaining Node-based HTTP/HTTPS server bootstrap and stream/process runtime integrations where still justified.
 
 ## Acceptance checks
 
