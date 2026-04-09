@@ -16,23 +16,6 @@ function toUint8Array(chunk: string | Uint8Array): Uint8Array {
   return typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
 }
 
-function concatChunks(chunks: Uint8Array[]): Uint8Array {
-  const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
-  const body = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return buffer;
-}
-
 class DenoRequestAdapter implements HttpRequestLike {
   readonly method?: string;
   readonly url?: string;
@@ -127,11 +110,16 @@ class DenoResponseAdapter implements HttpResponseLike {
 
   readonly #requestMethod: string;
   readonly #headers = new Headers();
-  readonly #chunks: Uint8Array[] = [];
   #status = 200;
   #ended = false;
   #resolveResponse: ((response: Response) => void) | null = null;
   readonly #responsePromise: Promise<Response>;
+
+  // Streaming support: when write() is called, we create a ReadableStream
+  // and resolve the response promise immediately so the client receives
+  // data progressively instead of waiting for the entire body to buffer.
+  #streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  #streamStarted = false;
 
   constructor(requestMethod: string) {
     this.#requestMethod = requestMethod;
@@ -157,32 +145,79 @@ class DenoResponseAdapter implements HttpResponseLike {
     this.headersSent = true;
   }
 
+  /**
+   * Lazily initialise the ReadableStream and resolve the response promise
+   * with it so that Deno.serve starts sending bytes to the client immediately.
+   */
+  #ensureStream(): void {
+    if (this.#streamStarted) {
+      return;
+    }
+    this.#streamStarted = true;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this.#streamController = controller;
+      },
+    });
+
+    const shouldSendBody =
+      this.#requestMethod !== "HEAD" && this.#status !== 204;
+    this.#resolveResponse?.(
+      new Response(shouldSendBody ? stream : null, {
+        status: this.#status,
+        headers: this.#headers,
+      }),
+    );
+    this.#resolveResponse = null;
+  }
+
   write(chunk: string | Uint8Array): void {
     if (this.#ended) {
       return;
     }
     this.headersSent = true;
-    this.#chunks.push(toUint8Array(chunk));
+    this.#ensureStream();
+    const bytes = toUint8Array(chunk);
+    // Defensive copy — callers may pass views into a reusable buffer
+    this.#streamController?.enqueue(bytes.slice());
   }
 
   end(chunk?: string | Uint8Array): void {
     if (this.#ended) {
       return;
     }
-    if (chunk !== undefined) {
-      this.write(chunk);
-    }
     this.#ended = true;
-    const shouldSendBody = this.#requestMethod !== "HEAD" && this.#status !== 204;
-    this.#resolveResponse?.(
-      new Response(
-        shouldSendBody ? toArrayBuffer(concatChunks(this.#chunks)) : null,
-        {
+
+    if (!this.#streamStarted) {
+      // No prior write() — send a simple, non-streaming Response.
+      // This is the common path for JSON API responses.
+      const shouldSendBody =
+        this.#requestMethod !== "HEAD" && this.#status !== 204;
+      let body: BodyInit | null = null;
+      if (shouldSendBody && chunk !== undefined) {
+        const bytes = toUint8Array(chunk);
+        body = bytes.slice().buffer as ArrayBuffer;
+      }
+      this.#resolveResponse?.(
+        new Response(body, {
           status: this.#status,
           headers: this.#headers,
-        },
-      ),
-    );
+        }),
+      );
+      return;
+    }
+
+    // Stream was already started — enqueue the final chunk and close.
+    if (chunk !== undefined) {
+      const bytes = toUint8Array(chunk);
+      this.#streamController?.enqueue(bytes.slice());
+    }
+    try {
+      this.#streamController?.close();
+    } catch {
+      // Stream may already be closed or errored (e.g. client disconnected).
+    }
   }
 
   asResponse(): Promise<Response> {
