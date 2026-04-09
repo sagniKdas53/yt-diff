@@ -1,5 +1,3 @@
-import type { ServerResponse } from "node:http";
-
 import he from "he";
 import {
   FindAndCountOptions,
@@ -16,6 +14,7 @@ import {
   VideoMetadata,
 } from "../db/models.ts";
 import { logger } from "../logger.ts";
+import type { HttpResponseLike } from "../transport/http.ts";
 import { existsSync, rmSync, unlinkSync } from "../utils/fs.ts";
 import { join } from "../utils/path.ts";
 
@@ -141,7 +140,7 @@ export function createPlaylistHandlers({
 }: PlaylistHandlerDependencies) {
   async function updatePlaylistMonitoring(
     requestBody: UpdatePlaylistMonitoringRequest,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ): Promise<void> {
     try {
       if (!requestBody.url || !requestBody.watch) {
@@ -197,7 +196,7 @@ export function createPlaylistHandlers({
 
   async function processDeletePlaylistRequest(
     requestBody: DeletePlaylistRequestBody,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ) {
     try {
       logger.debug("Received playlist delete request", {
@@ -390,7 +389,7 @@ export function createPlaylistHandlers({
 
   async function processReindexAllRequest(
     requestBody: ReindexAllRequestBody,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ) {
     try {
       const startIndex: number = requestBody.start !== undefined
@@ -505,7 +504,7 @@ export function createPlaylistHandlers({
 
   async function processDeleteVideosRequest(
     requestBody: DeleteVideosRequestBody,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ) {
     try {
       logger.debug("Received video delete request", {
@@ -755,7 +754,7 @@ export function createPlaylistHandlers({
 
   async function getPlaylistsForDisplay(
     requestBody: PlaylistDisplayRequest,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ): Promise<void> {
     try {
       const startIndex = requestBody.start !== undefined ? +requestBody.start : 0;
@@ -840,7 +839,7 @@ export function createPlaylistHandlers({
 
   async function getSubListVideos(
     requestBody: SubListRequest,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ): Promise<void> {
     try {
       const playlistUrl = requestBody.url ?? "None";

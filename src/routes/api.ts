@@ -1,16 +1,18 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
 import { config } from "../config.ts";
 import type {
   RateLimitFunction,
   RequestHandler,
 } from "../middleware/rateLimit.ts";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+} from "../transport/http.ts";
 import type { RouteDefinition } from "./http.ts";
 
-type BodyHandler = (data: unknown, res: ServerResponse) => unknown;
+type BodyHandler = (data: unknown, res: HttpResponseLike) => unknown;
 type AuthenticatedMiddleware = (
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
   next: BodyHandler,
 ) => unknown;
 

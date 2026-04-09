@@ -1,9 +1,8 @@
-import type { ServerResponse } from "node:http";
-
 import type Redis from "ioredis";
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
+import type { HttpResponseLike } from "../transport/http.ts";
 import { existsSync } from "../utils/fs.ts";
 import {
   extname,
@@ -44,7 +43,7 @@ export function createFileHandlers({
 }: FileHandlerDependencies) {
   async function makeSignedUrl(
     requestBody: SignedFileRequestBody,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ) {
     let absolutePath = null;
     if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
@@ -127,7 +126,7 @@ export function createFileHandlers({
 
   async function refreshSignedUrl(
     requestBody: RefreshSignedUrlRequestBody,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ) {
     if (
       !requestBody || !requestBody.fileId ||
@@ -169,7 +168,7 @@ export function createFileHandlers({
 
   async function makeSignedUrls(
     requestBody: BulkSignedFilesRequestBody,
-    response: ServerResponse,
+    response: HttpResponseLike,
   ) {
     if (
       !requestBody || !requestBody.files || !Array.isArray(requestBody.files)

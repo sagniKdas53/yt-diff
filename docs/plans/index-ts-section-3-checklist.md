@@ -40,7 +40,8 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [x] Replace low-risk `Buffer`-only usages with `Uint8Array`/`TextEncoder`.
 - [x] Replace config file reads from `node:fs` with Deno file APIs.
 - [ ] Replace `node:path` usage with vendored Deno std path helpers.
-- [ ] Reduce or eliminate `node:http`-specific request/response types as part of a broader server abstraction pass.
+- [x] Reduce or eliminate `node:http`-specific request/response types behind local transport interfaces.
+- [ ] Replace the remaining Node-based HTTP/HTTPS server bootstrap and stream/process runtime integrations where still justified.
 
 ## Acceptance checks
 

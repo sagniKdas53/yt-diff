@@ -1,6 +1,5 @@
 import type Redis from "ioredis";
 import jwt from "jsonwebtoken";
-import type { Server as HttpServer } from "node:http";
 import type { Socket } from "socket.io";
 import { Server } from "socket.io";
 
@@ -11,7 +10,7 @@ import { logger } from "../logger.ts";
 type AuthenticateSocket = (socket: Socket) => Promise<boolean>;
 
 interface SocketDependencies {
-  server: HttpServer;
+  server: ConstructorParameters<typeof Server>[0];
   corsAllowedOrigins: string[];
   authenticateSocket: AuthenticateSocket;
   redis: Redis;

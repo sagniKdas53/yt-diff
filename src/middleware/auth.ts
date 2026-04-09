@@ -1,5 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
 import bcrypt from "bcryptjs";
 import he from "he";
 import jwt from "jsonwebtoken";
@@ -9,12 +7,16 @@ import type { Socket } from "socket.io";
 import { config } from "../config.ts";
 import { UserAccount } from "../db/models.ts";
 import { logger } from "../logger.ts";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+} from "../transport/http.ts";
 
-type ParseRequestJson = (request: IncomingMessage) => Promise<unknown>;
+type ParseRequestJson = (request: HttpRequestLike) => Promise<unknown>;
 type GenerateCorsHeaders = (
   contentType: string,
 ) => Record<string, string | number>;
-type NextHandler = (data: unknown, res: ServerResponse) => unknown;
+type NextHandler = (data: unknown, res: HttpResponseLike) => unknown;
 type TokenExpiredEmitter = (payload: { error: string }) => void;
 type GenerateAuthToken = (
   user: { id: string; updatedAt: Date },
@@ -77,8 +79,8 @@ export function createAuthMiddleware({
   emitTokenExpired,
 }: AuthDependencies) {
   async function registerUser(
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
   ): Promise<unknown> {
     try {
       if (!config.registration.allowed) {
@@ -165,8 +167,8 @@ export function createAuthMiddleware({
   }
 
   async function isRegistrationAllowed(
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
   ): Promise<unknown> {
     let allow = true;
     if (!config.registration.allowed) {
@@ -209,8 +211,8 @@ export function createAuthMiddleware({
   }
 
   async function authenticateRequest(
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
     next: NextHandler,
   ): Promise<unknown> {
     try {
@@ -348,8 +350,8 @@ export function createAuthMiddleware({
   }
 
   async function authenticateUser(
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
   ): Promise<unknown> {
     try {
       let requestData = {};

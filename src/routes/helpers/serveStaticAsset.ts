@@ -1,6 +1,8 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
 import { logger } from "../../logger.ts";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+} from "../../transport/http.ts";
 
 type GenerateCorsHeaders = (
   contentType: string,
@@ -18,8 +20,8 @@ interface StaticAssetDependencies {
 }
 
 export function serveStaticAsset(
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
   {
     staticAssets,
     generateCorsHeaders,
