@@ -128,6 +128,7 @@ COPY package.json ./
 COPY deno.lock ./
 COPY deno.json ./
 COPY index.ts ./
+COPY src ./src
 
 # Create a non-root user and group for running the application
 RUN groupadd ytdiff --gid=1000 && \
