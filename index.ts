@@ -2,7 +2,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { Model, Op } from "sequelize";
 import { spawn } from "node:child_process";
-import http, { IncomingMessage, ServerResponse } from "node:http";
+import http from "node:http";
 import https from "node:https";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -17,7 +17,6 @@ import {
   initializeDatabase,
   PlaylistMetadata,
   PlaylistVideoMapping,
-  sequelize,
   VideoMetadata,
 } from "./src/db/models.ts";
 import {
@@ -50,9 +49,9 @@ import { createSocketServer } from "./src/socket/index.ts";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readTextFileSync,
-  readdirSync,
   statSync,
 } from "./src/utils/fs.ts";
 import {
@@ -63,6 +62,10 @@ import {
   resolve,
   sep,
 } from "./src/utils/path.ts";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+} from "./src/transport/http.ts";
 
 const pipelineAsync = promisify(pipeline);
 
@@ -241,11 +244,11 @@ void initializeDatabase();
 /**
  * Extracts and parses JSON data from a request stream
  *
- * @param {http.IncomingMessage} request - The HTTP request object
+ * @param {HttpRequestLike} request - The HTTP request object
  * @returns {Promise<Object>} Parsed JSON data from request body
  * @throws {Object} Error with status code and message if request is too large or JSON is invalid
  */
-function parseRequestJson(request: IncomingMessage): Promise<unknown> {
+function parseRequestJson(request: HttpRequestLike): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let requestBody = "";
     const maxRequestSize = 1e6; // 1MB limit
@@ -925,7 +928,7 @@ function cleanupStaleProcesses(
  */
 async function processDownloadRequest(
   requestBody: { urlList: string[]; playListUrl?: string },
-  response: ServerResponse,
+  response: HttpResponseLike,
 ) {
   try {
     // Initialize download tracking
@@ -1596,13 +1599,13 @@ const ListingSemaphore = {
  * @param {number} [requestBody.chunkSize=config.chunkSize] - Maximum number of concurrent listing operations
  * @param {boolean} [requestBody.sleep=false] - If true, the listing process will sleep between each chunk
  * @param {string} [requestBody.monitoringType="N/A"] - Monitoring type to apply to the playlist or video
- * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body
+ * @param {HttpResponseLike} response - The HTTP response object used to send status and body
  * @returns {Promise<void>} Resolves when listing processes are started
  */
 
 async function processListingRequest(
   requestBody: ListingRequestBody,
-  response: ServerResponse,
+  response: HttpResponseLike,
 ): Promise<void> {
   try {
     // Validate required parameters
@@ -3361,7 +3364,7 @@ if (config.nativeHttps) {
 
 const server = (serverObj as any).createServer(
   serverOptions,
-  async (req: IncomingMessage, res: ServerResponse) => {
+  async (req: HttpRequestLike, res: HttpResponseLike) => {
     if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
       try {
         const reqEncoding = req.headers["accept-encoding"] || "";

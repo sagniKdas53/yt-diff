@@ -1,8 +1,11 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+} from "../transport/http.ts";
 
 export type RouteRunner = (
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
 ) => unknown;
 
 export interface RouteDefinition {
@@ -12,8 +15,8 @@ export interface RouteDefinition {
 }
 
 export function dispatchRoute(
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
   routes: RouteDefinition[],
 ): boolean {
   const route = routes.find((candidate) =>

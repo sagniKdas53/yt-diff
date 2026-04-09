@@ -1,9 +1,14 @@
 import fs from "node:fs";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type Redis from "ioredis";
 
 import { logger } from "../../logger.ts";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+  ReadableLike,
+  WritableLike,
+} from "../../transport/http.ts";
 import { stat } from "../../utils/fs.ts";
 import { basename, extname } from "../../utils/path.ts";
 
@@ -17,15 +22,15 @@ interface SignedFileDependencies {
   mimeTypes: Record<string, string>;
   generateCorsHeaders: GenerateCorsHeaders;
   pipelineAsync: (
-    source: NodeJS.ReadableStream,
-    destination: NodeJS.WritableStream,
-  ) => Promise<void>;
+    source: ReadableLike,
+    destination: WritableLike,
+  ) => Promise<unknown>;
   htmlMimeType: string;
 }
 
 export async function tryServeSignedFile(
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
   {
     redis,
     cacheMaxAge,

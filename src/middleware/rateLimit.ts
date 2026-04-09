@@ -1,36 +1,38 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
 import type Redis from "ioredis";
 
 import { logger } from "../logger.ts";
+import type {
+  HttpRequestLike,
+  HttpResponseLike,
+} from "../transport/http.ts";
 
 type GenerateCorsHeaders = (
   contentType: string,
 ) => Record<string, string | number>;
-export type MiddlewareNext = (data: unknown, res: ServerResponse) => void;
+export type MiddlewareNext = (data: unknown, res: HttpResponseLike) => void;
 export type MiddlewareHandler = (
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
   next: MiddlewareNext,
 ) => unknown;
 export type RequestHandler = (
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: HttpRequestLike,
+  res: HttpResponseLike,
 ) => unknown;
 export type NextHandler = MiddlewareNext;
 
 export interface RateLimitFunction {
   (
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
     currentHandler: MiddlewareHandler,
     nextHandler: NextHandler,
     maxRequestsPerWindow: number,
     windowSeconds: number,
   ): Promise<unknown>;
   (
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
     currentHandler: RequestHandler,
     nextHandler: RequestHandler,
     maxRequestsPerWindow: number,
@@ -50,8 +52,8 @@ export function createRateLimit({
   jsonMimeType,
 }: RateLimitDependencies) {
   const rateLimit: RateLimitFunction = async function rateLimit(
-    request: IncomingMessage,
-    response: ServerResponse,
+    request: HttpRequestLike,
+    response: HttpResponseLike,
     currentHandler: MiddlewareHandler | RequestHandler,
     nextHandler: NextHandler | RequestHandler,
     maxRequestsPerWindow: number,
