@@ -688,6 +688,7 @@ interface Process {
   status: string;
   spawnType: string;
   lastActivity: number;
+  lastStdoutActivity: number;
   spawnTimeStamp: number;
   spawnedProcess?: { kill: (signal: string) => boolean };
 }
@@ -921,6 +922,7 @@ function cleanupStaleProcesses(
   processMap: Map<string, Process>,
   {
     maxIdleTime = config.queue.maxIdle,
+    maxLifetime = config.queue.maxLifetime,
     forceKill = false,
   } = {},
   processType: string,
@@ -939,12 +941,29 @@ function cleanupStaleProcesses(
 
   // Iterate through processes
   for (const [processId, process] of processMap.entries()) {
-    const { status, lastActivity, spawnTimeStamp, spawnedProcess } = process;
+    const {
+      status,
+      lastActivity,
+      lastStdoutActivity,
+      spawnTimeStamp,
+      spawnedProcess,
+    } = process;
+
+    const age = now - spawnTimeStamp;
+    const idleTime = now - lastActivity;
+    const stdoutIdleTime = lastStdoutActivity ? now - lastStdoutActivity : age;
+    const isErrorOnly = lastStdoutActivity &&
+      (lastActivity > lastStdoutActivity) && (stdoutIdleTime > maxIdleTime);
 
     logger.debug(`Checking process ${processId}`, {
       status,
-      lastActivity,
-      age: now - spawnTimeStamp,
+      lastActivity: new Date(lastActivity).toISOString(),
+      lastStdoutActivity: lastStdoutActivity
+        ? new Date(lastStdoutActivity).toISOString()
+        : "N/A",
+      age: Math.floor(age / 1000) + "s",
+      idleTime: Math.floor(idleTime / 1000) + "s",
+      isErrorOnly,
     });
 
     // Handle completed processes
@@ -955,9 +974,24 @@ function cleanupStaleProcesses(
     }
 
     // Handle stale processes
-    if (status === "running" && (now - lastActivity > maxIdleTime)) {
-      logger.warn(`Found stale process: ${processId}`, {
-        idleTime: (now - lastActivity) / 1000,
+    if (
+      status === "running" &&
+      (idleTime > maxIdleTime || age > maxLifetime || isErrorOnly)
+    ) {
+      let reason = "";
+      if (age > maxLifetime) {
+        reason = `exceeded max lifetime (${Math.floor(maxLifetime / 1000)}s)`;
+      } else if (isErrorOnly) {
+        reason = `only producing errors (no stdout for ${
+          Math.floor(stdoutIdleTime / 1000)
+        }s)`;
+      } else {
+        reason = `idle too long (${Math.floor(idleTime / 1000)}s)`;
+      }
+
+      logger.warn(`Found stale process: ${processId} (${reason})`, {
+        idleTime: idleTime / 1000,
+        age: age / 1000,
         lastActivity: new Date(lastActivity).toISOString(),
       });
 
@@ -1211,11 +1245,13 @@ async function downloadWithSemaphore(
     const { url: videoUrl, title: videoTitle } = downloadItem;
 
     // Create pending download entry
+    const now = Date.now();
     const downloadEntry = {
       url: videoUrl,
       title: videoTitle,
-      lastActivity: Date.now(),
-      spawnTimeStamp: Date.now(),
+      lastActivity: now,
+      lastStdoutActivity: now,
+      spawnTimeStamp: now,
       status: "pending",
     };
 
@@ -1306,9 +1342,12 @@ function executeDownload(
       // Update process tracking
       const processEntry = downloadProcesses.get(processKey);
       if (processEntry) {
+        const now = Date.now();
         processEntry.spawnedProcess = downloadProcess;
         processEntry.status = "running";
-        processEntry.lastActivity = Date.now();
+        processEntry.lastActivity = now;
+        processEntry.lastStdoutActivity = now;
+        processEntry.spawnTimeStamp = now;
         downloadProcesses.set(processKey, processEntry);
       } else {
         logger.error(`Process entry not found: ${processKey}`);
@@ -1359,7 +1398,7 @@ function executeDownload(
                   { pid: downloadProcess.pid },
                 );
               }
-              updateProcessActivity(processKey);
+              updateProcessActivity(processKey, true);
             } catch (error) {
               if (!(error instanceof TypeError)) {
                 safeEmit("error", { message: (error as Error).message });
@@ -1523,6 +1562,10 @@ function executeDownload(
               pid: downloadProcess.pid,
             });
 
+            const errorMsg = code === 143
+              ? "Process was killed (likely by user or timeout)"
+              : `Process exited with code ${code}`;
+
             safeEmit("download-failed", {
               title: videoEntry
                 ? videoEntry.getDataValue("title") as string
@@ -1534,6 +1577,7 @@ function executeDownload(
               url: videoUrl,
               title: videoTitle,
               status: "failed",
+              error: errorMsg,
             });
           }
         } catch (error) {
@@ -1569,14 +1613,22 @@ function executeDownload(
  *
  * @param {string} processKey - Key of the process entry to update
  */
-function updateProcessActivity(processKey: string) {
+function updateProcessActivity(processKey: string, isStdout = false) {
   const downloadEntry = downloadProcesses.get(processKey);
   if (downloadEntry) {
-    downloadEntry.lastActivity = Date.now();
+    const now = Date.now();
+    downloadEntry.lastActivity = now;
+    if (isStdout) {
+      downloadEntry.lastStdoutActivity = now;
+    }
   }
   const listEntry = listProcesses.get(processKey);
   if (listEntry) {
-    listEntry.lastActivity = Date.now();
+    const now = Date.now();
+    listEntry.lastActivity = now;
+    if (isStdout) {
+      listEntry.lastStdoutActivity = now;
+    }
   }
 }
 // Helper function to cleanup process entry
@@ -1757,6 +1809,28 @@ async function processListingRequest(
 
         if ((videoEntry as any).downloadStatus) {
           logger.debug(`Video already downloaded`, { url: normalizedUrl });
+
+          // check if it is already in the "None" playlist, if so navigate to it
+          const existingMapping = await PlaylistVideoMapping.findOne({
+            where: {
+              videoUrl: normalizedUrl,
+              playlistUrl: "None",
+            },
+          });
+
+          if (existingMapping) {
+            safeEmit("listing-single-item-complete", {
+              url: normalizedUrl,
+              type: "video",
+              title: (videoEntry as any).title,
+              status: "completed",
+              processedChunks: 1,
+              seekSubListTo: (existingMapping as any).positionInPlaylist,
+              alreadyExisted: true,
+            });
+            continue;
+          }
+
           safeEmit("listing-video-skipped-because-downloaded", {
             message: `Video ${
               (videoEntry as any).title
@@ -1903,12 +1977,14 @@ async function listWithSemaphore(
     const { url: videoUrl, type: itemType, currentMonitoringType } = item;
 
     // Create pending listing entry
+    const now = Date.now();
     const listEntry = {
       url: videoUrl,
       type: itemType,
       monitoringType: currentMonitoringType,
-      lastActivity: Date.now(),
-      spawnTimeStamp: null,
+      lastActivity: now,
+      lastStdoutActivity: now,
+      spawnTimeStamp: now,
       status: "pending",
     };
 
@@ -2327,6 +2403,7 @@ async function handleSingleVideoStreaming(
         status: "completed",
         processedChunks: 1,
         seekSubListTo: newStartIndex,
+        alreadyExisted: result.alreadyExistedCount > 0,
       });
       return {
         url: videoUrl,
@@ -2392,10 +2469,12 @@ function streamPlayListItems(
   const processEntry = listProcesses.get(processKey);
 
   if (processEntry) {
+    const now = Date.now();
     processEntry.spawnedProcess = listProcess;
     processEntry.status = "running";
-    processEntry.spawnTimeStamp = Date.now();
-    processEntry.lastActivity = Date.now();
+    processEntry.spawnTimeStamp = now;
+    processEntry.lastActivity = now;
+    processEntry.lastStdoutActivity = now;
     listProcesses.set(processKey, processEntry);
   } else {
     logger.error(`Process entry not found: ${processKey}`);
@@ -2418,7 +2497,7 @@ function streamPlayListItems(
       for await (const line of streamLines(listProcess.stdout)) {
         const trimmed = line.trim();
         if (trimmed.length > 0) {
-          updateProcessActivity(processKey);
+          updateProcessActivity(processKey, true);
           linesYielded++;
           yield trimmed;
         }
@@ -3477,7 +3556,7 @@ const apiRoutes = createApiRoutes({
 });
 
 const jobs = createJobs({
-  cleanupStaleProcesses,
+  cleanupStaleProcesses: cleanupStaleProcesses as any,
   downloadProcesses: downloadProcesses as Map<string, any>,
   listProcesses: listProcesses as Map<string, any>,
   listItemsConcurrently,

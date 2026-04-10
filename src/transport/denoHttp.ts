@@ -359,7 +359,7 @@ export function proxyWebSocketRequest(
       upstreamSocket.readyState === WebSocket.OPEN ||
       upstreamSocket.readyState === WebSocket.CONNECTING
     ) {
-      upstreamSocket.close(1011, "Client websocket error");
+      upstreamSocket.close(1000, "Client websocket error");
     }
   };
 
@@ -368,7 +368,7 @@ export function proxyWebSocketRequest(
       clientSocket.readyState === WebSocket.OPEN ||
       clientSocket.readyState === WebSocket.CONNECTING
     ) {
-      clientSocket.close(1011, "Upstream websocket error");
+      clientSocket.close(1000, "Upstream websocket error");
     }
   };
 
