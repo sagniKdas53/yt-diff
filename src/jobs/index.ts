@@ -14,12 +14,14 @@ interface ProcessLike {
   status: string;
   spawnType: string;
   lastActivity: number;
+  lastStdoutActivity: number;
   spawnTimeStamp: number;
   spawnedProcess?: { kill: (signal: string) => boolean };
 }
 
 interface CleanupOptions {
   maxIdleTime?: number;
+  maxLifetime?: number;
   forceKill?: boolean;
 }
 
@@ -83,6 +85,7 @@ export function createJobs({
         downloadProcesses,
         {
           maxIdleTime: config.queue.maxIdle,
+          maxLifetime: config.queue.maxLifetime,
           forceKill: true,
         },
         "download",
@@ -92,6 +95,7 @@ export function createJobs({
         listProcesses,
         {
           maxIdleTime: config.queue.maxIdle,
+          maxLifetime: config.queue.maxLifetime,
           forceKill: true,
         },
         "list",

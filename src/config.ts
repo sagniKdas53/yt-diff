@@ -50,6 +50,7 @@ export interface AppConfig {
     maxDownloads: number;
     cleanUpInterval: string;
     maxIdle: number;
+    maxLifetime: number;
   };
   registration: {
     allowed: boolean;
@@ -142,6 +143,7 @@ export const config: AppConfig = {
     maxDownloads: +(Deno.env.get("MAX_DOWNLOADS") || 2),
     cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *",
     maxIdle: +(Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000),
+    maxLifetime: +(Deno.env.get("PROCESS_MAX_LIFETIME") || 15 * 60 * 1000),
   },
   registration: {
     allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",
