@@ -20,11 +20,11 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 ## Phase 3: Route structure
 
 - [x] Replace the `if/else if` POST router with a route registry.
-- [ ] Move each endpoint handler into a dedicated backend module.
+- [x] Move each endpoint handler into a dedicated backend module.
 - [x] Preserve current request/response behavior while shrinking `index.ts`.
 - [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
 - [x] Extract playlist/query/delete route handlers into `src/handlers/playlists.ts`.
-- [ ] Extract remaining listing/download pipeline handlers out of `index.ts` (~900 LOC in processListingRequest and processDownloadRequest).
+- [x] Extract remaining listing/download pipeline handlers out of `index.ts` (~900 LOC in processListingRequest and processDownloadRequest).
 - [ ] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
 
 ## Phase 4: Typing cleanup
@@ -47,7 +47,7 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 ## Acceptance checks
 
-- [ ] `index.ts` is reduced to thin bootstrap/orchestration responsibilities (pending handler extraction).
+- [x] `index.ts` is reduced to thin bootstrap/orchestration responsibilities.
 - [x] Existing HTTP and socket behavior is preserved.
 - [x] Cron jobs still start normally (cleanup, update, prune all running).
 - [x] `deno check index.ts` passes.
