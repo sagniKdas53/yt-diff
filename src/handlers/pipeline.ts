@@ -513,6 +513,8 @@ export function createPipelineHandlers({
           continue;
         }
 
+        logger.debug("Checking video in database", { url: videoUrl });
+
         const videoEntry = await VideoMetadata.findOne({
           where: { videoUrl: videoUrl },
         });
@@ -611,6 +613,10 @@ export function createPipelineHandlers({
     items: DownloadItem[],
     maxConcurrent: number = 2,
   ): Promise<boolean> {
+    logger.trace(
+      `Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`,
+    );
+
     DownloadSemaphore.setMaxConcurrent(maxConcurrent);
 
     const uniqueItems = items.filter((item) => {
@@ -621,6 +627,8 @@ export function createPipelineHandlers({
         );
       return !existingDownload;
     });
+
+    logger.trace(`Filtered ${uniqueItems.length} unique items for download`);
 
     const downloadResults = await Promise.all(
       uniqueItems.map((item) => downloadWithSemaphore(item)),
@@ -644,6 +652,10 @@ export function createPipelineHandlers({
   async function downloadWithSemaphore(
     downloadItem: DownloadItem,
   ): Promise<DownloadResult> {
+    logger.trace(
+      `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
+    );
+
     await DownloadSemaphore.acquire();
 
     try {
@@ -689,6 +701,8 @@ export function createPipelineHandlers({
       const saveDirectoryTrimmed = saveDirectory.trim();
       const savePath = join(config.saveLocation, saveDirectoryTrimmed);
 
+      logger.debug(`Downloading to path: ${savePath}`);
+
       if (savePath !== config.saveLocation && !existsSync(savePath)) {
         mkdirSync(savePath, { recursive: true });
       }
@@ -705,6 +719,14 @@ export function createPipelineHandlers({
         if (siteArgs.length > 0) {
           processArgs.unshift(...siteArgs);
         }
+
+        logger.debug(`Starting download for ${videoUrl}`, {
+          url: videoTitle,
+          savePath,
+          fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
+            processArgs.join(" ")
+          }`,
+        });
 
         const downloadProcess = spawnPythonProcess(
           downloadOptions.concat(processArgs),
@@ -733,13 +755,15 @@ export function createPipelineHandlers({
                   const percent = parseFloat(percentMatch[0]);
                   const progressBlock = Math.floor(percent / 10);
 
-                  if (progressBlock === 0 && progressPercent === null) {
-                    progressPercent = 0;
-                  } else if (
-                    progressPercent !== null && progressBlock > progressPercent
-                  ) {
-                    progressPercent = progressBlock;
-                  }
+                if (progressBlock === 0 && progressPercent === null) {
+                  progressPercent = 0;
+                  logger.debug(output, { pid: downloadProcess.pid });
+                } else if (
+                  progressPercent !== null && progressBlock > progressPercent
+                ) {
+                  progressPercent = progressBlock;
+                  logger.debug(output, { pid: downloadProcess.pid });
+                }
 
                   safeEmit("downloading-percent-update", {
                     url: videoUrl,
@@ -750,11 +774,19 @@ export function createPipelineHandlers({
                 const itemTitle = /title:(.+)/m.exec(output);
                 if (itemTitle?.[1] && !capturedFileName) {
                   capturedTitle = itemTitle[1].trim();
+                  logger.debug(`Video Title from process ${capturedTitle}`, {
+                    pid: downloadProcess.pid,
+                  });
                 }
 
                 const fileNameInDest = /fileName:(.+)"/m.exec(output);
                 if (fileNameInDest?.[1]) {
-                  capturedFileName = basename(fileNameInDest[1].trim());
+                  const finalFileName = fileNameInDest[1].trim();
+                  capturedFileName = basename(finalFileName);
+                  logger.debug(
+                    `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
+                    { pid: downloadProcess.pid },
+                  );
                 }
 
                 updateProcessActivity(processKey, true);
@@ -834,6 +866,9 @@ export function createPipelineHandlers({
               }
 
               if (videoEntry) {
+                logger.debug(`Updating video: ${JSON.stringify(updates)}`, {
+                  pid: downloadProcess.pid,
+                });
                 await videoEntry.update(updates);
               }
 
@@ -958,18 +993,30 @@ export function createPipelineHandlers({
       const itemsToList: ListingItem[] = [];
       const uniqueUrls = new Set();
 
+      logger.trace("Processing URL list", {
+        urlCount: requestBody.urlList.length,
+        chunkSize,
+        monitoringType,
+      });
+
       for (const url of requestBody.urlList) {
         const normalizedUrl = normalizeUrl(url);
         if (uniqueUrls.has(normalizedUrl)) {
           continue;
         }
 
+        logger.debug("Checking URL in database", { url: normalizedUrl });
+
         const playlistEntry = await PlaylistMetadata.findOne({
           where: { playlistUrl: normalizedUrl },
         });
 
         if (playlistEntry) {
+          logger.debug("Playlist found in database", { url: normalizedUrl });
           if ((playlistEntry as any).monitoringType === monitoringType) {
+            logger.debug("Playlist monitoring hasn't changed so skipping", {
+              url: normalizedUrl,
+            });
             safeEmit("listing-playlist-skipped-because-same-monitoring", {
               message: `Playlist ${
                 (playlistEntry as any).title
@@ -977,6 +1024,9 @@ export function createPipelineHandlers({
             });
             continue;
           } else {
+            logger.debug("Playlist monitoring has changed", {
+              url: normalizedUrl,
+            });
             itemsToList.push({
               url: normalizedUrl,
               type: "playlist",
@@ -991,7 +1041,9 @@ export function createPipelineHandlers({
           where: { videoUrl: normalizedUrl },
         });
         if (videoEntry) {
+          logger.debug("Video found in database", { url: normalizedUrl });
           if ((videoEntry as any).downloadStatus) {
+            logger.debug("Video already downloaded", { url: normalizedUrl });
             const existingMapping = await PlaylistVideoMapping.findOne({
               where: {
                 videoUrl: normalizedUrl,
@@ -1019,6 +1071,9 @@ export function createPipelineHandlers({
             });
             continue;
           } else {
+            logger.debug("Video not downloaded yet, updating status", {
+              url: normalizedUrl,
+            });
             itemsToList.push({
               url: normalizedUrl,
               type: "undownloaded",
@@ -1029,6 +1084,9 @@ export function createPipelineHandlers({
         }
 
         if (!playlistEntry && !videoEntry) {
+          logger.debug("URL not found in database, adding to list", {
+            url: normalizedUrl,
+          });
           itemsToList.push({
             url: normalizedUrl,
             type: "undetermined",
@@ -1041,6 +1099,10 @@ export function createPipelineHandlers({
       }
 
       void listItemsConcurrently(itemsToList, chunkSize, false);
+
+      logger.debug("Listing processes started", {
+        itemCount: itemsToList.length,
+      });
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
       response.end(JSON.stringify({
@@ -1066,7 +1128,12 @@ export function createPipelineHandlers({
     chunkSize: number,
     isScheduledUpdate: boolean,
   ): Promise<ListingResult[]> {
+    logger.trace(
+      `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
+    );
+
     if (items.length === 0) {
+      logger.trace("No items to list");
       return [];
     }
 
@@ -1101,6 +1168,8 @@ export function createPipelineHandlers({
     chunkSize: number,
     isScheduledUpdate: boolean,
   ): Promise<ListingResult> {
+    logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
+
     await ListingSemaphore.acquire();
 
     try {
@@ -1129,6 +1198,11 @@ export function createPipelineHandlers({
 
       listEntry.spawnedProcess = null;
 
+      logger.trace("Listing completed", {
+        result: JSON.stringify(result),
+        listEntry: JSON.stringify(listEntry),
+      });
+
       if (listProcesses.has(entryKey)) {
         listProcesses.delete(entryKey);
       }
@@ -1147,6 +1221,10 @@ export function createPipelineHandlers({
   ): Promise<ListingResult> {
     const resolvedIsScheduledUpdate = isScheduledUpdate ||
       item.isScheduledUpdate === true;
+    logger.debug(`isScheduledUpdate: ${resolvedIsScheduledUpdate}`, {
+      item: JSON.stringify(item),
+      isScheduledUpdate,
+    });
     const { url: videoUrl, currentMonitoringType } = item;
     let itemType = item.type;
 
@@ -1170,6 +1248,7 @@ export function createPipelineHandlers({
           where: { playlistUrl: videoUrl },
         });
         if (existingPlaylist) {
+          logger.debug("Playlist already exists in database", { url: videoUrl });
           if (
             existingPlaylist.getDataValue("monitoringType") ===
               currentMonitoringType && !resolvedIsScheduledUpdate
@@ -1179,6 +1258,7 @@ export function createPipelineHandlers({
             existingPlaylist.getDataValue("monitoringType") !==
               currentMonitoringType
           ) {
+            logger.debug("Playlist monitoring has changed", { url: videoUrl });
             await existingPlaylist.update({
               monitoringType: ["Refresh", "Full"].includes(currentMonitoringType)
                 ? "N/A"
@@ -1188,6 +1268,7 @@ export function createPipelineHandlers({
                 ? Date.now()
                 : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
             });
+            logger.debug("Playlist monitoring type updated", { url: videoUrl });
           } else if (resolvedIsScheduledUpdate) {
             await existingPlaylist.update({
               monitoringType: currentMonitoringType === "Full"
@@ -1199,6 +1280,9 @@ export function createPipelineHandlers({
           playlistTitle = existingPlaylist.getDataValue("title");
           seekPlaylistListTo = (existingPlaylist as any).sortOrder;
         } else {
+          logger.debug("Playlist not found in database, adding to database", {
+            url: videoUrl,
+          });
           const newPlaylist = await addPlaylist(
             videoUrl,
             ["Refresh", "Full"].includes(currentMonitoringType)
@@ -1253,6 +1337,8 @@ export function createPipelineHandlers({
     } = item;
 
     let processedChunks = 0;
+
+    logger.info("Starting streaming listing for playlist", { url: videoUrl });
 
     if (monitoringType === "Full" || monitoringType === "Refresh") {
       const deletedCount = await PlaylistVideoMapping.destroy({
@@ -1480,6 +1566,12 @@ export function createPipelineHandlers({
     processKey: string,
     startIndex: number = 1,
   ): { process: ManagedProcess; iterator: AsyncGenerator<string> } {
+    logger.trace("Starting streaming fetch for items", {
+      url: videoUrl,
+      processKey,
+      startIndex,
+    });
+
     const processArgs = [
       "--playlist-start",
       startIndex.toString(),
@@ -1492,6 +1584,16 @@ export function createPipelineHandlers({
     if (siteArgs.length > 0) {
       processArgs.unshift(...siteArgs);
     }
+
+    const fullCommandString = [
+      "yt-dlp",
+      ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
+    ].join(" ");
+
+    logger.debug(`Starting streaming listing for ${videoUrl}`, {
+      url: videoUrl,
+      fullCommand: fullCommandString,
+    });
 
     const listProcess = spawnPythonProcess(processArgs);
     const processEntry = listProcesses.get(processKey);
@@ -1727,6 +1829,12 @@ export function createPipelineHandlers({
 
       result.count++;
       result.title = videoData.title;
+      logger.debug("Processed video item in memory", {
+        videoUrl,
+        title: videoData.title,
+        playlistUrl,
+        index: absoluteIndex,
+      });
     }
 
     if (videosToUpsert.length > 0) {
@@ -1790,9 +1898,12 @@ export function createPipelineHandlers({
     };
 
     if (!mainFileName) {
+      logger.debug("No main file name provided for metadata discovery");
       if (videoEntry && videoEntry.downloadStatus) {
         mainFileName = videoEntry.fileName ?? null;
+        logger.debug("Using main file name from database", { mainFileName });
       } else {
+        logger.debug("No main file name found in database");
         return { metadata, syncStatus };
       }
     }
@@ -1800,6 +1911,10 @@ export function createPipelineHandlers({
     try {
       const mainFileExt = extname(mainFileName!).toLowerCase();
       const mainFileBase = mainFileName!.replace(mainFileExt, "");
+      logger.debug("Scanning savePath for extra metadata files", {
+        savePath,
+        mainFileBase,
+      });
       const patterns = {
         video: [".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"],
         description: [".description"],
@@ -1823,6 +1938,7 @@ export function createPipelineHandlers({
         if (found) {
           metadata.descriptionFile = found;
           syncStatus.descriptionFileFound = true;
+          logger.trace("Found description file", { file: found });
         }
       }
 
@@ -1831,6 +1947,7 @@ export function createPipelineHandlers({
         if (found) {
           metadata.commentsFile = found;
           syncStatus.commentsFileFound = true;
+          logger.trace("Found comments file", { file: found });
         }
       }
 
@@ -1847,6 +1964,7 @@ export function createPipelineHandlers({
         if (found) {
           metadata.subTitleFile = found;
           syncStatus.subTitleFileFound = true;
+          logger.trace("Found subtitles file", { file: found });
         }
       }
 
@@ -1855,6 +1973,7 @@ export function createPipelineHandlers({
         if (found) {
           metadata.thumbNailFile = found;
           syncStatus.thumbNailFileFound = true;
+          logger.trace("Found thumbnail file", { file: found });
         }
       }
 
@@ -1869,7 +1988,11 @@ export function createPipelineHandlers({
       if (videoFile) {
         metadata.fileName = videoFile;
         syncStatus.videoFileFound = true;
+        logger.trace("Found video file", { file: videoFile });
       } else {
+        logger.trace(
+          "Video file not found with common extensions, scanning directory",
+        );
         const files = readdirSync(savePath);
         const filesOfInterest = files.filter((file) => file.startsWith(mainFileBase));
         const knownMetadataExts = [
@@ -1883,6 +2006,7 @@ export function createPipelineHandlers({
           if (!knownMetadataExts.some((metaExt) => file.endsWith(metaExt))) {
             metadata.fileName = file;
             syncStatus.videoFileFound = true;
+            logger.trace("Found video file", { file });
             break;
           }
         }
@@ -2037,6 +2161,14 @@ export function createPipelineHandlers({
 
     const titleProcess = spawnPythonProcess(processArgs);
 
+    logger.debug("Trying to get playlist title", {
+      url: playlistUrl,
+      fullCommand: [
+        "yt-dlp",
+        ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
+      ].join(" "),
+    });
+
     return new Promise((resolve, reject) => {
       void (async () => {
         for await (const data of streamTextChunks(titleProcess.stdout)) {
@@ -2075,6 +2207,14 @@ export function createPipelineHandlers({
           }
 
           playlistTitle = truncateText(playlistTitle, config.maxTitleLength);
+
+          logger.debug(`Creating playlist with title: ${playlistTitle}`, {
+            url: playlistUrl,
+            pid: titleProcess.pid,
+            code: code,
+            monitoringType: monitoringType,
+            lastUpdatedByScheduler: Date.now(),
+          });
 
           const [playlist, created] = await PlaylistMetadata.findOrCreate({
             where: { playlistUrl: playlistUrl },
