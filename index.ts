@@ -418,11 +418,42 @@ function isSiteIwaraDotTv(videoUrl: string): boolean {
 // Site specific argument builders
 export type SiteArgBuilder = (url: string, config: any) => string[];
 
+/**
+ * Checks if the given URL belongs to youtube.com or any of its subdomains.
+ * Used to apply cookies for private playlist access (Watch Later, Liked Videos).
+ *
+ * @param {string} videoUrl - The URL to check.
+ * @returns {boolean} True if the URL is a YouTube URL.
+ */
+function isSiteYouTube(videoUrl: string): boolean {
+  let hostname = "";
+  try {
+    hostname = (new URL(videoUrl)).hostname;
+  } catch (e) {
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
+      error: (e as Error).message,
+    });
+  }
+  const youtubeHosts = ["youtube.com", "youtu.be"];
+  return youtubeHosts.some(
+    (h) => hostname === h || hostname.endsWith("." + h),
+  );
+}
+
 const siteArgBuilders: SiteArgBuilder[] = [
   // x.com
   (url, config) => {
     if (config.cookiesFile && isSiteXDotCom(url)) {
       logger.debug(`Using cookies file: ${config.cookiesFile}`);
+      return ["--cookies", config.cookiesFile as string];
+    }
+    return [];
+  },
+  // youtube.com — needed for private playlists (Watch Later, Liked Videos)
+  // that the YouTube Data API cannot access
+  (url, config) => {
+    if (config.cookiesFile && isSiteYouTube(url)) {
+      logger.debug(`Using cookies file for YouTube: ${config.cookiesFile}`);
       return ["--cookies", config.cookiesFile as string];
     }
     return [];
