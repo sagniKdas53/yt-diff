@@ -470,6 +470,20 @@ export function createPipelineHandlers({
         status === "running" &&
         (idleTime > maxIdleTime || age > maxLifetime || isErrorOnly)
       ) {
+        // For list processes actively producing stdout data, skip the maxLifetime kill.
+        // A process receiving real data within the idle window is not stale — just slow.
+        const isActivelyProducingData = lastStdoutActivity &&
+          (now - lastStdoutActivity < maxIdleTime);
+        if (
+          processType === "list" && isActivelyProducingData &&
+          !(idleTime > maxIdleTime) && !isErrorOnly
+        ) {
+          logger.info(
+            `Skipping cleanup for active list process ${processId} (age: ${Math.round(age / 1000)}s, last stdout: ${Math.round((now - lastStdoutActivity) / 1000)}s ago)`,
+          );
+          continue;
+        }
+
         if (spawnedProcess?.kill && forceKill) {
           try {
             const killed = spawnedProcess.kill("SIGKILL");
@@ -1392,6 +1406,7 @@ export function createPipelineHandlers({
 
           processedChunks++;
           chunkItems = [];
+          updateProcessActivity(processKey, true);
 
           if (!isScheduledUpdate) {
             safeEmit("listing-playlist-chunk-complete", {
@@ -1427,6 +1442,7 @@ export function createPipelineHandlers({
           monitoringType,
         );
         processedChunks++;
+        updateProcessActivity(processKey, true);
         if (!isScheduledUpdate) {
           safeEmit("listing-playlist-chunk-complete", {
             url: videoUrl,
