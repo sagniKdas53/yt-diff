@@ -128,16 +128,29 @@ async function refreshAccessToken(): Promise<string> {
 
 /**
  * Extract the playlist ID from a YouTube URL.
+ * Returns null for system playlists (WL, LL) that the YouTube API cannot access.
+ *
  * Handles:
  *   - https://www.youtube.com/playlist?list=PLxxxx
  *   - https://www.youtube.com/watch?v=xxx&list=PLxxxx
- *   - Watch Later (WL) and Liked Videos (LL) playlist IDs
+ *
+ * NOTE: Watch Later (WL) and Liked Videos (LL) are system playlists that
+ * Google blocked from the Data API in 2016. They always return 0 items
+ * even with valid OAuth2 credentials. These MUST use yt-dlp with cookies.
  */
 export function extractPlaylistId(url: string): string | null {
   try {
     const parsed = new URL(url);
     const listParam = parsed.searchParams.get("list");
     if (listParam) {
+      // System playlists that the YouTube API cannot access
+      const blockedIds = ["WL", "LL"];
+      if (blockedIds.includes(listParam)) {
+        logger.info(
+          `Playlist ${listParam} is a system playlist, skipping YouTube API (must use yt-dlp with cookies)`,
+        );
+        return null;
+      }
       return listParam;
     }
 
