@@ -1993,16 +1993,30 @@ export function createPipelineHandlers({
       videosToUpsert.push(videoData);
 
       if (!existingMapping) {
-        const driftedMapping = existingMappingsByUrl.get(videoUrl);
-        if (
-          driftedMapping &&
-          driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex
-        ) {
-          mappingsToUpdate.push({
-            instance: driftedMapping,
-            position: absoluteIndex,
-          });
-        } else if (!driftedMapping) {
+        if (playlistUrl === "None") {
+          // "None" is the pseudo-playlist for unlisted/unplaylisted videos.
+          // Duplicates are NOT allowed here — if the video already has a mapping,
+          // update its position instead of creating a new one.
+          const driftedMapping = existingMappingsByUrl.get(videoUrl);
+          if (
+            driftedMapping &&
+            driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex
+          ) {
+            mappingsToUpdate.push({
+              instance: driftedMapping,
+              position: absoluteIndex,
+            });
+          } else if (!driftedMapping) {
+            mappingsToCreate.push({
+              videoUrl: videoUrl,
+              playlistUrl: playlistUrl,
+              positionInPlaylist: absoluteIndex,
+            });
+          }
+        } else {
+          // Real playlists: duplicates ARE allowed. YouTube allows the same video
+          // at multiple positions in a playlist, so we must create a separate
+          // mapping for each occurrence. Do NOT look for drifted mappings to update.
           mappingsToCreate.push({
             videoUrl: videoUrl,
             playlistUrl: playlistUrl,
