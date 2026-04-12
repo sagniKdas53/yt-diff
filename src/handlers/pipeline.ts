@@ -12,9 +12,10 @@ import type { HttpResponseLike } from "../transport/http.ts";
 import { existsSync, mkdirSync, readdirSync } from "../utils/fs.ts";
 import { basename, extname, join, relative, resolve, sep } from "../utils/path.ts";
 import {
-  fetchAllPlaylistItems,
-  shouldUseYouTubeApi,
-  toYtDlpJsonString,
+  extractPlaylistId,
+  fetchPlaylistItemsChunked,
+  isYouTubeApiConfigured,
+  isYouTubeUrl,
 } from "./youtube-api.ts";
 
 const playlistRegex = /(?:playlist|list=|videos$)\b/i;
@@ -1359,25 +1360,26 @@ export function createPipelineHandlers({
 
     logger.info("Starting streaming listing for playlist", { url: videoUrl });
 
-    // Check if this playlist should use the YouTube Data API instead of yt-dlp
-    try {
-      const apiCheck = await shouldUseYouTubeApi(videoUrl);
-      if (apiCheck) {
-        logger.info(
-          `Routing to YouTube API path for ${apiCheck.itemCount} items`,
-          { url: videoUrl, playlistId: apiCheck.playlistId },
-        );
-        return await handleLargePlaylistViaApi({
-          ...item,
-          playlistId: apiCheck.playlistId,
-          expectedItemCount: apiCheck.itemCount,
-        });
+    // If YouTube API is configured and this is a YouTube URL, always use the API
+    if (isYouTubeApiConfigured() && isYouTubeUrl(videoUrl)) {
+      const playlistId = extractPlaylistId(videoUrl);
+      if (playlistId) {
+        try {
+          logger.info(
+            "Routing to YouTube API path",
+            { url: videoUrl, playlistId },
+          );
+          return await handlePlaylistViaApi({
+            ...item,
+            playlistId,
+          });
+        } catch (apiError) {
+          logger.warn(
+            "YouTube API failed, falling back to yt-dlp",
+            { url: videoUrl, error: (apiError as Error).message },
+          );
+        }
       }
-    } catch (apiError) {
-      logger.warn(
-        "YouTube API check failed, falling back to yt-dlp",
-        { url: videoUrl, error: (apiError as Error).message },
-      );
     }
 
     if (monitoringType === "Full" || monitoringType === "Refresh") {
@@ -1510,7 +1512,7 @@ export function createPipelineHandlers({
     );
   }
 
-  async function handleLargePlaylistViaApi(
+  async function handlePlaylistViaApi(
     item: {
       videoUrl: string;
       chunkSize: number;
@@ -1520,7 +1522,6 @@ export function createPipelineHandlers({
       processKey: string;
       monitoringType: string;
       playlistId: string;
-      expectedItemCount: number;
     },
   ): Promise<ListingResult> {
     const {
@@ -1532,15 +1533,13 @@ export function createPipelineHandlers({
       processKey,
       monitoringType,
       playlistId,
-      expectedItemCount,
     } = item;
 
     let processedChunks = 0;
 
-    logger.info("Starting YouTube API listing for large playlist", {
+    logger.info("Starting YouTube API listing for playlist", {
       url: videoUrl,
       playlistId,
-      expectedItemCount,
     });
 
     // For Full/Refresh modes, clear existing mappings before re-indexing
@@ -1564,28 +1563,15 @@ export function createPipelineHandlers({
     }
 
     try {
-      // Fetch all items from the YouTube API
-      const apiItems = await fetchAllPlaylistItems(playlistId);
-
-      if (apiItems.length === 0) {
-        return handleEmptyResponse(videoUrl);
-      }
-
-      logger.info("YouTube API returned all items, processing in chunks", {
-        url: videoUrl,
-        totalItems: apiItems.length,
-        chunkSize,
-      });
-
-      // Convert API items to yt-dlp-compatible JSON strings
-      const jsonStrings = apiItems.map((apiItem) => toYtDlpJsonString(apiItem));
-
-      // Process in chunks, same as the yt-dlp path
+      let hasItems = false;
       let consecutiveDuplicateChunks = 0;
 
-      for (let i = 0; i < jsonStrings.length; i += chunkSize) {
-        const chunkItems = jsonStrings.slice(i, i + chunkSize);
-        const chunkStartIndex = i + 1; // 1-indexed positions
+      // Stream chunks progressively from the YouTube API
+      for await (
+        const { items: chunkItems, chunkStartIndex, totalExpected }
+          of fetchPlaylistItemsChunked(playlistId, chunkSize)
+      ) {
+        hasItems = true;
 
         const result = await processStreamingVideoInformation(
           chunkItems,
@@ -1631,10 +1617,13 @@ export function createPipelineHandlers({
           logger.info("YouTube API processing progress", {
             url: videoUrl,
             processedChunks,
-            itemsProcessed: Math.min(i + chunkSize, jsonStrings.length),
-            totalItems: jsonStrings.length,
+            totalExpected,
           });
         }
+      }
+
+      if (!hasItems) {
+        return handleEmptyResponse(videoUrl);
       }
 
       // Mark process as completed
@@ -1666,7 +1655,7 @@ export function createPipelineHandlers({
         listProcesses.set(processKey, processEntry);
       }
 
-      return handleListingError(error as Error, videoUrl, "playlist");
+      throw error; // Re-throw so the caller can fall back to yt-dlp
     }
   }
 

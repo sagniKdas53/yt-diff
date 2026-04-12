@@ -81,10 +81,11 @@ export interface AppConfig {
     _parseError: Error | null;
   };
   youtubeApi: {
-    clientId: string;
-    clientSecret: string;
-    refreshToken: string;
-    threshold: number;
+    mode: "oauth" | "apikey";
+    apiKey?: string;
+    clientId?: string;
+    clientSecret?: string;
+    refreshToken?: string;
   } | null;
   maxClients: number;
   connectedClients: number;
@@ -227,15 +228,27 @@ export const config: AppConfig = {
     const clientId = Deno.env.get("YOUTUBE_CLIENT_ID") || "";
     const clientSecret = Deno.env.get("YOUTUBE_CLIENT_SECRET") || "";
     const refreshToken = Deno.env.get("YOUTUBE_REFRESH_TOKEN") || "";
-    if (!clientId || !clientSecret || !refreshToken) {
-      return null;
+    const apiKey = Deno.env.get("YOUTUBE_API_KEY") || "";
+
+    // OAuth takes priority — covers both public and private playlists
+    if (clientId && clientSecret && refreshToken) {
+      return {
+        mode: "oauth" as const,
+        clientId,
+        clientSecret,
+        refreshToken,
+      };
     }
-    return {
-      clientId,
-      clientSecret,
-      refreshToken,
-      threshold: +(Deno.env.get("YOUTUBE_API_THRESHOLD") || 200),
-    };
+
+    // API key — public/unlisted playlists only
+    if (apiKey) {
+      return {
+        mode: "apikey" as const,
+        apiKey,
+      };
+    }
+
+    return null;
   })(),
   maxClients: 10,
   connectedClients: 0,
