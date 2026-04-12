@@ -80,6 +80,12 @@ export interface AppConfig {
     password: string;
     _parseError: Error | null;
   };
+  youtubeApi: {
+    clientId: string;
+    clientSecret: string;
+    refreshToken: string;
+    threshold: number;
+  } | null;
   maxClients: number;
   connectedClients: number;
 }
@@ -215,6 +221,20 @@ export const config: AppConfig = {
       username: Deno.env.get("IWARA_USERNAME") || conf.username || "",
       password: Deno.env.get("IWARA_PASSWORD") || conf.password || "",
       _parseError: parseError,
+    };
+  })(),
+  youtubeApi: (() => {
+    const clientId = Deno.env.get("YOUTUBE_CLIENT_ID") || "";
+    const clientSecret = Deno.env.get("YOUTUBE_CLIENT_SECRET") || "";
+    const refreshToken = Deno.env.get("YOUTUBE_REFRESH_TOKEN") || "";
+    if (!clientId || !clientSecret || !refreshToken) {
+      return null;
+    }
+    return {
+      clientId,
+      clientSecret,
+      refreshToken,
+      threshold: +(Deno.env.get("YOUTUBE_API_THRESHOLD") || 200),
     };
   })(),
   maxClients: 10,

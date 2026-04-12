@@ -11,6 +11,11 @@ import { logger } from "../logger.ts";
 import type { HttpResponseLike } from "../transport/http.ts";
 import { existsSync, mkdirSync, readdirSync } from "../utils/fs.ts";
 import { basename, extname, join, relative, resolve, sep } from "../utils/path.ts";
+import {
+  fetchAllPlaylistItems,
+  shouldUseYouTubeApi,
+  toYtDlpJsonString,
+} from "./youtube-api.ts";
 
 const playlistRegex = /(?:playlist|list=|videos$)\b/i;
 
@@ -1354,6 +1359,27 @@ export function createPipelineHandlers({
 
     logger.info("Starting streaming listing for playlist", { url: videoUrl });
 
+    // Check if this playlist should use the YouTube Data API instead of yt-dlp
+    try {
+      const apiCheck = await shouldUseYouTubeApi(videoUrl);
+      if (apiCheck) {
+        logger.info(
+          `Routing to YouTube API path for ${apiCheck.itemCount} items`,
+          { url: videoUrl, playlistId: apiCheck.playlistId },
+        );
+        return await handleLargePlaylistViaApi({
+          ...item,
+          playlistId: apiCheck.playlistId,
+          expectedItemCount: apiCheck.itemCount,
+        });
+      }
+    } catch (apiError) {
+      logger.warn(
+        "YouTube API check failed, falling back to yt-dlp",
+        { url: videoUrl, error: (apiError as Error).message },
+      );
+    }
+
     if (monitoringType === "Full" || monitoringType === "Refresh") {
       const deletedCount = await PlaylistVideoMapping.destroy({
         where: { playlistUrl: videoUrl },
@@ -1482,6 +1508,166 @@ export function createPipelineHandlers({
       seekPlaylistListTo,
       isScheduledUpdate,
     );
+  }
+
+  async function handleLargePlaylistViaApi(
+    item: {
+      videoUrl: string;
+      chunkSize: number;
+      isScheduledUpdate: boolean;
+      playlistTitle: string;
+      seekPlaylistListTo: number;
+      processKey: string;
+      monitoringType: string;
+      playlistId: string;
+      expectedItemCount: number;
+    },
+  ): Promise<ListingResult> {
+    const {
+      videoUrl,
+      chunkSize,
+      isScheduledUpdate,
+      playlistTitle,
+      seekPlaylistListTo,
+      processKey,
+      monitoringType,
+      playlistId,
+      expectedItemCount,
+    } = item;
+
+    let processedChunks = 0;
+
+    logger.info("Starting YouTube API listing for large playlist", {
+      url: videoUrl,
+      playlistId,
+      expectedItemCount,
+    });
+
+    // For Full/Refresh modes, clear existing mappings before re-indexing
+    if (monitoringType === "Full" || monitoringType === "Refresh") {
+      const deletedCount = await PlaylistVideoMapping.destroy({
+        where: { playlistUrl: videoUrl },
+      });
+      logger.info(
+        `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index (API path)`,
+        { url: videoUrl },
+      );
+    }
+
+    // Update process status to "running" for the cleanup job
+    const processEntry = listProcesses.get(processKey);
+    if (processEntry) {
+      processEntry.status = "running";
+      processEntry.lastActivity = Date.now();
+      processEntry.lastStdoutActivity = Date.now();
+      listProcesses.set(processKey, processEntry);
+    }
+
+    try {
+      // Fetch all items from the YouTube API
+      const apiItems = await fetchAllPlaylistItems(playlistId);
+
+      if (apiItems.length === 0) {
+        return handleEmptyResponse(videoUrl);
+      }
+
+      logger.info("YouTube API returned all items, processing in chunks", {
+        url: videoUrl,
+        totalItems: apiItems.length,
+        chunkSize,
+      });
+
+      // Convert API items to yt-dlp-compatible JSON strings
+      const jsonStrings = apiItems.map((apiItem) => toYtDlpJsonString(apiItem));
+
+      // Process in chunks, same as the yt-dlp path
+      let consecutiveDuplicateChunks = 0;
+
+      for (let i = 0; i < jsonStrings.length; i += chunkSize) {
+        const chunkItems = jsonStrings.slice(i, i + chunkSize);
+        const chunkStartIndex = i + 1; // 1-indexed positions
+
+        const result = await processStreamingVideoInformation(
+          chunkItems,
+          videoUrl,
+          chunkStartIndex,
+          isScheduledUpdate,
+          monitoringType,
+        );
+
+        processedChunks++;
+        updateProcessActivity(processKey, true);
+
+        if (!isScheduledUpdate) {
+          safeEmit("listing-playlist-chunk-complete", {
+            url: videoUrl,
+            type: "playlist-chunk",
+            status: "chunk-completed",
+            processedChunks,
+            playlistTitle,
+            seekPlaylistListTo,
+          });
+        }
+
+        // Early termination for "Start" mode if all items already exist
+        if (
+          result.alreadyExistedCount === chunkItems.length &&
+          monitoringType === "Start"
+        ) {
+          consecutiveDuplicateChunks++;
+          if (consecutiveDuplicateChunks >= 2) {
+            logger.info(
+              "YouTube API path: 2 consecutive duplicate chunks, stopping early",
+              { url: videoUrl, processedChunks },
+            );
+            break;
+          }
+        } else {
+          consecutiveDuplicateChunks = 0;
+        }
+
+        // Log progress every 10 chunks
+        if (processedChunks % 10 === 0) {
+          logger.info("YouTube API processing progress", {
+            url: videoUrl,
+            processedChunks,
+            itemsProcessed: Math.min(i + chunkSize, jsonStrings.length),
+            totalItems: jsonStrings.length,
+          });
+        }
+      }
+
+      // Mark process as completed
+      if (processEntry) {
+        processEntry.status = "completed";
+        processEntry.lastActivity = Date.now();
+        listProcesses.set(processKey, processEntry);
+      }
+
+      return completePlaylistListing(
+        videoUrl,
+        processedChunks,
+        playlistTitle,
+        seekPlaylistListTo,
+        isScheduledUpdate,
+      );
+    } catch (error) {
+      logger.error("YouTube API listing failed", {
+        url: videoUrl,
+        playlistId,
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+
+      // Mark process as failed
+      if (processEntry) {
+        processEntry.status = "failed";
+        processEntry.lastActivity = Date.now();
+        listProcesses.set(processKey, processEntry);
+      }
+
+      return handleListingError(error as Error, videoUrl, "playlist");
+    }
   }
 
   async function handleSingleVideoStreaming(
