@@ -14,8 +14,10 @@ import { basename, extname, join, relative, resolve, sep } from "../utils/path.t
 import {
   extractPlaylistId,
   fetchPlaylistItemsChunked,
+  isChannelUrl,
   isYouTubeApiConfigured,
   isYouTubeUrl,
+  resolveChannelUploadsPlaylistId,
 } from "./youtube-api.ts";
 
 const playlistRegex = /(?:playlist|list=|videos$)\b/i;
@@ -1362,7 +1364,11 @@ export function createPipelineHandlers({
 
     // If YouTube API is configured and this is a YouTube URL, always use the API
     if (isYouTubeApiConfigured() && isYouTubeUrl(videoUrl)) {
-      const playlistId = extractPlaylistId(videoUrl);
+      // Try extracting playlist ID directly, or resolve channel URL to uploads playlist
+      let playlistId = extractPlaylistId(videoUrl);
+      if (!playlistId && isChannelUrl(videoUrl)) {
+        playlistId = await resolveChannelUploadsPlaylistId(videoUrl);
+      }
       if (playlistId) {
         try {
           logger.info(
