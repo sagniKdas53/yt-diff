@@ -19,14 +19,36 @@ When a user submits a URL via the UI (using the Add Dialog) or through the
 
 ### The Extraction Process
 
+The system uses one of two paths depending on the URL and configuration:
+
+#### YouTube Data API Path (Fast)
+
+For YouTube playlists and channels, if API credentials are configured
+(see [YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md)), the system
+bypasses `yt-dlp` and uses the YouTube Data API v3 directly:
+
+- Fetches items via `playlistItems.list` (50 items/page)
+- A 5,000-item playlist completes in ~50 seconds
+- Channel URLs (`/@handle`, `/channel/UCxxxx`) are resolved to their uploads
+  playlist via `channels.list`
+- Items are converted to yt-dlp-compatible JSON for seamless DB integration
+- Falls back to yt-dlp on any API failure
+
+> **Exception:** Watch Later (`WL`) and Liked Videos (`LL`) system playlists
+> cannot be accessed via the API (blocked by Google since 2016). These always
+> use yt-dlp with cookies.
+
+#### yt-dlp Path (Universal Fallback)
+
 - The system spawns `yt-dlp` via a **Python monkey-patch wrapper** (see
   [curl_cffi_segfault_analysis.md](curl_cffi_segfault_analysis.md)) using the
-  `--flat-playlist` argument to stream the videos sequentially as fast as
-  possible.
+  `--flat-playlist` argument to stream the videos sequentially.
 - Videos are output as JSON/Tab-separated lines containing `title`, `id`, `url`,
   and `approximateSize`.
 - As the video items are returned line-by-line, they are grouped into **chunks**
   (default size defined in `config.ts`).
+- Used for non-YouTube sites and as a fallback when API credentials are not
+  configured.
 
 ### Metadata and Indexing
 
@@ -142,3 +164,26 @@ mechanism during playlist scans (except for `Refresh` mode):
   last scan, the logs will appear silent (no `"Processed video item"` traces),
   even though the scan was successful. Use `Refresh` mode if you need to see
   explicit logs for every item.
+
+---
+
+## 5. Duplicate Video Handling
+
+YouTube allows the same video at multiple positions in a playlist. `yt-diff`
+matches this behavior:
+
+- **Real playlists**: Duplicates are allowed. Each occurrence creates a separate
+  mapping at its own position. The system does not attempt to de-duplicate or
+  merge mappings for the same video URL.
+- **"None" playlist** (unlisted/unplaylisted videos): Duplicates are **not**
+  allowed. If a video already has a mapping, its position is updated instead of
+  creating a duplicate entry.
+
+---
+
+## See Also
+
+- [YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md) — YouTube Data API
+  configuration, cookie handling, and authentication modes
+- [Automated Jobs](AUTOMATED_JOBS.md) — Background scheduler details
+- [Download Behavior](DOWNLOAD_BEHAVIOR.md) — How downloads are processed
