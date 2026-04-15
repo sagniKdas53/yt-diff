@@ -12,6 +12,21 @@ import type {
   HttpResponseLike,
 } from "../transport/http.ts";
 
+export interface CachedUser {
+  id: string;
+  username: string;
+  passwordHash: string;
+  passwordSalt: string;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+export interface AuthJwtPayload extends jwt.JwtPayload {
+  id: string;
+  lastPasswordChangeTime?: number;
+}
+
+
 import { parseRequestJson, generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
 type NextHandler = (data: unknown, res: HttpResponseLike) => unknown;
 type TokenExpiredEmitter = (payload: { error: string }) => void;
@@ -32,13 +47,13 @@ const utf8Encoder = new TextEncoder();
 
 async function getAuthenticatedUser(
   redis: Redis,
-  decodedToken: jwt.JwtPayload,
+  decodedToken: AuthJwtPayload,
 ) {
-  let user = null;
+  let user: CachedUser | null = null;
   const cachedUser = await redis.get(`user:${decodedToken.id}`);
 
   if (cachedUser) {
-    user = JSON.parse(cachedUser);
+    user = JSON.parse(cachedUser) as CachedUser;
     const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
     const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
       .getTime();
@@ -49,8 +64,9 @@ async function getAuthenticatedUser(
 
   if (!user) {
     logger.debug(`Fetching user data for ID ${decodedToken.id}`);
-    user = await UserAccount.findByPk(decodedToken.id);
-    if (user) {
+    const dbUser = await UserAccount.findByPk(decodedToken.id);
+    if (dbUser) {
+      user = dbUser.toJSON() as CachedUser;
       await redis.set(
         `user:${decodedToken.id}`,
         JSON.stringify(user),
@@ -231,7 +247,7 @@ export function createAuthMiddleware({
       const decodedToken = jwt.verify(
         token,
         config.secretKey as string,
-      ) as jwt.JwtPayload;
+      ) as AuthJwtPayload;
 
       const { user, passwordChanged } = await getAuthenticatedUser(
         redis,
@@ -309,7 +325,7 @@ export function createAuthMiddleware({
       const decodedToken = jwt.verify(
         token,
         config.secretKey as string,
-      ) as jwt.JwtPayload;
+      ) as AuthJwtPayload;
 
       const { user, passwordChanged } = await getAuthenticatedUser(
         redis,

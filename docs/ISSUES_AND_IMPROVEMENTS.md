@@ -1,7 +1,7 @@
 # Technical Improvements and Edge Cases
 
 This document highlights unchecked edge cases, security considerations, and code
-improvements identified through an analysis of `index.ts`.
+improvements identified through an analysis of the codebase.
 
 ## 1. Authentication & Security
 
@@ -32,26 +32,26 @@ improvements identified through an analysis of `index.ts`.
 
 ## 3. Architecture & Code Structure
 
-- **Monolithic Configuration**: `index.ts` spans thousands of lines,
+- ~~**Monolithic Configuration**: `index.ts` spans thousands of lines,
   simultaneously handling ORM database definitions, raw HTTP routing, WebSocket
-  events, scheduled Cron jobs, and complex wrapper interactions for `yt-dlp`.
-  - **Suggested Improvement**: Extract the architecture into modular
-    directories: `src/routes/`, `src/models/`, `src/services/`, `src/jobs/`, and
-    `src/utils/`.
-- **Custom HTTP Server Router**: The routing logic relies on a massive sequence
+  events, scheduled Cron jobs, and complex wrapper interactions for `yt-dlp`.~~
+  - ~~**Suggested Improvement**: Extract the architecture into modular
+    directories: `src/routes/`, `src/db/`, `src/handlers/`, `src/jobs/`, and
+    `src/utils/`.~~
+- ~~**Custom HTTP Server Router**: The routing logic relies on a massive sequence
   of `if-else if` blocks querying `req.url` against hardcoded string
-  concatenated routes.
-  - **Suggested Improvement**: Adopting a lightweight routing framework (like
+  concatenated routes.~~
+  - ~~**Suggested Improvement**: Adopting a lightweight routing framework (like
     `Express`, `Fastify`, or `Koa`) would significantly simplify HTTP method
     parsing, middleware injection (like auth/logging layers), and dynamic stream
-    handling.
-- **`any` Typing**: Scattered usage of `any` types in highly dynamic areas of
+    handling.~~ *(Note: Addressed by extracting standard route handlers without a heavy framework)*
+- ~~**`any` Typing**: Scattered usage of `any` types in highly dynamic areas of
   the codebase bypasses TypeScript's native compiler safety, increasing bug risk
-  during refactoring or schema adjustments.
+  during refactoring or schema adjustments.~~
 
 ## 4. Unused or Legacy Components
 
-- **Manual Backpressure and Range Requests**: `index.ts` manually implements
+- **Manual Backpressure and Range Requests**: The codebase manually implements
   streaming backpressure controls and HTTP `206 Partial Content` (Range Header)
   capabilities for video streaming. Utilizing a stable framework or standard
   static-serve middleware would reduce potential edge cases (e.g., handling
