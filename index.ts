@@ -25,8 +25,8 @@ import {
   createPipelineHandlers,
   downloadOptions,
   type DownloadRequestBody,
-  type ProcessLike,
   type ListingRequestBody,
+  type ProcessLike,
 } from "./src/handlers/pipeline.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
@@ -747,7 +747,9 @@ const socketSidecarPort = await new Promise<number>((resolve, reject) => {
 
   const resolvePort = () => {
     const address = socketServer.address?.();
-    if (address && typeof address === "object" && typeof address.port === "number") {
+    if (
+      address && typeof address === "object" && typeof address.port === "number"
+    ) {
       resolve(address.port);
       return;
     }

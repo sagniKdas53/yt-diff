@@ -43,6 +43,17 @@ interface PlaylistItemsResponse {
   }>;
 }
 
+interface ChannelsResponse {
+  items: Array<{
+    id: string;
+    contentDetails: {
+      relatedPlaylists: {
+        uploads: string;
+      };
+    };
+  }>;
+}
+
 // --- Token Management ---
 
 let tokenCache: TokenCache | null = null;
@@ -161,6 +172,112 @@ export function extractPlaylistId(url: string): string | null {
 
     return null;
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Detect if a URL is a YouTube channel URL.
+ * Matches:
+ *   - https://www.youtube.com/@handle
+ *   - https://www.youtube.com/@handle/videos
+ *   - https://www.youtube.com/channel/UCxxxx
+ *   - https://www.youtube.com/c/name/videos
+ */
+export function isChannelUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname;
+    return /^\/@[^/]+/.test(pathname) ||
+      /^\/channel\/UC[A-Za-z0-9_-]+/.test(pathname) ||
+      /^\/c\/[^/]+/.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a YouTube channel URL to its uploads playlist ID.
+ *
+ * Every YouTube channel has a hidden "uploads" playlist. The playlist ID
+ * is derived from the channel ID by replacing the 2nd character:
+ * UC... → UU...
+ *
+ * For /@handle URLs, we need to call the channels.list API to resolve
+ * the handle to a channel ID first.
+ *
+ * @param url - A YouTube channel URL
+ * @returns The uploads playlist ID (UU...), or null if resolution fails
+ */
+export async function resolveChannelUploadsPlaylistId(
+  url: string,
+): Promise<string | null> {
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname;
+
+    // Direct channel ID: /channel/UCxxxx
+    const channelIdMatch = /^\/channel\/(UC[A-Za-z0-9_-]+)/.exec(pathname);
+    if (channelIdMatch) {
+      const uploadsId = "UU" + channelIdMatch[1].slice(2);
+      logger.info("Resolved channel ID to uploads playlist", {
+        channelId: channelIdMatch[1],
+        uploadsPlaylistId: uploadsId,
+      });
+      return uploadsId;
+    }
+
+    // Handle-based URL: /@handle or /c/name
+    const handleMatch = /^\/(@[^/]+)/.exec(pathname) ||
+      /^\/c\/([^/]+)/.exec(pathname);
+    if (!handleMatch) {
+      return null;
+    }
+
+    const handle = handleMatch[1];
+    logger.info("Resolving YouTube channel handle to uploads playlist", {
+      handle,
+      url,
+    });
+
+    const auth = await getAuth();
+    const params = new URLSearchParams({
+      part: "contentDetails",
+      forHandle: handle.startsWith("@") ? handle.slice(1) : handle,
+      ...auth.queryParams,
+    });
+
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/channels?${params}`,
+      { headers: auth.headers },
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `YouTube API channels.list failed: ${response.status} ${errorBody}`,
+      );
+    }
+
+    const data: ChannelsResponse = await response.json();
+    if (!data.items || data.items.length === 0) {
+      logger.warn("No channel found for handle", { handle });
+      return null;
+    }
+
+    const uploadsPlaylistId =
+      data.items[0].contentDetails.relatedPlaylists.uploads;
+    logger.info("Resolved channel handle to uploads playlist", {
+      handle,
+      channelId: data.items[0].id,
+      uploadsPlaylistId,
+    });
+
+    return uploadsPlaylistId;
+  } catch (error) {
+    logger.error("Failed to resolve channel uploads playlist", {
+      url,
+      error: (error as Error).message,
+    });
     return null;
   }
 }
