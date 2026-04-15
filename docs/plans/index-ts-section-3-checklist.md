@@ -27,6 +27,22 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [x] Extract remaining listing/download pipeline handlers out of `index.ts` (~900 LOC in processListingRequest and processDownloadRequest).
 - [ ] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
 
+## Phase 3b: Handler subdivision
+
+- [ ] Extract shared types and constants from `pipeline.ts` into `src/handlers/pipeline/types.ts`.
+- [ ] Extract generic `Semaphore` class from inline download/listing semaphores into `src/handlers/pipeline/semaphore.ts`.
+- [ ] Extract process lifecycle helpers (`cleanupStaleProcesses`, `updateProcessActivity`, URL utils) into `src/handlers/pipeline/process-manager.ts`.
+- [ ] Extract download flow (`processDownloadRequest`, `executeDownload`, `discoverFiles`, `computeSaveDirectory`) into `src/handlers/pipeline/download.ts`.
+- [ ] Extract listing flow (`processListingRequest`, `executeListing`, streaming, DB upsert) into `src/handlers/pipeline/listing.ts`.
+- [ ] Convert `pipeline.ts` into `pipeline/index.ts` barrel re-export.
+- [ ] Extract shared types from `playlists.ts` into `src/handlers/playlists/types.ts`.
+- [ ] Extract mutation handlers (`deletePlaylist`, `deleteVideos`, `reindexAll`, `updateMonitoring`) into `src/handlers/playlists/mutations.ts`.
+- [ ] Extract query handlers (`getPlaylistsForDisplay`, `getSubListVideos`) into `src/handlers/playlists/queries.ts`.
+- [ ] Convert `playlists.ts` into `playlists/index.ts` barrel re-export.
+- [ ] Update all imports in `src/routes/` and `index.ts` to point at new module paths.
+- [ ] Verify: `deno check index.ts` passes.
+- [ ] Verify: `deno task dev` starts and serves on :8888.
+
 ## Phase 4: Typing cleanup
 
 - [x] Add typed request DTOs for each API boundary.
