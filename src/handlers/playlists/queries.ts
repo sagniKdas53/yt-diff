@@ -8,9 +8,10 @@ import type {
   PlaylistDisplayRequest, SubListRequest, PlaylistWhereShape, SafePlaylistVideoRow, SafePlaylistVideoMeta,
   PlaylistVideoRowShape, PlaylistHandlerDependencies, HttpError
 } from "./types.ts";
+import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
 export function createQueryHandlers(deps: PlaylistHandlerDependencies) {
-  const { generateCorsHeaders, jsonMimeType } = deps;
+  const jsonMimeType = MIME_TYPES[".json"];
   async function getPlaylistsForDisplay(
     requestBody: PlaylistDisplayRequest,
     response: HttpResponseLike,

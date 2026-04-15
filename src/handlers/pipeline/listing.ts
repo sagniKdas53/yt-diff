@@ -20,6 +20,7 @@ import type {
   VideoUpsertData, PlaylistMappingCreate, PlaylistMappingUpdate,
   PipelineHandlerDependencies, ManagedProcess
 } from "./types.ts";
+import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 import { urlToTitle, truncateText, isSiteXDotCom, hasEphemeralThumbnails, normalizeUrl } from "./process-manager.ts";
 
 export function createListingFlow(
@@ -29,7 +30,8 @@ export function createListingFlow(
     updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
   }
 ) {
-  const { generateCorsHeaders, jsonMimeType, safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks, streamLines } = deps;
+  const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks, streamLines } = deps;
+  const jsonMimeType = MIME_TYPES[".json"];
   const ListingSemaphore = new Semaphore(config.queue.maxListings, "ListingSemaphore");
   let pendingPlaylistSortCounter: number | null = null;
   let pendingPlaylistSortCounterPromise: Promise<number> | null = null;

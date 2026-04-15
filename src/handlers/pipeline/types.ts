@@ -190,7 +190,6 @@ export interface ListingProcessEntry extends ProcessLike {
   monitoringType: string;
 }
 
-export type GenerateCorsHeaders = (contentType: string) => Record<string, string | number>;
 export type SafeEmit = (event: string, payload: unknown) => void;
 export type SiteArgBuilder = (url: string, config: unknown) => string[];
 export type StreamTextChunks = (
@@ -201,8 +200,6 @@ export type SpawnPythonProcess = (args: string[]) => ManagedProcess;
 export type HttpError = Error & { status?: number };
 
 export interface PipelineHandlerDependencies {
-  generateCorsHeaders: GenerateCorsHeaders;
-  jsonMimeType: string;
   safeEmit: SafeEmit;
   buildSiteArgs: SiteArgBuilder;
   spawnPythonProcess: SpawnPythonProcess;

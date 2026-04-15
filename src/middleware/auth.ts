@@ -12,10 +12,7 @@ import type {
   HttpResponseLike,
 } from "../transport/http.ts";
 
-type ParseRequestJson = (request: HttpRequestLike) => Promise<unknown>;
-type GenerateCorsHeaders = (
-  contentType: string,
-) => Record<string, string | number>;
+import { parseRequestJson, generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
 type NextHandler = (data: unknown, res: HttpResponseLike) => unknown;
 type TokenExpiredEmitter = (payload: { error: string }) => void;
 type GenerateAuthToken = (
@@ -25,9 +22,6 @@ type GenerateAuthToken = (
 type HashPassword = (password: string) => Promise<[string, string]>;
 
 interface AuthDependencies {
-  parseRequestJson: ParseRequestJson;
-  generateCorsHeaders: GenerateCorsHeaders;
-  jsonMimeType: string;
   redis: Redis;
   generateAuthToken: GenerateAuthToken;
   hashPassword: HashPassword;
@@ -70,14 +64,12 @@ async function getAuthenticatedUser(
 }
 
 export function createAuthMiddleware({
-  parseRequestJson,
-  generateCorsHeaders,
-  jsonMimeType,
   redis,
   generateAuthToken,
   hashPassword,
   emitTokenExpired,
 }: AuthDependencies) {
+  const jsonMimeType = MIME_TYPES[".json"];
   async function registerUser(
     request: HttpRequestLike,
     response: HttpResponseLike,

@@ -66,42 +66,9 @@ import {
   proxyHttpRequest,
   proxyWebSocketRequest,
 } from "./src/transport/denoHttp.ts";
+import { MIME_TYPES, CORS_ALLOWED_ORIGINS, generateCorsHeaders } from "./src/utils/http.ts";
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
-
-// Static content and server configuration
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".html": "text/html; charset=utf-8",
-  ".webmanifest": "application/manifest+json",
-  ".xml": "application/xml",
-  ".gz": "application/gzip",
-  ".br": "application/brotli",
-  ".svg": "image/svg+xml",
-  ".json": "application/json; charset=utf-8",
-  ".txt": "text/plain; charset=utf-8",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".mkv": "video/x-matroska",
-  ".avi": "video/x-msvideo",
-};
-const CORS_ALLOWED_ORIGINS = [
-  "http://localhost:5173",
-  // `http://localhost:${config.port}`,
-  // `${config.protocol}://${config.host}:${config.port}`,
-  // "*"
-];
-const CORS_ALLOWED_HEADERS = [
-  "GET",
-  "POST",
-  "PUT",
-  "DELETE",
-  "OPTIONS",
-];
-
 if (config.secretKey instanceof Error) {
   logger.error("Configuration error", { error: config.secretKey });
   throw config.secretKey;
@@ -268,74 +235,6 @@ async function* streamLines(stream: ReadableStream<Uint8Array>) {
 void initializeDatabase();
 
 // Utility functions
-/**
- * Extracts and parses JSON data from a request stream
- *
- * @param {HttpRequestLike} request - The HTTP request object
- * @returns {Promise<Object>} Parsed JSON data from request body
- * @throws {Object} Error with status code and message if request is too large or JSON is invalid
- */
-function parseRequestJson(request: HttpRequestLike): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let requestBody = "";
-    const maxRequestSize = 1e6; // 1MB limit
-    const textDecoder = new TextDecoder();
-
-    request.on("data", (chunk: Uint8Array) => {
-      requestBody += textDecoder.decode(chunk, { stream: true });
-
-      // Check request size
-      if (requestBody.length > maxRequestSize) {
-        logger.warn("Request exceeded size limit", {
-          ip: request.socket.remoteAddress,
-          url: request.url,
-          size: requestBody.length,
-          method: request.method,
-        });
-
-        request.destroy();
-        reject({ status: 413, message: "Request Too Large" });
-      }
-    });
-
-    request.on("end", () => {
-      requestBody += textDecoder.decode();
-
-      if (requestBody.length === 0) {
-        logger.warn("Empty request body", {
-          ip: request.socket.remoteAddress,
-          url: request.url,
-          method: request.method,
-        });
-
-        reject({ status: 400, message: "Empty Request Body" });
-        return;
-      }
-
-      try {
-        const parsedData = JSON.parse(requestBody);
-        resolve(parsedData);
-      } catch (error) {
-        logger.error("Failed to parse JSON", {
-          ip: request.socket.remoteAddress,
-          url: request.url,
-          size: requestBody.length,
-          method: request.method,
-          error: (error as Error).message,
-        });
-
-        reject({ status: 400, message: "Invalid JSON" });
-      }
-    });
-    request.on("error", (err: Error) => {
-      reject({
-        status: 500,
-        message: "Request stream error",
-        error: err.message,
-      });
-    });
-  });
-}
 /**
  * Pauses execution for specified duration
  *
@@ -548,9 +447,6 @@ const {
   isRegistrationAllowed,
   registerUser,
 } = createAuthMiddleware({
-  parseRequestJson,
-  generateCorsHeaders,
-  jsonMimeType: MIME_TYPES[".json"],
   redis,
   generateAuthToken,
   hashPassword,
@@ -559,15 +455,10 @@ const {
 
 const rateLimit = createRateLimit({
   redis,
-  generateCorsHeaders,
-  jsonMimeType: MIME_TYPES[".json"],
 });
 
 const { makeSignedUrl, makeSignedUrls, refreshSignedUrl } = createFileHandlers({
   redis,
-  generateCorsHeaders,
-  jsonMimeType: MIME_TYPES[".json"],
-  mimeTypes: MIME_TYPES,
 });
 
 const {
@@ -579,8 +470,6 @@ const {
   processListingRequest,
   resetPendingPlaylistSortCounter,
 } = createPipelineHandlers({
-  generateCorsHeaders,
-  jsonMimeType: MIME_TYPES[".json"],
   safeEmit,
   buildSiteArgs,
   spawnPythonProcess,
@@ -596,8 +485,6 @@ const {
   getPlaylistsForDisplay,
   getSubListVideos,
 } = createPlaylistHandlers({
-  generateCorsHeaders,
-  jsonMimeType: MIME_TYPES[".json"],
   listItemsConcurrently,
   resetPendingPlaylistSortCounter,
 });
@@ -614,32 +501,6 @@ const {
  */
 
 // Functions to run the server
-/**
- * Generates CORS headers with content type
- *
- * @param {string} contentType - MIME type for Content-Type header
- * @param {Object} [options] - Additional options
- * @param {string[]} [options.allowedOrigins] - Allowed origins, defaults to CORS_ALLOWED_ORIGINS
- * @param {string[]} [options.allowedMethods] - Allowed HTTP methods
- * @param {number} [options.maxAge] - Cache max age in seconds
- * @returns {Object} Object containing CORS headers
- */
-function generateCorsHeaders(
-  contentType: string,
-  {
-    allowedOrigins = CORS_ALLOWED_ORIGINS,
-    allowedMethods = CORS_ALLOWED_HEADERS,
-    maxAge = config.defaultCORSMaxAge,
-  } = {},
-) {
-  return {
-    "Access-Control-Allow-Origin": allowedOrigins.join(", "),
-    "Access-Control-Allow-Methods": allowedMethods.join(", "),
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": maxAge,
-    "Content-Type": contentType,
-  };
-}
 
 /**
  * Recursively retrieves a list of files and their corresponding extensions from a given directory.
