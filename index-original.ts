@@ -1,0 +1,6266 @@
+/// <reference lib="deno.ns" />
+// deno-lint-ignore-file no-explicit-any
+import { DataTypes, Model, Op, Sequelize } from "sequelize";
+import { spawn } from "node:child_process";
+import color from "cli-color";
+import { CronJob } from "cron";
+import fs from "node:fs";
+import http, { IncomingMessage, ServerResponse } from "node:http";
+import https from "node:https";
+import path from "node:path";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import he from "he";
+import pg from "pg";
+import Redis from "ioredis";
+import { Server, Socket } from "socket.io";
+import { pipeline } from "node:stream";
+import { promisify } from "node:util";
+import { Buffer } from "node:buffer";
+import { createInterface } from "node:readline";
+
+const pipelineAsync = promisify(pipeline);
+
+interface LogFields {
+  [key: string]: string | number | boolean | Error | null | undefined;
+}
+
+// Configuration object
+const config = {
+  protocol: Deno.env.get("PROTOCOL") || "http",
+  host: Deno.env.get("HOSTNAME") || "localhost",
+  port: +(Deno.env.get("PORT") || 8888),
+  nativeHttps: Deno.env.get("USE_NATIVE_HTTPS") === "true" || false,
+  hidePorts: Deno.env.get("HIDE_PORTS") === "true",
+  defaultCORSMaxAge: 2592000, // 30 days
+  urlBase: Deno.env.get("BASE_URL") || "/ytdiff",
+  ssl: {
+    key: Deno.env.get("SSL_KEY") || null,
+    cert: Deno.env.get("SSL_CERT") || null,
+    passphrase: Deno.env.get("SSL_PASSPHRASE") || null,
+  },
+  db: {
+    host: Deno.env.get("DB_HOST") || "localhost",
+    user: Deno.env.get("DB_USERNAME") || "ytdiff",
+    name: "vidlist",
+    password: (() => {
+      try {
+        return Deno.env.get("DB_PASSWORD_FILE")
+          ? fs.readFileSync(Deno.env.get("DB_PASSWORD_FILE")!, "utf8").trim()
+          : Deno.env.get("DB_PASSWORD") && Deno.env.get("DB_PASSWORD")!.trim()
+          ? Deno.env.get("DB_PASSWORD")
+          : new Error(
+            "DB_PASSWORD or DB_PASSWORD_FILE environment variable must be set",
+          );
+      } catch (e) {
+        return e instanceof Error ? e : new Error(String(e));
+      }
+    })(),
+  },
+  redis: {
+    host: Deno.env.get("REDIS_HOST") || "localhost",
+    port: +(Deno.env.get("REDIS_PORT") || 6379),
+    password: Deno.env.get("REDIS_PASSWORD") || null,
+  },
+  cache: {
+    maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 500),
+    maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600), // keep cache for 1 hour
+    reqPerIP: parseInt(
+      Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0",
+      10,
+    ),
+    actionReqPerIP: parseInt(
+      Deno.env.get("RATE_LIMIT_ACTION_MAX_REQUESTS") ?? "0",
+      10,
+    ),
+    actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
+  },
+  queue: {
+    maxListings: +(Deno.env.get("MAX_LISTINGS") || 2),
+    maxDownloads: +(Deno.env.get("MAX_DOWNLOADS") || 2),
+    cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *", // every 10 minutes
+    maxIdle: +(Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000), // 5 minutes
+  },
+  registration: {
+    allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",
+    maxUsers: +(Deno.env.get("MAX_USERS") || 15),
+  },
+  saveLocation: Deno.env.get("SAVE_PATH") ||
+    "/home/sagnik/Documents/syncthing/pi5/yt-diff-data/",
+  cookiesFile: Deno.env.get("COOKIES_FILE")
+    ? fs.existsSync(Deno.env.get("COOKIES_FILE")!)
+      ? Deno.env.get("COOKIES_FILE")
+      : new Error(`Cookies file not found: ${Deno.env.get("COOKIES_FILE")}`)
+    : false,
+  proxy_string: (() => {
+    try {
+      return Deno.env.get("PROXY_STRING_FILE")
+        ? fs.readFileSync(Deno.env.get("PROXY_STRING_FILE")!, "utf8").trim()
+          .replace(/['"\n]+/g, "")
+        : Deno.env.get("PROXY_STRING") && Deno.env.get("PROXY_STRING")!.trim()
+        ? `${Deno.env.get("PROXY_STRING")!.trim().replace(/['"\n]+/g, "")}` // make sure it's not quoted
+        : ""; // if both are not set, proxy will be empty i.e. direct connection
+    } catch (e) {
+      return e instanceof Error ? e : new Error(String(e));
+    }
+  })(),
+  sleepTime: Deno.env.get("SLEEP") ?? 3,
+  chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
+  scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/10 * * * *",
+  pruneInterval: Deno.env.get("PRUNE_INTERVAL") || "*/10 * * * *",
+  timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
+  saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
+  saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
+  saveComments: Deno.env.get("SAVE_COMMENTS") !== "false",
+  saveThumbnail: Deno.env.get("SAVE_THUMBNAIL") !== "false",
+  restrictFilenames: Deno.env.get("RESTRICT_FILENAMES") !== "false",
+  maxFileNameLength: +(Deno.env.get("MAX_FILENAME_LENGTH") || NaN), // No truncation by default
+  logLevel: (Deno.env.get("LOG_LEVELS") || "trace").toLowerCase(),
+  logDisableColors: Deno.env.get("NO_COLOR") === "true",
+  maxTitleLength: 255,
+  saltRounds: 10,
+  secretKey: (() => {
+    try {
+      return Deno.env.get("SECRET_KEY_FILE")
+        ? fs.readFileSync(Deno.env.get("SECRET_KEY_FILE")!, "utf8").trim()
+        : Deno.env.get("SECRET_KEY") && Deno.env.get("SECRET_KEY")!.trim()
+        ? Deno.env.get("SECRET_KEY")!.trim()
+        : new Error(
+          "SECRET_KEY or SECRET_KEY_FILE environment variable must be set",
+        );
+    } catch (e) {
+      return e instanceof Error ? e : new Error(String(e));
+    }
+  })(),
+  iwara: (() => {
+    let conf: any = {};
+    let parseError: Error | null = null;
+    try {
+      // IWARA_CONF_FILE takes precedence over IWARA_CONF (you can pass the json string as well)
+      const confStr = Deno.env.get("IWARA_CONF_FILE")
+        ? fs.readFileSync(Deno.env.get("IWARA_CONF_FILE")!, "utf8").trim()
+        : Deno.env.get("IWARA_CONF") && Deno.env.get("IWARA_CONF")!.trim()
+        ? Deno.env.get("IWARA_CONF")!.trim()
+        : "";
+      if (confStr) {
+        conf = JSON.parse(confStr);
+      }
+    } catch (e) {
+      parseError = e instanceof Error ? e : new Error(String(e));
+    }
+    return {
+      // Finally we check for IWARA_USERNAME and IWARA_PASSWORD if not found then empty string
+      username: Deno.env.get("IWARA_USERNAME") || conf.username || "",
+      password: Deno.env.get("IWARA_PASSWORD") || conf.password || "",
+      _parseError: parseError,
+    };
+  })(),
+  maxClients: 10,
+  connectedClients: 0,
+};
+const YT_DLP_PATCHED_CMD =
+  "import curl_cffi.curl; curl_cffi.curl.Curl.reset = lambda self: None; import sys, yt_dlp; sys.exit(yt_dlp.main())";
+
+// Logging
+const logLevels = ["trace", "debug", "verbose", "info", "warn", "error"];
+const currentLogLevelIndex = logLevels.indexOf(config.logLevel);
+const orange = color.xterm(208);
+const honeyDew = color.xterm(194);
+if (config.logDisableColors || !Deno.stdout.isTerminal()) {
+  (color as any).enabled = false;
+}
+
+/**
+ * Formats a log entry in logfmt style.
+ *
+ * @param {string} level - The log level (e.g., 'info', 'error').
+ * @param {string} message - The log message.
+ * @param {Object} [fields={}] - Additional fields to include in the log entry.
+ * @param {string|number|boolean|Error|null|undefined} [fields.*] - The value of the additional field.
+ *        Strings will be escaped, Errors will include message and stack trace, null and undefined will be logged as null.
+ * @returns {string} The formatted log entry.
+ */
+const logfmt = (level: string, message: string, fields: LogFields = {}) => {
+  let logEntry = `level=${level} msg="${
+    message
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\r?\n/g, "\\n")
+  }"`;
+  logEntry += ` ts=${new Date().toISOString()}`;
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value === "string") {
+      logEntry += ` ${key}="${
+        value
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, "\\n")
+      }"`;
+    } else if (value instanceof Error) {
+      logEntry += ` ${key}="${
+        value.message
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\r?\n/g, "\\n")
+      }"`;
+      if (value.stack) {
+        logEntry += ` ${key}_stack="${
+          value.stack
+            .replace(/\\/g, "\\\\")
+            .replace(/"/g, '\\"')
+            .replace(/\r?\n/g, "\\n")
+        }"`;
+      }
+    } else if (value === null || value === undefined) {
+      logEntry += ` ${key}=null`;
+    } else {
+      logEntry += ` ${key}=${value}`;
+    }
+  }
+  return logEntry;
+};
+/**
+ * Logger object with various logging levels.
+ *
+ * @property {function(string, object=): void} trace - Logs a trace level message.
+ * @property {function(string, object=): void} debug - Logs a debug level message.
+ * @property {function(string, object=): void} verbose - Logs a verbose level message.
+ * @property {function(string, object=): void} info - Logs an info level message.
+ * @property {function(string, object=): void} warn - Logs a warn level message.
+ * @property {function(string, object=): void} error - Logs an error level message.
+ *
+ * @example
+ * logger.trace('This is a trace message', { additional: 'info' });
+ * logger.debug('This is a debug message', { additional: 'info' });
+ * logger.info('This is an info message', { additional: 'info' });
+ * logger.warn('This is a warning message', { additional: 'info' });
+ * logger.error('This is an error message', { additional: 'info' });
+ */
+const logger = {
+  trace: (message: string, fields: LogFields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("trace")) {
+      console.debug(honeyDew(logfmt("trace", message, fields)));
+    }
+  },
+  debug: (message: string, fields: LogFields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("debug")) {
+      console.debug(color.magentaBright(logfmt("debug", message, fields)));
+    }
+  },
+  info: (message: string, fields: LogFields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("info")) {
+      console.log(color.blueBright(logfmt("info", message, fields)));
+    }
+  },
+  warn: (message: string, fields: LogFields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("warn")) {
+      console.warn(orange(logfmt("warn", message, fields)));
+    }
+  },
+  error: (message: string, fields: LogFields = {}) => {
+    if (currentLogLevelIndex <= logLevels.indexOf("error")) {
+      console.error(color.redBright(logfmt("error", message, fields)));
+    }
+  },
+};
+
+logger.info("Logger initialized", { logLevel: config.logLevel });
+
+/**
+ * An array of download options for a YouTube downloader.
+ * The options are conditionally included based on the configuration settings.
+ *
+ * Options included:
+ * - "--embed-metadata": Always included to embed metadata in the downloaded file.
+ * - "--embed-chapters": Always included to embed chapters in the downloaded file.
+ * - "--write-subs": Included if `config.saveSubs` is true, to write subtitles.
+ * - "--write-auto-subs": Included if `config.saveSubs` is true, to write automatic subtitles.
+ * - "--write-description": Included if `config.saveDescription` is true, to write the video description.
+ * - "--write-comments": Included if `config.saveComments` is true, to write the video comments.
+ * - "--write-thumbnail": Included if `config.saveThumbnail` is true, to write the video thumbnail.
+ * - "--paths": Always included to specify the download paths.
+ *
+ * Options that are supported but not included by default:
+ * - "--embed-thumbnail": This option is not included as it is not be supported for webm formats and can cause conversion to mkv/mp4, which adds time to the process.
+ * - "--embed-subs": This option is not included as embedding subtitles to every video may not be possible depending on the format.
+ *
+ * The array is filtered to remove any empty strings.
+ */
+const downloadOptions = [
+  "--progress",
+  "--embed-metadata",
+  "--embed-chapters",
+  config.saveSubs ? "--write-subs" : "",
+  config.saveSubs ? "--write-auto-subs" : "",
+  config.saveDescription ? "--write-description" : "",
+  config.saveComments ? "--write-comments" : "",
+  config.saveThumbnail ? "--write-thumbnail" : "",
+  config.restrictFilenames ? "--restrict-filenames" : "",
+  "-P",
+  "temp:/tmp",
+  "-o",
+  config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
+  "--print",
+  "before_dl:title:%(title)s [%(id)s]",
+  "--print",
+  config.restrictFilenames
+    ? 'post_process:"fileName:%(id)s.%(ext)s"'
+    : 'post_process:"fileName:%(title)s[%(id)s].%(ext)s"',
+  "--progress-template",
+  "download-title:%(info.id)s-%(progress.eta)s",
+].filter(Boolean) as string[];
+// Check if file name length limit is set and valid
+if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
+  downloadOptions.push(`--trim-filenames`);
+  downloadOptions.push(`${config.maxFileNameLength}`);
+}
+// Regex needs to be separate
+const playlistRegex = /(?:playlist|list=|videos$)\b/i;
+
+// Static content and server configuration
+const MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".html": "text/html; charset=utf-8",
+  ".webmanifest": "application/manifest+json",
+  ".xml": "application/xml",
+  ".gz": "application/gzip",
+  ".br": "application/brotli",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
+  ".avi": "video/x-msvideo",
+};
+const CORS_ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  // `http://localhost:${config.port}`,
+  // `${config.protocol}://${config.host}:${config.port}`,
+  // "*"
+];
+const CORS_ALLOWED_HEADERS = [
+  "GET",
+  "POST",
+  "PUT",
+  "DELETE",
+  "OPTIONS",
+];
+
+if (config.secretKey instanceof Error) {
+  logger.error("Configuration error", { error: config.secretKey });
+  throw config.secretKey;
+}
+if (config.db.password instanceof Error) {
+  logger.error("Configuration error", { error: config.db.password });
+  throw config.db.password;
+}
+if (config.cookiesFile instanceof Error) {
+  logger.warn("Cookies file configuration error, proceeding without cookies", {
+    error: config.cookiesFile,
+  });
+  config.cookiesFile = false;
+}
+if (config.proxy_string instanceof Error) {
+  logger.warn(
+    "Proxy string configuration error, proceeding with direct connection",
+    {
+      error: config.proxy_string,
+    },
+  );
+  config.proxy_string = "";
+}
+if (config.iwara._parseError) {
+  logger.error("Failed to parse IWARA config", {
+    error: config.iwara._parseError,
+  });
+}
+if (!fs.existsSync(config.saveLocation)) {
+  logger.info("Save location doesn't exists", {
+    saveLocation: config.saveLocation,
+  });
+  try {
+    logger.info("Creating save location", {
+      saveLocation: config.saveLocation,
+    });
+    fs.mkdirSync(config.saveLocation, { recursive: true });
+  } catch (error) {
+    logger.error("Failed to create save location", {
+      saveLocation: config.saveLocation,
+      error: (error as Error).message,
+    });
+    throw new Error(
+      `Failed to create save location: ${(error as Error).message}`,
+    );
+  }
+}
+
+const redis = new (Redis as any)({
+  host: config.redis.host,
+  port: config.redis.port,
+  password: config.redis.password,
+});
+
+redis.on("error", (err: Error) => {
+  logger.error("Redis error", { error: err.message });
+});
+
+redis.on("connect", () => {
+  logger.info("Connected to Redis");
+});
+
+/**
+ * Safely emit socket.io events if socket server is available.
+ * Wraps emit calls in try/catch to avoid crashing the process when socket is not ready.
+ * @param {string} event - Event name
+ * @param {any} payload - Event payload
+ */
+function safeEmit(event: string, payload: unknown) {
+  try {
+    if (
+      typeof sock !== "undefined" && sock && typeof sock.emit === "function"
+    ) {
+      sock.emit(event, payload);
+    }
+  } catch (e) {
+    logger.warn("safeEmit failed", {
+      event,
+      error: e instanceof Error ? e.message : "Unknown error",
+    });
+  }
+}
+
+// Database
+const sequelize = new Sequelize({
+  host: config.db.host,
+  dialect: "postgres",
+  dialectModule: pg,
+  logging: false,
+  username: config.db.user,
+  password: config.db.password,
+  database: config.db.name,
+  pool: {
+    max: 15,
+    min: 0,
+    acquire: 30000,
+    idle: 10000,
+  },
+});
+try {
+  sequelize.authenticate().then(() => {
+    logger.info("Connection to database has been established successfully", {
+      host: config.db.host,
+      database: config.db.name,
+    });
+  });
+} catch (error) {
+  logger.error("Unable to connect to the database", {
+    host: config.db.host,
+    database: config.db.name,
+    error: (error as Error).message,
+  });
+  throw error;
+}
+
+/**
+ * VideoMetadata - Stores core information about each video
+ * Primary table for video information tracking
+ */
+const VideoMetadata = sequelize.define("video_metadata", {
+  videoUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+  },
+  videoId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "YouTube/platform-specific video identifier",
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  approximateSize: {
+    type: DataTypes.BIGINT,
+    allowNull: false,
+    comment: "Estimated file size in bytes",
+  },
+  downloadStatus: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "Whether video has been downloaded",
+  },
+  isAvailable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    comment: "Whether video is still available on platform",
+  },
+  fileName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      "Name of the file on disk, should have the extension. null if not downloaded.",
+  },
+  thumbNailFile: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Thumbnail generated by yt-dlp",
+  },
+  onlineThumbnail: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment:
+      "Online thumbnail URL scraped from yt-dlp, used as fallback when thumbNailFile is not available. TEXT type because some CDN URLs exceed 255 chars.",
+  },
+  subTitleFile: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Subtitle generated by yt-dlp",
+  },
+  commentsFile: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Comments file generated by yt-dlp",
+  },
+  descriptionFile: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      "Description retrieved by yt-dlp, not sure yet if I will save the path or read the data and save it here.",
+  },
+  isMetaDataSynced: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment:
+      "This will serve as a marker for other processes to know if they need to sync metadata from downloaded files",
+  },
+  saveDirectory: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      "Directory relative to saveLocation where files are stored. null if not downloaded, empty string for root.",
+  },
+  raw_metadata: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment:
+      "Full pruned yt-dlp JSON output for future use (tags, age rating, etc). Bulky arrays like formats/thumbnails/subtitles are removed before storage.",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  defaultScope: {
+    attributes: { exclude: ["raw_metadata"] },
+  },
+});
+
+/**
+ * PlaylistMetadata - Stores information about playlists
+ * Tracks playlist details and monitoring settings
+ */
+const PlaylistMetadata = sequelize.define("playlist_metadata", {
+  playlistUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Order in which playlists are displayed",
+  },
+  monitoringType: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "Type of monitoring applied to playlist",
+  },
+  saveDirectory: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "Directory path for downloaded videos",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  lastUpdatedByScheduler: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    comment:
+      "Timestamp of the last update made by the scheduler, default value is createdAt",
+  },
+});
+
+/**
+ * PlaylistVideoMapping - Junction table for playlist-video relationships
+ * Manages many-to-many relationships between playlists and videos
+ * - A video can belong to multiple playlists
+ * - Each video can have different positions in different playlists
+ * - Enables efficient querying of playlist contents and video memberships
+ */
+const PlaylistVideoMapping = sequelize.define("playlist_video_mapping", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  videoUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    references: {
+      model: VideoMetadata,
+      key: "videoUrl",
+    },
+    onUpdate: "CASCADE",
+    onDelete: "CASCADE",
+    comment: "Foreign key linking to VideoMetadata",
+  },
+  playlistUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    references: {
+      model: PlaylistMetadata,
+      key: "playlistUrl",
+    },
+    onUpdate: "CASCADE",
+    onDelete: "CASCADE",
+    comment: "Foreign key linking to PlaylistMetadata",
+  },
+  positionInPlaylist: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Order of video within playlist",
+  },
+}, {
+  indexes: [
+    {
+      fields: ["playlistUrl", "positionInPlaylist"],
+    },
+  ],
+});
+
+/**
+ * UserAccount - Stores user authentication information
+ * Manages user credentials and access control
+ */
+const UserAccount = sequelize.define("user_account", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  username: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  passwordHash: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "Hashed password using bcrypt",
+  },
+  passwordSalt: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "Salt used in password hashing",
+  },
+});
+
+/**
+ * Database Relationships
+ *
+ * Videos to Playlists (Many-to-Many):
+ * - Videos can belong to multiple playlists
+ * - Playlists can contain multiple videos
+ * - PlaylistVideoMapping manages the relationships
+ * - Each mapping includes video position in playlist
+ *
+ * Cascading Deletes:
+ * - Deleting a video removes all its playlist mappings
+ * - Deleting a playlist removes all its video mappings
+ */
+
+// Define relationships
+PlaylistVideoMapping.belongsTo(VideoMetadata, {
+  foreignKey: "videoUrl",
+});
+
+PlaylistVideoMapping.belongsTo(PlaylistMetadata, {
+  foreignKey: "playlistUrl",
+});
+
+VideoMetadata.hasMany(PlaylistVideoMapping, {
+  foreignKey: "videoUrl",
+});
+
+PlaylistMetadata.hasMany(PlaylistVideoMapping, {
+  foreignKey: "playlistUrl",
+});
+
+sequelize
+  .sync({ alter: true })
+  .then(async () => {
+    logger.info(
+      "tables exist or are created successfully",
+      {
+        host: config.db.host,
+        database: config.db.name,
+        tables: JSON.stringify([
+          (VideoMetadata as unknown as { name: string }).name,
+          (PlaylistMetadata as unknown as { name: string }).name,
+          (PlaylistVideoMapping as unknown as { name: string }).name,
+        ]),
+      },
+    );
+
+    // Phase 2: Strategic Indexing - Trigram Indexes for Search
+    try {
+      await sequelize.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_video_metadata_title_trgm ON video_metadata USING gin (title gin_trgm_ops);",
+      );
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_metadata_title_trgm ON playlist_metadata USING gin (title gin_trgm_ops);",
+      );
+      logger.info("Trigram indexes checked/created successfully");
+    } catch (err) {
+      logger.error("Failed to create Trigram indexes", {
+        error: (err as Error).message,
+      });
+    }
+
+    // Making the unlisted playlist
+    const [unlistedPlaylist, created] = await PlaylistMetadata.findOrCreate({
+      where: { playlistUrl: "None" },
+      defaults: {
+        title: "None",
+        monitoringType: "N/A",
+        saveDirectory: "",
+        lastUpdatedByScheduler: new Date(0),
+        sortOrder: -1,
+      },
+    });
+    if (created) {
+      logger.info(
+        "Unlisted playlist created successfully",
+        {
+          host: config.db.host,
+          database: config.db.name,
+          tables: JSON.stringify([
+            (unlistedPlaylist as unknown as { name: string }).name,
+          ]),
+        },
+      );
+    }
+    // Replace the existing default user creation code with:
+    const defaultUserCheck = await UserAccount.count();
+    if (defaultUserCheck === 0) {
+      logger.warn(
+        "No users exist in the database. Please create a user account.",
+        { setup_required: true },
+      );
+    } else {
+      logger.info(
+        "Users exist in database",
+        { user_count: defaultUserCheck },
+      );
+    }
+  })
+  .catch((error: Error) => {
+    logger.error(`Unable to create table`, { error: error });
+  });
+
+// Scheduler
+const jobs = {
+  // TODO:
+  // 1. Implement scheduled updates to check playlists for new videos
+  cleanup: new CronJob(
+    config.queue.cleanUpInterval,
+    () => {
+      logger.debug("Starting scheduled process cleanup");
+      // Cleanup download processes
+      const cleanedDownloads = cleanupStaleProcesses(
+        downloadProcesses,
+        {
+          maxIdleTime: config.queue.maxIdle,
+          forceKill: true,
+        },
+        "download",
+      );
+      // Cleanup list processes
+      const cleanedLists = cleanupStaleProcesses(
+        listProcesses,
+        {
+          maxIdleTime: config.queue.maxIdle,
+          forceKill: true,
+        },
+        "list",
+      );
+      logger.info("Completed scheduled process cleanup", {
+        cleanedDownloads,
+        cleanedLists,
+        nextRun: jobs.cleanup.nextDate().toLocaleString(
+          {
+            weekday: "short",
+            month: "short",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+        ),
+      });
+    },
+    null,
+    true,
+    config.timeZone,
+  ),
+  update: new CronJob(
+    config.scheduledUpdateStr,
+    () => {
+      logger.debug("Starting scheduled update", {
+        time: new Date().toLocaleString("en-US", { timeZone: config.timeZone }),
+        timeZone: config.timeZone,
+        nextRun: jobs.update.nextDate().toLocaleString(
+          {
+            weekday: "short",
+            month: "short",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+          { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+        ),
+      });
+      // Run scheduled playlist updates.
+      // Fast mode: best for channels/playlists where new items appear at the top.
+      //   - Streams from the beginning; exits early once 2 consecutive chunks
+      //     are fully duplicate (handled inside handlePlaylistStreaming).
+      // Full mode: full re-scan — use sparingly (bandwidth-intensive).
+      //   - Intended for playlists where items are appended at the bottom.
+      // Processes spawned here are tracked in listProcesses and killed by the
+      // cleanup job if they stall.
+      void (async () => {
+        try {
+          const allPlaylists = await PlaylistMetadata.findAll({
+            where: {
+              monitoringType: {
+                [Op.in]: ["Start", "End", "Full"],
+              },
+            },
+          });
+
+          if (allPlaylists.length === 0) {
+            logger.info(
+              "No playlists with Start/End/Full monitoring found; skipping update",
+            );
+            return;
+          }
+
+          // Separate start, end, and full playlists
+          const startPlaylists = allPlaylists.filter(
+            (p: Model) => p.getDataValue("monitoringType") === "Start",
+          );
+          const endPlaylists = allPlaylists.filter(
+            (p: Model) => p.getDataValue("monitoringType") === "End",
+          );
+          const fullPlaylists = allPlaylists.filter(
+            (p: Model) => p.getDataValue("monitoringType") === "Full",
+          );
+
+          logger.info("Scheduler: starting playlist updates", {
+            startCount: startPlaylists.length,
+            endCount: endPlaylists.length,
+            fullCount: fullPlaylists.length,
+          });
+
+          // Build item descriptors for the listing pipeline.
+          // isScheduledUpdate=true bypasses the "same monitoringType → skip" guard
+          // inside executeListing so that re-listing actually occurs.
+          const startItems = startPlaylists.map((p: Model) => ({
+            url: p.getDataValue("playlistUrl") as string,
+            type: "playlist",
+            currentMonitoringType: "Start",
+            isScheduledUpdate: true,
+            reason: "Scheduled Start update",
+          }));
+
+          const endItems = endPlaylists.map((p: Model) => ({
+            url: p.getDataValue("playlistUrl") as string,
+            type: "playlist",
+            currentMonitoringType: "End",
+            isScheduledUpdate: true,
+            reason: "Scheduled End update",
+          }));
+
+          const fullItems = fullPlaylists.map((p: Model) => ({
+            url: p.getDataValue("playlistUrl") as string,
+            type: "playlist",
+            currentMonitoringType: "Full",
+            isScheduledUpdate: true,
+            reason: "Scheduled Full update",
+          }));
+
+          // Run Start and End updates first (they are cheaper).
+          // Full updates run after so they don't hog the listing slots.
+          // We can wait for the results here as this is a background job so no need to be time-bound
+          // This is a note to myself to deter me form trying to make it a function().then().catch() thingy
+          const results = await listItemsConcurrently(
+            [...startItems, ...endItems, ...fullItems],
+            config.chunkSize,
+            /* isScheduledUpdate */ true,
+          );
+
+          const completedCount = results.filter(
+            (r: { status?: string }) =>
+              r && (r.status === "completed" || r.status === "success"),
+          ).length;
+
+          logger.info("Completed scheduled updates", {
+            totalPlaylists: allPlaylists.length,
+            completedCount,
+            nextRun: jobs.update.nextDate().toLocaleString(
+              {
+                weekday: "short",
+                month: "short",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              },
+              { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+            ),
+          });
+        } catch (err) {
+          logger.error("Scheduled update failed", {
+            error: (err as Error).message,
+            stack: (err as Error).stack,
+          });
+        }
+      })();
+    },
+    null,
+    true,
+    config.timeZone,
+  ),
+  prune: new CronJob(
+    config.pruneInterval,
+    () => {
+      logger.debug("Starting scheduled DB prune process");
+      void (async () => {
+        try {
+          // Find unreferenced videos using a NOT EXISTS subquery to avoid loading large arrays into memory
+          const unreferencedVideos = await VideoMetadata.findAll({
+            where: sequelize.literal(`NOT EXISTS (
+              SELECT 1 FROM playlist_video_mappings 
+              WHERE playlist_video_mappings."videoUrl" = video_metadata."videoUrl"
+            )`),
+          });
+
+          if (unreferencedVideos.length === 0) {
+            logger.info("No unreferenced videos found to prune");
+            return;
+          }
+
+          const mappingsToCreate = [];
+          const videoUrlsToDestroy = [];
+
+          const maxPositionResult = await PlaylistVideoMapping.max(
+            "positionInPlaylist",
+            {
+              where: { playlistUrl: "None" },
+            },
+          );
+          const maxPosition =
+            typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
+              ? maxPositionResult
+              : -1;
+          let nextPosition = maxPosition;
+
+          for (const video of unreferencedVideos) {
+            const isDownloaded = video.getDataValue("downloadStatus");
+            const videoUrl = video.getDataValue("videoUrl");
+
+            if (isDownloaded) {
+              mappingsToCreate.push({
+                videoUrl: videoUrl,
+                playlistUrl: "None",
+                positionInPlaylist: ++nextPosition,
+              });
+            } else {
+              videoUrlsToDestroy.push(videoUrl);
+            }
+          }
+
+          if (mappingsToCreate.length > 0) {
+            await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
+            logger.info(
+              "Moved unreferenced downloaded videos to 'None' playlist",
+              {
+                count: mappingsToCreate.length,
+              },
+            );
+          }
+
+          if (videoUrlsToDestroy.length > 0) {
+            await VideoMetadata.destroy({
+              where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
+            });
+            logger.info("Pruned unreferenced non-downloaded videos", {
+              count: videoUrlsToDestroy.length,
+            });
+          }
+
+          const movedCount = mappingsToCreate.length;
+          const prunedCount = videoUrlsToDestroy.length;
+
+          logger.info("Completed DB prune process", {
+            movedCount,
+            prunedCount,
+            nextRun: jobs.prune.nextDate().toLocaleString(
+              {
+                weekday: "short",
+                month: "short",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              },
+              { timeZone: config.timeZone } as Intl.DateTimeFormatOptions,
+            ),
+          });
+        } catch (err) {
+          logger.error("DB prune process failed", {
+            error: (err as Error).message,
+            stack: (err as Error).stack,
+          });
+        }
+      })();
+    },
+    null,
+    true,
+    config.timeZone,
+  ),
+};
+
+// Utility functions
+/**
+ * Extracts and parses JSON data from a request stream
+ *
+ * @param {http.IncomingMessage} request - The HTTP request object
+ * @returns {Promise<Object>} Parsed JSON data from request body
+ * @throws {Object} Error with status code and message if request is too large or JSON is invalid
+ */
+function parseRequestJson(request: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let requestBody = "";
+    const maxRequestSize = 1e6; // 1MB limit
+
+    request.on("data", (chunk: Buffer) => {
+      requestBody += chunk;
+
+      // Check request size
+      if (requestBody.length > maxRequestSize) {
+        logger.warn("Request exceeded size limit", {
+          ip: request.socket.remoteAddress,
+          url: request.url,
+          size: requestBody.length,
+          method: request.method,
+        });
+
+        request.destroy();
+        reject({ status: 413, message: "Request Too Large" });
+      }
+    });
+
+    request.on("end", () => {
+      if (requestBody.length === 0) {
+        logger.warn("Empty request body", {
+          ip: request.socket.remoteAddress,
+          url: request.url,
+          method: request.method,
+        });
+
+        reject({ status: 400, message: "Empty Request Body" });
+        return;
+      }
+
+      try {
+        const parsedData = JSON.parse(requestBody);
+        resolve(parsedData);
+      } catch (error) {
+        logger.error("Failed to parse JSON", {
+          ip: request.socket.remoteAddress,
+          url: request.url,
+          size: requestBody.length,
+          method: request.method,
+          error: (error as Error).message,
+        });
+
+        reject({ status: 400, message: "Invalid JSON" });
+      }
+    });
+    request.on("error", (err: Error) => {
+      reject({
+        status: 500,
+        message: "Request stream error",
+        error: err.message,
+      });
+    });
+  });
+}
+/**
+ * Fixes common URL formatting issues for various platforms
+ *
+ * @param {string} url - URL to process
+ * @returns {string} Fixed URL
+ */
+function normalizeUrl(url: string) {
+  let hostname = "";
+  try {
+    hostname = (new URL(url)).hostname;
+  } catch (e) {
+    logger.warn(`Invalid videoUrl: ${url}`, { error: (e as Error).message });
+  }
+  // Non-exhaustive list of YouTube hostnames, can be expanded as needed
+  // Also handles youtu.be short URLs
+  // https://support.google.com/youtube/answer/6180214?hl=en
+  const youtubeHostNames = [
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "www.youtu.be",
+    "m.youtube.com",
+    "www.m.youtube.com",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com",
+  ];
+  if (youtubeHostNames.includes(hostname)) {
+    // Add /videos to YouTube channel URLs if missing
+    if (!/\/videos\/?$/.test(url) && url.includes("/@")) {
+      url = url.replace(/\/$/, "") + "/videos";
+    }
+    logger.debug(`Normalized YouTube URL: ${url}`);
+  }
+  return url;
+}
+/**
+ * Generates a title from a URL by extracting meaningful path segments
+ *
+ * @param {string} url - URL to convert to title
+ * @returns {Promise<string>} Generated title
+ */
+function urlToTitle(url: string) {
+  try {
+    // Extract path segments and join them
+    const pathSegments = new URL(url).pathname.split("/");
+    const unwantedSegments = new Set(["videos", "channel", "user", "playlist"]);
+
+    const titleSegments = pathSegments.filter((segment) =>
+      segment && !unwantedSegments.has(segment.toLowerCase())
+    );
+
+    return titleSegments.join("_") || url;
+  } catch (error) {
+    logger.error("Failed to generate title from URL", {
+      url,
+      error: (error as Error).message,
+    });
+    return url;
+  }
+}
+/**
+ * Pauses execution for specified duration
+ *
+ * @param {number} [seconds=config.sleepTime] - Duration to sleep in seconds
+ * @returns {Promise<void>} Resolves after sleep completes
+ */
+async function sleep(seconds = config.sleepTime) {
+  logger.trace(`Sleeping for ${seconds} seconds`);
+
+  const start = Date.now();
+  await new Promise((resolve) =>
+    setTimeout(resolve, (seconds as number) * 1000)
+  );
+  const duration = (Date.now() - start) / 1000;
+
+  logger.trace(`Sleep completed after ${duration} seconds`);
+}
+/**
+ * Truncates a string to specified length if needed
+ *
+ * @param {string} text - Text to truncate
+ * @param {number} maxLength - Maximum allowed length
+ * @returns {Promise<string>} Truncated string
+ */
+function truncateText(text: string, maxLength: number) {
+  if (!text || typeof text !== "string") {
+    logger.warn("Invalid text provided for truncation", {
+      text,
+      type: typeof text,
+    });
+    return "";
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const truncated = text.slice(0, maxLength);
+  logger.debug(
+    `Truncated text from ${text.length} to ${truncated.length} characters`,
+  );
+  return truncated;
+}
+/**
+ * Checks if the given video URL belongs to x.com or any of its subdomains.
+ *
+ * @param {string} videoUrl - The URL of the video to check.
+ * @returns {boolean} True if the URL's hostname is x.com or a subdomain of x.com, false otherwise.
+ */
+function isSiteXDotCom(videoUrl: string): boolean {
+  let hostname = "";
+  try {
+    hostname = (new URL(videoUrl)).hostname;
+  } catch (e) {
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
+      error: (e as Error).message,
+    });
+  }
+  // Only match x.com or its subdomains (e.g. foo.x.com)
+  const allowedXHost = "x.com";
+  const isAllowedXCom = hostname === allowedXHost ||
+    hostname.endsWith("." + allowedXHost);
+  return isAllowedXCom;
+}
+/**
+ * Checks if the given video URL belongs to a site whose thumbnail URLs are
+ * ephemeral (signed CDN URLs that expire within hours/days).
+ * Currently covers: facebook.com, instagram.com, pornhub.com and their subdomains.
+ *
+ * @param {string} videoUrl - The URL of the video to check.
+ * @returns {boolean} True if the site's thumbnails are known to be ephemeral.
+ */
+function hasEphemeralThumbnails(videoUrl: string): boolean {
+  let hostname = "";
+  try {
+    hostname = (new URL(videoUrl)).hostname;
+  } catch {
+    return false;
+  }
+  const ephemeralHosts = ["facebook.com", "instagram.com", "pornhub.com"];
+  return ephemeralHosts.some(
+    (h) => hostname === h || hostname.endsWith("." + h),
+  );
+}
+
+/**
+ * Checks if the given video URL belongs to iwara.tv or any of its subdomains.
+ *
+ * @param {string} videoUrl - The URL of the video to check.
+ * @returns {boolean} True if the URL's hostname is iwara.tv or a subdomain of iwara.tv, false otherwise.
+ */
+function isSiteIwaraDotTv(videoUrl: string): boolean {
+  let hostname = "";
+  try {
+    hostname = (new URL(videoUrl)).hostname;
+  } catch (e) {
+    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
+      error: (e as Error).message,
+    });
+  }
+  // Only match iwara.tv or its subdomains (e.g. foo.iwara.tv)
+  const allowedIwaraHost = "iwara.tv";
+  const isAllowedIwaraDotTv = hostname === allowedIwaraHost ||
+    hostname.endsWith("." + allowedIwaraHost);
+  return isAllowedIwaraDotTv;
+}
+
+// Site specific argument builders
+export type SiteArgBuilder = (url: string, config: any) => string[];
+
+const siteArgBuilders: SiteArgBuilder[] = [
+  // x.com
+  (url, config) => {
+    if (config.cookiesFile && isSiteXDotCom(url)) {
+      logger.debug(`Using cookies file: ${config.cookiesFile}`);
+      return ["--cookies", config.cookiesFile as string];
+    }
+    return [];
+  },
+  // iwara.tv
+  (url, config) => {
+    if (isSiteIwaraDotTv(url)) {
+      const args = ["--impersonate", "Chrome-133"];
+      if (config.iwara && config.iwara.username && config.iwara.password) {
+        args.push(
+          "--username",
+          config.iwara.username,
+          "--password",
+          config.iwara.password,
+        );
+      }
+      return args;
+    }
+    return [];
+  },
+];
+
+export function buildSiteArgs(url: string, config: any): string[] {
+  const args = siteArgBuilders.flatMap((builder) => builder(url, config));
+  if (config.proxy_string && !isSiteIwaraDotTv(url)) {
+    args.push("--proxy", config.proxy_string);
+  }
+  return args;
+}
+
+//Authentication functions
+/**
+ * Hashes a password using bcrypt with configurable salt rounds
+ *
+ * @param {string} plaintextPassword - The password to hash
+ * @returns {Promise<[string, string]>} Promise resolving to [salt, hashedPassword]
+ * @throws {Error} If hashing fails
+ */
+async function hashPassword(
+  plaintextPassword: string,
+): Promise<[string, string]> {
+  try {
+    const salt = await bcrypt.genSalt(config.saltRounds);
+    const hashedPassword = await bcrypt.hash(plaintextPassword, salt);
+    return [salt, hashedPassword];
+  } catch (error) {
+    logger.error("Password hashing failed", {
+      error: (error as Error).message,
+    });
+    throw new Error("Failed to secure password");
+  }
+}
+/**
+ * Generates a JWT token for authenticated user sessions
+ *
+ * @param {Object} user - User object from database
+ * @param {string} user.id - User's unique identifier
+ * @param {Date} user.updatedAt - Timestamp of last password update
+ * @param {string} expiryDuration - Token expiry duration (e.g., "24h", "7d")
+ * @returns {string} JWT token
+ */
+function generateAuthToken(
+  user: { id: string; updatedAt: Date },
+  expiryDuration: string,
+): string {
+  return jwt.sign(
+    {
+      id: user.id,
+      lastPasswordChangeTime: user.updatedAt,
+    },
+    config.secretKey as string,
+    { expiresIn: expiryDuration as any },
+  );
+}
+/**
+ * Handles user registration with password validation and duplicate checks
+ *
+ * @param {Object} request - HTTP request object
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when registration completes
+ */
+async function registerUser(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  try {
+    // Check if registration is enabled
+    if (!config.registration.allowed) {
+      response.writeHead(403, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Registration is currently disabled",
+      }));
+    }
+
+    // Check user limit
+    const userCount = await UserAccount.count();
+    if (userCount >= config.registration.maxUsers) {
+      response.writeHead(403, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Maximum number of users reached",
+      }));
+    }
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request) as Record<string, unknown>;
+    } catch (error) {
+      logger.error("Failed to parse request JSON", {
+        error: (error as Error).message,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: `${(error as Error).message || "Invalid request"}`,
+      }));
+    }
+    const { userName, password } = requestData as {
+      userName: string;
+      password: string;
+    };
+
+    // Validate password length (bcrypt limit is 72 bytes)
+    if (Buffer.byteLength(password, "utf8") > 72) {
+      logger.error("Password too long", {
+        userName,
+        passwordLength: Buffer.byteLength(password, "utf8"),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Password exceeds maximum length",
+      }));
+    }
+
+    // Check for existing user
+    const existingUser = await UserAccount.findOne({
+      where: { username: userName },
+    });
+
+    if (existingUser) {
+      response.writeHead(409, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Username already exists",
+      }));
+    }
+
+    // Create new user
+    const [salt, hashedPassword] = await hashPassword(password);
+    await UserAccount.create({
+      username: userName,
+      passwordSalt: salt,
+      passwordHash: hashedPassword,
+    });
+
+    response.writeHead(201, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "success",
+      message: "User registered successfully",
+    }));
+  } catch (error) {
+    logger.error("Registration failed", { error: (error as Error).message });
+    response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "error",
+      message: "Registration failed",
+    }));
+  }
+}
+/**
+ * Checks if user registration is allowed based on current settings
+ *
+ * @param {*} request Request object to read any parameters
+ * @param {*} response Response object to send result
+ * @returns {Promise<void>} Resolves with registration status
+ */
+async function isRegistrationAllowed(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  let allow = true;
+  if (!config.registration.allowed) {
+    allow = false;
+  }
+  let requestData = {};
+  try {
+    requestData = await parseRequestJson(request) as Record<string, unknown>;
+  } catch (err) {
+    logger.error("Failed to parse request JSON", {
+      error: (err as Error).message,
+    });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      status: "error",
+      message: `${(err as Error).message || "Invalid request"}`,
+    }));
+  }
+  const { sendStats } = (requestData as { sendStats?: boolean }) ||
+    { sendStats: false };
+  const userCount = await UserAccount.count();
+  if (userCount >= config.registration.maxUsers) {
+    allow = false;
+  }
+  if (sendStats === true) {
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      registrationAllowed: allow,
+      currentUsers: userCount,
+      maxUsers: config.registration.maxUsers,
+    }));
+  } else {
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      registrationAllowed: allow,
+    }));
+  }
+}
+/**
+ * Middleware to verify JWT tokens and check user authentication
+ *
+ * @param {Object} request - HTTP request object
+ * @param {Object} response - HTTP response object
+ * @param {Function} next - Next middleware function
+ * @returns {Promise<void>} Resolves when verification completes
+ */
+async function authenticateRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: (data: unknown, res: ServerResponse) => void,
+) {
+  try {
+    // Try to get token from Authorization header (Bearer) first, fall back to body
+    const authHeader = request.headers &&
+      (request.headers.authorization || request.headers.Authorization);
+    let headerToken = null;
+    if (authHeader && typeof authHeader === "string") {
+      const parts = authHeader.split(" ");
+      if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+        headerToken = parts[1];
+      } else {
+        // If header contains token without scheme, use it directly
+        headerToken = authHeader;
+      }
+    }
+
+    const token = headerToken;
+
+    if (!token) {
+      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "Token required" }),
+      );
+    }
+
+    // Verify token
+    const decodedToken = jwt.verify(
+      token as string,
+      config.secretKey as string,
+    ) as jwt.JwtPayload;
+
+    // Check cache first
+    // Check cache first
+    let user = null;
+    const cachedUser = await redis.get(`user:${decodedToken.id}`);
+    if (cachedUser) {
+      user = JSON.parse(cachedUser);
+      // Verify password hasn't changed, keep it here to avoid the scenario where user is null
+      const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
+      const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
+        .getTime();
+      if (lastPasswordUpdate !== tokenTime) {
+        logger.error("Token invalid - password changed");
+        response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
+        return response.end(JSON.stringify({
+          status: "error",
+          message: "Token expired",
+        }));
+      }
+    }
+
+    if (!user) {
+      logger.debug(`Fetching user data for ID ${decodedToken.id}`);
+      user = await UserAccount.findByPk(decodedToken.id);
+      if (user) {
+        await redis.set(
+          `user:${decodedToken.id}`,
+          JSON.stringify(user),
+          "EX",
+          config.cache.maxAge,
+        );
+      }
+    }
+
+    if (!user) {
+      logger.error("User not found");
+      response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "User not found",
+      }));
+    }
+
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request) as Record<string, unknown>;
+    } catch (error) {
+      logger.error("Failed to parse request JSON", {
+        error: (error as Error).message,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: `${(error as Error).message || "Invalid request"}`,
+      }));
+    }
+    // Continue to next middleware
+    next(requestData, response);
+  } catch (error) {
+    logger.error("Token verification failed", {
+      error: (error as Error).message,
+    });
+
+    const statusCode = (error as Error).name === "TokenExpiredError"
+      ? 401
+      : 500;
+    const message = (error as Error).name === "TokenExpiredError"
+      ? "Token expired"
+      : "Authentication failed";
+
+    if ((error as Error).name === "TokenExpiredError") {
+      if (
+        typeof sock !== "undefined" && sock && typeof sock.emit === "function"
+      ) {
+        try {
+          sock.emit("token-expired", { error: (error as Error).message });
+        } catch (e) {
+          logger.warn("Failed to emit token-expired on sock", {
+            error: (e as Error).message,
+          });
+        }
+      }
+    }
+
+    response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      status: "error",
+      message: he.escape(message),
+    }));
+  }
+}
+/**
+ * Verifies socket.io connection authentication
+ *
+ * @param {Object} socket - Socket.io socket object
+ * @param {Object} socket.handshake - Connection handshake data
+ * @returns {Promise<boolean>} Resolves to true if authentication valid
+ */
+async function authenticateSocket(socket: Socket): Promise<boolean> {
+  try {
+    const token = socket.handshake.auth.token;
+    const decodedToken = jwt.verify(
+      token,
+      config.secretKey as string,
+    ) as jwt.JwtPayload;
+
+    // Check cache first
+    // Check cache first
+    let user = null;
+    const cachedUser = await redis.get(`user:${decodedToken.id}`);
+    if (cachedUser) {
+      user = JSON.parse(cachedUser);
+      // Verify password hasn't changed, keep it here to avoid the scenario where user is null
+      const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
+      const tokenTime = new Date(decodedToken.lastPasswordChangeTime || 0)
+        .getTime();
+      if (lastPasswordUpdate !== tokenTime) {
+        logger.error("Socket auth failed - password changed");
+        return false;
+      }
+    }
+
+    if (!user) {
+      logger.debug(`Fetching user data for ID ${decodedToken.id}`);
+      user = await UserAccount.findByPk(decodedToken.id);
+      if (user) {
+        await redis.set(
+          `user:${decodedToken.id}`,
+          JSON.stringify(user),
+          "EX",
+          config.cache.maxAge,
+        );
+      }
+    }
+
+    if (!user) {
+      logger.error("Socket auth failed - user not found");
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    if ((error as Error).name === "JsonWebTokenError") {
+      logger.error("Invalid token format");
+    } else if ((error as Error).name === "TokenExpiredError") {
+      logger.error("Token expired");
+    } else {
+      logger.error("Socket authentication failed", {
+        error: (error as Error).message,
+      });
+    }
+    return false;
+  }
+}
+/**
+ * Rate limiting middleware for API endpoints
+ *
+ * @param {Object} request - HTTP request object
+ * @param {Object} response - HTTP response object
+ * @param {Function} currentHandler - Current route handler
+ * @param {Function} nextHandler - Next middleware function
+ * @param {number} maxRequestsPerWindow - Maximum requests allowed per time window
+ * @param {number} windowSeconds - Time window in seconds
+ * @returns {Promise<void>} Resolves when rate limiting check completes
+ */
+async function rateLimit(
+  request: IncomingMessage,
+  response: ServerResponse,
+  currentHandler: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    next: (data: any, res: ServerResponse) => void,
+  ) => void,
+  nextHandler: (data: any, res: ServerResponse) => void,
+  maxRequestsPerWindow: number,
+  windowSeconds: number,
+) {
+  const clientIp = request.socket.remoteAddress;
+  logger.trace(`Rate limit check for IP ${clientIp}`);
+
+  if (maxRequestsPerWindow === 0) {
+    logger.debug(`Rate limiting disabled (maxRequestsPerWindow is 0)`);
+    return currentHandler(request, response, nextHandler);
+  }
+
+  // Check current request count
+  const currentRequests = +(await redis.get(`ip:${clientIp}`)) || 0;
+
+  if (currentRequests >= maxRequestsPerWindow) {
+    logger.debug(`Rate limit exceeded for ${clientIp}`);
+    response.writeHead(429, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      status: "error",
+      message: "Too many requests",
+    }));
+  }
+
+  // Update request count
+  await redis.set(`ip:${clientIp}`, currentRequests + 1, "EX", windowSeconds);
+
+  logger.debug(`Request count for ${clientIp}: ${currentRequests + 1}`);
+
+  // Continue to handler
+  currentHandler(request, response, nextHandler);
+}
+/**
+ * Handles user authentication and token generation
+ *
+ * @param {Object} request - HTTP request object
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when authentication completes
+ */
+async function authenticateUser(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  try {
+    let requestData = {};
+    try {
+      requestData = await parseRequestJson(request) as Record<string, unknown>;
+    } catch (error) {
+      logger.error("Failed to parse request JSON", {
+        error: (error as Error).message,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: `${(error as Error).message || "Invalid request"}`,
+      }));
+    }
+
+    // Extract and validate fields
+    const data = requestData as {
+      userName?: string;
+      password?: string;
+      expiry_time?: string;
+    };
+    if (!data.userName || !data.password) {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "userName and password are required",
+      }));
+    }
+
+    // Destructure with defaults
+    const {
+      userName,
+      password,
+      expiry_time: expiryTime = "31d",
+    } = data;
+
+    // Validate password length
+    if (Buffer.byteLength(password, "utf8") > 72) {
+      logger.error("Password too long", {
+        userName,
+        passwordLength: Buffer.byteLength(password, "utf8"),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Password exceeds maximum length",
+      }));
+    }
+
+    // Find user
+    const user = await UserAccount.findOne({
+      where: { username: userName },
+    });
+
+    if (!user) {
+      logger.warn(`Authentication failed for user ${userName}`);
+      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Invalid credentials",
+      }));
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      (user as unknown as { passwordHash: string }).passwordHash,
+    );
+
+    if (!isPasswordValid) {
+      logger.warn(`Authentication failed for user ${userName}`);
+      response.writeHead(401, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Invalid credentials",
+      }));
+    }
+
+    // Generate token
+    const token = generateAuthToken(
+      user as unknown as { id: string; updatedAt: Date },
+      expiryTime,
+    );
+    logger.info(`Authentication successful for user ${userName}`);
+
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({
+      status: "success",
+      token: he.escape(token),
+    }));
+  } catch (error) {
+    logger.error("Authentication failed", { error: (error as Error).message });
+    response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "error",
+      message: "Authentication failed",
+    }));
+  }
+}
+
+// Download functions
+/**
+ * Create a time-limited, signed identifier for serving a file and write the result to the HTTP response.
+ *
+ * Validations and behavior:
+ * - Expects a requestBody with at least `fileName` (string). `saveDirectory` is optional.
+ * - Validates `fileName` is a non-empty string; responds with 400 if missing/invalid.
+ * - Joins `config.saveLocation`, `saveDirectory` and `fileName` using path_fs.join, resolves the result,
+ *   and verifies the resolved path is inside the configured save root (path traversal protection).
+ *   If the resolved path is outside the save root, responds with 400.
+ * - Checks if a valid (non-expired) signed URL already exists for this file path. If found, reuses it.
+ * - On success, generates a UUID (via crypto.randomUUID()), computes an expiry timestamp (Date.now() + config.cache.maxAge * 1000),
+ *   and stores an entry in `signedUrlCache` with key = UUID and value = { filePath, mimeType, expiry }.
+ *   The cache entry is stored with a TTL equal to `config.cache.maxAge` (the code treats this value as seconds).
+ * - Responds with 200 and a JSON body: { status: 'success', signedUrlId, expiry } where `expiry` is an epoch timestamp in milliseconds.
+ *
+ * Side effects:
+ * - Writes HTTP headers and body to the provided `response` (uses response.writeHead and response.end).
+ * - Emits warnings via `logger.warn` on invalid input or path traversal attempts.
+ * - Mutates `signedUrlCache` by inserting the signed URL mapping.
+ *
+ * Notes:
+ * - The function is async and resolves after writing to the response, but it handles error responses itself (no exceptions propagated).
+ * - Default MIME type for the cached entry is "application/octet-stream".
+ * - The implementation relies on external symbols: config, path_fs, signedUrlCache, logger, generateCorsHeaders, MIME_TYPES, crypto.
+ *
+ * @async
+ * @param {Object} requestBody - Parsed request payload.
+ * @param {string} [requestBody.saveDirectory] - Optional subdirectory (relative to config.saveLocation) containing the file.
+ * @param {string} requestBody.fileName - Name of the file to serve; must be a non-empty string.
+ * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body.
+ * @returns {Promise<void>} Resolves after sending the HTTP response. On success sends JSON with { status, signedUrlId, expiry }. On error sends a 400 JSON error.
+ */
+async function makeSignedUrl(
+  requestBody: { saveDirectory?: string; fileName?: string },
+  response: ServerResponse,
+) {
+  let absolutePath = null;
+  if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
+    const saveDirectory = requestBody.saveDirectory || "";
+    const fileName = requestBody.fileName;
+    if (!fileName || typeof fileName !== "string") {
+      logger.warn("serveFileByPath invalid fileName", {
+        saveDirectory,
+        fileName,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "fileName is required" }),
+      );
+    }
+
+    // Construct the absolute path using configured saveLocation. Use path_fs.join and
+    // then verify that the resolved path is within config.saveLocation to avoid traversal.
+    const joined = path.join(
+      config.saveLocation,
+      saveDirectory || "",
+      fileName,
+    );
+    const resolved = path.resolve(joined);
+    const saveRoot = path.resolve(config.saveLocation);
+    if (!resolved.startsWith(saveRoot)) {
+      logger.warn("serveFileByPath attempted path traversal", {
+        saveDirectory,
+        fileName,
+        resolved,
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "Invalid file path" }),
+      );
+    }
+    logger.debug(`Resolved Path ${resolved}`, {
+      joined,
+      resolved,
+      saveRoot,
+    });
+    if (fs.existsSync(resolved)) {
+      absolutePath = resolved;
+    } else {
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ status: "error", message: "File could not be found" }),
+      );
+    }
+  } else {
+    logger.warn("makeSignedUrl missing parameters", {
+      requestBody: JSON.stringify(requestBody),
+    });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        status: "error",
+        message: "saveDirectory and fileName are required",
+      }),
+    );
+  }
+
+  // Check if a valid signed URL already exists for this file path
+  const now = Date.now();
+  // Redis replacement: Create new signed URL
+  const signedUrlId = crypto.randomUUID();
+  const expiry = now + config.cache.maxAge * 1000;
+
+  await redis.set(
+    `signed:${signedUrlId}`,
+    JSON.stringify({
+      filePath: absolutePath,
+      mimeType: MIME_TYPES[path.extname(absolutePath)] ||
+        "application/octet-stream",
+      expiry,
+    }),
+    "EX",
+    config.cache.maxAge,
+  );
+
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+  response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
+}
+
+/**
+ * Refreshes the expiry of an existing signed URL to keep it alive during active watching.
+ *
+ * @param {Object} requestBody - Parsed request payload.
+ * @param {string} requestBody.fileId - The file ID to refresh.
+ * @param {import('http').ServerResponse} response - The Node.js HTTP response object.
+ */
+async function refreshSignedUrl(
+  requestBody: { fileId?: string },
+  response: ServerResponse,
+) {
+  if (
+    !requestBody || !requestBody.fileId ||
+    typeof requestBody.fileId !== "string"
+  ) {
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({ status: "error", message: "fileId is required" }),
+    );
+  }
+
+  const cachedEntry = await redis.get(`signed:${requestBody.fileId}`);
+  if (cachedEntry) {
+    await redis.expire(`signed:${requestBody.fileId}`, config.cache.maxAge);
+    const now = Date.now();
+    const expiry = now + config.cache.maxAge * 1000;
+
+    // We also need to update the expiry in the JSON payload stored, so subsequent reads are accurate if they use it.
+    // Wait, the original code had expiry in JSON. Let's update it.
+    const parsedEntry = JSON.parse(cachedEntry);
+    parsedEntry.expiry = expiry;
+    await redis.set(
+      `signed:${requestBody.fileId}`,
+      JSON.stringify(parsedEntry),
+      "EX",
+      config.cache.maxAge,
+    );
+
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(JSON.stringify({ status: "success", expiry }));
+  } else {
+    response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        status: "error",
+        message: "fileId not found or expired",
+      }),
+    );
+  }
+}
+
+/**
+ * Generates signed URLs for a list of files.
+ *
+ * @param {Object} requestBody - The request body containing the list of files.
+ * @param {http.ServerResponse} response - The HTTP response object.
+ */
+async function makeSignedUrls(
+  requestBody: { files?: { saveDirectory?: string; fileName?: string }[] },
+  response: ServerResponse,
+) {
+  if (!requestBody || !requestBody.files || !Array.isArray(requestBody.files)) {
+    logger.warn("makeSignedUrls missing or invalid parameters", {
+      requestBody: JSON.stringify(requestBody),
+    });
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({ status: "error", message: "files array is required" }),
+    );
+  }
+
+  const results: Record<string, string | null> = {};
+  const now = Date.now();
+
+  for (const file of requestBody.files) {
+    const { saveDirectory, fileName } = file;
+    if (!fileName || typeof fileName !== "string") continue;
+
+    // Construct the absolute path using configured saveLocation.
+    const joined = path.join(
+      config.saveLocation,
+      saveDirectory || "",
+      fileName,
+    );
+    const resolved = path.resolve(joined);
+    const saveRoot = path.resolve(config.saveLocation);
+
+    if (!resolved.startsWith(saveRoot) || !fs.existsSync(resolved)) {
+      results[fileName] = null;
+      continue;
+    }
+
+    const signedUrlId = crypto.randomUUID();
+    const expiry = now + config.cache.maxAge * 1000;
+
+    await redis.set(
+      `signed:${signedUrlId}`,
+      JSON.stringify({
+        filePath: resolved,
+        mimeType: "application/octet-stream",
+        expiry,
+      }),
+      "EX",
+      config.cache.maxAge,
+    );
+
+    results[fileName] = signedUrlId;
+  }
+
+  response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+  response.end(JSON.stringify({ status: "success", files: results }));
+}
+interface Process {
+  status: string;
+  spawnType: string;
+  lastActivity: number;
+  spawnTimeStamp: number;
+  spawnedProcess?: { kill: (signal: string) => boolean };
+}
+interface PlaylistDisplayRequest {
+  start?: number;
+  stop?: number;
+  sort?: string;
+  order?: string;
+  query?: string;
+}
+interface SubListRequest {
+  url?: string;
+  start?: number;
+  stop?: number;
+  query?: string;
+  sortDownloaded?: boolean;
+}
+// Download process tracking
+const downloadProcesses = new Map(); // Map to track download processes
+/**
+ * A semaphore implementation to control the number of concurrent asynchronous operations.
+ *
+ * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
+ * @property {number} currentConcurrent - The current number of active concurrent operations.
+ * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
+ *
+ * @method acquire
+ * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
+ * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
+ *
+ * @method release
+ * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
+ *
+ * @method setMaxConcurrent
+ * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
+ * operations to start, queued operations are processed.
+ * @param {number} max - The new maximum number of concurrent operations.
+ */
+const DownloadSemaphore = {
+  maxConcurrent: 2,
+  currentConcurrent: 0,
+  queue: [] as Array<(value?: unknown) => void>,
+
+  acquire() {
+    return new Promise((resolve) => {
+      if (this.currentConcurrent < this.maxConcurrent) {
+        this.currentConcurrent++;
+        logger.debug(
+          `Semaphore acquired, current concurrent: ${this.currentConcurrent}`,
+        );
+        resolve(undefined);
+      } else {
+        logger.debug(`Semaphore full, queuing request`);
+        this.queue.push(resolve);
+        logger.debug(`Queue length: ${this.queue.length}`);
+      }
+    });
+  },
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      logger.debug(
+        `Semaphore released, current concurrent: ${this.currentConcurrent}`,
+      );
+      if (next) next();
+    } else {
+      logger.debug(`Semaphore released`);
+      this.currentConcurrent--;
+    }
+  },
+
+  setMaxConcurrent(max: number) {
+    this.maxConcurrent = max;
+    // Check if we can start any queued tasks
+    while (
+      this.currentConcurrent < this.maxConcurrent && this.queue.length > 0
+    ) {
+      const next = this.queue.shift();
+      this.currentConcurrent++;
+      if (next) next();
+    }
+  },
+};
+/**
+ * Converts a process map to a serializable state object
+ *
+ * @param {Map<string, {status: string}>} processMap - Map of process entries
+ * @returns {Object} Object containing process states by ID
+ */
+function getProcessStates(processMap: Map<string, Process>) {
+  const states: Record<
+    string,
+    { status: string; type: string; lastActive: number }
+  > = {};
+
+  for (const [processId, process] of processMap.entries()) {
+    logger.debug(`Processing state for ${processId}`, {
+      status: process.status,
+    });
+
+    states[processId] = {
+      status: process.status,
+      type: process.spawnType,
+      lastActive: process.lastActivity,
+    };
+  }
+
+  return JSON.stringify(states);
+}
+/**
+ * Cleans up stale processes from the process map
+ *
+ * @param {Map<string, Object>} processMap - Map of active processes
+ * @param {Object} [options] - Cleanup options
+ * @param {number} [options.maxIdleTime=config.queue.maxIdle] - Maximum idle time in ms
+ * @param {boolean} [options.forceKill=false] - Whether to force kill hanging processes
+ * @returns {number} Number of processes cleaned up
+ */
+function cleanupStaleProcesses(
+  processMap: Map<string, Process>,
+  {
+    maxIdleTime = config.queue.maxIdle,
+    forceKill = false,
+  } = {},
+  processType: string,
+) {
+  const now = Date.now();
+  let cleanedCount = 0;
+
+  logger.info(
+    `Cleaning up processes older than ${
+      maxIdleTime / 1000
+    } seconds in ${processType} processes`,
+  );
+  logger.trace("Current process states:", {
+    states: getProcessStates(processMap),
+  });
+
+  // Iterate through processes
+  for (const [processId, process] of processMap.entries()) {
+    const { status, lastActivity, spawnTimeStamp, spawnedProcess } = process;
+
+    logger.debug(`Checking process ${processId}`, {
+      status,
+      lastActivity,
+      age: now - spawnTimeStamp,
+    });
+
+    // Handle completed processes
+    if (status === "completed" || status === "failed") {
+      processMap.delete(processId);
+      cleanedCount++;
+      continue;
+    }
+
+    // Handle stale processes
+    if (status === "running" && (now - lastActivity > maxIdleTime)) {
+      logger.warn(`Found stale process: ${processId}`, {
+        idleTime: (now - lastActivity) / 1000,
+        lastActivity: new Date(lastActivity).toISOString(),
+      });
+
+      if (spawnedProcess?.kill && forceKill) {
+        try {
+          // Try SIGKILL first
+          const killed = spawnedProcess.kill("SIGKILL");
+          if (killed) {
+            logger.info(`Killed stale process ${processId}`);
+          } else {
+            // Fall back to SIGTERM
+            const terminated = spawnedProcess.kill("SIGTERM");
+            logger.info(`Terminated stale process ${processId}`);
+
+            if (!terminated) {
+              throw new Error("Failed to terminate process");
+            }
+          }
+        } catch (error) {
+          logger.error(`Failed to kill process ${processId}`, {
+            error: (error as Error).message,
+          });
+        }
+      }
+
+      processMap.delete(processId);
+      cleanedCount++;
+    }
+  }
+
+  logger.info(`Cleaned up ${cleanedCount} processes`);
+  logger.trace("Updated process states:", {
+    states: getProcessStates(processMap),
+  });
+
+  return cleanedCount;
+}
+/**
+ * Processes download requests for videos and initiates downloads
+ *
+ * @param {Object} requestBody - The request parameters
+ * @param {Array<string>} requestBody.urlList - Array of video URLs to download
+ * @param {string} [requestBody.playListUrl="None"] - Optional playlist URL the videos belong to
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when download processing is complete
+ */
+async function processDownloadRequest(
+  requestBody: { urlList: string[]; playListUrl?: string },
+  response: ServerResponse,
+) {
+  try {
+    // Initialize download tracking
+    const videosToDownload = [];
+    const uniqueUrls = new Set();
+    const playlistUrl = requestBody.playListUrl ?? "None";
+
+    // Process each URL
+    for (const videoUrl of requestBody.urlList) {
+      if (uniqueUrls.has(videoUrl)) {
+        continue; // Skip duplicates
+      }
+
+      logger.debug(`Checking video in database`, { url: videoUrl });
+
+      // Look up video in database
+      const videoEntry = await VideoMetadata.findOne({
+        where: { videoUrl: videoUrl },
+      });
+
+      if (!videoEntry) {
+        logger.error(`Video not found in database`, { url: videoUrl });
+        response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+        return response.end(JSON.stringify({
+          error: `Video with URL ${videoUrl} is not indexed`,
+        }));
+      }
+
+      // Get save directory from video entry as fallback
+      let saveDirectory =
+        (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ??
+          "";
+
+      // Override with playlist save directory if a specific playlist is provided
+      if (playlistUrl !== "init" && playlistUrl !== "None") {
+        try {
+          const playlist = await PlaylistMetadata.findOne({
+            where: { playlistUrl: playlistUrl },
+          });
+          if (playlist) {
+            saveDirectory = (playlist as unknown as { saveDirectory: string })
+              ?.saveDirectory ??
+              saveDirectory;
+          }
+        } catch (error) {
+          logger.error(`Error getting playlist save directory`, {
+            error: (error as Error).message,
+            playlistUrl,
+          });
+        }
+      } else if (!saveDirectory || saveDirectory === "None") {
+        try {
+          const mapping = await PlaylistVideoMapping.findOne({
+            where: {
+              videoUrl: videoUrl,
+              playlistUrl: {
+                [Op.notIn]: ["init", "None"],
+              },
+            },
+          });
+          if (mapping) {
+            const playlist = await PlaylistMetadata.findOne({
+              where: { playlistUrl: (mapping as any).playlistUrl },
+            });
+            if (playlist) {
+              saveDirectory = (playlist as unknown as { saveDirectory: string })
+                ?.saveDirectory ??
+                saveDirectory;
+            }
+          }
+        } catch (error) {
+          logger.error(`Error getting fallback playlist save directory`, {
+            error: (error as Error).message,
+            videoUrl,
+          });
+        }
+      }
+
+      // Add to download queue
+      videosToDownload.push({
+        url: videoUrl,
+        title: (videoEntry as unknown as { title: string }).title,
+        saveDirectory: saveDirectory,
+        videoId: (videoEntry as unknown as { videoId: string }).videoId,
+      });
+      uniqueUrls.add(videoUrl);
+    }
+
+    // Start downloads
+    downloadItemsConcurrently(videosToDownload, config.queue.maxDownloads);
+    logger.debug(`Download processes started`, {
+      itemCount: videosToDownload.length,
+    });
+
+    // Send success response
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "success",
+      message: "Downloads initiated",
+      items: videosToDownload,
+    }));
+  } catch (error) {
+    logger.error(`Download processing failed`, {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+
+    const statusCode = (error as any).status || 500;
+    response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "error",
+      message: he.escape((error as Error).message),
+    }));
+  }
+}
+/**
+ * Downloads multiple items concurrently with enhanced process tracking and concurrency control
+ *
+ * @param {Array<Map<string, string>>} items - Array of items to download, each represented as a Map with keys:
+ *   - url: URL of video
+ *   - title: Title of video
+ *   - saveDirectory: Save directory path
+ *   - videoId: Video ID
+ * @param {number} [maxConcurrent=2] - Maximum number of concurrent downloads
+ * @returns {Promise<boolean>} Resolves to true if all downloads successful
+ */
+
+async function downloadItemsConcurrently(
+  items: Array<any>,
+  maxConcurrent: number = 2,
+): Promise<boolean> {
+  logger.trace(
+    `Downloading ${items.length} videos concurrently (max ${maxConcurrent} concurrent)`,
+  );
+
+  // Update the semaphore's max concurrent value
+  DownloadSemaphore.setMaxConcurrent(maxConcurrent);
+
+  // Filter out URLs already being downloaded
+  const uniqueItems = items.filter((item) => {
+    const videoUrl = item.url;
+    const existingDownload = Array.from(downloadProcesses.values())
+      .find((process) =>
+        process.url === videoUrl &&
+        ["running", "pending"].includes(process.status)
+      );
+
+    return !existingDownload;
+  });
+
+  logger.trace(`Filtered ${uniqueItems.length} unique items for download`);
+
+  // Process all items with semaphore control
+  const downloadResults = await Promise.all(
+    uniqueItems.map((item) => downloadWithSemaphore(item)),
+  );
+
+  // Check for any failures
+
+  const allSuccessful = downloadResults.every((result: any) =>
+    result && result.status === "success"
+  );
+
+  // Log results
+
+  downloadResults.forEach((result: any) => {
+    if (result.status === "success") {
+      logger.info(`Downloaded ${result.title} successfully`);
+    } else {
+      logger.error(`Failed to download ${result.title}: ${result.error}`);
+    }
+  });
+
+  return allSuccessful;
+}
+/**
+ * Wrapper function that handles downloading a video item with semaphore-based concurrency control
+ *
+ * @param {Object} downloadItem - Object containing video details:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - saveDirectory: Save directory path
+ *   - videoId: Video ID
+ * @returns {Promise<Object>} Download result containing:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - status: 'success' | 'failed'
+ *   - error?: Error message if failed
+ */
+
+async function downloadWithSemaphore(
+  downloadItem: Record<string, any>,
+): Promise<any> {
+  logger.trace(
+    `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
+  );
+
+  // Acquire semaphore before starting download
+  await DownloadSemaphore.acquire();
+
+  try {
+    const { url: videoUrl, title: videoTitle } = downloadItem;
+
+    // Create pending download entry
+    const downloadEntry = {
+      url: videoUrl,
+      title: videoTitle,
+      lastActivity: Date.now(),
+      spawnTimeStamp: Date.now(),
+      status: "pending",
+    };
+
+    const entryKey = `pending_${videoUrl}_${Date.now()}`;
+    downloadProcesses.set(entryKey, downloadEntry);
+
+    // Execute download
+    const result = await executeDownload(downloadItem, entryKey);
+
+    // Cleanup pending entry if still exists
+    if (downloadProcesses.has(entryKey)) {
+      downloadProcesses.delete(entryKey);
+    }
+
+    return result;
+  } finally {
+    // Always release semaphore
+    DownloadSemaphore.release();
+  }
+}
+/**
+ * Downloads a video using yt-dlp with progress tracking and status updates
+ *
+ * @param {Object} downloadItem - Object containing video details:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - saveDirectory: Save directory path
+ *   - videoId: Video ID
+ * @param {string} processKey - Key to track download process
+ * @returns {Promise<Object>} Download result containing:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - status: 'success' | 'failed'
+ *   - error?: Error message if failed
+ */
+
+function executeDownload(
+  downloadItem: Record<string, any>,
+  processKey: string,
+) {
+  const {
+    url: videoUrl,
+    title: videoTitle,
+    saveDirectory: saveDirectory,
+    videoId: videoId,
+  } = downloadItem;
+
+  try {
+    // Trim the saveDirectory just as a precaution
+    const saveDirectoryTrimmed = saveDirectory.trim();
+    // Prepare save path
+    const savePath = path.join(config.saveLocation, saveDirectoryTrimmed);
+    logger.debug(`Downloading to path: ${savePath}`);
+
+    // Create directory if needed, good to have
+    if (savePath !== config.saveLocation && !fs.existsSync(savePath)) {
+      fs.mkdirSync(savePath, { recursive: true });
+    }
+
+    return new Promise((resolve, reject) => {
+      let progressPercent: number | null = null;
+      let capturedTitle: string | null = null;
+      let capturedFileName: string | null = null;
+      // Prepare final parameters
+      const processArgs = ["-P", "home:" + savePath, videoUrl];
+
+      // Notify frontend of download start
+      safeEmit("download-started", { url: videoUrl, percentage: 101 });
+
+      // Add site-specific args (like cookies for x.com, impersonation for iwara.tv)
+      const siteArgs = buildSiteArgs(videoUrl, config);
+      if (siteArgs.length > 0) {
+        processArgs.unshift(...siteArgs);
+      }
+
+      logger.debug(`Starting download for ${videoUrl}`, {
+        url: videoTitle,
+        savePath,
+        fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
+          processArgs.join(" ")
+        }`,
+      });
+      // Spawn download process, by assembling full args
+      const downloadProcess = spawn("python3", [
+        "-c",
+        YT_DLP_PATCHED_CMD,
+        ...downloadOptions.concat(processArgs),
+      ]);
+
+      // Update process tracking
+      const processEntry = downloadProcesses.get(processKey);
+      if (processEntry) {
+        processEntry.spawnedProcess = downloadProcess;
+        processEntry.status = "running";
+        processEntry.lastActivity = Date.now();
+        downloadProcesses.set(processKey, processEntry);
+      } else {
+        logger.error(`Process entry not found: ${processKey}`);
+        return reject(new Error(`Process entry not found: ${processKey}`));
+      }
+
+      // Handle stdout for progress tracking
+      downloadProcess.stdout.setEncoding("utf8");
+      downloadProcess.stdout.on("data", (data) => {
+        try {
+          const output = data.toString().trim();
+
+          // Track download progress
+          const percentMatch = /(\d{1,3}\.\d)/.exec(output);
+          if (percentMatch) {
+            const percent = parseFloat(percentMatch[0]);
+            const progressBlock = Math.floor(percent / 10);
+
+            if (progressBlock === 0 && progressPercent === null) {
+              progressPercent = 0;
+              logger.debug(output, { pid: downloadProcess.pid });
+            } else if (
+              progressPercent !== null && progressBlock > progressPercent
+            ) {
+              progressPercent = progressBlock;
+              logger.debug(output, { pid: downloadProcess.pid });
+            }
+
+            // Emit progress update to frontend
+            // TODO: Check if this is needed, as when multiple downloads are running this does not work properly
+            safeEmit("downloading-percent-update", {
+              url: videoUrl,
+              percentage: percent,
+            });
+          }
+
+          // Extract the title, no extension
+          const itemTitle = /title:(.+)/m.exec(output);
+          if (itemTitle?.[1] && !capturedFileName) {
+            capturedTitle = itemTitle[1].trim();
+            logger.debug(`Video Title from process ${capturedTitle}`, {
+              pid: downloadProcess.pid,
+            });
+          }
+
+          // Get the final file name (only the video) from that we can get the rest
+          const fileNameInDest = /fileName:(.+)"/m.exec(output);
+          if (fileNameInDest?.[1]) {
+            const finalFileName = fileNameInDest[1].trim();
+            capturedFileName = path.basename(finalFileName);
+            logger.debug(
+              `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
+              { pid: downloadProcess.pid },
+            );
+          }
+          // Update activity timestamp
+          updateProcessActivity(processKey);
+        } catch (error) {
+          if (!(error instanceof TypeError)) {
+            safeEmit("error", { message: (error as Error).message });
+          }
+        }
+      });
+
+      // Handle stderr
+      downloadProcess.stderr.setEncoding("utf8");
+      downloadProcess.stderr.on("data", (error) => {
+        logger.error(`Download error: ${error}`, { pid: downloadProcess.pid });
+        updateProcessActivity(processKey);
+      });
+
+      // Handle process errors
+      downloadProcess.on("error", (error) => {
+        logger.error(`Download process error: ${error.message}`, {
+          pid: downloadProcess.pid,
+        });
+        updateProcessActivity(processKey);
+        reject(error);
+      });
+
+      // Handle process completion
+      downloadProcess.on("close", async (code) => {
+        try {
+          const videoEntry = await VideoMetadata.findOne({
+            where: { videoUrl: videoUrl },
+          });
+
+          if (code === 0) {
+            // ===== SUCCESS: Update video entry =====
+
+            const unhelpfulTitle = videoTitle === videoId ||
+              videoTitle === "NA";
+            const fallbackTitle = capturedTitle || videoTitle;
+
+            // Build initial updates object
+            const updates = {
+              downloadStatus: true,
+              isAvailable: true,
+              title: unhelpfulTitle ? fallbackTitle : videoTitle,
+            };
+
+            // Discover associated metadata files
+            const { metadata, syncStatus } = discoverFiles(
+              capturedFileName,
+              savePath,
+              videoEntry,
+            );
+
+            // Add discovered metadata files to updates
+            Object.assign(updates, metadata);
+
+            // Determine if all expected metadata files were found
+            const allExtraFilesFound = syncStatus.videoFileFound &&
+              syncStatus.descriptionFileFound &&
+              syncStatus.commentsFileFound &&
+              syncStatus.subTitleFileFound &&
+              syncStatus.thumbNailFileFound;
+
+            (updates as any).isMetaDataSynced = true;
+            (updates as any).saveDirectory = computeSaveDirectory(savePath);
+
+            // Log metadata sync status
+            if (allExtraFilesFound) {
+              logger.info("All extra files found", {
+                updates: JSON.stringify(updates),
+              });
+            } else {
+              logger.info("Some of the expected files are not found", {
+                updates: JSON.stringify(updates),
+              });
+            }
+
+            logger.debug(`Updating video: ${JSON.stringify(updates)}`, {
+              pid: downloadProcess.pid,
+            });
+
+            if (videoEntry) await videoEntry.update(updates);
+
+            // Notify frontend: send saveDirectory and fileName
+            try {
+              const fileName = (updates as any).fileName;
+
+              const thumbNailFile = (updates as any).thumbNailFile;
+
+              const subTitleFile = (updates as any).subTitleFile;
+
+              const descriptionFile = (updates as any).descriptionFile;
+
+              const isMetaDataSynced = (updates as any).isMetaDataSynced;
+              const saveDir = computeSaveDirectory(savePath);
+
+              // Check if computed saveDir matches expected saveDirectory (if available)
+              if (
+                typeof saveDirectory !== "undefined" &&
+                saveDir === saveDirectory.trim()
+              ) {
+                logger.debug(
+                  `Computed saveDir matches expected saveDirectory`,
+                  {
+                    saveDir,
+                    saveDirectory,
+                  },
+                );
+              } else if (typeof saveDirectory !== "undefined") {
+                logger.debug(
+                  `Computed saveDir differs from expected saveDirectory`,
+                  {
+                    saveDir,
+                    saveDirectory,
+                  },
+                );
+              }
+
+              safeEmit("download-done", {
+                url: videoUrl,
+                title: updates.title,
+                fileName: fileName,
+                saveDirectory: saveDir,
+                isMetaDataSynced: isMetaDataSynced,
+                thumbNailFile: thumbNailFile,
+                subTitleFile: subTitleFile,
+                descriptionFile: descriptionFile,
+              });
+            } catch (e) {
+              // Fallback to previous behavior if something goes wrong
+              logger.error("Error computing save directory, using fallback", {
+                error: (e as Error).message,
+              });
+              safeEmit("download-done", {
+                url: videoUrl,
+                title: updates.title,
+
+                fileName: (updates as any).fileName,
+                saveDirectory: "",
+              });
+            }
+
+            // Cleanup process entry
+            cleanupProcess(processKey, downloadProcess.pid);
+
+            resolve({
+              url: videoUrl,
+              title: updates.title,
+              status: "success",
+            });
+          } else {
+            // ===== FAILURE: Handle download failure =====
+
+            logger.error("Download failed", {
+              videoUrl,
+              exitCode: code,
+              pid: downloadProcess.pid,
+            });
+
+            safeEmit("download-failed", {
+              title: videoEntry ? (videoEntry as any).title : videoTitle,
+              url: videoUrl,
+            });
+
+            resolve({
+              url: videoUrl,
+              title: videoTitle,
+              status: "failed",
+            });
+          }
+        } catch (error) {
+          logger.error(
+            `Error handling download completion: ${(error as Error).message}`,
+            {
+              pid: downloadProcess.pid,
+            },
+          );
+          reject(error);
+        }
+      });
+    });
+  } catch (error) {
+    logger.error(`Download error: ${(error as Error).message}`);
+    return {
+      url: videoUrl,
+      title: videoTitle,
+      status: "failed",
+      error: (error as Error).message,
+    };
+  }
+}
+// Helper function to update process activity timestamp
+/**
+ * Updates the last activity timestamp of a process entry
+ *
+ * @param {string} processKey - Key of the process entry to update
+ */
+function updateProcessActivity(processKey: string) {
+  const downloadEntry = downloadProcesses.get(processKey);
+  if (downloadEntry) {
+    downloadEntry.lastActivity = Date.now();
+  }
+  const listEntry = listProcesses.get(processKey);
+  if (listEntry) {
+    listEntry.lastActivity = Date.now();
+  }
+}
+// Helper function to cleanup process entry
+/**
+ * Removes a process entry from the download processes map
+ * @param {string} processKey - Key of the process entry to remove
+ * @param {number} pid - Process ID of the process to remove
+ */
+function cleanupProcess(processKey: string, pid: number | undefined) {
+  if (downloadProcesses.has(processKey)) {
+    downloadProcesses.delete(processKey);
+    logger.trace(`Removed process from cache: ${pid}`, { pid });
+    logger.trace(`Process map state: ${getProcessStates(downloadProcesses)}`);
+    logger.trace(`Process map size: ${downloadProcesses.size}`);
+  }
+}
+
+// List functions
+const listProcesses = new Map(); // Map to track listing processes
+/**
+ * A semaphore implementation to control the number of concurrent listing operations.
+ *
+ * @property {number} maxConcurrent - The maximum number of concurrent operations allowed.
+ * @property {number} currentConcurrent - The current number of active concurrent operations.
+ * @property {Array<Function>} queue - A queue of pending operations waiting for a semaphore slot.
+ *
+ * @method acquire
+ * Acquires a semaphore slot. If the maximum concurrency is reached, the operation is queued.
+ * @returns {Promise<void>} A promise that resolves when the semaphore slot is acquired.
+ *
+ * @method release
+ * Releases a semaphore slot. If there are pending operations in the queue, the next one is started.
+ *
+ * @method setMaxConcurrent
+ * Updates the maximum number of concurrent operations allowed. If the new limit allows for more
+ * operations to start, queued operations are processed.
+ * @param {number} max - The new maximum number of concurrent operations.
+ */
+
+// Lazily initialized from DB; incremented synchronously in addPlaylist
+// so concurrent callers each get a distinct sortOrder.
+let pendingPlaylistSortCounter: number | null = null;
+let pendingPlaylistSortCounterPromise: Promise<number> | null = null;
+
+const ListingSemaphore = {
+  maxConcurrent: config.queue.maxListings,
+  currentConcurrent: 0,
+
+  queue: [] as Array<(value?: any) => void>,
+
+  acquire() {
+    return new Promise((resolve) => {
+      if (this.currentConcurrent < this.maxConcurrent) {
+        this.currentConcurrent++;
+        logger.debug(
+          `Listing semaphore acquired, current concurrent: ${this.currentConcurrent}`,
+        );
+        resolve(undefined);
+      } else {
+        logger.debug(`Listing semaphore full, queuing request`);
+        this.queue.push(resolve);
+      }
+    });
+  },
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      logger.debug(
+        `Listing semaphore released, current concurrent: ${this.currentConcurrent}`,
+      );
+      if (next) next();
+    } else {
+      logger.debug(`Listing semaphore released`);
+      this.currentConcurrent--;
+    }
+  },
+
+  setMaxConcurrent(max: number) {
+    this.maxConcurrent = max;
+    while (
+      this.currentConcurrent < this.maxConcurrent && this.queue.length > 0
+    ) {
+      const next = this.queue.shift();
+      this.currentConcurrent++;
+      if (next) next();
+    }
+  },
+};
+/**
+ * Processes a list of URLs and initiates listing operations for undownloaded videos and unmonitored playlists.
+ *
+ * @param {Object} requestBody - The request parameters
+ * @param {Array<string>} requestBody.urlList - Array of URLs to process
+ * @param {number} [requestBody.chunkSize=config.chunkSize] - Maximum number of concurrent listing operations
+ * @param {boolean} [requestBody.sleep=false] - If true, the listing process will sleep between each chunk
+ * @param {string} [requestBody.monitoringType="N/A"] - Monitoring type to apply to the playlist or video
+ * @param {import('http').ServerResponse} response - The Node.js HTTP response object used to send status and body
+ * @returns {Promise<void>} Resolves when listing processes are started
+ */
+
+async function processListingRequest(
+  requestBody: Record<string, any>,
+  response: ServerResponse,
+): Promise<void> {
+  try {
+    // Validate required parameters
+    if (!requestBody.urlList) {
+      throw new Error("URL list is required");
+    }
+
+    // Extract and normalize parameters
+    const chunkSize = Math.max(
+      config.chunkSize,
+      +(requestBody.chunkSize ?? config.chunkSize),
+    );
+
+    const monitoringType = requestBody.monitoringType ?? "N/A";
+    const itemsToList = [];
+    const uniqueUrls = new Set();
+
+    logger.trace("Processing URL list", {
+      urlCount: requestBody.urlList.length,
+      chunkSize,
+      monitoringType,
+    });
+
+    for (const url of requestBody.urlList) {
+      // Normalize URL
+      const normalizedUrl = normalizeUrl(url);
+      if (uniqueUrls.has(normalizedUrl)) {
+        continue; // Skip duplicates
+      }
+
+      logger.debug(`Checking URL in database`, { url: normalizedUrl });
+
+      // Look up URL in database as a playlist
+      const playlistEntry = await PlaylistMetadata.findOne({
+        where: { playlistUrl: normalizedUrl },
+      });
+
+      if (playlistEntry) {
+        logger.debug(`Playlist found in database`, { url: normalizedUrl });
+
+        if ((playlistEntry as any).monitoringType === monitoringType) {
+          logger.debug(`Playlist monitoring hasn't changed so skipping`, {
+            url: normalizedUrl,
+          });
+          safeEmit("listing-playlist-skipped-because-same-monitoring", {
+            message: `Playlist ${
+              (playlistEntry as any).title
+            } is already being monitored with type ${monitoringType}, skipping.`,
+          });
+          continue; // Skip as it's already monitored
+        } else if ((playlistEntry as any).monitoringType !== monitoringType) {
+          // If the monitoring type change is Full the reindex the entire playlist,
+          // if it is changed to Fast then update from the last index known
+          logger.debug(`Playlist monitoring has changed`, {
+            url: normalizedUrl,
+          });
+          itemsToList.push({
+            url: normalizedUrl,
+            type: "playlist",
+
+            previousMonitoringType: (playlistEntry as any).monitoringType,
+            currentMonitoringType: monitoringType,
+            reason: `Monitoring type changed`,
+          });
+        }
+      }
+
+      // Look up URL in database as an unlisted video
+      const videoEntry = await VideoMetadata.findOne({
+        where: { videoUrl: normalizedUrl },
+      });
+      if (videoEntry) {
+        logger.debug(`Video found in database`, { url: normalizedUrl });
+
+        if ((videoEntry as any).downloadStatus) {
+          logger.debug(`Video already downloaded`, { url: normalizedUrl });
+          safeEmit("listing-video-skipped-because-downloaded", {
+            message: `Video ${
+              (videoEntry as any).title
+            } is already downloaded, skipping.`,
+          });
+          continue; // Skip as it's already downloaded
+        } else {
+          logger.debug(`Video not downloaded yet, updating status`, {
+            url: normalizedUrl,
+          });
+          itemsToList.push({
+            url: normalizedUrl,
+            type: "undownloaded",
+            currentMonitoringType: "N/A",
+            reason: `Video not downloaded yet`,
+          });
+        }
+      }
+
+      // If URL is not found in either table, add to list for processing
+      if (!playlistEntry && !videoEntry) {
+        logger.debug(`URL not found in database, adding to list`, {
+          url: normalizedUrl,
+        });
+        itemsToList.push({
+          url: normalizedUrl,
+          type: "undetermined",
+          currentMonitoringType: monitoringType,
+          reason: `URL not found in database`,
+        });
+      }
+
+      // Add to unique URLs set
+      uniqueUrls.add(normalizedUrl);
+    }
+
+    // Start listing processes
+    listItemsConcurrently(itemsToList, chunkSize, false);
+    logger.debug(`Listing processes started`, {
+      itemCount: itemsToList.length,
+    });
+
+    // Send success response
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "success",
+      message: "Listing initiated",
+      items: itemsToList,
+    }));
+  } catch (error) {
+    logger.error("Failed to process URL list", {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+  }
+}
+/**
+ * Lists a given array of items concurrently, controlling the number of concurrent listing operations using a semaphore.
+ *
+ * @param {Array<Object>} items - Array of items to list, each containing properties:
+ *   - url: URL of video or playlist
+ *   - type: Type of item (video, playlist, undownloaded, undetermined)
+ *   - currentMonitoringType: Current monitoring type of the item
+ *   - reason: Reason for the item being added to the list
+ * @param {number} chunkSize - Maximum number of concurrent listing operations
+ * @param {boolean} isScheduledUpdate - If true, the listing process will update the item
+ * @returns {Promise<boolean>} Resolves to true if all listings successful, false otherwise
+ */
+
+async function listItemsConcurrently(
+  items: Array<any>,
+  chunkSize: number,
+  isScheduledUpdate: boolean,
+): Promise<any[]> {
+  logger.trace(
+    `Listing ${items.length} items concurrently (chunk size: ${chunkSize})`,
+  );
+
+  // If no items to list, return
+  if (items.length === 0) {
+    logger.trace("No items to list");
+    return [];
+  }
+
+  // Update the semaphore's max concurrent value
+  ListingSemaphore.setMaxConcurrent(config.queue.maxListings);
+
+  // Process all items with semaphore control
+  // TODO: Fix the issue where if send playlists (since they take long time)
+  // the semaphore behavior is not consistent, sometimes it gets un-tracked
+  const listingResults = await Promise.all(
+    items.map((item) => listWithSemaphore(item, chunkSize, isScheduledUpdate)),
+  );
+
+  // Check for any failures  // Log results
+  try {
+    listingResults.forEach((result: { status?: string; title?: string }) => {
+      if (result.status === "completed") {
+        logger.info(
+          `Listed ${
+            result.title || (result as any).playlistTitle
+          } successfully`,
+        );
+      } else {
+        logger.error(
+          `Failed to list ${result.title}: ${JSON.stringify(result)}`,
+        );
+      }
+    });
+  } catch (error) {
+    logger.error("Failed to log listing results", {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+  }
+
+  return listingResults;
+}
+/**
+ * Lists a single item with semaphore control to prevent excessive concurrent listing operations.
+ *
+ * @param {Object} item - Item to list containing properties:
+ *   - url: URL of video or playlist
+ *   - type: Type of item (video, playlist, undownloaded, undetermined)
+ *   - monitoringType: Current monitoring type of the item
+ * @param {number} chunkSize - Maximum number of concurrent listing operations
+ * @param {boolean} isScheduledUpdate - If true, the listing process will update the item
+ * @returns {Promise<Object>} Listing result containing:
+ *   - url: Video URL
+ *   - title: Video title
+ *   - status: 'success' | 'failed'
+ *   - error?: Error message if failed
+ */
+
+async function listWithSemaphore(
+  item: Record<string, any>,
+  chunkSize: number,
+  isScheduledUpdate: boolean,
+): Promise<any> {
+  logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
+
+  // Acquire semaphore before starting listing
+  await ListingSemaphore.acquire();
+
+  try {
+    const { url: videoUrl, type: itemType, monitoringType } = item;
+
+    // Create pending listing entry
+    const listEntry = {
+      url: videoUrl,
+      type: itemType,
+      monitoringType: monitoringType,
+      lastActivity: Date.now(),
+      spawnTimeStamp: null,
+      status: "pending",
+    };
+
+    const entryKey = `pending_${videoUrl}_${Date.now()}`;
+    listProcesses.set(entryKey, listEntry);
+
+    // Execute listing process — honour any isScheduledUpdate flag carried on the item
+    const result = await executeListing(
+      item,
+      entryKey,
+      chunkSize,
+      // I don't remember why item has a isScheduledUpdate property, but I'll keep it for now
+      // TODO: Remove it if not needed
+      item.isScheduledUpdate === true || isScheduledUpdate,
+    );
+    // Null out the spawned process as it's completed and we don't want to keep it in logs
+
+    (listEntry as any)["spawnedProcess"] = null;
+    logger.trace(`Listing completed`, {
+      result: JSON.stringify(result),
+      listEntry: JSON.stringify(listEntry),
+    });
+
+    // Cleanup pending entry if still exists
+    if (listProcesses.has(entryKey)) {
+      listProcesses.delete(entryKey);
+    }
+
+    return result;
+  } finally {
+    // Always release semaphore
+    ListingSemaphore.release();
+  }
+}
+// so that stalled processes can be cleaned up by the cleanup cron job
+/**
+ * Executes the listing process for a given item
+ *
+ * @param {Object} item - The item to list
+ * @param {string} processKey - The key to track the listing process
+ * @param {number} chunkSize - The size of each chunk to process
+ * @param {boolean} isScheduledUpdate - Indicates if the listing is part of a scheduled update
+ * @returns {Promise<Object>} The result of the listing process
+ */
+
+async function executeListing(
+  item: Record<string, any>,
+  processKey: string,
+  chunkSize: number,
+  isScheduledUpdate: boolean = false,
+): Promise<any> {
+  // Allow the item itself to carry the flag (e.g. when called from the scheduler)
+  // I don't remember why item has a isScheduledUpdate property, but I'll keep it for now
+  // TODO: Remove it if not needed
+  const resolvedIsScheduledUpdate = isScheduledUpdate ||
+    item.isScheduledUpdate === true;
+  logger.debug(`isScheduledUpdate: ${resolvedIsScheduledUpdate}`, {
+    item: JSON.stringify(item),
+    isScheduledUpdate,
+  });
+  const { url: videoUrl, currentMonitoringType } = item;
+  let itemType = item.type;
+
+  try {
+    // Send initial status, if not an update
+    if (!resolvedIsScheduledUpdate) {
+      safeEmit("listing-started", {
+        url: videoUrl,
+        type: itemType,
+        status: "started",
+      });
+    }
+
+    // Check if it's a playlist
+    const isPlaylist = playlistRegex.test(videoUrl) || itemType === "playlist";
+    if (isPlaylist && !isSiteXDotCom(videoUrl)) {
+      itemType = "playlist";
+    } else {
+      itemType = "unlisted";
+    }
+
+    let playlistTitle = "";
+    let seekPlaylistListTo = 0;
+
+    if (itemType === "playlist") {
+      const existingPlaylist = await PlaylistMetadata.findOne({
+        where: { playlistUrl: videoUrl },
+      });
+      if (existingPlaylist) {
+        logger.debug(`Playlist already exists in database`, { url: videoUrl });
+
+        if (
+          existingPlaylist.getDataValue("monitoringType") ===
+            currentMonitoringType && !resolvedIsScheduledUpdate
+        ) {
+          // Only skip if this is NOT a scheduled update — the scheduler
+          // intentionally re-lists playlists that haven't changed type.
+          logger.debug(`Playlist monitoring hasn't changed so skipping`, {
+            url: videoUrl,
+          });
+          return handleEmptyResponse(videoUrl);
+        } else if (
+          existingPlaylist.getDataValue("monitoringType") !==
+            currentMonitoringType
+        ) {
+          logger.debug(`Playlist monitoring has changed`, { url: videoUrl });
+          await existingPlaylist.update({
+            monitoringType: ["Refresh", "Full"].includes(currentMonitoringType)
+              ? "N/A"
+              : currentMonitoringType,
+            lastUpdatedByScheduler: resolvedIsScheduledUpdate ||
+                ["Refresh", "Full"].includes(currentMonitoringType)
+              ? Date.now()
+              : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
+          });
+          logger.debug(`Playlist monitoring type updated`, { url: videoUrl });
+        } else if (resolvedIsScheduledUpdate) {
+          // Same type but triggered by scheduler — just update the timestamp
+          await existingPlaylist.update({
+            monitoringType: currentMonitoringType === "Full"
+              ? "N/A"
+              : existingPlaylist.getDataValue("monitoringType"),
+            lastUpdatedByScheduler: Date.now(),
+          });
+        }
+        playlistTitle = existingPlaylist.getDataValue("title");
+        seekPlaylistListTo = (existingPlaylist as any).sortOrder;
+      } else {
+        logger.debug(`Playlist not found in database, adding to database`, {
+          url: videoUrl,
+        });
+        const newPlaylist = await addPlaylist(
+          videoUrl,
+          ["Refresh", "Full"].includes(currentMonitoringType)
+            ? "N/A"
+            : currentMonitoringType,
+        );
+        playlistTitle = (newPlaylist as any).title;
+        seekPlaylistListTo = (newPlaylist as any).sortOrder;
+      }
+
+      return await handlePlaylistStreaming({
+        videoUrl,
+        chunkSize,
+        isScheduledUpdate: resolvedIsScheduledUpdate,
+        playlistTitle,
+        seekPlaylistListTo,
+        processKey,
+        monitoringType: currentMonitoringType,
+      });
+    } else {
+      // Unlisted / single video streaming
+      return await handleSingleVideoStreaming({
+        videoUrl,
+        itemType,
+        isScheduledUpdate,
+        processKey,
+      });
+    }
+  } catch (error) {
+    return handleListingError(error as Error, videoUrl, itemType);
+  }
+}
+
+// Helpers for streaming execution
+
+async function handlePlaylistStreaming(
+  item: Record<string, any>,
+): Promise<any> {
+  const {
+    videoUrl,
+    chunkSize,
+    isScheduledUpdate,
+    playlistTitle,
+    seekPlaylistListTo,
+    processKey,
+    monitoringType,
+  } = item;
+
+  let processedChunks = 0;
+
+  logger.info(`Starting streaming listing for playlist`, { url: videoUrl });
+
+  // For Full and Refresh modes, clear all existing mappings first so the
+  // re-index starts clean.  Downloaded-but-missing videos will be picked up
+  // by the periodic prune job and moved to the "None" playlist.
+  if (monitoringType === "Full" || monitoringType === "Refresh") {
+    const deletedCount = await PlaylistVideoMapping.destroy({
+      where: { playlistUrl: videoUrl },
+    });
+    logger.info(
+      `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index`,
+      { url: videoUrl },
+    );
+  }
+
+  let startIndex = 1;
+
+  if (monitoringType === "End") {
+    const lastVideo = await PlaylistVideoMapping.findOne({
+      where: { playlistUrl: videoUrl },
+      order: [["positionInPlaylist", "DESC"]],
+      attributes: ["positionInPlaylist"],
+    });
+
+    const maxPosition = lastVideo
+      ? lastVideo.getDataValue("positionInPlaylist")
+      : 0;
+
+    if (maxPosition > 0) {
+      startIndex = Math.max(1, maxPosition - chunkSize + 1);
+    }
+  }
+
+  let chunkItems: string[] = [];
+  let absoluteIndexCount = startIndex - 1;
+  let consecutiveDuplicateChunks = 0;
+  let processSucceeded = false;
+  let error: Error | undefined;
+  let ytDlpProcess: any;
+
+  try {
+    const streamProcessor = streamPlayListItems(
+      videoUrl,
+      processKey,
+      startIndex,
+    );
+    ytDlpProcess = streamProcessor.process;
+
+    for await (const line of streamProcessor.iterator) {
+      absoluteIndexCount++;
+      chunkItems.push(line);
+
+      if (chunkItems.length >= chunkSize) {
+        // Process the chunk
+        const result = await processStreamingVideoInformation(
+          chunkItems,
+          videoUrl,
+          absoluteIndexCount - chunkSize + 1, // startIndex for this chunk
+          isScheduledUpdate,
+          monitoringType,
+        );
+
+        processedChunks++;
+        chunkItems = []; // Reset chunk buffer
+        if (!isScheduledUpdate) {
+          safeEmit("listing-playlist-chunk-complete", {
+            url: videoUrl,
+            type: "playlist-chunk",
+            status: "chunk-completed",
+            processedChunks,
+            playlistTitle,
+            seekPlaylistListTo,
+          });
+        }
+
+        // If every single item in this chunk already existed, we might want to exit early for 'Start' mode
+        if (
+          result.alreadyExistedCount === chunkSize && monitoringType === "Start"
+        ) {
+          consecutiveDuplicateChunks++;
+          if (consecutiveDuplicateChunks >= 2) {
+            logger.info(
+              `Start mode incremental update found 2 consecutive chunks of already existing videos. Terminating stream.`,
+              { url: videoUrl },
+            );
+            // Kill process cleanly to exit stream
+            ytDlpProcess.kill("SIGTERM");
+            break;
+          }
+        } else {
+          consecutiveDuplicateChunks = 0;
+        }
+      }
+    }
+
+    // Process any remaining items
+    if (chunkItems.length > 0) {
+      await processStreamingVideoInformation(
+        chunkItems,
+        videoUrl,
+        absoluteIndexCount - chunkItems.length + 1,
+        isScheduledUpdate,
+        monitoringType,
+      );
+      processedChunks++;
+      if (!isScheduledUpdate) {
+        safeEmit("listing-playlist-chunk-complete", {
+          url: videoUrl,
+          type: "playlist-chunk",
+          status: "chunk-completed",
+          processedChunks,
+          playlistTitle,
+          seekPlaylistListTo,
+        });
+      }
+    } else if (processedChunks === 0) {
+      if (monitoringType === "End" && startIndex > 1) {
+        logger.error(
+          "End mode index returned empty. Too many deletions may have occurred. Please remove and re-add the playlist to re-index.",
+          { url: videoUrl },
+        );
+        throw new Error(
+          "End mode index returned empty due to likely deletions.",
+        );
+      } else {
+        return handleEmptyResponse(videoUrl);
+      }
+    }
+    processSucceeded = true;
+  } catch (e) {
+    error = e as Error;
+  }
+
+  if (
+    !processSucceeded && error &&
+    error.message !== "Process exited with code null" &&
+    error.message !== "Process exited with code 143"
+  ) {
+    // Code 143 or null indicates we killed it natively via SIGTERM
+    return handleListingError(error, videoUrl, "playlist");
+  }
+
+  return completePlaylistListing(
+    videoUrl,
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo,
+    isScheduledUpdate,
+  );
+}
+
+async function handleSingleVideoStreaming(
+  item: Record<string, any>,
+): Promise<any> {
+  const { videoUrl, itemType, isScheduledUpdate, processKey } = item;
+  const playlistUrl = "None";
+
+  if (itemType === "undownloaded") {
+    return {
+      url: videoUrl,
+      title: "Video",
+      status: "unchanged",
+      processedChunks: 0,
+    };
+  }
+
+  try {
+    const streamProcessor = streamPlayListItems(videoUrl, processKey);
+    const chunkItems: string[] = [];
+
+    for await (const line of streamProcessor.iterator) {
+      chunkItems.push(line);
+    }
+
+    if (chunkItems.length === 0) {
+      return handleEmptyResponse(videoUrl);
+    }
+
+    // For single videos going into the "None" playlist, check if a mapping
+    // already exists to prevent duplicates when the same URL is added again.
+    const existingMapping = await PlaylistVideoMapping.findOne({
+      where: {
+        videoUrl: chunkItems.length === 1
+          ? (JSON.parse(chunkItems[0]).webpage_url ||
+            JSON.parse(chunkItems[0]).url || "")
+          : "",
+        playlistUrl,
+      },
+    });
+
+    let newStartIndex: number;
+    if (existingMapping) {
+      // Re-use the existing position so processStreamingVideoInformation
+      // sees it as an "already existed" record and just updates metadata.
+      newStartIndex = existingMapping.getDataValue(
+        "positionInPlaylist",
+      ) as number;
+    } else {
+      const lastVideo = await PlaylistVideoMapping.findOne({
+        where: { playlistUrl },
+        order: [["positionInPlaylist", "DESC"]],
+        attributes: ["positionInPlaylist"],
+        limit: 1,
+      });
+      newStartIndex = lastVideo
+        ? lastVideo.getDataValue("positionInPlaylist") + 1
+        : 1;
+    }
+
+    const result = await processStreamingVideoInformation(
+      chunkItems,
+      playlistUrl,
+      newStartIndex,
+      isScheduledUpdate,
+    );
+
+    if (result.count === 1) {
+      safeEmit("listing-single-item-complete", {
+        url: videoUrl,
+        type: itemType,
+        title: result.title,
+        status: "completed",
+        processedChunks: 1,
+        seekSubListTo: newStartIndex,
+      });
+      return {
+        url: videoUrl,
+        title: result.title,
+        status: "completed",
+        processedChunks: 1,
+      };
+    }
+  } catch (error) {
+    return handleListingError(error as Error, videoUrl, itemType);
+  }
+}
+
+/**
+ * Spawns an unending yt-dlp process to stream playlist/video information
+ * @param {string} videoUrl - URL to fetch information from
+ * @param {string} processKey - Unique key for the process
+ * @param {number} startIndex - Playist item start index (default 1)
+ * @returns {Object} An object containing the un-finished process and an async iterator representing the lines
+ */
+function streamPlayListItems(
+  videoUrl: string,
+  processKey: string,
+  startIndex: number = 1,
+): { process: ReturnType<typeof spawn>; iterator: AsyncGenerator<string> } {
+  logger.trace("Starting streaming fetch for items", {
+    url: videoUrl,
+    processKey,
+    startIndex,
+  });
+
+  const processArgs = [
+    "--playlist-start",
+    startIndex.toString(),
+    "--dump-json",
+    "--no-download",
+    videoUrl,
+  ];
+
+  const siteArgs = buildSiteArgs(videoUrl, config);
+  if (siteArgs.length > 0) {
+    processArgs.unshift(...siteArgs);
+  }
+
+  const fullCommandString = [
+    "yt-dlp",
+    ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
+  ].join(" ");
+
+  logger.debug(`Starting streaming listing for ${videoUrl}`, {
+    url: videoUrl,
+    fullCommand: fullCommandString,
+  });
+
+  const listProcess = spawn("python3", [
+    "-c",
+    YT_DLP_PATCHED_CMD,
+    ...processArgs,
+  ]);
+  const processEntry = listProcesses.get(processKey);
+
+  if (processEntry) {
+    processEntry.spawnedProcess = listProcess;
+    processEntry.status = "running";
+    processEntry.spawnTimeStamp = Date.now();
+    processEntry.lastActivity = Date.now();
+    listProcesses.set(processKey, processEntry);
+  } else {
+    logger.error(`Process entry not found: ${processKey}`);
+    throw new Error(`Process entry not found: ${processKey}`);
+  }
+
+  listProcess.stderr.setEncoding("utf8");
+  listProcess.stderr.on("data", (data) => {
+    logger.error("List process error", {
+      error: data,
+      pid: listProcess.pid,
+    });
+    updateProcessActivity(processKey);
+  });
+
+  let _exitStatus: number | null = null;
+  let exitCodePromiseResolve: ((code: number | null) => void) | null = null;
+  const exitCodePromise = new Promise<number | null>((resolve) => {
+    exitCodePromiseResolve = resolve;
+  });
+
+  listProcess.on("close", (code) => {
+    _exitStatus = code;
+    logger.debug("List process closed", {
+      pid: listProcess.pid,
+      code: code,
+    });
+    if (exitCodePromiseResolve) exitCodePromiseResolve(code);
+  });
+
+  async function* lineIterator() {
+    const rl = createInterface({
+      input: listProcess.stdout,
+      crlfDelay: Infinity,
+    });
+
+    let linesYielded = 0;
+    try {
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (trimmed.length > 0) {
+          updateProcessActivity(processKey);
+          linesYielded++;
+          yield trimmed;
+        }
+      }
+
+      // Wait for exit code to ensure no unexpected failures happened, but only if we didn't deliberately kill it
+      const exitCode = listProcess.killed ? null : await exitCodePromise;
+      const isAllowedError = exitCode === 1 && linesYielded > 0;
+
+      if (!listProcess.killed && exitCode !== 0 && !isAllowedError) {
+        const processEntryInt = listProcesses.get(processKey);
+        if (processEntryInt) {
+          processEntryInt.status = "failed";
+          processEntryInt.lastActivity = Date.now();
+          listProcesses.set(processKey, processEntryInt);
+        }
+        throw new Error(`Process exited with code ${exitCode}`);
+      } else {
+        const processEntryInt = listProcesses.get(processKey);
+        if (processEntryInt) {
+          processEntryInt.status = "completed";
+          processEntryInt.lastActivity = Date.now();
+          listProcesses.set(processKey, processEntryInt);
+        }
+      }
+    } catch (error) {
+      const processEntryInt = listProcesses.get(processKey);
+      if (processEntryInt) {
+        processEntryInt.status = "errored";
+        processEntryInt.lastActivity = Date.now();
+        listProcesses.set(processKey, processEntryInt);
+      }
+      if (!listProcess.killed) listProcess.kill();
+      throw error;
+    }
+  }
+
+  return {
+    process: listProcess,
+    iterator: lineIterator(),
+  };
+}
+
+/**
+ * Processes video information and updates database records using streaming absolute indices
+ */
+async function processStreamingVideoInformation(
+  responseItems: string[],
+  playlistUrl: string,
+  chunkStartIndex: number,
+  isUpdate: boolean,
+  monitoringType?: string,
+): Promise<any> {
+  logger.trace("Processing video information chunk", {
+    playlistUrl,
+    chunkStartIndex,
+    isUpdate,
+    itemCount: responseItems.length,
+  });
+
+  const result = {
+    count: 0,
+    title: "",
+    responseUrl: playlistUrl,
+    alreadyExistedCount: 0,
+  };
+
+  // Batch process parsing and metadata extraction
+  const parsedItems = responseItems.map((item, index) => {
+    try {
+      const itemData = JSON.parse(item);
+      const videoUrl = itemData.webpage_url || itemData.url || "";
+
+      // Extract online thumbnail before pruning
+      // Skip ephemeral thumbnails (FB/IG signed CDN URLs expire in hours)
+      const onlineThumbnail = hasEphemeralThumbnails(videoUrl)
+        ? null
+        : (itemData.thumbnail || null);
+
+      // Prune bulky arrays from yt-dlp JSON to reduce storage size
+      // (~62KB -> ~12KB per video)
+      delete itemData.formats;
+      delete itemData.requested_formats;
+      delete itemData.thumbnails;
+      delete itemData.subtitles;
+      delete itemData.automatic_captions;
+
+      return { itemData, videoUrl, index, onlineThumbnail };
+    } catch (e) {
+      logger.error("Failed to parse JSON from stream", {
+        item,
+        error: e as Error,
+      });
+      return null;
+    }
+  }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+  if (parsedItems.length === 0) return result;
+
+  const videoUrls = parsedItems.map((p: any) => p.videoUrl);
+
+  // Fetch all existing meta and mappings for the chunk
+  const [existingVideos, existingMappings] = await Promise.all([
+    VideoMetadata.findAll({ where: { videoUrl: { [Op.in]: videoUrls } } }),
+    PlaylistVideoMapping.findAll({
+      where: {
+        videoUrl: { [Op.in]: videoUrls },
+        playlistUrl: playlistUrl,
+      },
+    }),
+  ]);
+
+  const existingVideosMap = new Map(
+    existingVideos.map((v: any) =>
+      [v.getDataValue("videoUrl"), v] as [string, Model]
+    ),
+  );
+  // Key by "videoUrl|positionInPlaylist" so that duplicate videos at different
+  // positions (allowed by the schema) each get their own map entry.
+  const existingMappingsMap = new Map(
+    existingMappings.map((m: any) =>
+      [
+        `${m.getDataValue("videoUrl")}|${m.getDataValue("positionInPlaylist")}`,
+        m,
+      ] as [string, Model]
+    ),
+  );
+  // Secondary lookup by videoUrl only — used by Start/End modes to find a
+  // mapping at a *different* position so we update it instead of creating a dupe.
+  const existingMappingsByUrl = new Map(
+    existingMappings.map((m: any) =>
+      [
+        m.getDataValue("videoUrl") as string,
+        m,
+      ] as [string, Model]
+    ),
+  );
+
+  const videosToUpsert: any[] = [];
+  const mappingsToCreate: any[] = [];
+  const mappingsToUpdate: { instance: any; position: number }[] = [];
+
+  for (const { itemData, videoUrl, index, onlineThumbnail } of parsedItems) {
+    const title = itemData.title || "";
+    const videoId = itemData.id || "";
+    const approxSize = itemData.filesize_approx || "NA";
+    const existingVideo = existingVideosMap.get(videoUrl);
+    const absoluteIndex = playlistUrl === "None"
+      ? chunkStartIndex
+      : chunkStartIndex + index;
+    const existingMapping = existingMappingsMap.get(
+      `${videoUrl}|${absoluteIndex}`,
+    );
+
+    // Fast skip logic for unchanged records
+    if (
+      monitoringType !== "Refresh" &&
+      existingVideo && existingMapping &&
+      existingMapping.getDataValue("positionInPlaylist") === absoluteIndex
+    ) {
+      result.alreadyExistedCount++;
+      result.count++;
+      result.title = existingVideo.getDataValue("title");
+      continue;
+    }
+
+    const videoData = {
+      videoUrl: videoUrl,
+      videoId: videoId.trim(),
+      title: await truncateText(
+        title === "NA" ? videoId.trim() : title,
+        config.maxTitleLength,
+      ),
+      approximateSize: approxSize === "NA" ? -1 : parseInt(approxSize),
+      downloadStatus: existingVideo
+        ? existingVideo.getDataValue("downloadStatus")
+        : false,
+      isAvailable: ![
+        "[Deleted video]",
+        "[Private video]",
+        "[Unavailable video]",
+      ].includes(title),
+      onlineThumbnail: onlineThumbnail,
+      raw_metadata: itemData,
+    };
+
+    videosToUpsert.push(videoData);
+
+    if (!existingMapping) {
+      // Before creating a new mapping, check if this video already has a
+      // mapping at a different position in the same playlist (position drift
+      // during Start/End incremental updates).  If so, update it instead.
+      const driftedMapping = existingMappingsByUrl.get(videoUrl);
+      if (
+        driftedMapping &&
+        driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex
+      ) {
+        mappingsToUpdate.push({
+          instance: driftedMapping,
+          position: absoluteIndex,
+        });
+      } else if (!driftedMapping) {
+        mappingsToCreate.push({
+          videoUrl: videoUrl,
+          playlistUrl: playlistUrl,
+          positionInPlaylist: absoluteIndex,
+        });
+      }
+    } else if (
+      existingMapping.getDataValue("positionInPlaylist") !== absoluteIndex
+    ) {
+      if (existingMapping.getDataValue("positionInPlaylist") > absoluteIndex) {
+        logger.warn(
+          "Video index decreased. Previous videos in the playlist may have been deleted.",
+          {
+            url: videoUrl,
+            currentIndex: absoluteIndex,
+            oldIndex: existingMapping.getDataValue("positionInPlaylist"),
+          },
+        );
+      }
+      mappingsToUpdate.push({
+        instance: existingMapping,
+        position: absoluteIndex,
+      });
+    }
+
+    result.count++;
+    result.title = videoData.title;
+    logger.debug("Processed video item in memory", {
+      videoUrl,
+      title: videoData.title,
+      playlistUrl,
+      index: absoluteIndex,
+    });
+  }
+
+  // Execute bulk DB operations
+  if (videosToUpsert.length > 0) {
+    // Deduplicate by videoUrl: a playlist can contain the same video at multiple
+    // positions. PostgreSQL's ON CONFLICT DO UPDATE cannot touch the same row
+    // twice in a single statement, so we keep only the last occurrence per URL.
+    const deduplicatedVideos = [
+      ...new Map(
+        videosToUpsert.map((v: any) => [v.videoUrl, v]),
+      ).values(),
+    ];
+    await (VideoMetadata as any).unscoped().bulkCreate(deduplicatedVideos, {
+      updateOnDuplicate: [
+        "videoId",
+        "title",
+        "approximateSize",
+        "isAvailable",
+        "updatedAt",
+        "onlineThumbnail",
+        "raw_metadata",
+      ],
+    });
+  }
+
+  if (mappingsToCreate.length > 0) {
+    await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
+  }
+
+  if (mappingsToUpdate.length > 0) {
+    // Sequential updates for drifter positions to avoid complexity,
+    // but these are typicaly few compared to total items.
+    await Promise.all(
+      mappingsToUpdate.map((m) =>
+        m.instance.update({ positionInPlaylist: m.position })
+      ),
+    );
+  }
+
+  return result;
+}
+/**
+ * Discovers metadata files associated with a downloaded video
+ * @param {string} mainFileName - The main video file name
+ * @param {string} savePath - Directory where files are saved
+ * @param {object} videoEntry - The video entry in the database
+ * @returns {object} Object containing paths to discovered metadata files and sync status
+ */
+
+function discoverFiles(
+  mainFileName: string | null,
+  savePath: string,
+  videoEntry: any,
+) {
+  const metadata = {
+    fileName: null as string | null,
+    descriptionFile: null as string | null,
+    commentsFile: null as string | null,
+    subTitleFile: null as string | null,
+    thumbNailFile: null as string | null,
+  };
+
+  // Track which files were expected vs found
+  const syncStatus = {
+    videoFileFound: false,
+    descriptionFileFound: !config.saveDescription,
+    commentsFileFound: !config.saveComments,
+    subTitleFileFound: !config.saveSubs,
+    thumbNailFileFound: !config.saveThumbnail,
+  };
+
+  // If a file is being re-downloaded/updated, mainFileName will be null
+  if (!mainFileName) {
+    logger.debug("No main file name provided for metadata discovery");
+    // Check if video is already downloaded, and if it has a download status as true
+    if (videoEntry && videoEntry.downloadStatus) {
+      mainFileName = videoEntry.fileName;
+      logger.debug("Using main file name from database", { mainFileName });
+    } else {
+      logger.debug("No main file name found in database");
+      return { metadata, syncStatus };
+    }
+  }
+
+  try {
+    const mainFileExt = path.extname(mainFileName!).toLowerCase();
+    const mainFileBase = mainFileName!.replace(mainFileExt, "");
+    logger.debug("Scanning savePath for extra metadata files", {
+      savePath,
+      mainFileBase,
+    });
+
+    // Define extension patterns for each file type
+    const patterns = {
+      video: [".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"],
+      description: [".description"],
+      comments: [".info.json"],
+      subtitle: [".vtt", ".srt"], // There can be languages too
+      thumbnail: [".webp", ".jpg", ".jpeg", ".png"],
+    };
+
+    // Optimistically check for known file patterns first
+    const checkFile = (baseName: string, extensions: string[]) => {
+      for (const ext of extensions) {
+        const filePath = path.join(savePath, baseName + ext);
+        if (fs.existsSync(filePath)) {
+          return baseName + ext;
+        }
+      }
+      return null;
+    };
+
+    // Try to find each metadata file optimistically
+    if (config.saveDescription) {
+      const found = checkFile(mainFileBase, patterns.description);
+      if (found) {
+        metadata.descriptionFile = found;
+        syncStatus.descriptionFileFound = true;
+        logger.trace("Found description file", { file: found });
+      }
+    }
+
+    if (config.saveComments) {
+      const found = checkFile(mainFileBase, patterns.comments);
+      if (found) {
+        metadata.commentsFile = found;
+        syncStatus.commentsFileFound = true;
+        logger.trace("Found comments file", { file: found });
+      }
+    }
+
+    if (config.saveSubs) {
+      // Try common subtitle patterns: baseName.ext and baseName.lang.ext
+      const commonLanguages = [
+        "en",
+        "fr",
+        "de",
+        "es",
+        "it",
+        "pt",
+        "ru",
+        "ja",
+        "zh",
+        "ko",
+      ];
+      const subtitlePatterns = [
+        ...patterns.subtitle, // Direct patterns: baseName.vtt, baseName.srt
+        ...commonLanguages.flatMap((lang) =>
+          patterns.subtitle.map((ext) => `.${lang}${ext}`)
+        ), // Language patterns: baseName.en.vtt, baseName.fr.srt, etc.
+      ];
+
+      const found = checkFile(mainFileBase, subtitlePatterns);
+      if (found) {
+        metadata.subTitleFile = found;
+        syncStatus.subTitleFileFound = true;
+        logger.trace("Found subtitles file", { file: found });
+      }
+    }
+
+    if (config.saveThumbnail) {
+      const found = checkFile(mainFileBase, patterns.thumbnail);
+      if (found) {
+        metadata.thumbNailFile = found;
+        syncStatus.thumbNailFileFound = true;
+        logger.trace("Found thumbnail file", { file: found });
+      }
+    }
+
+    // Check if the initially found file extension was for the video
+    if (mainFileExt && patterns.video.includes(mainFileExt)) {
+      // This way the likely hood of finding it in the first iteration is very high
+      patterns.video = [
+        mainFileExt,
+        ...patterns.video.filter((ext) => ext !== mainFileExt),
+      ];
+    }
+    // Find video file - check common extensions first, then fallback to directory scan
+    const videoFile = checkFile(mainFileBase, patterns.video);
+    if (videoFile) {
+      metadata.fileName = videoFile;
+      syncStatus.videoFileFound = true;
+      logger.trace("Found video file", { file: videoFile });
+    } else {
+      // Fallback: scan directory for video file with unknown extension
+      logger.trace(
+        "Video file not found with common extensions, scanning directory",
+      );
+      const files = fs.readdirSync(savePath);
+
+      // Filter out only the ones we need
+      const filesOfInterest = files.filter((file) =>
+        file.startsWith(mainFileBase)
+      );
+
+      // Look for the video file - any file starting with mainFileBase that isn't a known metadata file
+      const knownMetadataExts = [
+        ...patterns.description,
+        ...patterns.comments,
+        ...patterns.subtitle,
+        ...patterns.thumbnail,
+      ];
+
+      for (const file of filesOfInterest) {
+        // If it's not a known metadata extension, assume it's the video file
+        if (!knownMetadataExts.some((metaExt) => file.endsWith(metaExt))) {
+          metadata.fileName = file;
+          syncStatus.videoFileFound = true;
+          logger.trace("Found video file", { file });
+          break;
+        }
+      }
+    }
+
+    return { metadata, syncStatus };
+  } catch (error) {
+    logger.debug("Could not read savePath for extra metadata files", {
+      savePath,
+      error: (error as Error).message,
+    });
+
+    return {
+      metadata,
+      syncStatus: {
+        videoFileFound: false,
+        descriptionFileFound: false,
+        commentsFileFound: false,
+        subTitleFileFound: false,
+        thumbNailFileFound: false,
+      },
+    };
+  }
+}
+/**
+ * Computes the save directory relative to the configured save location
+ * @param {string} savePath - The configured save location
+ * @returns {string} Relative save directory
+ */
+function computeSaveDirectory(savePath: string) {
+  try {
+    let saveDir = path.relative(
+      path.resolve(config.saveLocation),
+      path.resolve(savePath),
+    );
+
+    // Normalize: convert "." to empty string
+    if (saveDir === path.sep || saveDir === ".") {
+      saveDir = "";
+    }
+
+    // Remove leading separator
+    if (saveDir.startsWith(path.sep)) {
+      saveDir = saveDir.slice(1);
+    }
+
+    // Remove trailing separator
+    if (saveDir.endsWith(path.sep)) {
+      saveDir = saveDir.slice(0, -1);
+    }
+
+    return saveDir;
+  } catch (error) {
+    logger.error("Error computing save directory", {
+      savePath,
+      saveLocation: config.saveLocation,
+      error: (error as Error).message,
+    });
+    return "";
+  }
+}
+/**
+ * Handles the case where no items are found for a given video URL.
+ * Emits a "listing-error" event with the error details and returns an error response object.
+ *
+ * @param {string} videoUrl - The URL of the video for which no items were found.
+ * @returns {Object} An object containing the video URL, a default title, status as "failed",
+ *                   and an error message indicating no items were found.
+ */
+function handleEmptyResponse(videoUrl: string) {
+  safeEmit("listing-error", {
+    url: videoUrl,
+    error: "No items found",
+  });
+
+  return {
+    url: videoUrl,
+    title: "Video",
+    status: "failed",
+    error: "No items found",
+  };
+}
+/**
+ * Handles errors that occur during the listing process for a video or playlist.
+ *
+ * @param {Error} error - The error object containing details about the failure.
+ * @param {string} videoUrl - The URL of the video or playlist that failed to list.
+ * @param {string} itemType - The type of item being listed, either "playlist" or "video".
+ * @returns {Object} An object containing details about the failed listing, including the URL, title, status, and error message.
+ */
+function handleListingError(error: Error, videoUrl: string, itemType: string) {
+  logger.error("Listing failed", {
+    url: videoUrl,
+    error: error.message,
+    stack: error.stack,
+  });
+  safeEmit("listing-error", {
+    url: videoUrl,
+    error: error.message,
+  });
+  return {
+    url: videoUrl,
+    title: itemType === "playlist" ? "Playlist" : "Video",
+    status: "failed",
+    error: error.message,
+  };
+}
+/**
+ * Handles completion of playlist listing process and emits completion events
+ *
+ * @param {string} videoUrl - URL of the playlist that was processed
+ * @param {number} processedChunks - Number of chunks that were processed
+ * @param {string} playlistTitle - Title of the playlist
+ * @param {number} seekPlaylistListTo - Position in the playlist list to seek to
+ * @param {boolean} isScheduledUpdate - Whether the listing was triggered by a scheduler
+ * @returns {Object} Object containing url, title, status and processed chunk count
+ */
+function completePlaylistListing(
+  videoUrl: string,
+  processedChunks: number,
+  playlistTitle: string,
+  seekPlaylistListTo: number,
+  isScheduledUpdate: boolean,
+) {
+  // Log completion
+  logger.info(`Playlist listing completed`, {
+    url: videoUrl,
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo,
+  });
+
+  // Emit completion event
+  if (!isScheduledUpdate) {
+    safeEmit("listing-playlist-complete", {
+      url: videoUrl,
+      type: "playlist",
+      status: "completed",
+      processedChunks,
+      playlistTitle,
+      seekPlaylistListTo,
+    });
+  }
+
+  // Return completion status
+  return {
+    url: videoUrl,
+    type: "Playlist",
+    status: "completed",
+    processedChunks,
+    playlistTitle,
+    seekPlaylistListTo,
+  };
+}
+/**
+  return result as any;
+}
+/**
+ * Updates video metadata in database if changes detected
+ *
+ * @param {Object} existingVideo - Current video record from database
+ * @param {Object} newData - New video data to compare against
+ * @param {string} newData.videoId - Video ID
+ * @param {number} newData.approximateSize - Approximate file size
+ * @param {string} newData.title - Video title
+ * @param {boolean} newData.isAvailable - Video availability status
+ * @returns {Promise<void>} Resolves when update complete
+ */
+
+async function _updateVideoMetadata(
+  existingVideo: Record<string, any>,
+  newData: Record<string, any>,
+): Promise<void> {
+  logger.trace("Checking video metadata for updates", {
+    oldData: JSON.stringify(existingVideo),
+    newData: JSON.stringify(newData),
+  });
+
+  const differences = [];
+  let requiresUpdate = false;
+
+  // Check for differences
+  if (existingVideo.videoId !== newData.videoId) {
+    differences.push({
+      field: "videoId",
+      old: existingVideo.videoId,
+      new: newData.videoId,
+    });
+    requiresUpdate = true;
+  }
+
+  if (+existingVideo.approximateSize !== +newData.approximateSize) {
+    differences.push({
+      field: "approximateSize",
+      old: existingVideo.approximateSize,
+      new: newData.approximateSize,
+    });
+    requiresUpdate = true;
+  }
+
+  if (existingVideo.title !== newData.title) {
+    differences.push({
+      field: "title",
+      old: existingVideo.title,
+      new: newData.title,
+    });
+    requiresUpdate = true;
+  }
+
+  if (existingVideo.isAvailable !== newData.isAvailable) {
+    differences.push({
+      field: "isAvailable",
+      old: existingVideo.isAvailable,
+      new: newData.isAvailable,
+    });
+    requiresUpdate = true;
+  }
+
+  // Perform update if needed
+  if (requiresUpdate) {
+    logger.warn("Video metadata changes detected", {
+      differences: JSON.stringify(differences),
+    });
+
+    Object.assign(existingVideo, {
+      videoId: newData.videoId,
+      approximateSize: +newData.approximateSize,
+      title: newData.title,
+      isAvailable: newData.isAvailable,
+    });
+
+    await existingVideo.save();
+    logger.debug("Video metadata updated successfully");
+  } else {
+    logger.trace("No video metadata updates needed");
+  }
+}
+/**
+ * Updates the monitoring type for a playlist in the database
+ *
+ * @param {Object} requestBody - Request parameters
+ * @param {string} requestBody.url - Playlist URL to update
+ * @param {string} requestBody.watch - New monitoring type value
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when monitoring type is updated
+ * @throws {Error} If required parameters are missing or update fails
+ */
+
+async function updatePlaylistMonitoring(
+  requestBody: Record<string, any>,
+  response: ServerResponse,
+): Promise<void> {
+  try {
+    // Validate required parameters
+    if (!requestBody.url || !requestBody.watch) {
+      throw new Error("URL and monitoring type are required");
+    }
+
+    const playlistUrl = requestBody.url;
+    const monitoringType = requestBody.watch;
+
+    logger.trace("Updating playlist monitoring type", {
+      playlistUrl,
+      monitoringType,
+    });
+
+    // Find playlist in database
+    const playlist = await PlaylistMetadata.findOne({
+      where: { playlistUrl: playlistUrl },
+    });
+
+    if (!playlist) {
+      throw new Error("Playlist not found");
+    }
+
+    // Update monitoring type
+    await playlist.update(
+      { monitoringType: monitoringType },
+      { silent: true },
+    );
+
+    logger.debug("Successfully updated monitoring type", {
+      playlistUrl,
+
+      oldType: (playlist as any).monitoringType,
+      newType: monitoringType,
+    });
+
+    // Send success response
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "success",
+      message: "Monitoring type updated successfully",
+    }));
+  } catch (error) {
+    // Log error details
+    logger.error("Failed to update monitoring type", {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+
+    // Send error response
+
+    const statusCode = (error as any).status || 500;
+    response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      status: "error",
+      message: he.escape((error as Error).message),
+    }));
+  }
+}
+/**
+ * Adds a new playlist to the database with metadata from yt-dlp
+ *
+ * @param {string} playlistUrl - The URL of the playlist
+ * @param {string} monitoringType - The type of monitoring to apply
+ * @return {Promise<void>} Resolves when playlist is added to database
+ * @throws {Error} If playlist creation fails or max listing processes reached
+ */
+async function addPlaylist(playlistUrl: string, monitoringType: string) {
+  let playlistTitle = "";
+  // Initialize the counter from DB on first call, then increment atomically.
+  // We use a Promise to ensure concurrent callers wait for the same initialization
+  // instead of racing to query the database multiple times.
+  if (pendingPlaylistSortCounter === null) {
+    if (pendingPlaylistSortCounterPromise === null) {
+      pendingPlaylistSortCounterPromise = PlaylistMetadata.findOne({
+        order: [["sortOrder", "DESC"]],
+        attributes: ["sortOrder"],
+        limit: 1,
+      }).then((lastPlaylist: Model | null) => {
+        const initialValue = lastPlaylist !== null
+          ? (lastPlaylist as any).sortOrder + 1
+          : 0;
+        pendingPlaylistSortCounter = initialValue;
+        return initialValue;
+      });
+    }
+    await pendingPlaylistSortCounterPromise;
+  }
+  const nextPlaylistIndex = pendingPlaylistSortCounter!++;
+
+  const processArgs = [
+    "--playlist-end",
+    "1",
+    "--dump-json",
+    "--no-download",
+    playlistUrl,
+  ];
+  // Playlist are not something that exists on x.com but a post can have
+  // multiple videos so we need to use cookies for those links,
+  // The listed videos will all have the same link with a different id
+  // which this code can't handle yet, you will get only one item in the
+  // playlist generated from it (hopefully the first one) but downloading that
+  // will make yt-dlp get the rest of the items in the post, check the folder.
+  const siteArgs = buildSiteArgs(playlistUrl, config);
+  if (siteArgs.length > 0) {
+    processArgs.unshift(...siteArgs);
+  }
+
+  const fullCommandString = [
+    "yt-dlp",
+    ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)), // quote args with spaces
+  ].join(" ");
+  logger.debug("Trying to get playlist title", {
+    url: playlistUrl,
+    fullCommand: fullCommandString,
+  });
+  // Spawn process to get playlist title
+  const titleProcess = spawn("python3", [
+    "-c",
+    YT_DLP_PATCHED_CMD,
+    ...processArgs,
+  ]);
+
+  return new Promise((resolve, reject) => {
+    // Handle stdout
+    titleProcess.stdout.setEncoding("utf8");
+    titleProcess.stdout.on("data", (data) => {
+      playlistTitle += data;
+    });
+
+    // Handle stderr
+    titleProcess.stderr.setEncoding("utf8");
+    titleProcess.stderr.on("data", (data) => {
+      logger.error(`Error getting playlist title: ${data}`);
+    });
+
+    // Handle process errors
+    titleProcess.on("error", (error) => {
+      logger.error(`Title process error: ${error.message}`);
+      reject(error);
+    });
+
+    // Handle process completion
+    titleProcess.on("close", async (code) => {
+      try {
+        if (code !== 0) {
+          logger.error(`Title process failed with code: ${code}`);
+          throw new Error("Failed to get playlist title");
+        }
+
+        // Handle empty or NA title
+        try {
+          const jsonData = JSON.parse(playlistTitle.toString().trim());
+          if (jsonData) {
+            playlistTitle = jsonData.playlist_title || jsonData.title ||
+              playlistTitle;
+          }
+        } catch (e) {
+          logger.error("Failed to parse playlist title JSON", {
+            playlistTitle,
+            error: e as Error,
+          });
+        }
+
+        if (!playlistTitle || playlistTitle.toString().trim() === "NA") {
+          try {
+            playlistTitle = await urlToTitle(playlistUrl);
+          } catch (error) {
+            logger.error(
+              `Failed to get title from URL: ${(error as Error).message}`,
+            );
+            playlistTitle = playlistUrl;
+          }
+        }
+
+        // Trim title to max length
+        playlistTitle = await truncateText(
+          playlistTitle,
+          config.maxTitleLength,
+        );
+        logger.debug(`Creating playlist with title: ${playlistTitle}`, {
+          url: playlistUrl,
+          pid: titleProcess.pid,
+          code: code,
+          monitoringType: monitoringType,
+          lastUpdatedByScheduler: Date.now(),
+        });
+
+        // Create playlist entry
+        const [playlist, created] = await PlaylistMetadata.findOrCreate({
+          where: { playlistUrl: playlistUrl },
+          defaults: {
+            title: playlistTitle.trim(),
+            monitoringType: monitoringType,
+            saveDirectory: playlistTitle.trim(),
+            // Order in which playlists are displayed or Index
+            sortOrder: nextPlaylistIndex,
+            lastUpdatedByScheduler: Date.now(),
+          },
+        });
+
+        if (!created) {
+          logger.warn("Playlist already exists", { url: playlistUrl });
+        }
+
+        resolve(playlist);
+      } catch (error) {
+        logger.error("Failed to create playlist", {
+          url: playlistUrl,
+          error: (error as Error).message,
+        });
+        reject(error);
+      }
+    });
+  });
+}
+
+// Delete
+/**
+ * Handles deletion of playlists and their associated data
+ *
+ * @param {Object} requestBody - Body of the request containing parameters
+ * @param {string} requestBody.playListUrl - URL of the playlist to delete (required)
+ * @param {boolean} requestBody.deleteAllVideosInPlaylist - Whether to delete all video mappings
+ * @param {boolean} requestBody.deletePlaylist - Whether to delete the playlist itself
+ * @param {boolean} requestBody.cleanUp - Whether to clean up the playlist directory
+ * @param {http.ServerResponse} response - HTTP response object
+ * @returns {Promise<void>} Resolves when deletion is complete
+ */
+
+async function processDeletePlaylistRequest(
+  requestBody: Record<string, any>,
+  response: ServerResponse,
+) {
+  try {
+    logger.debug("Received playlist delete request", {
+      "requestBody": JSON.stringify(requestBody),
+    });
+
+    const playListUrl = requestBody.playListUrl || "";
+    const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist ||
+      false;
+    const deletePlaylist = requestBody.deletePlaylist || false;
+    const cleanUp = requestBody.cleanUp || false;
+
+    // Test
+    //response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    //return response.end(JSON.stringify({ "status": "test", "message": playListUrl }));
+
+    if (!playListUrl) {
+      logger.error("Need a playListUrl", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+      );
+    }
+    if (playListUrl === "None") {
+      logger.error("Cannot delete the default playlist", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": "Cannot delete the default playlist",
+        }),
+      );
+    }
+
+    const playlist = await PlaylistMetadata.findByPk(playListUrl) as any;
+    if (!playlist) {
+      logger.error("Playlist not found", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Playlist not found" }),
+      );
+    }
+
+    const transaction = await sequelize.transaction();
+    try {
+      let message = "";
+
+      // Delete all video mappings if requested
+      if (deleteAllVideosInPlaylist) {
+        await PlaylistVideoMapping.destroy({
+          where: { playlistUrl: playListUrl },
+          transaction,
+        });
+        message =
+          `Removed all video references from playlist ${playlist.title}`;
+      }
+
+      // Delete the playlist itself if requested
+      if (deletePlaylist) {
+        // Save sortOrder of deleted playlist
+        const deletedSortOrder = playlist.sortOrder;
+        // Delete playlist
+        await playlist.destroy({ transaction });
+        message += message
+          ? " and deleted playlist"
+          : `Deleted playlist ${playlist.title}`;
+
+        // Update sortOrder for all playlists that came after the deleted one
+        await PlaylistMetadata.decrement(
+          "sortOrder",
+          {
+            by: 1,
+            where: {
+              sortOrder: { [Op.gt]: deletedSortOrder },
+            },
+            transaction,
+          },
+        );
+        // Invalidate the cached counter so next addPlaylist re-reads from DB
+        pendingPlaylistSortCounter = null;
+        pendingPlaylistSortCounterPromise = null;
+        logger.debug("Updated sortOrder for playlists after deleted playlist", {
+          deletedSortOrder,
+        });
+      }
+
+      // If neither action was requested, just return a message
+      if (!deleteAllVideosInPlaylist && !deletePlaylist) {
+        await transaction.commit();
+        response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+        return response.end(JSON.stringify({
+          "status": "success",
+          "message": `No deletion performed for playlist ${playlist.title}`,
+          "cleanUp": false,
+          "deletePlaylist": false,
+          "deleteAllVideosInPlaylist": false,
+        }));
+      }
+
+      // Clean up directory if requested (after transaction commits)
+      if (cleanUp) {
+        try {
+          const playListDir = path.join(
+            config.saveLocation,
+            playlist.saveDirectory,
+          );
+          logger.debug("Cleaning up playlist directory", {
+            saveDirectory: playlist.saveDirectory,
+            absolutePath: playListDir,
+          });
+          fs.rmSync(playListDir, { recursive: true, force: true });
+          logger.debug("Playlist directory cleaned up", {
+            saveDirectory: playlist.saveDirectory,
+          });
+          message += " and cleaned up playlist directory";
+
+          // Mark any videos that shared this save directory as un-downloaded
+          // since their underlying files were just deleted
+          try {
+            const [updatedCount] = await VideoMetadata.update({
+              downloadStatus: false,
+              fileName: null,
+              thumbNailFile: null,
+              subTitleFile: null,
+              commentsFile: null,
+              descriptionFile: null,
+              saveDirectory: null,
+            }, {
+              where: { saveDirectory: playlist.saveDirectory },
+            });
+
+            if (updatedCount > 0) {
+              logger.info(
+                `Reset ${updatedCount} video(s) to un-downloaded state as their directory was deleted`,
+                {
+                  saveDirectory: playlist.saveDirectory,
+                },
+              );
+              message +=
+                ` (and marked ${updatedCount} shared video(s) as un-downloaded)`;
+            }
+          } catch (updateError) {
+            logger.error(
+              "Failed to update shared video metadata after directory cleanup",
+              {
+                saveDirectory: playlist.saveDirectory,
+                error: (updateError as Error).message,
+              },
+            );
+          }
+        } catch (error) {
+          logger.error("Failed to clean up playlist directory", {
+            saveDirectory: playlist.saveDirectory,
+            error: (error as Error).message,
+          });
+          message += " but failed to clean up playlist directory";
+        }
+      }
+
+      // Commit transaction
+      await transaction.commit();
+      response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        "status": "success",
+        "message": message,
+        "cleanUp": cleanUp,
+        "deletePlaylist": deletePlaylist,
+        "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist,
+      }));
+    } catch (error) {
+      await transaction.rollback();
+      logger.error(
+        `Playlist deletion failed with error ${(error as Error).message}`,
+        {
+          playListUrl,
+          deleteAllVideosInPlaylist,
+          deletePlaylist,
+          cleanUp,
+        },
+      );
+      response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": (error as Error).message,
+        }),
+      );
+    }
+  } catch (error) {
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        "status": "error",
+        "message": (error as Error).message,
+      }),
+    );
+  }
+}
+
+/**
+ * Re-indexes playlists using Full mode.
+ * Queues playlists for re-indexing via listItemsConcurrently
+ * and returns immediately.  The actual re-index runs in the
+ * background, respecting the listing semaphore to avoid overload.
+ *
+ * @param {Object}  requestBody
+ * @param {number}  [requestBody.start]       - Start offset (0-based, default 0)
+ * @param {number}  [requestBody.stop]        - End offset (exclusive). Subset = playlists[start..stop). Omit for all from start.
+ * @param {string}  [requestBody.siteFilter]  - Only re-index playlists whose URL contains this substring (e.g. "youtube.com")
+ * @param {number}  [requestBody.chunkSize]   - Override the default chunk size for the listing pipeline
+ */
+async function processReindexAllRequest(
+  requestBody: Record<string, any>,
+  response: ServerResponse,
+) {
+  try {
+    const startIndex: number = requestBody.start !== undefined
+      ? Math.max(0, parseInt(requestBody.start))
+      : 0;
+    const stopIndex: number | null = requestBody.stop !== undefined
+      ? Math.max(startIndex, parseInt(requestBody.stop))
+      : null; // null = no upper bound
+    const siteFilter: string = requestBody.siteFilter || "";
+    const chunkSizeOverride: number = requestBody.chunkSize
+      ? Math.max(1, parseInt(requestBody.chunkSize))
+      : config.chunkSize;
+
+    // Fetch all playlists sorted by sortOrder (same order as getplay)
+    const allPlaylists = await PlaylistMetadata.findAll({
+      where: { sortOrder: { [Op.gte]: 0 } },
+      order: [["sortOrder", "ASC"]],
+    });
+
+    const totalCount = allPlaylists.length;
+
+    // Slice to [start, stop) window
+    const subset = stopIndex !== null
+      ? allPlaylists.slice(startIndex, stopIndex)
+      : allPlaylists.slice(startIndex);
+
+    // Apply site filter on the subset
+    const filtered = siteFilter
+      ? subset.filter((p: Model) =>
+        (p.getDataValue("playlistUrl") as string).includes(siteFilter)
+      )
+      : subset;
+
+    if (filtered.length === 0) {
+      response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          status: "success",
+          message: siteFilter
+            ? `No playlists matching "${siteFilter}" in range [${startIndex}, ${
+              stopIndex ?? totalCount
+            })`
+            : `No playlists in range [${startIndex}, ${
+              stopIndex ?? totalCount
+            })`,
+          queued: 0,
+          total: totalCount,
+        }),
+      );
+    }
+
+    // Build item descriptors — use Full mode with isScheduledUpdate=true
+    // so the listing pipeline treats this like a scheduler-triggered refresh.
+    const items = filtered.map((p: Model) => ({
+      url: p.getDataValue("playlistUrl") as string,
+      type: "playlist",
+      currentMonitoringType: "Full",
+      isScheduledUpdate: true,
+      reason: "Batch re-index",
+    }));
+
+    // Respond immediately; re-indexing runs in the background.
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(
+      JSON.stringify({
+        status: "success",
+        message: `Queued ${items.length} playlist(s) for re-indexing`,
+        queued: items.length,
+        total: totalCount,
+        start: startIndex,
+        stop: stopIndex ?? totalCount,
+        siteFilter: siteFilter || undefined,
+        chunkSize: chunkSizeOverride,
+      }),
+    );
+
+    // Fire-and-forget — errors are logged internally by the listing pipeline.
+    void (async () => {
+      try {
+        logger.info("Starting batch re-index of playlists", {
+          count: items.length,
+          start: startIndex,
+          stop: stopIndex ?? totalCount,
+          siteFilter: siteFilter || "none",
+          chunkSize: chunkSizeOverride,
+        });
+        const results = await listItemsConcurrently(
+          items,
+          chunkSizeOverride,
+          true,
+        );
+        const completedCount = results.filter(
+          (r: { status?: string }) =>
+            r && (r.status === "completed" || r.status === "success"),
+        ).length;
+        logger.info("Batch re-index completed", {
+          total: items.length,
+          completedCount,
+        });
+      } catch (err) {
+        logger.error("Batch re-index failed", {
+          error: (err as Error).message,
+          stack: (err as Error).stack,
+        });
+      }
+    })();
+  } catch (error) {
+    logger.error("processReindexAllRequest failed", {
+      error: (error as Error).message,
+    });
+    response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        status: "error",
+        message: (error as Error).message,
+      }),
+    );
+  }
+}
+
+/**
+ * Handles deletion of specific videos from a playlist
+ *
+ * @param {Object} requestBody - Body of the request containing parameters
+ * @param {string} requestBody.playListUrl - URL of the playlist (required)
+ * @param {string[]} requestBody.videoUrls - Array of video URLs to delete (required)
+ * @param {boolean} requestBody.cleanUp - Whether to delete downloaded files
+ * @param {boolean} requestBody.deleteVideoMappings - Whether to remove playlist-video mappings
+ * @param {boolean} requestBody.deleteVideosInDB - Whether to delete videos from VideoMetadata table
+ * @param {http.ServerResponse} response - HTTP response object
+ * @returns {Promise<void>} Resolves when deletion is complete
+ */
+
+async function processDeleteVideosRequest(
+  requestBody: Record<string, any>,
+  response: ServerResponse,
+) {
+  try {
+    logger.debug("Received video delete request", {
+      "requestBody": JSON.stringify(requestBody),
+    });
+
+    const playListUrl = requestBody.playListUrl || "";
+    const videoUrls = requestBody.videoUrls || [];
+    const cleanUp = requestBody.cleanUp || false;
+    const deleteVideoMappings = requestBody.deleteVideoMappings || false;
+    const deleteVideosInDB = requestBody.deleteVideosInDB || false;
+
+    // Test
+    //response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    //return response.end(JSON.stringify({ "status": "test", "message": videoUrls }));
+
+    if (!playListUrl) {
+      logger.error("Need a playListUrl", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+      );
+    }
+
+    if (!Array.isArray(videoUrls)) {
+      logger.error("videoUrls must be an array", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": "videoUrls must be an array",
+        }),
+      );
+    }
+
+    if (videoUrls.length === 0) {
+      logger.error("videoUrls array cannot be empty", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": "videoUrls array cannot be empty",
+        }),
+      );
+    }
+
+    const playlist = await PlaylistMetadata.findByPk(playListUrl);
+    if (!playlist) {
+      logger.error("Playlist not found", {
+        "requestBody": JSON.stringify(requestBody),
+      });
+      response.writeHead(404, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({ "status": "error", "message": "Playlist not found" }),
+      );
+    }
+
+    const transaction = await sequelize.transaction();
+    try {
+      const deleted = [];
+      const failed = [];
+
+      // Fetch all target videos at once
+      const videos = await VideoMetadata.findAll({
+        where: { videoUrl: { [Op.in]: videoUrls } },
+        transaction,
+      });
+
+      const videoUrlsToDestroy = [];
+      const videoUrlsToReset = [];
+      const videoUrlsToDeleteMapping = [];
+
+      for (const videoUrl of videoUrls) {
+        try {
+          const video = videos.find((v: any) =>
+            v.getDataValue("videoUrl") === videoUrl
+          ) as any;
+
+          if (!video) {
+            logger.warn("Video not found", { videoUrl });
+            failed.push({ videoUrl, reason: "Video not found" });
+            continue;
+          }
+
+          let allFilesRemoved = true;
+
+          // Clean up downloaded files if requested
+          if (cleanUp && video.getDataValue("downloadStatus")) {
+            const filesToRemove: Record<string, string | null> = {
+              "fileName": video.getDataValue("fileName"),
+              "thumbNailFile": video.getDataValue("thumbNailFile"),
+              "subTitleFile": video.getDataValue("subTitleFile"),
+              "commentsFile": video.getDataValue("commentsFile"),
+              "descriptionFile": video.getDataValue("descriptionFile"),
+            };
+
+            logger.debug("Removing files for video", {
+              videoUrl,
+              filesToRemove: JSON.stringify(filesToRemove),
+            });
+
+            for (const [key, value] of Object.entries(filesToRemove)) {
+              if (value) {
+                try {
+                  const filePath = path.join(
+                    config.saveLocation,
+                    video.getDataValue("saveDirectory") || "",
+                    value,
+                  );
+                  logger.debug("Removing file", {
+                    videoUrl,
+                    key,
+                    value,
+                    filePath,
+                  });
+                  if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    logger.debug("Removed file", {
+                      videoUrl,
+                      key,
+                      value,
+                      filePath,
+                    });
+                  } else {
+                    logger.warn("File to remove not found", {
+                      videoUrl,
+                      key,
+                      value,
+                      filePath,
+                    });
+                  }
+                } catch (error) {
+                  logger.error("Failed to remove file", {
+                    videoUrl,
+                    key,
+                    value,
+                    error: (error as Error).message,
+                  });
+                  allFilesRemoved = false;
+                }
+              }
+            }
+          }
+
+          if (allFilesRemoved || !cleanUp) {
+            if (deleteVideosInDB) {
+              videoUrlsToDestroy.push(videoUrl);
+            } else {
+              if (cleanUp && allFilesRemoved) {
+                videoUrlsToReset.push(videoUrl);
+              }
+              if (deleteVideoMappings) {
+                videoUrlsToDeleteMapping.push(videoUrl);
+              }
+            }
+            deleted.push(videoUrl);
+          } else {
+            failed.push({
+              videoUrl,
+              reason: "Some files could not be removed",
+            });
+          }
+        } catch (error) {
+          logger.error("Failed to process video", {
+            videoUrl,
+            error: (error as Error).message,
+          });
+          failed.push({ videoUrl, reason: (error as Error).message });
+        }
+      }
+
+      // Execute batched DB operations
+      if (videoUrlsToDestroy.length > 0) {
+        await VideoMetadata.destroy({
+          where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
+          transaction,
+        });
+      }
+
+      if (videoUrlsToReset.length > 0) {
+        await VideoMetadata.update({
+          downloadStatus: false,
+          fileName: null,
+          thumbNailFile: null,
+          subTitleFile: null,
+          commentsFile: null,
+          descriptionFile: null,
+          saveDirectory: null,
+        }, {
+          where: { videoUrl: { [Op.in]: videoUrlsToReset } },
+          transaction,
+        });
+      }
+
+      if (videoUrlsToDeleteMapping.length > 0) {
+        await PlaylistVideoMapping.destroy({
+          where: {
+            videoUrl: { [Op.in]: videoUrlsToDeleteMapping },
+            playlistUrl: playListUrl,
+          },
+          transaction,
+        });
+      }
+
+      await transaction.commit();
+
+      response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(JSON.stringify({
+        "message": `Processed ${deleted.length} video(s) from playlist ${
+          (playlist as any).title
+        }`,
+        "deleted": deleted,
+        "failed": failed,
+        "cleanUp": cleanUp,
+        "deleteVideoMappings": deleteVideoMappings,
+        "deleteVideosInDB": deleteVideosInDB,
+      }));
+    } catch (error) {
+      await transaction.rollback();
+      logger.error(
+        `Video deletion failed with error ${(error as Error).message}`,
+        {
+          playListUrl,
+          videoUrls: JSON.stringify(videoUrls),
+          cleanUp,
+          deleteVideoMappings,
+          deleteVideosInDB,
+        },
+      );
+      response.writeHead(500, generateCorsHeaders(MIME_TYPES[".json"]));
+      return response.end(
+        JSON.stringify({
+          "status": "error",
+          "message": (error as Error).message,
+        }),
+      );
+    }
+  } catch (error) {
+    response.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
+    return response.end(
+      JSON.stringify({
+        "status": "error",
+        "message": (error as Error).message,
+      }),
+    );
+  }
+}
+
+// List function that send data to frontend
+/**
+ * Retrieves paginated playlist data with sorting and filtering options for frontend display
+ *
+ * @param {Object} requestBody - The request parameters
+ * @param {number} [requestBody.start=0] - Starting index for pagination
+ * @param {number} [requestBody.stop=config.chunkSize] - End index for pagination
+ * @param {number} [requestBody.sort=1] - Sort column (1: sortOrder, 3: updatedAt)
+ * @param {number} [requestBody.order=1] - Sort order (1: ASC, 2: DESC)
+ * @param {string} [requestBody.query=""] - Search query to filter playlists by title
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when playlist data is sent to frontend
+ * @throws {Error} If database query fails
+ */
+async function getPlaylistsForDisplay(
+  requestBody: PlaylistDisplayRequest,
+  response: ServerResponse,
+): Promise<void> {
+  try {
+    // Extract and validate parameters
+    const startIndex = requestBody.start !== undefined ? +requestBody.start : 0;
+    const pageSize = requestBody.stop !== undefined
+      ? +requestBody.stop - startIndex
+      : config.chunkSize;
+    const sortColumn = requestBody.sort !== undefined ? +requestBody.sort : 1;
+    const sortOrder = requestBody.order !== undefined ? +requestBody.order : 1;
+    const searchQuery = requestBody.query !== undefined
+      ? requestBody.query
+      : "";
+
+    // Determine sort settings
+    const sortDirection = sortOrder === 2 ? "DESC" : "ASC";
+    // Playlists can be createdAt the same time but shouldn't have the same "sortOrder"
+    const sortBy = sortColumn === 3 ? "lastUpdatedByScheduler" : "sortOrder";
+
+    logger.trace(
+      `Fetching playlists for display`,
+      {
+        startIndex,
+        pageSize,
+        sortBy,
+        sortDirection,
+        searchQuery,
+      },
+    );
+
+    // Build base query
+
+    const queryOptions: any = {
+      where: {
+        sortOrder: {
+          [Op.gte]: 0, // Filter out system playlists
+        },
+      },
+      limit: pageSize,
+      offset: startIndex,
+      order: [[sortBy, sortDirection]],
+    };
+
+    // Add search filter if query provided
+    if (searchQuery && searchQuery.length > 0) {
+      if (searchQuery.startsWith("url:")) {
+        if (searchQuery.slice(4).length > 0) {
+          queryOptions.where.playlistUrl = {
+            [Op.iLike]: `%${searchQuery.slice(4)}%`,
+          };
+        } else {
+          logger.debug("No url provided", { searchQuery });
+        }
+      } else if (searchQuery.startsWith("title:")) {
+        const titleSearch = searchQuery.slice(6);
+        if (titleSearch.length > 0) {
+          queryOptions.where.title = {
+            [Op.iRegexp]: titleSearch,
+          };
+        } else {
+          logger.debug("No title provided", { searchQuery });
+        }
+      } else {
+        queryOptions.where.title = {
+          [Op.iLike]: `%${searchQuery}%`,
+        };
+      }
+    }
+    // Execute query and send response
+    const results = await PlaylistMetadata.findAndCountAll(queryOptions);
+
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify(results));
+  } catch (error) {
+    logger.error("Failed to fetch playlists", {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+
+    const statusCode = (error as any).status || 500;
+    response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      error: he.escape((error as Error).message),
+    }));
+  }
+}
+/**
+ * Retrieves paginated video list data for a specific playlist with filtering and sorting options
+ *
+ * @param {Object} requestBody - Request parameters
+ * @param {string} [requestBody.url="None"] - Playlist URL to fetch videos from
+ * @param {number} [requestBody.start=0] - Starting index for pagination
+ * @param {number} [requestBody.stop=config.chunkSize] - End index for pagination
+ * @param {string} [requestBody.query=""] - Search query to filter videos by title
+ * @param {boolean} [requestBody.sortDownloaded=false] - Whether to sort by download status
+ * @param {Object} response - HTTP response object
+ * @returns {Promise<void>} Resolves when video data is sent to frontend
+ * @throws {Error} If database query fails
+ */
+async function getSubListVideos(
+  requestBody: SubListRequest,
+  response: ServerResponse,
+): Promise<void> {
+  try {
+    // Extract and validate parameters
+    const playlistUrl = requestBody.url ?? "None";
+    const startIndex = Math.max(0, +(requestBody.start ?? 0));
+    const endIndex = +(requestBody.stop ?? config.chunkSize);
+    const searchQuery = requestBody.query ?? "";
+    const sortByDownloaded = requestBody.sortDownloaded ?? false;
+
+    // Determine sort order - Explanation:
+    // If sorting by download status, we sort by VideoMetadata.downloadStatus DESC
+    // (downloaded videos first, with the most recently downloaded videos first).
+    // Otherwise, we sort by positionInPlaylist ASC in whatever order they were added.
+    const sortOrder = sortByDownloaded
+      ? [VideoMetadata, "downloadStatus", "DESC"]
+      : ["positionInPlaylist", "ASC"];
+
+    logger.trace("Fetching playlist videos", {
+      startIndex,
+      endIndex,
+      searchQuery,
+      sortBy: sortByDownloaded ? "downloadStatus" : "positionInPlaylist",
+      sortDirection: sortByDownloaded ? "DESC" : "ASC",
+      playlistUrl,
+    });
+
+    // Build base query options
+
+    const videoMetadataWhere: any = {};
+    const mappingWhere: any = {
+      playlistUrl: playlistUrl,
+    };
+
+    if (searchQuery && searchQuery.length > 0) {
+      if (searchQuery.startsWith("url:")) {
+        const urlSearch = searchQuery.slice(4);
+        if (urlSearch.length > 0) {
+          videoMetadataWhere.videoUrl = {
+            [Op.iLike]: `%${urlSearch}%`,
+          };
+        } else {
+          logger.debug(
+            "No url provided for sublist query, despite using url: prefix",
+            { searchQuery },
+          );
+        }
+      } else if (searchQuery.startsWith("title:")) {
+        const titleSearch = searchQuery.slice(6);
+        if (titleSearch.length > 0) {
+          videoMetadataWhere.title = {
+            [Op.iRegexp]: titleSearch,
+          };
+        } else {
+          logger.debug(
+            "No title provided for sublist query, despite using title: prefix",
+            { searchQuery },
+          );
+        }
+      } else if (searchQuery.startsWith("global:")) {
+        const globalSearch = searchQuery.slice(7);
+        if (playlistUrl === "init" || playlistUrl === "None") {
+          delete mappingWhere.playlistUrl;
+        }
+        if (globalSearch.length > 0) {
+          videoMetadataWhere.title = {
+            [Op.iRegexp]: globalSearch,
+          };
+        } else if (playlistUrl === "init" || playlistUrl === "None") {
+          logger.debug(
+            "No regex provided for global sublist query, returning all videos",
+            { searchQuery },
+          );
+        } else {
+          logger.debug(
+            "No regex provided for scoped global sublist query",
+            { searchQuery },
+          );
+        }
+      } else {
+        videoMetadataWhere.title = {
+          [Op.iLike]: `%${searchQuery}%`,
+        };
+      }
+    }
+
+    const queryOptions = {
+      attributes: ["positionInPlaylist", "playlistUrl"],
+      include: [{
+        model: VideoMetadata,
+        attributes: [
+          "title",
+          "videoId",
+          "videoUrl",
+          "downloadStatus",
+          "isAvailable",
+          "fileName",
+          "thumbNailFile",
+          "onlineThumbnail",
+          "subTitleFile",
+          "descriptionFile",
+          "isMetaDataSynced",
+          "saveDirectory",
+        ],
+        where: videoMetadataWhere,
+        // Use Inner Join (strict) if searching, otherwise Left Join (loose)
+        required: !!(searchQuery && searchQuery.length > 0),
+      }],
+      where: mappingWhere,
+      limit: endIndex - startIndex,
+      offset: startIndex,
+      order: [sortOrder] as any,
+    };
+
+    // Execute query
+    const results = await PlaylistVideoMapping.findAndCountAll(queryOptions);
+
+    // Fetch playlist save directory
+    let playlistSaveDir = "";
+    try {
+      const playlist = await PlaylistMetadata.findOne({
+        where: { playlistUrl },
+      });
+
+      playlistSaveDir = (playlist as any)?.saveDirectory ?? "";
+    } catch (err) {
+      logger.warn("Could not fetch playlist saveDirectory", {
+        playlistUrl,
+        error: (err as Error).message,
+      });
+    }
+
+    const safeRows = results.rows.map((row: any) => {
+      const vm = row.video_metadatum || {};
+      // Build a sanitized video_metadatum to return to client
+      const safeVideoMeta = {
+        title: vm.title,
+        videoId: vm.videoId,
+        videoUrl: vm.videoUrl,
+        downloadStatus: vm.downloadStatus,
+        isAvailable: vm.isAvailable,
+        fileName: vm.fileName,
+        thumbNailFile: vm.thumbNailFile,
+        onlineThumbnail: vm.onlineThumbnail,
+        subTitleFile: vm.subTitleFile,
+        descriptionFile: vm.descriptionFile,
+        isMetaDataSynced: vm.isMetaDataSynced,
+        saveDirectory: vm.saveDirectory,
+      };
+
+      return {
+        positionInPlaylist: row.positionInPlaylist,
+        playlistUrl: row.playlistUrl,
+        video_metadatum: safeVideoMeta,
+      };
+    });
+
+    const safeResult = {
+      count: results.count,
+      rows: safeRows,
+      saveDirectory: playlistSaveDir,
+    };
+
+    // Send response
+    response.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify(safeResult));
+  } catch (error) {
+    logger.error("Failed to fetch playlist videos", {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+
+    const statusCode = (error as any).status || 500;
+    response.writeHead(statusCode, generateCorsHeaders(MIME_TYPES[".json"]));
+    response.end(JSON.stringify({
+      error: he.escape((error as Error).message),
+    }));
+  }
+}
+
+// Functions to run the server
+/**
+ * Generates CORS headers with content type
+ *
+ * @param {string} contentType - MIME type for Content-Type header
+ * @param {Object} [options] - Additional options
+ * @param {string[]} [options.allowedOrigins] - Allowed origins, defaults to CORS_ALLOWED_ORIGINS
+ * @param {string[]} [options.allowedMethods] - Allowed HTTP methods
+ * @param {number} [options.maxAge] - Cache max age in seconds
+ * @returns {Object} Object containing CORS headers
+ */
+function generateCorsHeaders(
+  contentType: string,
+  {
+    allowedOrigins = CORS_ALLOWED_ORIGINS,
+    allowedMethods = CORS_ALLOWED_HEADERS,
+    maxAge = config.defaultCORSMaxAge,
+  } = {},
+) {
+  return {
+    "Access-Control-Allow-Origin": allowedOrigins.join(", "),
+    "Access-Control-Allow-Methods": allowedMethods.join(", "),
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": maxAge,
+    "Content-Type": contentType,
+  };
+}
+
+/**
+ * Recursively retrieves a list of files and their corresponding extensions from a given directory.
+ *
+ * @param {string} dir - The directory path to start retrieving files from.
+ * @return {Array<{filePath: string, extension: string}>} An array of objects containing the file path and extension of each file found in the directory and its subdirectories.
+ */
+function getFiles(dir: string): Array<{ filePath: string; extension: string }> {
+  const files = fs.readdirSync(dir);
+  let fileList: Array<{ filePath: string; extension: string }> = [];
+
+  files.forEach((file) => {
+    const filePath = path.join(dir, file);
+    const extension = path.extname(filePath);
+    const stat = fs.statSync(filePath);
+
+    if (stat.isDirectory()) {
+      fileList = fileList.concat(getFiles(filePath));
+    } else {
+      fileList.push({ filePath, extension });
+    }
+  });
+
+  return fileList;
+}
+
+/**
+ * Generates a dictionary of static assets from a list of file objects.
+ *
+ * @param {Array<{filePath: string, extension: string}>} fileList - The list of file objects containing the file path and extension.
+ * @return {Object<string, {file: Buffer, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
+ */
+function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
+  const staticAssets: Record<string, { file: Buffer | string; type: string }> =
+    {};
+  fileList.forEach((element) => {
+    staticAssets[element.filePath.replace("dist", config.urlBase)] = {
+      file: fs.readFileSync(element.filePath),
+      type: MIME_TYPES[element.extension],
+    };
+  });
+  staticAssets[`${config.urlBase}/`] =
+    staticAssets[`${config.urlBase}/index.html`];
+  staticAssets[config.urlBase] = staticAssets[`${config.urlBase}/index.html`];
+  staticAssets[`${config.urlBase}/.gz`] =
+    staticAssets[`${config.urlBase}/index.html.gz`];
+  staticAssets[`${config.urlBase}.gz`] =
+    staticAssets[`${config.urlBase}/index.html.gz`];
+  staticAssets[`${config.urlBase}/.br`] =
+    staticAssets[`${config.urlBase}/index.html.br`];
+  staticAssets[`${config.urlBase}.br`] =
+    staticAssets[`${config.urlBase}/index.html.br`];
+  staticAssets[`${config.urlBase}/ping`] = {
+    file: "pong",
+    type: MIME_TYPES[".txt"],
+  };
+  return staticAssets;
+}
+
+const filesList = getFiles("dist");
+const staticAssets = makeAssets(filesList);
+let serverOptions = {};
+let serverObj = null;
+
+if (config.nativeHttps) {
+  try {
+    serverOptions = {
+      key: fs.readFileSync(config.ssl.key as string, "utf8"),
+      cert: fs.readFileSync(config.ssl.cert as string, "utf8"),
+      // If passphrase is not set, don't include it in options
+      ...(config.ssl.passphrase && { passphrase: config.ssl.passphrase }),
+    };
+  } catch (error) {
+    logger.error("Error reading SSL key and/or certificate files:", {
+      error: (error as Error).message,
+    });
+    Deno.exit(1);
+  }
+  if (config.ssl.passphrase) {
+    logger.info("SSL passphrase is set");
+  }
+  if (config.protocol === "http") {
+    logger.warn(
+      "Protocol is set to HTTP but nativeHttps is enabled. Overriding protocol to HTTPS.",
+    );
+    config.protocol = "https";
+  }
+  logger.info("Starting server in HTTPS mode");
+  serverObj = https;
+} else {
+  if (config.protocol === "https") {
+    logger.warn(
+      "Protocol is set to HTTPS but nativeHttps is disabled. Overriding protocol to HTTP.",
+    );
+    config.protocol = "http";
+  }
+  logger.info("Starting server in HTTP mode");
+  serverObj = http;
+}
+
+const server = (serverObj as any).createServer(
+  serverOptions,
+  async (req: IncomingMessage, res: ServerResponse) => {
+    if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
+      try {
+        const get = req.url;
+        const reqEncoding = req.headers["accept-encoding"] || "";
+        logger.trace(`Request Received`, {
+          url: req.url,
+          method: req.method,
+          encoding: reqEncoding,
+        });
+        // Check if the request is for a file from the signedUrlCache
+        const urlParams = new URLSearchParams(req.url.split("?")[1]);
+        if (urlParams.has("fileId")) {
+          const fileId = urlParams.get("fileId");
+          // If fileId is present, try to serve from signedUrlCache
+          const cachedEntry = await redis.get(`signed:${fileId}`);
+          if (cachedEntry) {
+            // refresh expiry on access to keep it alive while actively watched
+            await redis.expire(`signed:${fileId}`, config.cache.maxAge);
+            const signedEntry = JSON.parse(cachedEntry);
+            // Serve the file from the signed URL cache
+            logger.trace("Serving file from signed URL cache", {
+              url: req.url,
+            });
+
+            // Improved streaming for large files: Range support, pipeline, backpressure
+            logger.trace("Serving signed file", {
+              fileId,
+              filePath: signedEntry.filePath,
+            });
+            (async () => {
+              try {
+                const stats = await fs.promises.stat(signedEntry.filePath);
+                const total = stats.size;
+
+                const originalName = path.basename(signedEntry.filePath || "");
+                // Remove potentially dangerous characters
+                const safeName = originalName.replace(/[\r\n"]/g, "");
+                // ASCII fallback for older clients
+                const fallbackName = safeName.replace(/[^\x20-\x7E]/g, "_");
+                const encodedName = encodeURIComponent(safeName);
+
+                let contentType = signedEntry.mimeType;
+                if (
+                  !contentType || contentType === "application/octet-stream"
+                ) {
+                  contentType = MIME_TYPES[path.extname(safeName)] ||
+                    "application/octet-stream";
+                }
+                // Common headers (CORS + content-type + disposition + accept-ranges)
+                const cors = generateCorsHeaders(contentType);
+                Object.entries(cors).forEach(([k, v]) => res.setHeader(k, v));
+                res.setHeader("Content-Type", contentType);
+
+                const dispositionType = urlParams.get("inline") === "true"
+                  ? "inline"
+                  : "attachment";
+                res.setHeader(
+                  "Content-Disposition",
+                  `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+                );
+                res.setHeader("Accept-Ranges", "bytes");
+
+                // Parse Range header
+                const range = req.headers.range;
+                let start = 0;
+                let end = total - 1;
+                let statusCode = 200;
+                if (range) {
+                  const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+                  if (m) {
+                    if (m[1]) start = parseInt(m[1], 10);
+                    if (m[2]) end = parseInt(m[2], 10);
+                    // Validate
+                    if (
+                      Number.isNaN(start) || Number.isNaN(end) || start > end ||
+                      start < 0 || end > total - 1
+                    ) {
+                      res.writeHead(416, {
+                        "Content-Range": `bytes */${total}`,
+                      });
+                      return res.end();
+                    }
+                    statusCode = 206;
+                    res.setHeader(
+                      "Content-Range",
+                      `bytes ${start}-${end}/${total}`,
+                    );
+                  }
+                }
+
+                const chunkSize = end - start + 1;
+                res.setHeader("Content-Length", String(chunkSize));
+                res.writeHead(statusCode);
+
+                const readStream = fs.createReadStream(signedEntry.filePath, {
+                  start,
+                  end,
+                  // Larger buffer for fewer syscall's on big files (tune as needed)
+                  highWaterMark: 1024 * 1024,
+                });
+
+                const onClose = () => {
+                  // Destroy the stream if client disconnects
+                  try {
+                    readStream.destroy();
+                  } catch (err: unknown) {
+                    logger.error(
+                      "Error destroying read stream on client disconnect",
+                      { error: (err as Error)?.message || String(err), fileId },
+                    );
+                  }
+                };
+                req.on("close", onClose);
+                req.on("aborted", onClose);
+
+                try {
+                  // Use pipeline to forward errors and handle backpressure
+                  await pipelineAsync(readStream, res);
+                  logger.trace("Finished streaming signed file", { fileId });
+                } catch (err) {
+                  logger.error("Error during streaming signed file", {
+                    error: (err as Error)?.message || String(err),
+                    fileId,
+                  });
+                  if (!res.headersSent) {
+                    res.writeHead(
+                      500,
+                      generateCorsHeaders(MIME_TYPES[".html"]),
+                    );
+                  }
+                  try {
+                    res.end("Error reading file");
+                  } catch (error: unknown) {
+                    logger.error(
+                      "Error ending response after streaming failure",
+                      {
+                        error: (error as Error)?.message || String(error),
+                        fileId,
+                      },
+                    );
+                  }
+                } finally {
+                  req.removeListener("close", onClose);
+                  req.removeListener("aborted", onClose);
+                  // Note: keep signedUrlCache entry to allow multiple downloads within expiry
+                }
+              } catch (err) {
+                logger.error("Error getting file stats", {
+                  error: (err as Error).message,
+                  fileId,
+                });
+                if (!res.headersSent) {
+                  res.writeHead(500, generateCorsHeaders(MIME_TYPES[".html"]));
+                }
+                res.end("Error reading file");
+              }
+            })();
+            return;
+            // If you want to just return the file path instead of streaming
+            // (not recommended for large files or production use)
+            // res.writeHead(200, generateCorsHeaders(signedEntry.mimeType));
+            // res.write(signedEntry.filePath);
+            // return res.end();
+          }
+        }
+        // Check if the GET request is for a static asset
+        if (!get || !staticAssets[get]) {
+          logger.error("Requested Resource couldn't be found", {
+            url: req.url,
+            method: req.method,
+            encoding: reqEncoding,
+          });
+          res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+          res.write("Not Found");
+          return res.end();
+        }
+
+        const resHeaders: any = generateCorsHeaders(staticAssets[get]!.type);
+        if (reqEncoding.includes("br") && staticAssets[get + ".br"]) {
+          resHeaders["Content-Encoding"] = "br";
+          res.writeHead(200, resHeaders);
+          res.write(staticAssets[get + ".br"].file);
+          return res.end();
+        } else if (reqEncoding.includes("gzip") && staticAssets[get + ".gz"]) {
+          resHeaders["Content-Encoding"] = "gzip";
+          res.writeHead(200, resHeaders);
+          res.write(staticAssets[get + ".gz"].file);
+          return res.end();
+        } else {
+          res.writeHead(200, resHeaders);
+          res.write(staticAssets[get].file);
+        }
+      } catch (error) {
+        logger.error("Error in processing request", {
+          url: req.url,
+          method: req.method,
+          error: error as Error,
+        });
+        res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+        res.write("Not Found");
+      }
+      res.end();
+    } else if (req.method === "OPTIONS") {
+      // necessary for cors
+      res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
+      res.end();
+    } else if (req.method === "HEAD") {
+      // necessary for health check
+      res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
+      res.end();
+    } else if (req.url === config.urlBase + "/list" && req.method === "POST") {
+      rateLimit(
+        req,
+        res,
+        authenticateRequest,
+        (data: unknown, res: ServerResponse) =>
+          processListingRequest(data as any, res),
+        config.cache.actionReqPerIP,
+        config.cache.actionWindowSec,
+      );
+    } else if (
+      req.url === config.urlBase + "/download" && req.method === "POST"
+    ) {
+      rateLimit(
+        req,
+        res,
+        authenticateRequest,
+        (data: unknown, res: ServerResponse) =>
+          processDownloadRequest(data as any, res),
+        config.cache.actionReqPerIP,
+        config.cache.actionWindowSec,
+      );
+    } else if (req.url === config.urlBase + "/watch" && req.method === "POST") {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          updatePlaylistMonitoring(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getplay" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          getPlaylistsForDisplay(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/delplay" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processDeletePlaylistRequest(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getsub" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          getSubListVideos(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/delsub" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processDeleteVideosRequest(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getfile" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) => makeSignedUrl(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/refreshfile" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          refreshSignedUrl(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/getfiles" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          makeSignedUrls(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/reindexall" && req.method === "POST"
+    ) {
+      authenticateRequest(
+        req,
+        res,
+        (data: unknown, res: ServerResponse) =>
+          processReindexAllRequest(data as any, res),
+      );
+    } else if (
+      req.url === config.urlBase + "/register" && req.method === "POST"
+    ) {
+      rateLimit(
+        req,
+        res,
+        registerUser,
+        (req: IncomingMessage, res: ServerResponse) =>
+          isRegistrationAllowed(req, res),
+        config.cache.reqPerIP,
+        config.cache.maxAge,
+      );
+    } else if (req.url === config.urlBase + "/login" && req.method === "POST") {
+      rateLimit(
+        req,
+        res,
+        authenticateUser,
+        (req: IncomingMessage, res: ServerResponse) =>
+          authenticateUser(req, res),
+        config.cache.reqPerIP,
+        config.cache.maxAge,
+      );
+    } else if (
+      req.url === config.urlBase + "/isregallowed" && req.method === "POST"
+    ) {
+      rateLimit(
+        req,
+        res,
+        isRegistrationAllowed,
+        (req: IncomingMessage, res: ServerResponse) =>
+          isRegistrationAllowed(req, res),
+        config.cache.reqPerIP,
+        config.cache.maxAge,
+      );
+    } else {
+      logger.error("Requested Resource couldn't be found", {
+        url: req.url,
+        method: req.method,
+      });
+      res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+      res.write("Not Found");
+      res.end();
+    }
+  },
+);
+
+const io = new Server(server, {
+  path: config.urlBase + "/socket.io/",
+  cors: {
+    // cors will only happen on these so it's best to keep it limited
+    origin: CORS_ALLOWED_ORIGINS,
+  },
+});
+
+io.use((socket: Socket, next: (err?: Error) => void) => {
+  authenticateSocket(socket).then((result) => {
+    if (result) {
+      logger.debug("Valid socket", {
+        id: socket.id,
+        ip: socket.handshake.address,
+      });
+      next();
+    } else {
+      logger.error("Invalid socket", {
+        id: socket.id,
+        ip: socket.handshake.address,
+      });
+      next(new Error("Invalid socket"));
+    }
+  }).catch((err) => {
+    logger.error("Error in verifying socket", {
+      id: socket.id,
+      ip: socket.handshake.address,
+      error: err as Error,
+    });
+    next(new Error((err as Error).message));
+  });
+});
+
+const sock = io.on("connection", (socket: Socket) => {
+  if (config.connectedClients >= config.maxClients) {
+    logger.info("Rejecting client", {
+      id: socket.id,
+      ip: socket.handshake.address,
+      reason: "Server full",
+    });
+    socket.emit("connection-error", "Server full");
+    // Disconnect the client
+    socket.disconnect(true);
+    return;
+  }
+
+  // Set up socket authentication lifecycle management
+  const token = socket.handshake.auth.token;
+  let decodedToken: jwt.JwtPayload | null = null;
+  let expiryTimeout: ReturnType<typeof setTimeout> | null = null;
+  let verificationInterval: ReturnType<typeof setInterval> | null = null;
+
+  try {
+    decodedToken = jwt.verify(
+      token,
+      config.secretKey as string,
+    ) as jwt.JwtPayload;
+    if (decodedToken && decodedToken.exp) {
+      const timeUntilExpiry = (decodedToken.exp * 1000) - Date.now();
+      if (timeUntilExpiry > 0) {
+        // setTimeout max limits to 32-bit signed int (approx 24.8 days)
+        const delay = Math.min(timeUntilExpiry, 2147483647);
+        expiryTimeout = setTimeout(() => {
+          logger.info(`Token expired for socket ${socket.id}, disconnecting`);
+          socket.emit("token-expired", {
+            message: "Your session has expired.",
+          });
+          socket.disconnect(true);
+        }, delay);
+      } else {
+        socket.emit("token-expired", { message: "Your session has expired." });
+        socket.disconnect(true);
+        return;
+      }
+    }
+
+    if (decodedToken) {
+      // User verification interval (matches config.cache.maxAge as requested)
+      const pingInterval = config.cache.maxAge * 1000;
+      verificationInterval = setInterval(async () => {
+        try {
+          const cachedUser = await redis.get(`user:${decodedToken?.id}`);
+          if (cachedUser) {
+            const user = JSON.parse(cachedUser);
+            const lastPasswordUpdate = new Date(user.updatedAt || 0).getTime();
+            const tokenTime = new Date(
+              decodedToken?.lastPasswordChangeTime || 0,
+            ).getTime();
+            if (lastPasswordUpdate !== tokenTime) {
+              logger.error(
+                "Socket auth check failed mid-session - password changed",
+              );
+              socket.emit("token-expired", {
+                message: "Authentication invalidated.",
+              });
+              socket.disconnect(true);
+            }
+          } else {
+            // Cache expired, check database to ensure user hasn't been removed/changed
+            const user = await UserAccount.findByPk(decodedToken?.id);
+            if (!user) {
+              logger.error(
+                "Socket auth check failed mid-session - user not found",
+              );
+              socket.emit("token-expired", {
+                message: "Authentication invalidated.",
+              });
+              socket.disconnect(true);
+            } else {
+              // Refresh cache if successfully found
+              await redis.set(
+                `user:${decodedToken?.id}`,
+                JSON.stringify(user),
+                "EX",
+                config.cache.maxAge,
+              );
+            }
+          }
+        } catch (error) {
+          logger.error("Mid-session socket verification error", {
+            error: (error as Error).message,
+          });
+        }
+      }, pingInterval);
+    }
+  } catch (e) {
+    logger.error("Failed to decode token on active connection.", {
+      error: (e as Error).message,
+    });
+    socket.disconnect(true);
+    return;
+  }
+
+  // Increment the count of connected clients
+  socket.emit("init", { message: "Connected", id: socket.id });
+  socket.on("acknowledge", ({ data, id }: { data: string; id: string }) => {
+    logger.info(`Acknowledged from client id ${id}`, {
+      id: id,
+      ip: socket.handshake.address,
+      data: data,
+    });
+    config.connectedClients++;
+  });
+
+  socket.on("disconnect", () => {
+    // Clean up lifecycle timers
+    if (expiryTimeout) clearTimeout(expiryTimeout);
+    if (verificationInterval) clearInterval(verificationInterval);
+
+    // Decrement the count of connected clients when a client disconnects
+    logger.info(`Disconnected from client id ${socket.id}`, {
+      id: socket.id,
+      ip: socket.handshake.address,
+    });
+    config.connectedClients--;
+  });
+  return socket;
+});
+
+server.listen(config.port, async () => {
+  if (config.hidePorts) {
+    logger.info(
+      `Server listening on ${config.protocol}://${config.host}${config.urlBase}`,
+    );
+  } else {
+    logger.info(
+      `Server listening on ${config.protocol}://${config.host}:${config.port}${config.urlBase}`,
+    );
+  }
+  // I do not really know if calling these here is a good idea, but how else can I even do it?
+  const start = Date.now();
+  await sleep(config.sleepTime);
+  const elapsed = Date.now() - start;
+  logger.info("Sleep duration: " + elapsed / 1000 + " seconds");
+  logger.debug(
+    `Download Options: yt-dlp ${downloadOptions.join(" ")} --paths "${
+      config.saveLocation.endsWith("/")
+        ? config.saveLocation
+        : config.saveLocation + "/"
+    }` +
+      `{playlist_dir}" "{url}"`,
+  );
+  logger.debug(
+    "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --dump-json --no-download {bodyUrl}",
+  );
+  for (const [name, job] of Object.entries(jobs)) {
+    job.start();
+    logger.info(`Started ${name} job`, {
+      schedule: (job as any).cronTime.source,
+      nextRun: job.nextDate().toLocaleString(
+        {
+          weekday: "short",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+        { timeZone: config.timeZone } as any,
+      ),
+    });
+  }
+});
