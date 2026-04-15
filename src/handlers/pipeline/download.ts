@@ -13,6 +13,7 @@ import type {
   DownloadCompletionUpdates, DiscoveredMetadata, FileSyncStatus, HttpError,
   PipelineHandlerDependencies, VideoEntryRecord
 } from "./types.ts";
+import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
 export function createDownloadFlow(
   deps: PipelineHandlerDependencies,
@@ -22,7 +23,8 @@ export function createDownloadFlow(
     cleanupProcess: (processKey: string, pid: number | undefined) => void;
   }
 ) {
-  const { generateCorsHeaders, jsonMimeType, safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks } = deps;
+  const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks } = deps;
+  const jsonMimeType = MIME_TYPES[".json"];
   const DownloadSemaphore = new Semaphore(config.queue.maxDownloads, "DownloadSemaphore");
   const { updateProcessActivity, cleanupProcess } = processManager;
 

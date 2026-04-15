@@ -11,15 +11,10 @@ import {
   resolve,
 } from "../utils/path.ts";
 
-type GenerateCorsHeaders = (
-  contentType: string,
-) => Record<string, string | number>;
+import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
 
 interface FileHandlerDependencies {
   redis: Redis;
-  generateCorsHeaders: GenerateCorsHeaders;
-  jsonMimeType: string;
-  mimeTypes: Record<string, string>;
 }
 
 export interface SignedFileRequestBody {
@@ -37,10 +32,9 @@ export interface BulkSignedFilesRequestBody {
 
 export function createFileHandlers({
   redis,
-  generateCorsHeaders,
-  jsonMimeType,
-  mimeTypes,
 }: FileHandlerDependencies) {
+  const jsonMimeType = MIME_TYPES[".json"];
+  const mimeTypes = MIME_TYPES;
   async function makeSignedUrl(
     requestBody: SignedFileRequestBody,
     response: HttpResponseLike,

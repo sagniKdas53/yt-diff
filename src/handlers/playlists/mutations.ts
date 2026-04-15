@@ -10,9 +10,11 @@ import type {
   UpdatePlaylistMonitoringRequest, DeletePlaylistRequestBody, ReindexAllRequestBody, DeleteVideosRequestBody,
   ListingItem, PlaylistHandlerDependencies, HttpError
 } from "./types.ts";
+import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
 export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
-  const { generateCorsHeaders, jsonMimeType, listItemsConcurrently, resetPendingPlaylistSortCounter } = deps;
+  const { listItemsConcurrently, resetPendingPlaylistSortCounter } = deps;
+  const jsonMimeType = MIME_TYPES[".json"];
 
   async function updatePlaylistMonitoring(
     requestBody: UpdatePlaylistMonitoringRequest,

@@ -25,7 +25,7 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
 - [x] Extract playlist/query/delete route handlers into `src/handlers/playlists.ts`.
 - [x] Extract remaining listing/download pipeline handlers out of `index.ts` (~900 LOC in processListingRequest and processDownloadRequest).
-- [ ] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
+- [x] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
 
 ## Phase 3b: Handler subdivision
 

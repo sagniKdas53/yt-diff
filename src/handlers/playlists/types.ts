@@ -99,7 +99,6 @@ export interface ListingItem {
   isScheduledUpdate?: boolean;
 }
 
-export type GenerateCorsHeaders = (contentType: string) => Record<string, string | number>;
 export type ResetPendingPlaylistSortCounter = () => void;
 export type ListItemsConcurrently = (
   items: ListingItem[],
@@ -108,8 +107,6 @@ export type ListItemsConcurrently = (
 ) => Promise<Array<{ status?: string }>>;
 
 export interface PlaylistHandlerDependencies {
-  generateCorsHeaders: GenerateCorsHeaders;
-  jsonMimeType: string;
   listItemsConcurrently: ListItemsConcurrently;
   resetPendingPlaylistSortCounter: ResetPendingPlaylistSortCounter;
 }

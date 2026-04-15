@@ -6,9 +6,7 @@ import type {
   HttpResponseLike,
 } from "../transport/http.ts";
 
-type GenerateCorsHeaders = (
-  contentType: string,
-) => Record<string, string | number>;
+import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
 export type MiddlewareNext = (data: unknown, res: HttpResponseLike) => void;
 export type MiddlewareHandler = (
   req: HttpRequestLike,
@@ -42,15 +40,12 @@ export interface RateLimitFunction {
 
 interface RateLimitDependencies {
   redis: Redis;
-  generateCorsHeaders: GenerateCorsHeaders;
-  jsonMimeType: string;
 }
 
 export function createRateLimit({
   redis,
-  generateCorsHeaders,
-  jsonMimeType,
 }: RateLimitDependencies) {
+  const jsonMimeType = MIME_TYPES[".json"];
   const rateLimit: RateLimitFunction = async function rateLimit(
     request: HttpRequestLike,
     response: HttpResponseLike,
