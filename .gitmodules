@@ -1,6 +1,6 @@
 [submodule "frontend"]
 	path = frontend
-	url = ssh://git@192.168.0.110:2222/pi5_git/yt-diff-react.git
+	url = https://github.com/sagniKdas53/yt-diff-react.git
 	branch = feature/full-refactor
 [submodule "tests"]
 	path = tests
