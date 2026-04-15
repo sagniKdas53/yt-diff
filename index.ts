@@ -20,14 +20,14 @@ import {
   type ReindexAllRequestBody,
   type SubListRequest,
   type UpdatePlaylistMonitoringRequest,
-} from "./src/handlers/playlists.ts";
+} from "./src/handlers/playlists/index.ts";
 import {
   createPipelineHandlers,
   downloadOptions,
   type DownloadRequestBody,
   type ListingRequestBody,
   type ProcessLike,
-} from "./src/handlers/pipeline.ts";
+} from "./src/handlers/pipeline/index.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
