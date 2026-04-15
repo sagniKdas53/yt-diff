@@ -86,7 +86,7 @@ services:
     secrets:
       - db_password
       - secret_key
-      - proxy_string
+      #- proxy_string
       - iwara_config
     environment:
       - PROTOCOL=${PROTOCOL}
@@ -129,12 +129,16 @@ services:
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
       - PRUNE_INTERVAL=${PRUNE_INTERVAL}
       # Proxy Info
-      - PROXY_STRING_FILE=/run/secrets/proxy_string
+      #- PROXY_STRING_FILE=/run/secrets/proxy_string
       # Redis Configuration
       - REDIS_HOST=valkey
       - REDIS_PORT=6379
       # Iwara Configuration
       - IWARA_CONF_FILE=/run/secrets/iwara_config
+      # Youtube Configuration
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_REFRESH_TOKEN=${YOUTUBE_REFRESH_TOKEN}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ytdiff.entryPoints=web,websecure"
@@ -237,40 +241,39 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
-  gluetun:
-    image: qmcgaw/gluetun
-    container_name: gluetun
-    networks:
-      - revProxy-net
-    cap_add:
-      - NET_ADMIN
-    secrets:
-      - openvpn_user
-      - openvpn_password
-    environment:
-      - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
-      - OPENVPN_USER_SECRETFILE=/run/secrets/openvpn_user
-      - OPENVPN_PASSWORD_SECRETFILE=/run/secrets/openvpn_password
-      - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
-      - FREE_ONLY=${FREE}
-      - Tz=${TZ_PREFERRED}
-      - HTTPPROXY=${HTTP_PROXY}
-      - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}
-      - HTTPPROXY_STEALTH=${HTTP_PROXY_STEALTH}
-      - HTTPPROXY_USER=${HTTP_PROXY_USER}
-      - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    volumes:
-      - ./gluetun:/gluetun
-    restart: "unless-stopped"
-    ports:
-      - 51413:51413
-      - 51413:51413/udp
-      - 3128:3128 # <- Enable to use outside of the docker network
-    labels:
-      # Autoheal
-      - "autoheal.enable=true"
-      # Watchtower monitoring
-      - "com.centurylinklabs.watchtower.enable=true"
+  # gluetun:
+  #   image: qmcgaw/gluetun
+  #   container_name: gluetun
+  #   networks:
+  #     - revProxy-net
+  #   cap_add:
+  #     - NET_ADMIN
+  #   secrets:
+  #     - openvpn_user
+  #     - openvpn_password
+  #   environment:
+  #     - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
+  #     - OPENVPN_USER_SECRETFILE=/run/secrets/openvpn_user
+  #     - OPENVPN_PASSWORD_SECRETFILE=/run/secrets/openvpn_password
+  #     - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
+  #     - FREE_ONLY=${FREE}
+  #     - Tz=${TZ_PREFERRED}
+  #     - HTTPPROXY=${HTTP_PROXY}
+  #     - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}
+  #     - HTTPPROXY_STEALTH=${HTTP_PROXY_STEALTH}
+  #     - HTTPPROXY_USER=${HTTP_PROXY_USER}
+  #     - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
+  #   devices:
+  #     - /dev/net/tun:/dev/net/tun
+  #   volumes:
+  #     - ./gluetun:/gluetun
+  #   restart: "unless-stopped"
+  #   ports:
+  #     - 51413:51413
+  #     - 51413:51413/udp
+  #     - 3128:3128 # <- Enable to use outside of the docker network
+  #   labels:
+  #     # Autoheal
+  #     - "autoheal.enable=true"
+  #     # Watchtower monitoring
+  #     - "com.centurylinklabs.watchtower.enable=true"
