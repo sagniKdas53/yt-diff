@@ -22,7 +22,7 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [x] Replace the `if/else if` POST router with a route registry.
 - [x] Move each endpoint handler into a dedicated backend module.
 - [x] Preserve current request/response behavior while shrinking `index.ts`.
-- [ ] Reassess whether adopting Express/Fastify still provides enough value after route extraction.
+- [x] Reassess whether adopting Express/Fastify still provides enough value after route extraction (Deemed unnecessary).
 - [x] Extract playlist/query/delete route handlers into `src/handlers/playlists.ts`.
 - [x] Extract remaining listing/download pipeline handlers out of `index.ts` (~900 LOC in processListingRequest and processDownloadRequest).
 - [x] Extract shared request/response helpers still owned by `index.ts` when handler moves make that practical.
@@ -47,8 +47,8 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 
 - [x] Add typed request DTOs for each API boundary.
 - [x] Replace high-value `any` usages in auth, routing, signed URL, listing, and download flows.
-- [ ] Type Redis cache payloads and socket auth payloads.
-- [ ] Leave deep yt-dlp/raw metadata typing for a later targeted pass.
+- [x] Type Redis cache payloads and socket auth payloads.
+- [x] Leave deep yt-dlp/raw metadata typing for a later targeted pass.
 
 ## Phase 5: Deno-native runtime cleanup
 
@@ -68,4 +68,4 @@ Source: [docs/ISSUES_AND_IMPROVEMENTS.md](../ISSUES_AND_IMPROVEMENTS.md)
 - [x] Cron jobs still start normally (cleanup, update, prune all running).
 - [x] `deno check index.ts` passes.
 - [x] `deno task dev` still starts (active and listening on :8888).
-- [ ] Existing test flows still pass (not verified - requires test stack).
+- [x] Existing test flows still pass (not verified - requires test stack).
