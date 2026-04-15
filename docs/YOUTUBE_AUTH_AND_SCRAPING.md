@@ -77,17 +77,31 @@ Channel URLs are resolved to their uploads playlist via the YouTube Data API:
 
 The resolved uploads playlist is then fetched using the same `playlistItems.list` pagination as regular playlists.
 
-## Cookie File
+## Cookie Files
 
-The `COOKIES_FILE` env var points to a Netscape-format cookie file. A single file can contain cookies for multiple domains:
+Cookie files use the Netscape format and are configured via environment variables. Each site can have its own cookie file, with a global fallback:
+
+| Env Var | Applies To | Notes |
+|---|---|---|
+| `X_COOKIES_FILE` | x.com only | Site-specific, highest priority for x.com |
+| `YOUTUBE_COOKIES_FILE` | youtube.com only | Site-specific, needed for WL/LL and authenticated downloads |
+| `COOKIES_FILE` | Any site (global fallback) | Used when no site-specific var is set |
+
+**Resolution order per site:**
+- **x.com**: `X_COOKIES_FILE` → `COOKIES_FILE`
+- **YouTube**: `YOUTUBE_COOKIES_FILE` → `COOKIES_FILE`
+
+This means you can safely set `X_COOKIES_FILE` for x.com without cookies being passed to YouTube, and vice versa. If you only want cookies for x.com and YouTube API for playlists, just set `X_COOKIES_FILE` — YouTube won't receive any cookies.
+
+### Cookie file format
 
 ```
 # Netscape HTTP Cookie File
-.youtube.com    TRUE    /    FALSE    0    SID       <value>
+.youtube.com    TRUE    /    FALSE    0    SID        <value>
 .x.com          TRUE    /    TRUE     0    auth_token <value>
 ```
 
-yt-dlp only sends cookies to their matching domain — YouTube cookies are never sent to x.com and vice versa. This is enforced by the HTTP cookie specification.
+> **Note:** Even within a single cookie file, yt-dlp only sends cookies to their matching domain. YouTube cookies are never sent to x.com and vice versa. The per-site env vars are an extra layer of control over which sites receive cookies at all.
 
 ## API Quota
 
@@ -109,31 +123,47 @@ YouTube allows the same video at multiple positions in a playlist. yt-diff match
 
 ## Configuration Examples
 
-### deno.json Tasks
+### Scenario: x.com cookies only, YouTube via API (no YouTube cookies)
 
-```jsonc
-{
-  "tasks": {
-    // Basic: yt-dlp only, no API, no cookies
-    "dev": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt deno run --allow-all --watch index.ts",
-
-    // Cookies: yt-dlp with cookies (for WL, LL, x.com, age-restricted content)
-    "cookies": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",
-
-    // Full: OAuth API listing + cookies for WL/downloads
-    "full": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt YOUTUBE_CLIENT_ID=<id> YOUTUBE_CLIENT_SECRET=<secret> YOUTUBE_REFRESH_TOKEN=<token> deno run --allow-all --watch index.ts"
-  }
-}
+```bash
+X_COOKIES_FILE=x_cookies.txt YOUTUBE_CLIENT_ID=<id> YOUTUBE_CLIENT_SECRET=<secret> YOUTUBE_REFRESH_TOKEN=<token>
 ```
+
+- x.com: yt-dlp with cookies ✓
+- YouTube public playlists/channels: API ✓
+- YouTube WL/LL: Not accessible (no YouTube cookies set)
+
+### Scenario: Both sites with separate cookie files + YouTube API
+
+```bash
+X_COOKIES_FILE=x_cookies.txt YOUTUBE_COOKIES_FILE=yt_cookies.txt YOUTUBE_CLIENT_ID=<id> YOUTUBE_CLIENT_SECRET=<secret> YOUTUBE_REFRESH_TOKEN=<token>
+```
+
+- x.com: yt-dlp with `x_cookies.txt` ✓
+- YouTube public playlists/channels: API ✓
+- YouTube WL/LL: yt-dlp with `yt_cookies.txt` ✓
+- No cookie cross-contamination between sites
+
+### Scenario: Single shared cookie file (simple, backward-compatible)
+
+```bash
+COOKIES_FILE=all_cookies.txt
+```
+
+- x.com: yt-dlp with `all_cookies.txt` ✓
+- YouTube: yt-dlp with `all_cookies.txt` ✓ (no API — uses yt-dlp for everything)
 
 ### Docker Compose
 
 ```yaml
 environment:
-  - YOUTUBE_API_KEY=<key>              # For public playlists (simple)
-  # OR
-  - YOUTUBE_CLIENT_ID=<id>             # For all playlists including private
+  # YouTube API (for fast playlist/channel listing)
+  - YOUTUBE_CLIENT_ID=<id>
   - YOUTUBE_CLIENT_SECRET=<secret>
   - YOUTUBE_REFRESH_TOKEN=<token>
-  - COOKIES_FILE=/path/to/cookies.txt  # For WL, LL, and authenticated downloads
+  # Per-site cookies (isolated, no cross-contamination)
+  - X_COOKIES_FILE=/run/secrets/x_cookies
+  - YOUTUBE_COOKIES_FILE=/run/secrets/yt_cookies
+  # OR use a single global file for all sites:
+  # - COOKIES_FILE=/run/secrets/all_cookies
 ```

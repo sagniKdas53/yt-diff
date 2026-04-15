@@ -442,19 +442,28 @@ function isSiteYouTube(videoUrl: string): boolean {
 
 const siteArgBuilders: SiteArgBuilder[] = [
   // x.com
+  // Priority: X_COOKIES_FILE → COOKIES_FILE (global fallback)
   (url, config) => {
-    if (config.cookiesFile && isSiteXDotCom(url)) {
-      logger.debug(`Using cookies file: ${config.cookiesFile}`);
-      return ["--cookies", config.cookiesFile as string];
+    if (isSiteXDotCom(url)) {
+      const cookiesFile = Deno.env.get("X_COOKIES_FILE") || config.cookiesFile;
+      if (cookiesFile && typeof cookiesFile === "string") {
+        logger.debug(`Using cookies file for x.com: ${cookiesFile}`);
+        return ["--cookies", cookiesFile];
+      }
     }
     return [];
   },
   // youtube.com — needed for private playlists (Watch Later, Liked Videos)
   // that the YouTube Data API cannot access
+  // Priority: YOUTUBE_COOKIES_FILE → COOKIES_FILE (global fallback)
   (url, config) => {
-    if (config.cookiesFile && isSiteYouTube(url)) {
-      logger.debug(`Using cookies file for YouTube: ${config.cookiesFile}`);
-      return ["--cookies", config.cookiesFile as string];
+    if (isSiteYouTube(url)) {
+      const cookiesFile = Deno.env.get("YOUTUBE_COOKIES_FILE") ||
+        config.cookiesFile;
+      if (cookiesFile && typeof cookiesFile === "string") {
+        logger.debug(`Using cookies file for YouTube: ${cookiesFile}`);
+        return ["--cookies", cookiesFile];
+      }
     }
     return [];
   },
