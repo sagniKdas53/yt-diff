@@ -109,7 +109,7 @@ Optional:
 
 | File | Contents |
 | :--- | :------- |
-| `cookie_secret.txt` | Netscape-format cookies for `yt-dlp` authentication |
+| `cookie_secret.txt` | Netscape-format cookies for `yt-dlp` (used for x.com, YouTube WL/LL, etc.) |
 | `proxy_string.txt` | HTTP proxy URL (e.g., `http://user:pass@host:port/`) |
 | `iwara.json` | `{"username": "...", "password": "..."}` for Iwara credentials |
 
@@ -121,8 +121,11 @@ Choose a task based on what you need:
 # Basic — just DB password + secret key
 deno task dev
 
-# With cookies
+# With cookies (for x.com, YouTube WL/LL)
 deno task cookies
+
+# With YouTube API (OAuth) — fast playlist/channel listing
+deno task youtube
 
 # With proxy
 deno task proxy
@@ -167,7 +170,9 @@ BASE_URL=/ytdiff
 HOST_SAVE_PATH=/path/to/your/video/storage
 DB_LOCATION=/path/to/postgres/data
 DB_BACKUP_LOCATION=/path/to/backup/dir
-HOST_COOKIES_FILE=/path/to/cookies.txt
+HOST_COOKIES_FILE=/path/to/cookies.txt  # global fallback
+# HOST_X_COOKIES_FILE=/path/to/x_cookies.txt       # x.com only (optional)
+# HOST_YOUTUBE_COOKIES_FILE=/path/to/yt_cookies.txt # YouTube only (optional)
 
 # Database
 DB_USERNAME=ytdiff
@@ -220,8 +225,10 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
    - `End` — new videos at the bottom (playlists you add to)
    - `Full` — complete re-scan every cycle
    - `N/A` — no automatic monitoring
-3. **Wait for Listing** — the server spawns `yt-dlp` to index all videos. Watch
-   progress via the real-time WebSocket updates in the UI.
+3. **Wait for Listing** — the server indexes all videos. For YouTube playlists
+   and channels, this uses the YouTube Data API (seconds) if configured, or
+   falls back to `yt-dlp` (minutes to hours). Watch progress via the real-time
+   WebSocket updates in the UI.
 4. **Download** — select videos and click download. Files are saved to your
    configured `SAVE_PATH`.
 
@@ -263,7 +270,9 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | Variable | Default | Description |
 | :------- | :------ | :---------- |
 | `SAVE_PATH` | `/home/.../yt-diff-data/` | Root directory for downloaded files |
-| `COOKIES_FILE` | — | Path to Netscape-format cookies file for `yt-dlp` |
+| `COOKIES_FILE` | — | Path to Netscape-format cookies file (global fallback for all sites) |
+| `X_COOKIES_FILE` | — | Path to cookies file for x.com only (overrides `COOKIES_FILE`) |
+| `YOUTUBE_COOKIES_FILE` | — | Path to cookies file for YouTube only (overrides `COOKIES_FILE`) |
 | `PROXY_STRING_FILE` | — | Path to file containing HTTP proxy URL |
 | `PROXY_STRING` | — | Direct proxy URL (fallback) |
 | `SLEEP` | `3` | Seconds to wait before starting jobs on boot |
@@ -276,6 +285,18 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | `SAVE_THUMBNAIL` | `true` | Download thumbnail images |
 | `RESTRICT_FILENAMES` | `true` | Use `yt-dlp --restrict-filenames` |
 | `MAX_FILENAME_LENGTH` | — | Truncate filenames to this length |
+
+### YouTube API (Optional)
+
+| Variable | Default | Description |
+| :------- | :------ | :---------- |
+| `YOUTUBE_API_KEY` | — | YouTube Data API v3 key (public/unlisted playlists only) |
+| `YOUTUBE_CLIENT_ID` | — | OAuth2 client ID (all playlists including private) |
+| `YOUTUBE_CLIENT_SECRET` | — | OAuth2 client secret |
+| `YOUTUBE_REFRESH_TOKEN` | — | OAuth2 refresh token |
+
+> **Note:** OAuth2 takes priority over API key if both are set. See
+> [YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md) for full details.
 
 ### Scheduling
 
@@ -339,6 +360,8 @@ Use the included `restore_db.sh` script:
 - [Database Schema](DATABASE_SCHEMA.md) — Table definitions and relationships
 - [Listing & Updating](LISTING_AND_UPDATING.md) — How playlists are parsed and
   monitored
+- [YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md) — YouTube Data API,
+  cookie handling, and authentication modes
 - [Download Behavior](DOWNLOAD_BEHAVIOR.md) — Concurrency control and download
   pipeline
 - [Deletion Behavior](DELETION_BEHAVIOR.md) — Playlist/video deletion flows
