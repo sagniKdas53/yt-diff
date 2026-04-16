@@ -225,10 +225,26 @@ export const config: AppConfig = {
     };
   })(),
   youtubeApi: (() => {
-    const clientId = Deno.env.get("YOUTUBE_CLIENT_ID") || "";
-    const clientSecret = Deno.env.get("YOUTUBE_CLIENT_SECRET") || "";
-    const refreshToken = Deno.env.get("YOUTUBE_REFRESH_TOKEN") || "";
-    const apiKey = Deno.env.get("YOUTUBE_API_KEY") || "";
+    const getEnvOrFile = (envVar: string, fileVar: string) => {
+      try {
+        return Deno.env.get(fileVar)
+          ? readTrimmedFile(Deno.env.get(fileVar)!)
+          : Deno.env.get(envVar) || "";
+      } catch {
+        return Deno.env.get(envVar) || "";
+      }
+    };
+
+    const clientId = getEnvOrFile("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_ID_FILE");
+    const clientSecret = getEnvOrFile(
+      "YOUTUBE_CLIENT_SECRET",
+      "YOUTUBE_CLIENT_SECRET_FILE",
+    );
+    const refreshToken = getEnvOrFile(
+      "YOUTUBE_REFRESH_TOKEN",
+      "YOUTUBE_REFRESH_TOKEN_FILE",
+    );
+    const apiKey = getEnvOrFile("YOUTUBE_API_KEY", "YOUTUBE_API_KEY_FILE");
 
     // OAuth takes priority — covers both public and private playlists
     if (clientId && clientSecret && refreshToken) {
@@ -250,6 +266,7 @@ export const config: AppConfig = {
 
     return null;
   })(),
+
   maxClients: 10,
   connectedClients: 0,
 };
