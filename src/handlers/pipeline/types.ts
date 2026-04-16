@@ -1,5 +1,5 @@
 import { Model } from "sequelize";
-import { config } from "../../config.ts";
+import { config, type AppConfig } from "../../config.ts";
 
 export const playlistRegex = /(?:playlist|list=|videos$)\b/i;
 
@@ -191,7 +191,7 @@ export interface ListingProcessEntry extends ProcessLike {
 }
 
 export type SafeEmit = (event: string, payload: unknown) => void;
-export type SiteArgBuilder = (url: string, config: unknown) => string[];
+export type SiteArgBuilder = (url: string, config: AppConfig) => string[];
 export type StreamTextChunks = (
   stream: ReadableStream<Uint8Array>,
 ) => AsyncGenerator<string>;
@@ -206,6 +206,24 @@ export interface PipelineHandlerDependencies {
   streamTextChunks: StreamTextChunks;
   streamLines: StreamLines;
 }
+
+export interface CleanupOptions {
+  maxIdleTime?: number;
+  maxLifetime?: number;
+  forceKill?: boolean;
+}
+
+export type CleanupStaleProcesses = (
+  processMap: Map<string, ProcessLike>,
+  options: CleanupOptions | undefined,
+  processType: string,
+) => number;
+
+export type ListItemsConcurrently = (
+  items: ListingItem[],
+  chunkSize: number,
+  isScheduledUpdate: boolean,
+) => Promise<ListingResult[]>;
 
 export enum ProcessExitCodes {
   SUCCESS = 0,

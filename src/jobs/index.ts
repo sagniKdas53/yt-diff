@@ -10,41 +10,14 @@ import {
 } from "../db/models.ts";
 import { logger } from "../logger.ts";
 
-interface ProcessLike {
-  status: string;
-  spawnType: string;
-  lastActivity: number;
-  lastStdoutActivity: number;
-  spawnTimeStamp: number;
-  spawnedProcess?: { kill: (signal: string) => boolean };
-}
-
-interface CleanupOptions {
-  maxIdleTime?: number;
-  maxLifetime?: number;
-  forceKill?: boolean;
-}
-
-type CleanupStaleProcesses = (
-  processMap: Map<string, ProcessLike>,
-  options: CleanupOptions | undefined,
-  processType: string,
-) => number;
-
-type JobResult = { status?: string };
-type JobListingItem = {
-  url: string;
-  type: string;
-  currentMonitoringType: string;
-  isScheduledUpdate?: boolean;
-  reason: string;
-};
-
-type ListItemsConcurrently = (
-  items: JobListingItem[],
-  chunkSize: number,
-  isScheduledUpdate: boolean,
-) => Promise<JobResult[]>;
+import {
+  type CleanupOptions,
+  type CleanupStaleProcesses,
+  type ListingItem as JobListingItem,
+  type ListingResult as JobResult,
+  type ListItemsConcurrently,
+  type ProcessLike,
+} from "../handlers/pipeline/index.ts";
 
 interface JobDependencies {
   cleanupStaleProcesses: CleanupStaleProcesses;
