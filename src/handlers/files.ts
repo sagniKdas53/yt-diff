@@ -9,6 +9,7 @@ import {
   isWithinPath,
   join,
   resolve,
+  basename,
 } from "../utils/path.ts";
 
 import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
@@ -57,7 +58,7 @@ export function createFileHandlers({
       const joined = join(
         config.saveLocation,
         saveDirectory || "",
-        fileName,
+        basename(fileName),
       );
       const resolvedPath = resolve(joined);
       const saveRoot = resolve(config.saveLocation);
@@ -186,7 +187,7 @@ export function createFileHandlers({
       const joined = join(
         config.saveLocation,
         saveDirectory || "",
-        fileName,
+        basename(fileName),
       );
       const resolvedPath = resolve(joined);
       const saveRoot = resolve(config.saveLocation);

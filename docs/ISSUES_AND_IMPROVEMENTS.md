@@ -15,20 +15,20 @@ improvements identified through an analysis of the codebase.
   users or users whose tokens expire mid-session. Active socket streams assume
   the initial connection's validity perpetually.~~
 
-## 2. Input Validation (Edge Cases)
+## ~~2. Input Validation (Edge Cases)~~
 
-- **Lack of Schema Validation**: The payload `data` passed from frontend to
+- ~~**Lack of Schema Validation**: The payload `data` passed from frontend to
   backend is handled using completely generic or unvalidated definitions
   (`data: any`) in many API endpoint handlers (e.g.,
   `processListingRequest(data as any, res)`). There is no runtime validation
   library (such as `Zod` or `Joi`) ensuring fields exist, are the correct type,
-  or are correctly sanitized before database insertion.
-- **Path Verification**: In endpoints related to physical file retrieval logic
+  or are correctly sanitized before database insertion.~~
+- ~~**Path Verification**: In endpoints related to physical file retrieval logic
   and static file serving, manually constructing file path structures from
   parsed database values or partial request structures can be precarious without
   native robust path resolution boundaries. Fortunately, there is some
   implementation of `path.basename()` usage in the current stream handler which
-  is a good defensive measure.
+  is a good defensive measure.~~ *(Note: Addressed. Implemented robust payload verification using Zod middleware and applied schema boundaries and path.basename extraction for physical file paths.)*
 
 ## 3. Architecture & Code Structure
 

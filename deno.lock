@@ -20,7 +20,8 @@
     "npm:pg@^8.20.0": "8.20.0",
     "npm:sequelize@^6.37.8": "6.37.8",
     "npm:socket.io@^4.8.3": "4.8.3",
-    "npm:uuid@13": "13.0.0"
+    "npm:uuid@13": "13.0.0",
+    "npm:zod@^3.23.8": "3.25.76"
   },
   "npm": {
     "@ioredis/commands@1.5.1": {
@@ -577,6 +578,9 @@
     },
     "xtend@4.0.2": {
       "integrity": "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="
+    },
+    "zod@3.25.76": {
+      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="
     }
   },
   "workspace": {
@@ -601,7 +605,8 @@
         "npm:pg@^8.20.0",
         "npm:sequelize@^6.37.8",
         "npm:socket.io@^4.8.3",
-        "npm:uuid@13"
+        "npm:uuid@13",
+        "npm:zod@^3.23.8"
       ]
     }
   }

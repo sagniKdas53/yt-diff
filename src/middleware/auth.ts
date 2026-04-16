@@ -28,6 +28,7 @@ export interface AuthJwtPayload extends jwt.JwtPayload {
 
 
 import { parseRequestJson, generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
+import { UserAuthSchema, IsRegistrationAllowedSchema } from "./validator.ts";
 type NextHandler = (data: unknown, res: HttpResponseLike) => unknown;
 type TokenExpiredEmitter = (payload: { error: string }) => void;
 type GenerateAuthToken = (
@@ -122,23 +123,18 @@ export function createAuthMiddleware({
         }));
       }
 
-      const { userName, password } = requestData as {
-        userName: string;
-        password: string;
-      };
-
-      const passwordLength = utf8Encoder.encode(password).byteLength;
-      if (passwordLength > 72) {
-        logger.error("Password too long", {
-          userName,
-          passwordLength,
+      const parsed = UserAuthSchema.safeParse(requestData);
+      if (!parsed.success) {
+        logger.error("Registration payload invalid", {
+          errors: JSON.stringify(parsed.error.format()),
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
           status: "error",
-          message: "Password exceeds maximum length",
+          message: "Invalid payload",
         }));
       }
+      const { userName, password } = parsed.data;
 
       const existingUser = await UserAccount.findOne({
         where: { username: userName },
@@ -197,8 +193,8 @@ export function createAuthMiddleware({
       }));
     }
 
-    const { sendStats } = (requestData as { sendStats?: boolean }) ||
-      { sendStats: false };
+    const parsed = IsRegistrationAllowedSchema.safeParse(requestData);
+    const sendStats = parsed.success ? (parsed.data.sendStats || false) : false;
     const userCount = await UserAccount.count();
     if (userCount >= config.registration.maxUsers) {
       allow = false;
@@ -376,37 +372,19 @@ export function createAuthMiddleware({
         }));
       }
 
-      const data = requestData as {
-        userName?: string;
-        password?: string;
-        expiry_time?: string;
-      };
-      if (!data.userName || !data.password) {
+      const parsed = UserAuthSchema.safeParse(requestData);
+      if (!parsed.success) {
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
           status: "error",
-          message: "userName and password are required",
+          message: "Invalid credentials format",
         }));
       }
-
       const {
         userName,
         password,
         expiry_time: expiryTime = "31d",
-      } = data;
-
-      const passwordLength = utf8Encoder.encode(password).byteLength;
-      if (passwordLength > 72) {
-        logger.error("Password too long", {
-          userName,
-          passwordLength,
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
-          status: "error",
-          message: "Password exceeds maximum length",
-        }));
-      }
+      } = parsed.data;
 
       const user = await UserAccount.findOne({
         where: { username: userName },
