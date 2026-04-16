@@ -206,3 +206,9 @@ export interface PipelineHandlerDependencies {
   streamTextChunks: StreamTextChunks;
   streamLines: StreamLines;
 }
+
+export enum ProcessExitCodes {
+  SUCCESS = 0,
+  PARTIAL_ERROR = 1, // Often generated when only partial list/data is scraped, or minor warning
+  SIGTERM = 143,     // Process was killed (e.g. by user/timeout sending SIGTERM)
+}

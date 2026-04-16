@@ -7,12 +7,12 @@ import type { HttpResponseLike } from "../../transport/http.ts";
 import { existsSync, mkdirSync, readdirSync } from "../../utils/fs.ts";
 import { basename, extname, join, relative, resolve, sep } from "../../utils/path.ts";
 import { Semaphore } from "./semaphore.ts";
-import { downloadOptions } from "./types.ts";
 import type { 
   DownloadRequestBody, DownloadItem, DownloadResult, DownloadProcessEntry, 
   DownloadCompletionUpdates, DiscoveredMetadata, FileSyncStatus, HttpError,
   PipelineHandlerDependencies, VideoEntryRecord
 } from "./types.ts";
+import { downloadOptions, ProcessExitCodes } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
 export function createDownloadFlow(
@@ -348,7 +348,7 @@ export function createDownloadFlow(
               where: { videoUrl: videoUrl },
             });
 
-            if (code === 0) {
+            if (code === ProcessExitCodes.SUCCESS) {
               const unhelpfulTitle = videoTitle === videoId || videoTitle === "NA";
               const fallbackTitle = capturedTitle || videoTitle;
               const updates: DownloadCompletionUpdates = {
@@ -432,7 +432,7 @@ export function createDownloadFlow(
                 status: "success",
               });
             } else {
-              const errorMsg = code === 143
+              const errorMsg = code === ProcessExitCodes.SIGTERM
                 ? "Process was killed (likely by user or timeout)"
                 : `Process exited with code ${code}`;
 
