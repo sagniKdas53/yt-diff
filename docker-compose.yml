@@ -15,6 +15,15 @@ secrets:
     file: proxy_string.txt
   iwara_config:
     file: iwara.json
+  youtube_client_id:
+    file: youtube_client_id.txt
+  youtube_client_secret:
+    file: youtube_client_secret.txt
+  youtube_refresh_token:
+    file: youtube_refresh_token.txt
+  youtube_api_key:
+    file: youtube_api_key.txt
+
 
 volumes:
   pgadmin-data:
@@ -88,6 +97,11 @@ services:
       - secret_key
       #- proxy_string
       - iwara_config
+      - youtube_client_id
+      - youtube_client_secret
+      - youtube_refresh_token
+      - youtube_api_key
+
     environment:
       - PROTOCOL=${PROTOCOL}
       - HOSTNAME=${HOSTNAME}
@@ -136,9 +150,11 @@ services:
       # Iwara Configuration
       - IWARA_CONF_FILE=/run/secrets/iwara_config
       # Youtube Configuration
-      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
-      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
-      - YOUTUBE_REFRESH_TOKEN=${YOUTUBE_REFRESH_TOKEN}
+      - YOUTUBE_CLIENT_ID_FILE=/run/secrets/youtube_client_id
+      - YOUTUBE_CLIENT_SECRET_FILE=/run/secrets/youtube_client_secret
+      - YOUTUBE_REFRESH_TOKEN_FILE=/run/secrets/youtube_refresh_token
+      - YOUTUBE_API_KEY_FILE=/run/secrets/youtube_api_key
+
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ytdiff.entryPoints=web,websecure"
