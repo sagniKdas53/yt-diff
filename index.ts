@@ -33,18 +33,18 @@ import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import {
-  validateBody,
-  ListingRequestBodySchema,
-  DownloadRequestBodySchema,
-  UpdatePlaylistMonitoringRequestSchema,
-  PlaylistDisplayRequestSchema,
-  DeletePlaylistRequestBodySchema,
-  SubListRequestSchema,
-  DeleteVideosRequestBodySchema,
-  SignedFileRequestBodySchema,
-  RefreshSignedUrlRequestBodySchema,
   BulkSignedFilesRequestBodySchema,
+  DeletePlaylistRequestBodySchema,
+  DeleteVideosRequestBodySchema,
+  DownloadRequestBodySchema,
+  ListingRequestBodySchema,
+  PlaylistDisplayRequestSchema,
+  RefreshSignedUrlRequestBodySchema,
   ReindexAllRequestBodySchema,
+  SignedFileRequestBodySchema,
+  SubListRequestSchema,
+  UpdatePlaylistMonitoringRequestSchema,
+  validateBody,
 } from "./src/middleware/validator.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
 import { dispatchRoute } from "./src/routes/http.ts";
@@ -80,7 +80,11 @@ import {
   proxyHttpRequest,
   proxyWebSocketRequest,
 } from "./src/transport/denoHttp.ts";
-import { MIME_TYPES, CORS_ALLOWED_ORIGINS, generateCorsHeaders } from "./src/utils/http.ts";
+import {
+  CORS_ALLOWED_ORIGINS,
+  generateCorsHeaders,
+  MIME_TYPES,
+} from "./src/utils/http.ts";
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
 if (config.secretKey instanceof Error) {
@@ -659,17 +663,47 @@ const apiRoutes = createApiRoutes({
   isRegistrationAllowed,
   rateLimit,
   registerUser,
-  processListingRequest: validateBody(ListingRequestBodySchema, processListingRequest as any),
-  processDownloadRequest: validateBody(DownloadRequestBodySchema, processDownloadRequest as any),
-  updatePlaylistMonitoring: validateBody(UpdatePlaylistMonitoringRequestSchema, updatePlaylistMonitoring as any),
-  getPlaylistsForDisplay: validateBody(PlaylistDisplayRequestSchema, getPlaylistsForDisplay as any),
-  processDeletePlaylistRequest: validateBody(DeletePlaylistRequestBodySchema, processDeletePlaylistRequest as any),
+  processListingRequest: validateBody(
+    ListingRequestBodySchema,
+    processListingRequest as any,
+  ),
+  processDownloadRequest: validateBody(
+    DownloadRequestBodySchema,
+    processDownloadRequest as any,
+  ),
+  updatePlaylistMonitoring: validateBody(
+    UpdatePlaylistMonitoringRequestSchema,
+    updatePlaylistMonitoring as any,
+  ),
+  getPlaylistsForDisplay: validateBody(
+    PlaylistDisplayRequestSchema,
+    getPlaylistsForDisplay as any,
+  ),
+  processDeletePlaylistRequest: validateBody(
+    DeletePlaylistRequestBodySchema,
+    processDeletePlaylistRequest as any,
+  ),
   getSubListVideos: validateBody(SubListRequestSchema, getSubListVideos as any),
-  processDeleteVideosRequest: validateBody(DeleteVideosRequestBodySchema, processDeleteVideosRequest as any),
-  makeSignedUrl: validateBody(SignedFileRequestBodySchema, makeSignedUrl as any),
-  refreshSignedUrl: validateBody(RefreshSignedUrlRequestBodySchema, refreshSignedUrl as any),
-  makeSignedUrls: validateBody(BulkSignedFilesRequestBodySchema, makeSignedUrls as any),
-  processReindexAllRequest: validateBody(ReindexAllRequestBodySchema, processReindexAllRequest as any),
+  processDeleteVideosRequest: validateBody(
+    DeleteVideosRequestBodySchema,
+    processDeleteVideosRequest as any,
+  ),
+  makeSignedUrl: validateBody(
+    SignedFileRequestBodySchema,
+    makeSignedUrl as any,
+  ),
+  refreshSignedUrl: validateBody(
+    RefreshSignedUrlRequestBodySchema,
+    refreshSignedUrl as any,
+  ),
+  makeSignedUrls: validateBody(
+    BulkSignedFilesRequestBodySchema,
+    makeSignedUrls as any,
+  ),
+  processReindexAllRequest: validateBody(
+    ReindexAllRequestBodySchema,
+    processReindexAllRequest as any,
+  ),
 });
 
 const jobs = createJobs({

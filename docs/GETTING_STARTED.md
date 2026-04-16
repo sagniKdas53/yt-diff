@@ -366,4 +366,4 @@ Use the included `restore_db.sh` script:
   pipeline
 - [Deletion Behavior](DELETION_BEHAVIOR.md) — Playlist/video deletion flows
 - [Automated Jobs](AUTOMATED_JOBS.md) — Background cron job details
-- [Search](search.md) — Search syntax for the UI
+- [Search](SEARCH_SCOPED_AND_GLOBAL.md) — Search syntax for the UI
