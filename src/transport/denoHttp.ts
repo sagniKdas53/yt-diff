@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import type { HttpRequestLike, HttpResponseLike } from "./http.ts";
 import { logger } from "../logger.ts";
 

@@ -10,7 +10,7 @@ import type {
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
-export function createQueryHandlers(deps: PlaylistHandlerDependencies) {
+export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
   const jsonMimeType = MIME_TYPES[".json"];
   async function getPlaylistsForDisplay(
     requestBody: PlaylistDisplayRequest,

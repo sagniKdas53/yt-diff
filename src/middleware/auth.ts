@@ -44,7 +44,6 @@ interface AuthDependencies {
   emitTokenExpired?: TokenExpiredEmitter;
 }
 
-const utf8Encoder = new TextEncoder();
 
 async function getAuthenticatedUser(
   redis: Redis,

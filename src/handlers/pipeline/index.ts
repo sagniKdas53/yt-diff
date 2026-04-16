@@ -1,4 +1,3 @@
-import { logger } from "../../logger.ts";
 import type { DownloadProcessEntry, ListingProcessEntry, PipelineHandlerDependencies } from "./types.ts";
 import { createProcessManager, cleanupStaleProcesses } from "./process-manager.ts";
 import { createDownloadFlow } from "./download.ts";

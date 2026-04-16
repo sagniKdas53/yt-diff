@@ -6,27 +6,11 @@ import Redis from "ioredis";
 
 import { config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
 import { initializeDatabase } from "./src/db/models.ts";
-import {
-  type BulkSignedFilesRequestBody,
-  createFileHandlers,
-  type RefreshSignedUrlRequestBody,
-  type SignedFileRequestBody,
-} from "./src/handlers/files.ts";
-import {
-  createPlaylistHandlers,
-  type DeletePlaylistRequestBody,
-  type DeleteVideosRequestBody,
-  type PlaylistDisplayRequest,
-  type ReindexAllRequestBody,
-  type SubListRequest,
-  type UpdatePlaylistMonitoringRequest,
-} from "./src/handlers/playlists/index.ts";
+import { createFileHandlers } from "./src/handlers/files.ts";
+import { createPlaylistHandlers } from "./src/handlers/playlists/index.ts";
 import {
   createPipelineHandlers,
   downloadOptions,
-  type DownloadRequestBody,
-  type ListingRequestBody,
-  type ProcessLike,
 } from "./src/handlers/pipeline/index.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
@@ -63,14 +47,7 @@ import {
   readTextFileSync,
   statSync,
 } from "./src/utils/fs.ts";
-import {
-  basename,
-  extname,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "./src/utils/path.ts";
+import { extname, join } from "./src/utils/path.ts";
 import type {
   HttpRequestLike,
   HttpResponseLike,
@@ -288,26 +265,6 @@ function isSiteXDotCom(videoUrl: string): boolean {
   const isAllowedXCom = hostname === allowedXHost ||
     hostname.endsWith("." + allowedXHost);
   return isAllowedXCom;
-}
-/**
- * Checks if the given video URL belongs to a site whose thumbnail URLs are
- * ephemeral (signed CDN URLs that expire within hours/days).
- * Currently covers: facebook.com, instagram.com, pornhub.com and their subdomains.
- *
- * @param {string} videoUrl - The URL of the video to check.
- * @returns {boolean} True if the site's thumbnails are known to be ephemeral.
- */
-function hasEphemeralThumbnails(videoUrl: string): boolean {
-  let hostname = "";
-  try {
-    hostname = (new URL(videoUrl)).hostname;
-  } catch {
-    return false;
-  }
-  const ephemeralHosts = ["facebook.com", "instagram.com", "pornhub.com"];
-  return ephemeralHosts.some(
-    (h) => hostname === h || hostname.endsWith("." + h),
-  );
 }
 
 /**
