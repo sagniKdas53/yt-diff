@@ -51,11 +51,11 @@ improvements identified through an analysis of the codebase.
 
 ## 4. Unused or Legacy Components
 
-- **Manual Backpressure and Range Requests**: The codebase manually implements
+- ~~**Manual Backpressure and Range Requests**: The codebase manually implements
   streaming backpressure controls and HTTP `206 Partial Content` (Range Header)
   capabilities for video streaming. Utilizing a stable framework or standard
   static-serve middleware would reduce potential edge cases (e.g., handling
-  aborted connections during massive file streaming gracefully).
+  aborted connections during massive file streaming gracefully).~~
 - **Hardcoded Process Operations**: Raw array pushes like
   `downloadOptions.push('--trim-filenames')` are fine, but can become unruly
   over time if the scope of `yt-dlp` arguments grows dynamically per-video
@@ -64,5 +64,5 @@ improvements identified through an analysis of the codebase.
   - **Suggested Improvement**: Track the upstream `curl_cffi` and `yt-dlp` repositories for a permanent fix. Once resolved, revert the extraction process to invoke the standard `yt-dlp` executable cleanly rather than patching Python's context at runtime.
 - **Large JSONB Payload Storage**: The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSONB structures. While bulky arrays (formats/thumbnails) are pruned, accumulating this across thousands of videos might bloat PostgreSQL storage unnecessarily if the fields are never queried.
   - **Suggested Improvement**: Periodically review whether `raw_metadata` is actively utilized. If not, consider extracting only specific metadata keys explicitly rather than a catch-all JSON dump, or offload this archival data to file-based cache.
-- **Process Exit Handling**: Parsing of process exits checks numeric codes (`0`, `1`) and explicit strings (e.g., `Segmentation fault`) directly from the spawned streams.
-  - **Suggested Improvement**: Standardize an error-code mapping constant or object, which simplifies the monolithic process error parsing logic across different download/metadata tasks.
+- ~~**Process Exit Handling**: Parsing of process exits checks numeric codes (`0`, `1`) and explicit strings (e.g., `Segmentation fault`) directly from the spawned streams.~~
+  - ~~**Suggested Improvement**: Standardize an error-code mapping constant or object, which simplifies the monolithic process error parsing logic across different download/metadata tasks.~~ *(Note: Addressed. Explicit string matching was previously removed and numeric codes are now standardized via `ProcessExitCodes`.)*

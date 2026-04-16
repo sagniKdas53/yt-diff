@@ -13,7 +13,7 @@ import {
   resolveChannelUploadsPlaylistId,
 } from "../youtube-api.ts";
 import { Semaphore } from "./semaphore.ts";
-import { playlistRegex } from "./types.ts";
+import { playlistRegex, ProcessExitCodes } from "./types.ts";
 import type {
   ListingRequestBody, ListingItem, ListingResult, ListingProcessEntry,
   StreamedItemData, ParsedStreamItem, StreamingVideoProcessingResult,
@@ -870,9 +870,9 @@ export function createListingFlow(
         }
 
         const exitCode = listProcess.killed ? null : (await listProcess.status).code;
-        const isAllowedError = exitCode === 1 && linesYielded > 0;
+        const isAllowedError = exitCode === ProcessExitCodes.PARTIAL_ERROR && linesYielded > 0;
 
-        if (!listProcess.killed && exitCode !== 0 && !isAllowedError) {
+        if (!listProcess.killed && exitCode !== ProcessExitCodes.SUCCESS && !isAllowedError) {
           const processEntryInt = listProcesses.get(processKey);
           if (processEntryInt) {
             processEntryInt.status = "failed";
