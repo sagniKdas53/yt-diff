@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import he from "he";
 import { Model, Op } from "sequelize";
 import { config } from "../../config.ts";

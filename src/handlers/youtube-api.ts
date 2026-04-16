@@ -329,7 +329,7 @@ export async function* fetchPlaylistItemsChunked(
   let nextPageToken: string | undefined;
   let pageCount = 0;
   let totalItemsYielded = 0;
-  let buffer: YouTubeApiItem[] = [];
+  const buffer: YouTubeApiItem[] = [];
   let totalExpected = 0;
 
   logger.info("Starting YouTube API chunked playlist fetch", {
