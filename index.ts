@@ -1,16 +1,17 @@
 /// <reference lib="deno.ns" />
-// deno-lint-ignore-file no-explicit-any
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Redis from "ioredis";
 
-import { config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
+import { type AppConfig, config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
 import { initializeDatabase } from "./src/db/models.ts";
 import { createFileHandlers } from "./src/handlers/files.ts";
 import { createPlaylistHandlers } from "./src/handlers/playlists/index.ts";
 import {
   createPipelineHandlers,
   downloadOptions,
+  type ProcessLike,
+  type SiteArgBuilder,
 } from "./src/handlers/pipeline/index.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
@@ -112,10 +113,10 @@ if (!existsSync(config.saveLocation)) {
   }
 }
 
-const redis = new (Redis as any)({
+const redis = new Redis({
   host: config.redis.host,
   port: config.redis.port,
-  password: config.redis.password,
+  password: config.redis.password ?? undefined,
 });
 
 redis.on("error", (err: Error) => {
@@ -290,7 +291,6 @@ function isSiteIwaraDotTv(videoUrl: string): boolean {
 }
 
 // Site specific argument builders
-export type SiteArgBuilder = (url: string, config: any) => string[];
 
 /**
  * Checks if the given URL belongs to youtube.com or any of its subdomains.
@@ -359,10 +359,10 @@ const siteArgBuilders: SiteArgBuilder[] = [
   },
 ];
 
-export function buildSiteArgs(url: string, config: any): string[] {
+export function buildSiteArgs(url: string, config: AppConfig): string[] {
   const args = siteArgBuilders.flatMap((builder) => builder(url, config));
   if (config.proxy_string && !isSiteIwaraDotTv(url)) {
-    args.push("--proxy", config.proxy_string);
+    args.push("--proxy", config.proxy_string as string);
   }
   return args;
 }
@@ -408,7 +408,7 @@ function generateAuthToken(
       lastPasswordChangeTime: user.updatedAt,
     },
     config.secretKey as string,
-    { expiresIn: expiryDuration as any },
+    { expiresIn: expiryDuration as jwt.SignOptions["expiresIn"] },
   );
 }
 function emitTokenExpired(payload: { error: string }) {
@@ -587,7 +587,7 @@ const socketSidecarPort = await new Promise<number>((resolve, reject) => {
   const socketServer = _io.httpServer as {
     address?: () => { port?: number } | string | null;
     listening?: boolean;
-    once: (event: string, listener: (...args: any[]) => void) => void;
+    once: (event: string, listener: (...args: unknown[]) => void) => void;
   };
 
   const resolvePort = () => {
@@ -622,51 +622,51 @@ const apiRoutes = createApiRoutes({
   registerUser,
   processListingRequest: validateBody(
     ListingRequestBodySchema,
-    processListingRequest as any,
+    processListingRequest,
   ),
   processDownloadRequest: validateBody(
     DownloadRequestBodySchema,
-    processDownloadRequest as any,
+    processDownloadRequest,
   ),
   updatePlaylistMonitoring: validateBody(
     UpdatePlaylistMonitoringRequestSchema,
-    updatePlaylistMonitoring as any,
+    updatePlaylistMonitoring,
   ),
   getPlaylistsForDisplay: validateBody(
     PlaylistDisplayRequestSchema,
-    getPlaylistsForDisplay as any,
+    getPlaylistsForDisplay,
   ),
   processDeletePlaylistRequest: validateBody(
     DeletePlaylistRequestBodySchema,
-    processDeletePlaylistRequest as any,
+    processDeletePlaylistRequest,
   ),
-  getSubListVideos: validateBody(SubListRequestSchema, getSubListVideos as any),
+  getSubListVideos: validateBody(SubListRequestSchema, getSubListVideos),
   processDeleteVideosRequest: validateBody(
     DeleteVideosRequestBodySchema,
-    processDeleteVideosRequest as any,
+    processDeleteVideosRequest,
   ),
   makeSignedUrl: validateBody(
     SignedFileRequestBodySchema,
-    makeSignedUrl as any,
+    makeSignedUrl,
   ),
   refreshSignedUrl: validateBody(
     RefreshSignedUrlRequestBodySchema,
-    refreshSignedUrl as any,
+    refreshSignedUrl,
   ),
   makeSignedUrls: validateBody(
     BulkSignedFilesRequestBodySchema,
-    makeSignedUrls as any,
+    makeSignedUrls,
   ),
   processReindexAllRequest: validateBody(
     ReindexAllRequestBodySchema,
-    processReindexAllRequest as any,
+    processReindexAllRequest,
   ),
 });
 
 const jobs = createJobs({
-  cleanupStaleProcesses: cleanupStaleProcesses as any,
-  downloadProcesses: downloadProcesses as Map<string, any>,
-  listProcesses: listProcesses as Map<string, any>,
+  cleanupStaleProcesses: cleanupStaleProcesses,
+  downloadProcesses: downloadProcesses as Map<string, ProcessLike>,
+  listProcesses: listProcesses as Map<string, ProcessLike>,
   listItemsConcurrently,
 });
 
