@@ -32,6 +32,20 @@ import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
+import {
+  validateBody,
+  ListingRequestBodySchema,
+  DownloadRequestBodySchema,
+  UpdatePlaylistMonitoringRequestSchema,
+  PlaylistDisplayRequestSchema,
+  DeletePlaylistRequestBodySchema,
+  SubListRequestSchema,
+  DeleteVideosRequestBodySchema,
+  SignedFileRequestBodySchema,
+  RefreshSignedUrlRequestBodySchema,
+  BulkSignedFilesRequestBodySchema,
+  ReindexAllRequestBodySchema,
+} from "./src/middleware/validator.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
 import { dispatchRoute } from "./src/routes/http.ts";
 import { getSignedFileMetadata } from "./src/routes/helpers/getSignedFileMetadata.ts";
@@ -645,31 +659,17 @@ const apiRoutes = createApiRoutes({
   isRegistrationAllowed,
   rateLimit,
   registerUser,
-  processListingRequest: (data, res) =>
-    processListingRequest(data as ListingRequestBody, res),
-  processDownloadRequest: (data, res) =>
-    processDownloadRequest(
-      data as { urlList: string[]; playListUrl?: string },
-      res,
-    ),
-  updatePlaylistMonitoring: (data, res) =>
-    updatePlaylistMonitoring(data as UpdatePlaylistMonitoringRequest, res),
-  getPlaylistsForDisplay: (data, res) =>
-    getPlaylistsForDisplay(data as PlaylistDisplayRequest, res),
-  processDeletePlaylistRequest: (data, res) =>
-    processDeletePlaylistRequest(data as DeletePlaylistRequestBody, res),
-  getSubListVideos: (data, res) =>
-    getSubListVideos(data as SubListRequest, res),
-  processDeleteVideosRequest: (data, res) =>
-    processDeleteVideosRequest(data as DeleteVideosRequestBody, res),
-  makeSignedUrl: (data, res) =>
-    makeSignedUrl(data as SignedFileRequestBody, res),
-  refreshSignedUrl: (data, res) =>
-    refreshSignedUrl(data as RefreshSignedUrlRequestBody, res),
-  makeSignedUrls: (data, res) =>
-    makeSignedUrls(data as BulkSignedFilesRequestBody, res),
-  processReindexAllRequest: (data, res) =>
-    processReindexAllRequest(data as ReindexAllRequestBody, res),
+  processListingRequest: validateBody(ListingRequestBodySchema, processListingRequest as any),
+  processDownloadRequest: validateBody(DownloadRequestBodySchema, processDownloadRequest as any),
+  updatePlaylistMonitoring: validateBody(UpdatePlaylistMonitoringRequestSchema, updatePlaylistMonitoring as any),
+  getPlaylistsForDisplay: validateBody(PlaylistDisplayRequestSchema, getPlaylistsForDisplay as any),
+  processDeletePlaylistRequest: validateBody(DeletePlaylistRequestBodySchema, processDeletePlaylistRequest as any),
+  getSubListVideos: validateBody(SubListRequestSchema, getSubListVideos as any),
+  processDeleteVideosRequest: validateBody(DeleteVideosRequestBodySchema, processDeleteVideosRequest as any),
+  makeSignedUrl: validateBody(SignedFileRequestBodySchema, makeSignedUrl as any),
+  refreshSignedUrl: validateBody(RefreshSignedUrlRequestBodySchema, refreshSignedUrl as any),
+  makeSignedUrls: validateBody(BulkSignedFilesRequestBodySchema, makeSignedUrls as any),
+  processReindexAllRequest: validateBody(ReindexAllRequestBodySchema, processReindexAllRequest as any),
 });
 
 const jobs = createJobs({
