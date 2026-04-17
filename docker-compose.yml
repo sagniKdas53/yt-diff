@@ -23,6 +23,10 @@ secrets:
     file: youtube_refresh_token.txt
   youtube_api_key:
     file: youtube_api_key.txt
+  pg_admin_email:
+    file: pg_admin_email.txt
+  pg_admin_password:
+    file: pg_admin_password.txt
 
 
 volumes:
@@ -227,9 +231,12 @@ services:
     restart: always
     ports:
       - "8686:80"
+    secrets:
+      - pg_admin_email
+      - pg_admin_password
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PG_ADMIN_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PG_ADMIN_PASSWORD}
+      PGADMIN_DEFAULT_EMAIL_FILE: /run/secrets/pg_admin_email
+      PGADMIN_DEFAULT_PASSWORD_FILE: /run/secrets/pg_admin_password
       SCRIPT_NAME: /pgadmin
     volumes:
       - pgadmin-data:/var/lib/pgadmin
