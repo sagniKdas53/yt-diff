@@ -1,7 +1,7 @@
 [submodule "frontend"]
 	path = frontend
-	url = https://github.com/sagniKdas53/yt-diff-react.git
-	branch = feature/full-refactor
+	url = https://github.com/sagniKdas53/yt-diff-react
+	branch = material
 [submodule "tests"]
 	path = tests
 	url = https://github.com/sagniKdas53/yt-diff-tests.git
