@@ -21,3 +21,4 @@ youtube_client_id.txt
 youtube_client_secret.txt
 youtube_refresh_token.txt
 youtube_api_key.txt
+pg_admin_*.txt
