@@ -276,10 +276,11 @@ services:
       - openvpn_password
     environment:
       - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
+      - VPN_TYPE=openvpn
       - OPENVPN_USER_SECRETFILE=/run/secrets/openvpn_user
       - OPENVPN_PASSWORD_SECRETFILE=/run/secrets/openvpn_password
       - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
-      - FREE_ONLY=${FREE}
+      #- FREE_ONLY=${FREE}
       - Tz=${TZ_PREFERRED}
       - HTTPPROXY=${HTTP_PROXY}
       - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}
