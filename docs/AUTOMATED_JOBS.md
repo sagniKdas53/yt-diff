@@ -32,8 +32,11 @@ processes (`yt-dlp` instances) that have gone stale.
    `listProcesses`.
 2. For each tracked process:
    - **Completed/Failed** processes → entry is deleted from the map.
-   - **Running** processes older than `PROCESS_MAX_AGE` → forcefully killed
-     (`SIGKILL`, falling back to `SIGTERM`) and removed from the map.
+   - **Running download** processes older than `PROCESS_MAX_AGE` → forcefully
+     killed (`SIGKILL`, falling back to `SIGTERM`) and removed from the map.
+   - **Running list** processes → the `maxLifetime` kill is **skipped** if the
+     process has produced stdout data within the `maxIdle` window. This prevents
+     premature termination of large playlist scans (e.g., 5,000-item playlists).
 3. Logs the number of cleaned processes and the next scheduled run.
 
 ### Configuration
@@ -57,10 +60,13 @@ videos that were added since the last check.
 2. Separates playlists into three groups by monitoring type.
 3. Builds listing descriptors with `isScheduledUpdate = true` (bypasses the
    "already listed" guard in the listing pipeline).
-4. Feeds all items into `listItemsConcurrently()` in this order:
+4. For YouTube playlists/channels, uses the YouTube Data API if credentials are
+   configured (completes in seconds instead of hours). Falls back to `yt-dlp`
+   for non-YouTube URLs or when API credentials are missing.
+5. Feeds all items into `listItemsConcurrently()` in this order:
    **Start → End → Full** — cheaper incremental scans run first so they don't
    get blocked behind expensive full re-scans.
-5. Logs the total number of completed updates and the next scheduled run.
+6. Logs the total number of completed updates and the next scheduled run.
 
 ### Monitoring Types Recap
 

@@ -5,6 +5,7 @@ dist/
 ssl/
 gluetun/
 *.log
+.codex
 db_password.txt
 secret_key.txt
 cookie_secret.txt
@@ -13,3 +14,11 @@ openvpn_user.txt
 proxy_string.txt
 yt-dlp
 iwara.json
+.agents/
+large_play_list_issues
+cookies_secret.txt
+youtube_client_id.txt
+youtube_client_secret.txt
+youtube_refresh_token.txt
+youtube_api_key.txt
+pg_admin_*.txt
