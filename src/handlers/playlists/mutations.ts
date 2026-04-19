@@ -395,6 +395,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
       });
 
       const playListUrl = requestBody.playListUrl || "";
+      const mappingIds = requestBody.mappingIds || [];
       const videoUrls = requestBody.videoUrls || [];
       const cleanUp = requestBody.cleanUp || false;
       const deleteVideoMappings = requestBody.deleteVideoMappings || false;
@@ -407,6 +408,19 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
           JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+        );
+      }
+
+      if (!Array.isArray(mappingIds)) {
+        logger.error("mappingIds must be an array", {
+          "requestBody": JSON.stringify(requestBody),
+        });
+        response.writeHead(400, generateCorsHeaders(jsonMimeType));
+        return response.end(
+          JSON.stringify({
+            "status": "error",
+            "message": "mappingIds must be an array",
+          }),
         );
       }
 
@@ -423,15 +437,15 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         );
       }
 
-      if (videoUrls.length === 0) {
-        logger.error("videoUrls array cannot be empty", {
+      if (mappingIds.length === 0 && videoUrls.length === 0) {
+        logger.error("mappingIds or videoUrls array cannot be empty", {
           "requestBody": JSON.stringify(requestBody),
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
           JSON.stringify({
             "status": "error",
-            "message": "videoUrls array cannot be empty",
+            "message": "mappingIds or videoUrls array cannot be empty",
           }),
         );
       }
@@ -452,17 +466,61 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         const deleted = [];
         const failed = [];
 
+        const mappings = mappingIds.length > 0
+          ? await PlaylistVideoMapping.findAll({
+            where: {
+              id: { [Op.in]: mappingIds },
+              playlistUrl: playListUrl,
+            },
+            transaction,
+          })
+          : [];
+
+        const mappingsById = new Map(
+          mappings.map((mapping) => [
+            mapping.getDataValue("id") as string,
+            mapping,
+          ]),
+        );
+
+        const effectiveVideoUrls = mappingIds.length > 0
+          ? mappings.map((mapping) => mapping.getDataValue("videoUrl") as string)
+          : videoUrls;
+
         const videos = await VideoMetadata.findAll({
-          where: { videoUrl: { [Op.in]: videoUrls } },
+          where: { videoUrl: { [Op.in]: effectiveVideoUrls } },
           transaction,
         });
 
         const videoUrlsToDestroy = [];
         const videoUrlsToReset = [];
-        const videoUrlsToDeleteMapping = [];
+        const mappingIdsToDelete = [];
 
-        for (const videoUrl of videoUrls) {
+        const deleteTargets = mappingIds.length > 0 ? mappingIds : videoUrls;
+
+        for (const deleteTarget of deleteTargets) {
+          let currentVideoUrl = "";
           try {
+            const mapping = mappingIds.length > 0
+              ? mappingsById.get(deleteTarget)
+              : null;
+            const videoUrl = mapping
+              ? mapping.getDataValue("videoUrl") as string
+              : deleteTarget;
+            currentVideoUrl = videoUrl;
+
+            if (mappingIds.length > 0 && !mapping) {
+              logger.warn("Playlist mapping not found", {
+                mappingId: deleteTarget,
+                playListUrl,
+              });
+              failed.push({
+                mappingId: deleteTarget,
+                reason: "Playlist mapping not found",
+              });
+              continue;
+            }
+
             const video = videos.find((v: any) =>
               v.getDataValue("videoUrl") === videoUrl
             ) as any;
@@ -540,7 +598,21 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
                   videoUrlsToReset.push(videoUrl);
                 }
                 if (deleteVideoMappings) {
-                  videoUrlsToDeleteMapping.push(videoUrl);
+                  if (mapping) {
+                    mappingIdsToDelete.push(mapping.getDataValue("id"));
+                  } else {
+                    const mappingRows = await PlaylistVideoMapping.findAll({
+                      where: {
+                        videoUrl,
+                        playlistUrl: playListUrl,
+                      },
+                      attributes: ["id"],
+                      transaction,
+                    });
+                    mappingIdsToDelete.push(
+                      ...mappingRows.map((row) => row.getDataValue("id") as string),
+                    );
+                  }
                 }
               }
               deleted.push(videoUrl);
@@ -552,10 +624,13 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             }
           } catch (error) {
             logger.error("Failed to process video", {
-              videoUrl,
+              videoUrl: currentVideoUrl || deleteTarget,
               error: (error as Error).message,
             });
-            failed.push({ videoUrl, reason: (error as Error).message });
+            failed.push({
+              videoUrl: currentVideoUrl || deleteTarget,
+              reason: (error as Error).message,
+            });
           }
         }
 
@@ -581,10 +656,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
           });
         }
 
-        if (videoUrlsToDeleteMapping.length > 0) {
+        if (mappingIdsToDelete.length > 0) {
           await PlaylistVideoMapping.destroy({
             where: {
-              videoUrl: { [Op.in]: videoUrlsToDeleteMapping },
+              id: { [Op.in]: [...new Set(mappingIdsToDelete)] },
               playlistUrl: playListUrl,
             },
             transaction,

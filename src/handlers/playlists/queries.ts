@@ -183,7 +183,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       }
 
       const queryOptions: FindAndCountOptions = {
-        attributes: ["positionInPlaylist", "playlistUrl"],
+        attributes: ["id", "positionInPlaylist", "playlistUrl"],
         include: [{
           model: VideoMetadata,
           attributes: [
@@ -246,6 +246,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         };
 
         return {
+          id: typedRow.id,
           positionInPlaylist: typedRow.positionInPlaylist,
           playlistUrl: typedRow.playlistUrl,
           video_metadatum: safeVideoMeta,
