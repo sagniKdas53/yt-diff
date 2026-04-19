@@ -1,0 +1,6 @@
+DB_LOCATION=/home/pi4/Documents/yt-db-data/
+HOSTNAME=pi4.tail9ece4.ts.net
+LOG_LEVELS=trace
+HOST_SAVE_PATH=/home/pi4/Videos/yt-dlp/
+DB_BACKUP_LOCATION=/home/pi4/Documents/yt-db-backups/
+HOST_COOKIES_FILE=/home/pi4/Projects/docker-composes/yt-diff/cookies_secret.txt

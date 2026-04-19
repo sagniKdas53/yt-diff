@@ -56,6 +56,13 @@ export function createListingFlow(
     return join(config.saveLocation, saveDirectory ?? "");
   }
 
+  function getVideoDisplayLabel(videoEntry: Model): string {
+    const fileName = videoEntry.getDataValue("fileName") as string | null;
+    const title = videoEntry.getDataValue("title") as string | null;
+    const videoId = videoEntry.getDataValue("videoId") as string | null;
+    return fileName || title || videoId || "video";
+  }
+
   async function getExistingPlaylistMentions(videoUrl: string): Promise<
     Array<{
       playlistUrl: string;
@@ -201,80 +208,71 @@ export function createListingFlow(
         });
         if (videoEntry) {
           logger.debug("Video found in database", { url: normalizedUrl });
-          if ((videoEntry as any).downloadStatus) {
-            logger.debug("Video already downloaded", { url: normalizedUrl });
-            const [existingMapping, lastNoneMapping, existingPlaylists] =
-              await Promise.all([
-                PlaylistVideoMapping.findOne({
-                  where: {
-                    videoUrl: normalizedUrl,
-                    playlistUrl: "None",
-                  },
-                  order: [["positionInPlaylist", "ASC"]],
-                }),
-                PlaylistVideoMapping.findOne({
-                  where: {
-                    playlistUrl: "None",
-                  },
-                  order: [["positionInPlaylist", "DESC"]],
-                  attributes: ["positionInPlaylist"],
-                }),
-                getExistingPlaylistMentions(normalizedUrl),
-              ]);
-            const downloadLocation = buildDownloadLocation(videoEntry);
-            const firstExistingPlaylist = existingPlaylists[0] ?? null;
+          const [existingMapping, lastNoneMapping, existingPlaylists] =
+            await Promise.all([
+              PlaylistVideoMapping.findOne({
+                where: {
+                  videoUrl: normalizedUrl,
+                  playlistUrl: "None",
+                },
+                order: [["positionInPlaylist", "ASC"]],
+              }),
+              PlaylistVideoMapping.findOne({
+                where: {
+                  playlistUrl: "None",
+                },
+                order: [["positionInPlaylist", "DESC"]],
+                attributes: ["positionInPlaylist"],
+              }),
+              getExistingPlaylistMentions(normalizedUrl),
+            ]);
+          const downloadLocation = buildDownloadLocation(videoEntry);
+          const firstExistingPlaylist = existingPlaylists[0] ?? null;
+          const displayLabel = getVideoDisplayLabel(videoEntry);
 
-            if (existingMapping) {
-              safeEmit("listing-single-item-complete", {
-                url: normalizedUrl,
-                type: "video",
-                title: (videoEntry as any).title,
-                status: "completed",
-                processedChunks: 1,
-                seekSubListTo: (existingMapping as any).positionInPlaylist,
-                alreadyExisted: true,
-                duplicateScope: "none",
-                downloadLocation,
-                existingPlaylists,
-              });
-              continue;
-            }
-
-            const newPosition = lastNoneMapping
-              ? (lastNoneMapping.getDataValue("positionInPlaylist") as number) + 1
-              : 1;
-
-            await PlaylistVideoMapping.create({
-              videoUrl: normalizedUrl,
-              playlistUrl: "None",
-              positionInPlaylist: newPosition,
-            });
-
+          if (existingMapping) {
             safeEmit("listing-single-item-complete", {
               url: normalizedUrl,
               type: "video",
               title: (videoEntry as any).title,
+              itemLabel: displayLabel,
               status: "completed",
               processedChunks: 1,
-              seekSubListTo: newPosition,
-              alreadyExisted: false,
-              addedFromDownloaded: true,
+              seekSubListTo: (existingMapping as any).positionInPlaylist,
+              alreadyExisted: true,
+              duplicateScope: "none",
               downloadLocation,
               existingPlaylists,
-              sourcePlaylist: firstExistingPlaylist,
             });
             continue;
-          } else {
-            logger.debug("Video not downloaded yet, updating status", {
-              url: normalizedUrl,
-            });
-            itemsToList.push({
-              url: normalizedUrl,
-              type: "undownloaded",
-              currentMonitoringType: "N/A",
-              reason: "Video not downloaded yet",
-            });
           }
+
+          const newPosition = lastNoneMapping
+            ? (lastNoneMapping.getDataValue("positionInPlaylist") as number) + 1
+            : 1;
+
+          await PlaylistVideoMapping.create({
+            videoUrl: normalizedUrl,
+            playlistUrl: "None",
+            positionInPlaylist: newPosition,
+          });
+
+          safeEmit("listing-single-item-complete", {
+            url: normalizedUrl,
+            type: "video",
+            title: (videoEntry as any).title,
+            itemLabel: displayLabel,
+            status: "completed",
+            processedChunks: 1,
+            seekSubListTo: newPosition,
+            alreadyExisted: false,
+            addedFromDownloaded: Boolean((videoEntry as any).downloadStatus),
+            addedFromExisting: true,
+            downloadLocation,
+            existingPlaylists,
+            sourcePlaylist: firstExistingPlaylist,
+          });
+          continue;
         }
 
         if (!playlistEntry && !videoEntry) {
