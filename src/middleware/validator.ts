@@ -7,22 +7,22 @@ type BodyHandler<T> = (data: T, res: HttpResponseLike) => unknown;
 
 export function validateBody<T>(
   schema: z.ZodType<T>,
-  handler: BodyHandler<T>
+  handler: BodyHandler<T>,
 ) {
   return (data: unknown, res: HttpResponseLike) => {
     const result = schema.safeParse(data);
     if (!result.success) {
       logger.warn("Payload validation failed", {
         errors: JSON.stringify(result.error.format()),
-        data: JSON.stringify(data)
+        data: JSON.stringify(data),
       });
       res.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
       return res.end(
         JSON.stringify({
           status: "error",
           message: "Invalid payload",
-          errors: result.error.errors
-        })
+          errors: result.error.errors,
+        }),
       );
     }
     return handler(result.data, res);
@@ -73,6 +73,7 @@ export const SubListRequestSchema = z.object({
 
 export const DeleteVideosRequestBodySchema = z.object({
   playListUrl: z.string().optional(),
+  mappingIds: z.array(z.string()).optional(),
   videoUrls: z.array(z.string()).optional(),
   cleanUp: z.boolean().optional(),
   deleteVideoMappings: z.boolean().optional(),
@@ -88,7 +89,10 @@ export const ReindexAllRequestBodySchema = z.object({
 
 export const SignedFileRequestBodySchema = z.object({
   saveDirectory: z.string().optional(),
-  fileName: z.string().regex(/^[^\\/]+$/, "File name must not contain directory traversal segments").optional(),
+  fileName: z.string().regex(
+    /^[^\\/]+$/,
+    "File name must not contain directory traversal segments",
+  ).optional(),
 });
 
 export const RefreshSignedUrlRequestBodySchema = z.object({
@@ -105,7 +109,10 @@ export const BulkSignedFilesRequestBodySchema = z.object({
 
 export const UserAuthSchema = z.object({
   userName: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required").max(72, "Password too long"),
+  password: z.string().min(1, "Password is required").max(
+    72,
+    "Password too long",
+  ),
   expiry_time: z.string().optional(),
 });
 

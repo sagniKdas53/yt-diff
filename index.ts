@@ -433,9 +433,10 @@ const rateLimit = createRateLimit({
   redis,
 });
 
-const { makeSignedUrl, makeSignedUrls, refreshSignedUrl, refreshSignedUrls } = createFileHandlers({
-  redis,
-});
+const { makeSignedUrl, makeSignedUrls, refreshSignedUrl, refreshSignedUrls } =
+  createFileHandlers({
+    redis,
+  });
 
 const {
   cleanupStaleProcesses,
