@@ -17,12 +17,11 @@
      * Current cause: the in-memory pending sort counter is incremented before playlist creation fully succeeds
      * Planned fix: only reserve the next sort index after playlist creation is guaranteed to succeed, or resync the counter from DB on failure
 
-3. `[open]` Adding to `"None"` needs better duplicate and location feedback
+3. `[fixed, not tested]` Adding to `"None"` needs better duplicate and location feedback
 
-     * If already downloaded, the UI shows the skip message but does not tell us where the files are downloaded
-     * If already listed in other playlists but first time in `"None"`, allow it and show an info notification that the video already exists in playlist X
-     * If already present in `"None"`, show an error/info notification that duplicates are not allowed in `"None"` and include the indexed position that the websocket already navigates to
-     * Current note: this could likely be made O(1) from DB state for the REST response, but websocket behavior is already sufficient for now
+     * Fix implemented: adding an already-downloaded video now reports its saved file location in the socket/UI feedback
+     * Fix implemented: if the video exists in other playlists but not yet in `"None"`, the backend now inserts the `"None"` mapping directly and the UI reports the first existing playlist title
+     * Fix implemented: if the video already exists in `"None"`, the socket payload now includes the indexed position and the UI reports that duplicates are not allowed there
 
 4. `[open]` Important snack events should also appear in the notification center
 

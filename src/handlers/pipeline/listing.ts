@@ -23,6 +23,7 @@ import type {
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 import { urlToTitle, truncateText, isSiteXDotCom, hasEphemeralThumbnails, normalizeUrl } from "./process-manager.ts";
+import { join } from "../../utils/path.ts";
 
 export function createListingFlow(
   deps: PipelineHandlerDependencies,
@@ -39,6 +40,100 @@ export function createListingFlow(
   let pendingPlaylistCreatePromise: Promise<void> = Promise.resolve();
 
   const { updateProcessActivity } = processManager;
+
+  function buildDownloadLocation(videoEntry: Model): string | null {
+    const saveDirectory = videoEntry.getDataValue("saveDirectory") as string | null;
+    const fileName = videoEntry.getDataValue("fileName") as string | null;
+
+    if (!saveDirectory && !fileName) {
+      return null;
+    }
+
+    if (fileName) {
+      return join(config.saveLocation, saveDirectory ?? "", fileName);
+    }
+
+    return join(config.saveLocation, saveDirectory ?? "");
+  }
+
+  async function getExistingPlaylistMentions(videoUrl: string): Promise<
+    Array<{
+      playlistUrl: string;
+      title: string;
+      positionInPlaylist: number;
+      sortOrder: number;
+    }>
+  > {
+    const mappings = await PlaylistVideoMapping.findAll({
+      where: {
+        videoUrl,
+        playlistUrl: { [Op.ne]: "None" },
+      },
+      attributes: ["playlistUrl", "positionInPlaylist"],
+    });
+
+    const playlistUrls = [
+      ...new Set(
+        mappings.map((mapping) => mapping.getDataValue("playlistUrl") as string),
+      ),
+    ];
+
+    if (playlistUrls.length === 0) {
+      return [];
+    }
+
+    const playlists = await PlaylistMetadata.findAll({
+      where: {
+        playlistUrl: { [Op.in]: playlistUrls },
+      },
+      attributes: ["playlistUrl", "title", "sortOrder"],
+    });
+
+    const playlistByUrl = new Map<string, {
+      title: string;
+      sortOrder: number;
+    }>(
+      playlists.map((playlist) => [
+        playlist.getDataValue("playlistUrl") as string,
+        {
+          title: playlist.getDataValue("title") as string,
+          sortOrder: playlist.getDataValue("sortOrder") as number,
+        },
+      ]),
+    );
+
+    return mappings
+      .map((mapping) => {
+        const playlistUrl = mapping.getDataValue("playlistUrl") as string;
+        const playlist = playlistByUrl.get(playlistUrl);
+        if (!playlist) {
+          return null;
+        }
+
+        return {
+          playlistUrl,
+          title: playlist.title,
+          positionInPlaylist:
+            mapping.getDataValue("positionInPlaylist") as number,
+          sortOrder: playlist.sortOrder,
+        };
+      })
+      .filter((playlist): playlist is {
+        playlistUrl: string;
+        title: string;
+        positionInPlaylist: number;
+        sortOrder: number;
+      } => playlist !== null)
+      .sort((left, right) => {
+        if (left.sortOrder !== right.sortOrder) {
+          return left.sortOrder - right.sortOrder;
+        }
+        if (left.positionInPlaylist !== right.positionInPlaylist) {
+          return left.positionInPlaylist - right.positionInPlaylist;
+        }
+        return left.title.localeCompare(right.title);
+      });
+  }
 
   async function processListingRequest(
     requestBody: ListingRequestBody,
@@ -108,12 +203,26 @@ export function createListingFlow(
           logger.debug("Video found in database", { url: normalizedUrl });
           if ((videoEntry as any).downloadStatus) {
             logger.debug("Video already downloaded", { url: normalizedUrl });
-            const existingMapping = await PlaylistVideoMapping.findOne({
-              where: {
-                videoUrl: normalizedUrl,
-                playlistUrl: "None",
-              },
-            });
+            const [existingMapping, lastNoneMapping, existingPlaylists] =
+              await Promise.all([
+                PlaylistVideoMapping.findOne({
+                  where: {
+                    videoUrl: normalizedUrl,
+                    playlistUrl: "None",
+                  },
+                  order: [["positionInPlaylist", "ASC"]],
+                }),
+                PlaylistVideoMapping.findOne({
+                  where: {
+                    playlistUrl: "None",
+                  },
+                  order: [["positionInPlaylist", "DESC"]],
+                  attributes: ["positionInPlaylist"],
+                }),
+                getExistingPlaylistMentions(normalizedUrl),
+              ]);
+            const downloadLocation = buildDownloadLocation(videoEntry);
+            const firstExistingPlaylist = existingPlaylists[0] ?? null;
 
             if (existingMapping) {
               safeEmit("listing-single-item-complete", {
@@ -124,14 +233,35 @@ export function createListingFlow(
                 processedChunks: 1,
                 seekSubListTo: (existingMapping as any).positionInPlaylist,
                 alreadyExisted: true,
+                duplicateScope: "none",
+                downloadLocation,
+                existingPlaylists,
               });
               continue;
             }
 
-            safeEmit("listing-video-skipped-because-downloaded", {
-              message: `Video ${
-                (videoEntry as any).title
-              } is already downloaded, skipping.`,
+            const newPosition = lastNoneMapping
+              ? (lastNoneMapping.getDataValue("positionInPlaylist") as number) + 1
+              : 1;
+
+            await PlaylistVideoMapping.create({
+              videoUrl: normalizedUrl,
+              playlistUrl: "None",
+              positionInPlaylist: newPosition,
+            });
+
+            safeEmit("listing-single-item-complete", {
+              url: normalizedUrl,
+              type: "video",
+              title: (videoEntry as any).title,
+              status: "completed",
+              processedChunks: 1,
+              seekSubListTo: newPosition,
+              alreadyExisted: false,
+              addedFromDownloaded: true,
+              downloadLocation,
+              existingPlaylists,
+              sourcePlaylist: firstExistingPlaylist,
             });
             continue;
           } else {
@@ -780,6 +910,7 @@ export function createListingFlow(
           processedChunks: 1,
           seekSubListTo: newStartIndex,
           alreadyExisted: result.alreadyExistedCount > 0,
+          duplicateScope: result.alreadyExistedCount > 0 ? "none" : undefined,
         });
         return {
           url: videoUrl,
