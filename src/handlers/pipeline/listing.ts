@@ -1198,6 +1198,8 @@ export function createListingFlow(
   async function addPlaylist(playlistUrl: string, monitoringType: string) {
     let playlistTitle = "";
     if (pendingPlaylistSortCounter === null) {
+      // Initialize once from DB, then hand out sort orders in memory so
+      // concurrent addPlaylist callers wait on the same lookup instead of racing.
       if (pendingPlaylistSortCounterPromise === null) {
         pendingPlaylistSortCounterPromise = PlaylistMetadata.findOne({
           order: [["sortOrder", "DESC"]],
