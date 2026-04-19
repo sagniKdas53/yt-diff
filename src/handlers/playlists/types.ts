@@ -37,6 +37,7 @@ export interface ReindexAllRequestBody {
 
 export interface DeleteVideosRequestBody {
   playListUrl?: string;
+  mappingIds?: string[];
   videoUrls?: string[];
   cleanUp?: boolean;
   deleteVideoMappings?: boolean;
@@ -44,6 +45,7 @@ export interface DeleteVideosRequestBody {
 }
 
 export interface PlaylistVideoRowShape {
+  id: string;
   positionInPlaylist: number;
   playlistUrl: string;
   video_metadatum?: {
@@ -78,6 +80,7 @@ export interface SafePlaylistVideoMeta {
 }
 
 export interface SafePlaylistVideoRow {
+  id: string;
   positionInPlaylist: number;
   playlistUrl: string;
   video_metadatum: SafePlaylistVideoMeta;
