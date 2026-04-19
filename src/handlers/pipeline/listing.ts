@@ -36,6 +36,7 @@ export function createListingFlow(
   const ListingSemaphore = new Semaphore(config.queue.maxListings, "ListingSemaphore");
   let pendingPlaylistSortCounter: number | null = null;
   let pendingPlaylistSortCounterPromise: Promise<number> | null = null;
+  let pendingPlaylistCreatePromise: Promise<void> = Promise.resolve();
 
   const { updateProcessActivity } = processManager;
 
@@ -1197,25 +1198,6 @@ export function createListingFlow(
 
   async function addPlaylist(playlistUrl: string, monitoringType: string) {
     let playlistTitle = "";
-    if (pendingPlaylistSortCounter === null) {
-      // Initialize once from DB, then hand out sort orders in memory so
-      // concurrent addPlaylist callers wait on the same lookup instead of racing.
-      if (pendingPlaylistSortCounterPromise === null) {
-        pendingPlaylistSortCounterPromise = PlaylistMetadata.findOne({
-          order: [["sortOrder", "DESC"]],
-          attributes: ["sortOrder"],
-          limit: 1,
-        }).then((lastPlaylist: Model | null) => {
-          const initialValue = lastPlaylist !== null
-            ? (lastPlaylist as any).sortOrder + 1
-            : 0;
-          pendingPlaylistSortCounter = initialValue;
-          return initialValue;
-        });
-      }
-      await pendingPlaylistSortCounterPromise;
-    }
-    const nextPlaylistIndex = pendingPlaylistSortCounter!++;
 
     const processArgs = [
       "--playlist-end",
@@ -1287,20 +1269,11 @@ export function createListingFlow(
             lastUpdatedByScheduler: Date.now(),
           });
 
-          const [playlist, created] = await PlaylistMetadata.findOrCreate({
-            where: { playlistUrl: playlistUrl },
-            defaults: {
-              title: playlistTitle.trim(),
-              monitoringType: monitoringType,
-              saveDirectory: playlistTitle.trim(),
-              sortOrder: nextPlaylistIndex,
-              lastUpdatedByScheduler: Date.now(),
-            },
-          });
-
-          if (!created) {
-            logger.warn("Playlist already exists", { url: playlistUrl });
-          }
+          const playlist = await createPlaylistRecord(
+            playlistUrl,
+            playlistTitle.trim(),
+            monitoringType,
+          );
 
           resolve(playlist);
         } catch (error) {
@@ -1312,6 +1285,69 @@ export function createListingFlow(
         }
       })().catch(reject);
     });
+  }
+
+  async function ensurePendingPlaylistSortCounterInitialized() {
+    if (pendingPlaylistSortCounter !== null) {
+      return pendingPlaylistSortCounter;
+    }
+
+    // Initialize once from DB, then keep handing out sort orders from memory.
+    if (pendingPlaylistSortCounterPromise === null) {
+      pendingPlaylistSortCounterPromise = PlaylistMetadata.findOne({
+        order: [["sortOrder", "DESC"]],
+        attributes: ["sortOrder"],
+        limit: 1,
+      }).then((lastPlaylist: Model | null) => {
+        const initialValue = lastPlaylist !== null
+          ? (lastPlaylist as any).sortOrder + 1
+          : 0;
+        pendingPlaylistSortCounter = initialValue;
+        return initialValue;
+      });
+    }
+
+    return await pendingPlaylistSortCounterPromise;
+  }
+
+  async function createPlaylistRecord(
+    playlistUrl: string,
+    playlistTitle: string,
+    monitoringType: string,
+  ) {
+    const previousCreatePromise = pendingPlaylistCreatePromise;
+    let releaseCreateLock!: () => void;
+    pendingPlaylistCreatePromise = new Promise<void>((resolve) => {
+      releaseCreateLock = resolve;
+    });
+
+    await previousCreatePromise;
+
+    try {
+      await ensurePendingPlaylistSortCounterInitialized();
+
+      const nextPlaylistIndex = pendingPlaylistSortCounter!;
+      const [playlist, created] = await PlaylistMetadata.findOrCreate({
+        where: { playlistUrl: playlistUrl },
+        defaults: {
+          title: playlistTitle,
+          monitoringType: monitoringType,
+          saveDirectory: playlistTitle,
+          sortOrder: nextPlaylistIndex,
+          lastUpdatedByScheduler: Date.now(),
+        },
+      });
+
+      if (created) {
+        pendingPlaylistSortCounter = nextPlaylistIndex + 1;
+      } else {
+        logger.warn("Playlist already exists", { url: playlistUrl });
+      }
+
+      return playlist;
+    } finally {
+      releaseCreateLock();
+    }
   }
 
   function resetPendingPlaylistSortCounter() {
