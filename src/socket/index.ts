@@ -80,6 +80,8 @@ export function createSocketServer({
         if (decodedToken && decodedToken.exp) {
           const timeUntilExpiry = (decodedToken.exp * 1000) - Date.now();
           if (timeUntilExpiry > 0) {
+            // setTimeout is capped at a signed 32-bit integer (~24.8 days), so
+            // clamp the delay for long-lived tokens.
             const delay = Math.min(timeUntilExpiry, 2147483647);
             expiryTimeout = setTimeout(() => {
               logger.info(`Token expired for socket ${socket.id}, disconnecting`);
@@ -96,6 +98,8 @@ export function createSocketServer({
         }
 
         if (decodedToken) {
+          // Re-verify on the same cadence as the auth cache TTL so password/user
+          // changes invalidate live sockets without hammering the database.
           const pingInterval = config.cache.maxAge * 1000;
           verificationInterval = setInterval(async () => {
             try {

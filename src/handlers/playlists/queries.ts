@@ -28,6 +28,8 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         : "";
 
       const sortDirection = sortOrder === 2 ? "DESC" : "ASC";
+      // sortOrder is the stable display order. createdAt can collide for
+      // adjacent inserts, so it is not a safe substitute for playlist listing.
       const sortBy = sortColumn === 3 ? "lastUpdatedByScheduler" : "sortOrder";
 
       logger.trace(
@@ -108,6 +110,8 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       const searchQuery = requestBody.query ?? "";
       const sortByDownloaded = requestBody.sortDownloaded ?? false;
 
+      // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
+      // Default mode preserves playlist order via positionInPlaylist ASC.
       const sortOrder = sortByDownloaded
         ? [VideoMetadata, "downloadStatus", "DESC"]
         : ["positionInPlaylist", "ASC"];

@@ -9,6 +9,9 @@ export function normalizeUrl(url: string) {
   } catch (e) {
     logger.warn(`Invalid videoUrl: ${url}`, { error: (e as Error).message });
   }
+  // Non-exhaustive list of YouTube hostnames, including youtu.be short links.
+  // Keep separate from generic playlist detection because channel URLs also need
+  // normalization before they reach the listing pipeline.
   const youtubeHostNames = [
     "youtube.com",
     "www.youtube.com",
@@ -20,6 +23,8 @@ export function normalizeUrl(url: string) {
     "www.youtube-nocookie.com",
   ];
   if (youtubeHostNames.includes(hostname)) {
+    // yt-dlp treats /@handle and /@handle/videos differently; append /videos so
+    // channel listings behave consistently with the old monolith.
     if (!/\/videos\/?$/.test(url) && url.includes("/@")) {
       url = url.replace(/\/$/, "") + "/videos";
     }
@@ -73,6 +78,8 @@ export function isSiteXDotCom(videoUrl: string): boolean {
     });
   }
   const allowedXHost = "x.com";
+  // Only match x.com or its subdomains, not unrelated hostnames that merely
+  // contain the string.
   return hostname === allowedXHost || hostname.endsWith("." + allowedXHost);
 }
 
@@ -83,6 +90,8 @@ export function hasEphemeralThumbnails(videoUrl: string): boolean {
   } catch {
     return false;
   }
+  // These sites commonly return signed thumbnail URLs that expire quickly, so
+  // we avoid persisting them as stable metadata.
   const ephemeralHosts = ["facebook.com", "instagram.com", "pornhub.com"];
   return ephemeralHosts.some((h) => hostname === h || hostname.endsWith("." + h));
 }

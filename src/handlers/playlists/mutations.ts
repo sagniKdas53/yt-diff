@@ -152,6 +152,8 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             },
           );
 
+          // Force the next addPlaylist call to re-read the tail sortOrder from DB
+          // after deletions reshuffle the playlist ordering.
           resetPendingPlaylistSortCounter();
           logger.debug("Updated sortOrder for playlists after deleted playlist", {
             deletedSortOrder,
@@ -200,6 +202,8 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
               });
 
               if (updatedCount > 0) {
+                // Multiple videos can share a playlist saveDirectory; once that
+                // directory is deleted, those records must no longer look downloaded.
                 logger.info(
                   `Reset ${updatedCount} video(s) to un-downloaded state as their directory was deleted`,
                   {

@@ -19,7 +19,9 @@ export async function tryServeNativeFile(
     const totalSize = fileStats.size;
 
     const originalName = basename(filePath);
+    // Strip header-breaking characters from the attachment name first.
     const safeName = originalName.replace(/[\r\n"]/g, "");
+    // Provide an ASCII fallback for older clients while keeping RFC 5987 UTF-8.
     const fallbackName = safeName.replace(/[^\x20-\x7E]/g, "_");
     const encodedName = encodeURIComponent(safeName);
 
@@ -63,9 +65,9 @@ export async function tryServeNativeFile(
         headers.set("Content-Range", `bytes ${start}-${end}/${totalSize}`);
         headers.set("Content-Length", String(chunkSize));
 
-        // We use a TransformStream to ensure we only send exactly what was requested.
-        // Although browsers usually close the connection when they have enough, 
-        // this is more robust and prevents potential issues with some clients.
+        // Limit the readable stream to the exact byte count requested. Some
+        // clients stop reading early, but explicitly truncating the stream keeps
+        // partial-content responses well-behaved across implementations.
         let bytesSent = 0;
         const limitedStream = file.readable.pipeThrough(new TransformStream({
           transform(chunk, controller) {

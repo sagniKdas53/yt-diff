@@ -96,6 +96,10 @@ export function createJobs({
 
       void (async () => {
         try {
+          // Scheduled updates cover the same modes as the legacy monolith:
+          // Start is optimized for feeds where new items appear first,
+          // End is for feeds that append near the tail,
+          // Full forces a complete re-scan and is the most expensive mode.
           const allPlaylists = await PlaylistMetadata.findAll({
             where: {
               monitoringType: {
@@ -121,6 +125,8 @@ export function createJobs({
             (p: Model) => p.getDataValue("monitoringType") === "Full",
           );
 
+          // Start and End are cheaper incremental passes, so queue them ahead of
+          // Full updates instead of letting full scans occupy listing slots first.
           logger.info("Scheduler: starting playlist updates", {
             startCount: startPlaylists.length,
             endCount: endPlaylists.length,
@@ -151,6 +157,8 @@ export function createJobs({
             reason: "Scheduled Full update",
           }));
 
+          // isScheduledUpdate=true bypasses the "same monitoringType => skip"
+          // guard in the listing pipeline so cron-driven refreshes actually run.
           const results = await listItemsConcurrently(
             [...startItems, ...endItems, ...fullItems],
             config.chunkSize,
@@ -186,6 +194,8 @@ export function createJobs({
       logger.debug("Starting scheduled DB prune process");
       void (async () => {
         try {
+          // Use NOT EXISTS so pruning stays in SQL instead of loading all mapped
+          // video URLs into memory first.
           const unreferencedVideos = await VideoMetadata.findAll({
             where: sequelize.literal(`NOT EXISTS (
               SELECT 1 FROM playlist_video_mappings 

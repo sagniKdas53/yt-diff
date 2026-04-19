@@ -27,7 +27,7 @@ export async function getSignedFileMetadata(
     return null;
   }
 
-  // Refresh expiration
+  // Keep actively watched/downloaded files alive by sliding the TTL forward on access.
   await redis.expire(`signed:${fileId}`, cacheMaxAge);
 
   try {
