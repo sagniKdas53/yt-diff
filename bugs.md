@@ -37,23 +37,23 @@
 
 ## Frontend
 
-6. `[open]` Thumbnail signed URLs should refresh when they expire
+1. `[fixed, tested]` Thumbnail signed URLs should refresh when they expire
 
-     * Current gap: the frontend bulk thumbnail flow has no expiry metadata to schedule refreshes
-     * Planned fix: either extend `/getfiles` to return structured `{ signedUrlId, expiry }` entries or add a dedicated batch refresh API such as `/refreshfiles`
+     * Fix implemented: the frontend bulk thumbnail flow now tracks `expiry` metadata from `/getfiles`
+     * Fix implemented: thumbnail signed URLs are refreshed with `/refreshfile` 5 minutes before expiry while the sublist is mounted
 
-7. `[not-a-bug]` Refresh file can appear to flood requests if expiry is very short
+2. `[not-a-bug]` Refresh file can appear to flood requests if expiry is very short
 
      * `const timeUntilExpiry = expiryRef.current - Date.now();`
      * `const refreshTime = Math.max(0, timeUntilExpiry - 300000);`
      * Example response: `{"status":"success","signedUrlId":"4dc1c692-108f-4aa8-a2e2-39756ba968b5","expiry":1776590323959}`
      * Conclusion: this is working as designed for short expiries
 
-8. `[open]` Player refresh timer can continue after unmount/track change
+3. `[open]` Player refresh timer can continue after unmount/track change
 
      * Current state: the component clears timers on cleanup, but there is still a stale-timer/stale-ref race to harden
      * Planned fix: bind refresh callbacks to the specific `fileId` they were scheduled for and guard updates after unmount
 
-9. `[open]` `/getfiles` does not return expiry time, so the frontend cannot know when to refresh thumbnails
+4. `[fixed, tested]` `/getfiles` does not return expiry time, so the frontend cannot know when to refresh thumbnails
 
-     * This is the backend piece needed for the thumbnail refresh work above
+     * Fix implemented: `/getfiles` now returns structured thumbnail entries with both `signedUrlId` and `expiry`

@@ -18,6 +18,7 @@ import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import {
+  BulkRefreshSignedUrlsRequestBodySchema,
   BulkSignedFilesRequestBodySchema,
   DeletePlaylistRequestBodySchema,
   DeleteVideosRequestBodySchema,
@@ -432,7 +433,7 @@ const rateLimit = createRateLimit({
   redis,
 });
 
-const { makeSignedUrl, makeSignedUrls, refreshSignedUrl } = createFileHandlers({
+const { makeSignedUrl, makeSignedUrls, refreshSignedUrl, refreshSignedUrls } = createFileHandlers({
   redis,
 });
 
@@ -652,6 +653,10 @@ const apiRoutes = createApiRoutes({
   refreshSignedUrl: validateBody(
     RefreshSignedUrlRequestBodySchema,
     refreshSignedUrl,
+  ),
+  refreshSignedUrls: validateBody(
+    BulkRefreshSignedUrlsRequestBodySchema,
+    refreshSignedUrls,
   ),
   makeSignedUrls: validateBody(
     BulkSignedFilesRequestBodySchema,

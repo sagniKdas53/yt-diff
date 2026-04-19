@@ -27,8 +27,21 @@ export interface RefreshSignedUrlRequestBody {
   fileId?: string;
 }
 
+export interface BulkRefreshSignedUrlsRequestBody {
+  fileIds?: string[];
+}
+
 export interface BulkSignedFilesRequestBody {
   files?: SignedFileRequestBody[];
+}
+
+export interface BulkSignedFileResponseEntry {
+  signedUrlId: string;
+  expiry: number;
+}
+
+export interface RefreshedSignedFileResponseEntry {
+  expiry: number;
 }
 
 export function createFileHandlers({
@@ -161,6 +174,51 @@ export function createFileHandlers({
     );
   }
 
+  async function refreshSignedUrls(
+    requestBody: BulkRefreshSignedUrlsRequestBody,
+    response: HttpResponseLike,
+  ) {
+    if (
+      !requestBody || !requestBody.fileIds || !Array.isArray(requestBody.fileIds)
+    ) {
+      response.writeHead(400, generateCorsHeaders(jsonMimeType));
+      return response.end(
+        JSON.stringify({ status: "error", message: "fileIds array is required" }),
+      );
+    }
+
+    const results: Record<string, RefreshedSignedFileResponseEntry | null> = {};
+    const now = Date.now();
+
+    for (const fileId of requestBody.fileIds) {
+      if (!fileId || typeof fileId !== "string") {
+        continue;
+      }
+
+      const cachedEntry = await redis.get(`signed:${fileId}`);
+      if (!cachedEntry) {
+        results[fileId] = null;
+        continue;
+      }
+
+      const expiry = now + config.cache.maxAge * 1000;
+      const parsedEntry = JSON.parse(cachedEntry);
+      parsedEntry.expiry = expiry;
+
+      await redis.set(
+        `signed:${fileId}`,
+        JSON.stringify(parsedEntry),
+        "EX",
+        config.cache.maxAge,
+      );
+
+      results[fileId] = { expiry };
+    }
+
+    response.writeHead(200, generateCorsHeaders(jsonMimeType));
+    return response.end(JSON.stringify({ status: "success", files: results }));
+  }
+
   async function makeSignedUrls(
     requestBody: BulkSignedFilesRequestBody,
     response: HttpResponseLike,
@@ -177,7 +235,7 @@ export function createFileHandlers({
       );
     }
 
-    const results: Record<string, string | null> = {};
+    const results: Record<string, BulkSignedFileResponseEntry | null> = {};
     const now = Date.now();
 
     for (const file of requestBody.files) {
@@ -211,7 +269,10 @@ export function createFileHandlers({
         config.cache.maxAge,
       );
 
-      results[fileName] = signedUrlId;
+      results[fileName] = {
+        signedUrlId,
+        expiry,
+      };
     }
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
@@ -222,5 +283,6 @@ export function createFileHandlers({
     makeSignedUrl,
     makeSignedUrls,
     refreshSignedUrl,
+    refreshSignedUrls,
   };
 }

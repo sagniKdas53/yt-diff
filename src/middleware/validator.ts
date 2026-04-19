@@ -95,6 +95,10 @@ export const RefreshSignedUrlRequestBodySchema = z.object({
   fileId: z.string().optional(),
 });
 
+export const BulkRefreshSignedUrlsRequestBodySchema = z.object({
+  fileIds: z.array(z.string()).optional(),
+});
+
 export const BulkSignedFilesRequestBodySchema = z.object({
   files: z.array(SignedFileRequestBodySchema).optional(),
 });

@@ -31,6 +31,7 @@ interface ApiRouteDependencies {
   processDeleteVideosRequest: BodyHandler;
   makeSignedUrl: BodyHandler;
   refreshSignedUrl: BodyHandler;
+  refreshSignedUrls: BodyHandler;
   makeSignedUrls: BodyHandler;
   processReindexAllRequest: BodyHandler;
 }
@@ -50,6 +51,7 @@ export function createApiRoutes({
   processDeleteVideosRequest,
   makeSignedUrl,
   refreshSignedUrl,
+  refreshSignedUrls,
   makeSignedUrls,
   processReindexAllRequest,
 }: ApiRouteDependencies): RouteDefinition[] {
@@ -121,6 +123,12 @@ export function createApiRoutes({
       path: config.urlBase + "/refreshfile",
       run: (req, res) =>
         authenticateRequest(req, res, refreshSignedUrl),
+    },
+    {
+      method: "POST",
+      path: config.urlBase + "/refreshfiles",
+      run: (req, res) =>
+        authenticateRequest(req, res, refreshSignedUrls),
     },
     {
       method: "POST",
