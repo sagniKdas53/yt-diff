@@ -57,10 +57,10 @@ export function createListingFlow(
   }
 
   function getVideoDisplayLabel(videoEntry: Model): string {
-    const fileName = videoEntry.getDataValue("fileName") as string | null;
     const title = videoEntry.getDataValue("title") as string | null;
+    const videoUrl = videoEntry.getDataValue("videoUrl") as string | null;
     const videoId = videoEntry.getDataValue("videoId") as string | null;
-    return fileName || title || videoId || "video";
+    return title || videoUrl || videoId || "video";
   }
 
   async function getExistingPlaylistMentions(videoUrl: string): Promise<

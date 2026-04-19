@@ -17,11 +17,12 @@
      * Current cause: the in-memory pending sort counter is incremented before playlist creation fully succeeds
      * Planned fix: only reserve the next sort index after playlist creation is guaranteed to succeed, or resync the counter from DB on failure
 
-3. `[fixed, not tested]` Adding to `"None"` needs better duplicate and location feedback
+3. `[fixed, tested]` Adding to `"None"` needs better duplicate and location feedback
 
-     * Fix implemented: adding an already-downloaded video now reports its saved file location in the socket/UI feedback
-     * Fix implemented: if the video exists in other playlists but not yet in `"None"`, the backend now inserts the `"None"` mapping directly and the UI reports the first existing playlist title
-     * Fix implemented: if the video already exists in `"None"`, the socket payload now includes the indexed position and the UI reports that duplicates are not allowed there
+     * Fix implemented: if a video already exists in the DB but not yet in `"None"`, the backend now inserts the `"None"` mapping directly without re-fetching metadata from the source URL
+     * Fix implemented: if the video was already downloaded in another playlist, the UI reports a success message with the source playlist title and position
+     * Fix implemented: duplicates in `"None"` now use a standardized error message that includes the video title or URL plus the indexed position navigated to
+     * Fix implemented: duplicate/add notifications for `"None"` no longer expose filesystem paths in the UI
 
 4. `[open]` Important snack events should also appear in the notification center
 
