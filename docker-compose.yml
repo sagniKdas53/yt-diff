@@ -100,10 +100,10 @@ services:
       - secret_key
       #- proxy_string
       - iwara_config
-      - youtube_client_id
-      - youtube_client_secret
-      - youtube_refresh_token
-      - youtube_api_key
+      # - youtube_client_id
+      # - youtube_client_secret
+      # - youtube_refresh_token
+      # - youtube_api_key
 
     environment:
       - PROTOCOL=${PROTOCOL}
