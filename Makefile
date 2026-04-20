@@ -1,4 +1,4 @@
-.PHONY: up up-remote build check down logs
+.PHONY: local pi4 pi5 build check down logs
 # Usage: make local CONTAINER=yt-db or make up to start all containers
 local:
 	docker compose --env-file .env --env-file .localenv up -d --build $(CONTAINER)
