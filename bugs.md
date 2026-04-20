@@ -5,7 +5,7 @@
 1. `[open]` Playlist bootstrap fails when the first items are hidden/unlisted
 
    - Example:
-     <https://www.youtube.com/playlist?list=PLwLSw1_eDZl3mojgeqUHyMpTt3lQ6ogmJ>
+     <https://www.youtube.com/playlist?list=PLwLSw1_eDZl3mojgeqUHyMpTt3lQ6ogmJ> First 13 items are unavailable but the rest are still there so it should still work
    - Current cause: playlist creation currently tries to resolve playlist
      metadata from the first playlist item, so if the early entries are
      unavailable the playlist can fail before normal listing proceeds
