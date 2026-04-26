@@ -4,8 +4,8 @@
         "cookies": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt deno run --allow-all --watch index.ts",
         "proxy": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt PROXY_STRING_FILE=proxy_string.txt deno run --allow-all --watch index.ts",
         "iwara": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt IWARA_CONF_FILE=iwara.json deno run --allow-all --watch index.ts",
-        "youtube": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt YOUTUBE_CLIENT_ID_FILE=youtube_client_id.txt YOUTUBE_CLIENT_SECRET_FILE=youtube_client_secret.txt YOUTUBE_REFRESH_TOKEN_FILE=youtube_refresh_token.txt deno run --allow-all --watch index.ts",
+        "youtube": "SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt YOUTUBE_API_KEY_FILE=youtube_api_key.txt deno run --allow-all --watch index.ts",
         "cache": "CACHE_MAX_AGE=310 CACHE_MAX_ITEMS=1000 SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt deno run --allow-all --watch index.ts",
-        "full": "CACHE_MAX_AGE=600 CACHE_MAX_ITEMS=1000 SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt PROXY_STRING_FILE=proxy_string.txt IWARA_CONF_FILE=iwara.json YOUTUBE_CLIENT_ID_FILE=youtube_client_id.txt YOUTUBE_CLIENT_SECRET_FILE=youtube_client_secret.txt YOUTUBE_REFRESH_TOKEN_FILE=youtube_refresh_token.txt deno run --allow-all --watch index.ts"
+        "full": "CACHE_MAX_AGE=600 CACHE_MAX_ITEMS=1000 SECRET_KEY_FILE=secret_key.txt DB_PASSWORD_FILE=db_password.txt COOKIES_FILE=cookie_secret.txt PROXY_STRING_FILE=proxy_string.txt IWARA_CONF_FILE=iwara.json YOUTUBE_API_KEY_FILE=youtube_api_key.txt deno run --allow-all --watch index.ts"
     }
 }
