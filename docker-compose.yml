@@ -21,8 +21,8 @@ secrets:
   #   file: youtube_client_secret.txt
   # youtube_refresh_token:
   #   file: youtube_refresh_token.txt
-  # youtube_api_key:
-  #   file: youtube_api_key.txt
+  youtube_api_key:
+    file: youtube_api_key.txt
   pg_admin_email:
     file: pg_admin_email.txt
   pg_admin_password:
@@ -78,10 +78,6 @@ services:
         source: ${HOST_SAVE_PATH}
         target: ${CONTAINER_SAVE_PATH}
         read_only: false
-      # - type: tmpfs
-      #   target: ${CONTAINER_SAVE_PATH}
-      #   tmpfs:
-      #     size: 2147483648 # 2GB
       - type: bind
         source: ${HOST_COOKIES_FILE}
         target: ${CONTAINER_COOKIES_FILE}
@@ -98,12 +94,12 @@ services:
     secrets:
       - db_password
       - secret_key
-      #- proxy_string
+      - proxy_string
       - iwara_config
       # - youtube_client_id
       # - youtube_client_secret
       # - youtube_refresh_token
-      # - youtube_api_key
+      - youtube_api_key
 
     environment:
       - PROTOCOL=${PROTOCOL}
@@ -146,7 +142,7 @@ services:
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
       - PRUNE_INTERVAL=${PRUNE_INTERVAL}
       # Proxy Info
-      #- PROXY_STRING_FILE=/run/secrets/proxy_string
+      - PROXY_STRING_FILE=/run/secrets/proxy_string
       # Redis Configuration
       - REDIS_HOST=valkey
       - REDIS_PORT=6379
@@ -156,7 +152,7 @@ services:
       # - YOUTUBE_CLIENT_ID_FILE=/run/secrets/youtube_client_id
       # - YOUTUBE_CLIENT_SECRET_FILE=/run/secrets/youtube_client_secret
       # - YOUTUBE_REFRESH_TOKEN_FILE=/run/secrets/youtube_refresh_token
-      # - YOUTUBE_API_KEY_FILE=/run/secrets/youtube_api_key
+      - YOUTUBE_API_KEY_FILE=/run/secrets/youtube_api_key
 
     labels:
       - "traefik.enable=true"
@@ -287,6 +283,8 @@ services:
       - HTTPPROXY_STEALTH=${HTTP_PROXY_STEALTH}
       - HTTPPROXY_USER=${HTTP_PROXY_USER}
       - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
+      # The proxy string is basically
+      #- http://${HTTP_PROXY_USER}:${HTTP_PROXY_PASSWORD}@gluetun:3128
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:
