@@ -11,11 +11,14 @@ improvements identified through an analysis of the codebase.
 
 Raw array pushes like `downloadOptions.push('--trim-filenames')` are fine currently, but can become unruly over time if the scope of `yt-dlp` arguments grows dynamically per-video rather than globally. Consider abstracting `yt-dlp` argument generation into a more flexible builder pattern or isolated configuration mapper.
 
-### 2. Fragile `yt-dlp` Execution Workaround
+### 2. Active Monkey Patches
 
-The codebase currently uses a Python monkey patch (`YT_DLP_PATCHED_CMD`) injected directly via `python3 -c` to bypass a segmentation fault in `curl_cffi` during `yt-dlp` execution.
+The codebase contains two active workarounds for upstream bugs. See [`MONKEY_PATCHES.md`](./MONKEY_PATCHES.md) for full details, implementation snippets, and removal conditions.
 
-- **Suggested Improvement**: Track the upstream `curl_cffi` and `yt-dlp` repositories for a permanent fix. Once resolved, revert the extraction process to invoke the standard `yt-dlp` executable cleanly rather than patching Python's context at runtime.
+- **`curl_cffi` Segfault** (`index.ts`) — `curl_cffi.Curl.reset` is patched to a no-op at runtime via `python3 -c` to prevent `SIGABRT` crashes when `--impersonate` is used. Remove once `curl_cffi` fixes `Curl.reset` safety upstream.
+
+- **`yt-dlp` Iwara Extractor** (`Dockerfile`) — A `sed` patch applied at image build time updates the API domain (`api.iwara.tv` → `apiq.iwara.tv`), files domain, and X-Version HMAC secret key following iwara.tv's site migration. Tracked upstream at [yt-dlp PR #16014](https://github.com/yt-dlp/yt-dlp/pull/16014). Remove once PR #16014 is merged and a new yt-dlp pip release is published.
+
 
 ### 3. Large JSONB Payload Storage
 
