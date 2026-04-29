@@ -107,6 +107,17 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     # Install yt-dlp with default dependencies, yt-dlp-ejs, and curl_cffi
     echo "DEBUG: Installing yt-dlp, ejs, and curl_cffi into venv" && \
     /opt/venv/bin/pip install --no-cache-dir 'yt-dlp[default,curl-cffi]' yt-dlp-ejs && \
+    # Patch iwara extractor: update API domain, files domain, and X-Version secret key
+    # Fixes formats beyond 360p/preview (yt-dlp PR #16014, not yet merged upstream)
+    echo "DEBUG: Applying iwara extractor patch (PR #16014)" && \
+    IWARA_PY=$(find /opt/venv/lib -name 'iwara.py' -path '*/yt_dlp/extractor/*') && \
+    sed -i \
+        -e "s|'https://api\.iwara\.tv/|'https://apiq.iwara.tv/|g" \
+        -e 's|"https://api\.iwara\.tv/|"https://apiq.iwara.tv/|g' \
+        -e "s|https://files\.iwara\.tv/|https://filesq.iwara.tv/|g" \
+        -e "s|5nFp9kmbNnHdAFhaqMvt|mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN|g" \
+        "$IWARA_PY" && \
+    echo "DEBUG: Iwara patch applied to $IWARA_PY" && \
     # Verify yt-dlp installation
     echo "DEBUG: Checking yt-dlp version:" && \
     /opt/venv/bin/yt-dlp --version && \
