@@ -41,7 +41,7 @@
     "sequelize": "^6.37.8",
     "socket.io": "^4.8.3",
     "uuid": "^14.0.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.1"
   },
   "devDependencies": {
     "@types/cron": "^2.4.3",
