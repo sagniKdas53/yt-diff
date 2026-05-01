@@ -101,6 +101,21 @@ const SITE_CANONICALIZERS: SiteCanonicalizer[] = [
       return url.toString();
     },
   },
+  // -------------------------------------------------------------------------
+  // spankbang.com — strip title slug: /{id}/video/{slug} → /{id}/video
+  // -------------------------------------------------------------------------
+  {
+    name: "spankbang",
+    match: (h) => h === "spankbang.com" || h.endsWith(".spankbang.com"),
+    canonicalize: (url) => {
+      const m = url.pathname.match(/^(\/[A-Za-z0-9]+\/video)/);
+      if (m) {
+        url.pathname = m[1];
+        url.search = "";
+      }
+      return url.toString();
+    },
+  },
 
   // -------------------------------------------------------------------------
   // Add more site rules here as needed, e.g.:
