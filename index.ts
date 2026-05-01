@@ -13,6 +13,7 @@ import {
   type ProcessLike,
   type SiteArgBuilder,
 } from "./src/handlers/pipeline/index.ts";
+import { processDedupRequest } from "./src/handlers/pipeline/dedup.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
@@ -22,6 +23,7 @@ import {
   BulkSignedFilesRequestBodySchema,
   DeletePlaylistRequestBodySchema,
   DeleteVideosRequestBodySchema,
+  DedupRequestBodySchema,
   DownloadRequestBodySchema,
   ListingRequestBodySchema,
   PlaylistDisplayRequestSchema,
@@ -666,6 +668,10 @@ const apiRoutes = createApiRoutes({
   processReindexAllRequest: validateBody(
     ReindexAllRequestBodySchema,
     processReindexAllRequest,
+  ),
+  processDedupRequest: validateBody(
+    DedupRequestBodySchema,
+    processDedupRequest,
   ),
 });
 

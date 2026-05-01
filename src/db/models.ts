@@ -117,6 +117,13 @@ export const VideoMetadata = sequelize.define("video_metadata", {
   defaultScope: {
     attributes: { exclude: ["raw_metadata"] },
   },
+  indexes: [
+    {
+      fields: ["videoId"],
+      unique: false,
+      name: "idx_video_metadata_video_id",
+    },
+  ],
 });
 
 export const PlaylistMetadata = sequelize.define("playlist_metadata", {
@@ -281,9 +288,12 @@ export async function initializeDatabase() {
       await sequelize.query(
         "CREATE INDEX IF NOT EXISTS idx_playlist_metadata_title_trgm ON playlist_metadata USING gin (title gin_trgm_ops);",
       );
-      logger.info("Trigram indexes checked/created successfully");
+      await sequelize.query(
+        "CREATE INDEX IF NOT EXISTS idx_video_metadata_video_id ON video_metadata (\"videoId\");",
+      );
+      logger.info("Trigram indexes and videoId index checked/created successfully");
     } catch (err) {
-      logger.error("Failed to create Trigram indexes", {
+      logger.error("Failed to create indexes", {
         error: (err as Error).message,
       });
     }

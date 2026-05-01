@@ -34,6 +34,7 @@ interface ApiRouteDependencies {
   refreshSignedUrls: BodyHandler;
   makeSignedUrls: BodyHandler;
   processReindexAllRequest: BodyHandler;
+  processDedupRequest: BodyHandler;
 }
 
 export function createApiRoutes({
@@ -54,6 +55,7 @@ export function createApiRoutes({
   refreshSignedUrls,
   makeSignedUrls,
   processReindexAllRequest,
+  processDedupRequest,
 }: ApiRouteDependencies): RouteDefinition[] {
   return [
     {
@@ -141,6 +143,12 @@ export function createApiRoutes({
       path: config.urlBase + "/reindexall",
       run: (req, res) =>
         authenticateRequest(req, res, processReindexAllRequest),
+    },
+    {
+      method: "POST",
+      path: config.urlBase + "/dedup",
+      run: (req, res) =>
+        authenticateRequest(req, res, processDedupRequest),
     },
     {
       method: "POST",

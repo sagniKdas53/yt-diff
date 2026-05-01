@@ -119,3 +119,8 @@ export const UserAuthSchema = z.object({
 export const IsRegistrationAllowedSchema = z.object({
   sendStats: z.boolean().optional(),
 });
+
+export const DedupRequestBodySchema = z.object({
+  dryRun: z.boolean().optional().default(true),
+  siteFilter: z.string().optional(),
+});
