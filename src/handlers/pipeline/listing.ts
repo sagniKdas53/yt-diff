@@ -203,16 +203,53 @@ export function createListingFlow(
           }
         }
 
-        const videoEntry = await VideoMetadata.findOne({
+        let videoEntry = await VideoMetadata.findOne({
           where: { videoUrl: normalizedUrl },
         });
+
+        // Fallback: if not found by exact URL, try by videoId scoped to same domain.
+        // This catches duplicate URL forms that normalization may have missed.
+        if (!videoEntry) {
+          try {
+            const parsedFallback = new URL(normalizedUrl);
+            // Build a hostname-scoped LIKE pattern (covers www/non-www/subdomains).
+            const domainCore = parsedFallback.hostname
+              .replace(/^www\./, "")
+              .replace(/^m\./, "");
+            const pathParts = parsedFallback.pathname.split("/").filter(Boolean);
+            // Use the last meaningful path segment as a candidate videoId.
+            const candidateId = pathParts[pathParts.length - 1] ||
+              parsedFallback.searchParams.get("v") || "";
+            if (candidateId && domainCore) {
+              const byId = await VideoMetadata.findOne({
+                where: {
+                  videoId: candidateId,
+                  videoUrl: { [Op.iLike]: `%${domainCore}%` },
+                },
+              });
+              if (byId) {
+                logger.info("videoId fallback matched duplicate URL form", {
+                  inputUrl: normalizedUrl,
+                  canonicalUrl: byId.getDataValue("videoUrl"),
+                  videoId: candidateId,
+                });
+                // Treat the existing canonical URL as the effective URL.
+                videoEntry = byId;
+              }
+            }
+          } catch {
+            // Malformed URL, skip fallback silently
+          }
+        }
+
         if (videoEntry) {
           logger.debug("Video found in database", { url: normalizedUrl });
+          const canonicalUrl = videoEntry.getDataValue("videoUrl") as string;
           const [existingMapping, lastNoneMapping, existingPlaylists] =
             await Promise.all([
               PlaylistVideoMapping.findOne({
                 where: {
-                  videoUrl: normalizedUrl,
+                  videoUrl: canonicalUrl,
                   playlistUrl: "None",
                 },
                 order: [["positionInPlaylist", "ASC"]],
@@ -224,7 +261,7 @@ export function createListingFlow(
                 order: [["positionInPlaylist", "DESC"]],
                 attributes: ["positionInPlaylist"],
               }),
-              getExistingPlaylistMentions(normalizedUrl),
+              getExistingPlaylistMentions(canonicalUrl),
             ]);
           const downloadLocation = buildDownloadLocation(videoEntry);
           const firstExistingPlaylist = existingPlaylists[0] ?? null;
@@ -232,7 +269,7 @@ export function createListingFlow(
 
           if (existingMapping) {
             safeEmit("listing-single-item-complete", {
-              url: normalizedUrl,
+              url: canonicalUrl,
               type: "video",
               title: (videoEntry as any).title,
               itemLabel: displayLabel,
@@ -252,13 +289,13 @@ export function createListingFlow(
             : 1;
 
           await PlaylistVideoMapping.create({
-            videoUrl: normalizedUrl,
+            videoUrl: canonicalUrl,
             playlistUrl: "None",
             positionInPlaylist: newPosition,
           });
 
           safeEmit("listing-single-item-complete", {
-            url: normalizedUrl,
+            url: canonicalUrl,
             type: "video",
             title: (videoEntry as any).title,
             itemLabel: displayLabel,
@@ -870,7 +907,7 @@ export function createListingFlow(
       const existingMapping = await PlaylistVideoMapping.findOne({
         where: {
           videoUrl: chunkItems.length === 1
-            ? (JSON.parse(chunkItems[0]).webpage_url ||
+            ? normalizeUrl(JSON.parse(chunkItems[0]).webpage_url ||
               JSON.parse(chunkItems[0]).url || "")
             : "",
           playlistUrl,
@@ -1064,7 +1101,12 @@ export function createListingFlow(
       (item, index): ParsedStreamItem | null => {
         try {
           const itemData = JSON.parse(item) as StreamedItemData;
-          const videoUrl = itemData.webpage_url || itemData.url || "";
+          // Normalize the URL from yt-dlp so it matches the canonical PK form.
+          // This ensures that yt-dlp's webpage_url and a user-pasted URL with
+          // a trailing slug (e.g. iwara) or noise params (e.g. YouTube list=)
+          // both resolve to the same videoUrl primary key.
+          const rawUrl = itemData.webpage_url || itemData.url || "";
+          const videoUrl = normalizeUrl(rawUrl);
           const onlineThumbnail = hasEphemeralThumbnails(videoUrl)
             ? null
             : (itemData.thumbnail || null);
