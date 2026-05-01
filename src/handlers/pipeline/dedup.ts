@@ -72,20 +72,24 @@ async function pickCanonical(
       const playlists = await PlaylistVideoMapping.findAll({
         where: {
           videoUrl: url,
-          playlistUrl: { [Op.notIn]: [...PSEUDO_PLAYLISTS] },
+          // We include ALL playlists here so they are reported in canonicalPlaylists,
+          // but we still use inRealPlaylist for the priority logic.
         },
         attributes: ["playlistUrl"],
       });
-      const playlistUrls = playlists.map((p) =>
-        p.getDataValue("playlistUrl") as string
+      const playlistUrls = playlists.map(
+        (p) => p.getDataValue("playlistUrl") as string,
       );
       const meta = await VideoMetadata.findOne({
         where: { videoUrl: url },
         attributes: ["updatedAt"],
       });
+      const realPlaylists = playlistUrls.filter(
+        (p) => !PSEUDO_PLAYLISTS.has(p),
+      );
       return {
         url,
-        inRealPlaylist: playlistUrls.length > 0,
+        inRealPlaylist: realPlaylists.length > 0,
         playlists: playlistUrls,
         updatedAt: (meta as any)?.updatedAt ?? new Date(0),
       };
@@ -211,6 +215,18 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
         const playlistUrl = mapping.getDataValue("playlistUrl") as string;
         const position = mapping.getDataValue("positionInPlaylist") as number;
 
+        // For 'None' (system playlist), we only ever want ONE entry per video.
+        if (playlistUrl === "None") {
+          const alreadyInNone = await PlaylistVideoMapping.findOne({
+            where: { videoUrl: canonicalUrl, playlistUrl: "None" },
+            transaction,
+          });
+          if (alreadyInNone) {
+            await mapping.destroy({ transaction });
+            continue;
+          }
+        }
+
         // Check whether a mapping already exists at this playlist+position for canonical.
         const collision = await PlaylistVideoMapping.findOne({
           where: {
@@ -222,7 +238,7 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
         });
 
         if (collision) {
-          // Already mapped — just delete the dup mapping.
+          // Already mapped at this exact position — just delete the dup mapping.
           await mapping.destroy({ transaction });
         } else {
           await mapping.update({ videoUrl: canonicalUrl }, { transaction });
