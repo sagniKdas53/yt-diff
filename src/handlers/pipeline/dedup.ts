@@ -1,8 +1,11 @@
 // deno-lint-ignore-file no-explicit-any
 import { Op } from "sequelize";
-import { VideoMetadata, PlaylistMetadata, PlaylistVideoMapping, sequelize } from "../../db/models.ts";
+import {
+  PlaylistVideoMapping,
+  sequelize,
+  VideoMetadata,
+} from "../../db/models.ts";
 import { logger } from "../../logger.ts";
-import { normalizeUrl } from "./process-manager.ts";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -17,6 +20,8 @@ export interface DuplicateGroup {
   canonicalUrl: string;
   /** Explanation of why this URL was chosen as canonical */
   canonicalReason: string;
+  /** List of real playlists the canonical URL belongs to (if any) */
+  canonicalPlaylists: string[];
   /** The URLs that will be merged into the canonical and then deleted */
   duplicateUrls: string[];
 }
@@ -24,7 +29,12 @@ export interface DuplicateGroup {
 export interface DeduplicateResult {
   duplicatesFound: number;
   mergedCount: number;
-  details: Array<DuplicateGroup & { action: "merged" | "would_merge" | "skipped"; skipReason?: string }>;
+  details: Array<
+    DuplicateGroup & {
+      action: "merged" | "would_merge" | "skipped";
+      skipReason?: string;
+    }
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,27 +63,30 @@ function coreHostname(url: string): string {
  */
 async function pickCanonical(
   urlsInGroup: string[],
-): Promise<{ canonicalUrl: string; reason: string }> {
+): Promise<{ canonicalUrl: string; reason: string; playlists: string[] }> {
   const PSEUDO_PLAYLISTS = new Set(["None", "init"]);
 
   // Fetch each URL's most-recently-updated playlist membership.
   const rows = await Promise.all(
     urlsInGroup.map(async (url) => {
-      const inRealPlaylist = await PlaylistVideoMapping.findOne({
+      const playlists = await PlaylistVideoMapping.findAll({
         where: {
           videoUrl: url,
           playlistUrl: { [Op.notIn]: [...PSEUDO_PLAYLISTS] },
         },
-        order: [["createdAt", "DESC"]],
         attributes: ["playlistUrl"],
       });
+      const playlistUrls = playlists.map((p) =>
+        p.getDataValue("playlistUrl") as string
+      );
       const meta = await VideoMetadata.findOne({
         where: { videoUrl: url },
         attributes: ["updatedAt"],
       });
       return {
         url,
-        inRealPlaylist: !!inRealPlaylist,
+        inRealPlaylist: playlistUrls.length > 0,
+        playlists: playlistUrls,
         updatedAt: (meta as any)?.updatedAt ?? new Date(0),
       };
     }),
@@ -89,10 +102,10 @@ async function pickCanonical(
 
   const winner = rows[0];
   const reason = winner.inRealPlaylist
-    ? "in real playlist (preferred over None)"
+    ? `Found ${winner.playlists.length} time(s) in real playlist(s)`
     : "most recently updated";
 
-  return { canonicalUrl: winner.url, reason };
+  return { canonicalUrl: winner.url, reason, playlists: winner.playlists };
 }
 
 // ---------------------------------------------------------------------------
@@ -130,14 +143,24 @@ export async function findDuplicateVideos(
     const domains = new Set(urls.map(coreHostname));
     if (domains.size > 1) {
       // Multiple distinct domains sharing a videoId — skip to avoid mistakes.
-      logger.warn("dedup: skipping cross-domain videoId group", { videoId, urls: urls.join(", ") });
+      logger.warn("dedup: skipping cross-domain videoId group", {
+        videoId,
+        urls: urls.join(", "),
+      });
       continue;
     }
 
-    const { canonicalUrl, reason } = await pickCanonical(urls);
+    const { canonicalUrl, reason, playlists } = await pickCanonical(urls);
     const duplicateUrls = urls.filter((u) => u !== canonicalUrl);
 
-    groups.push({ videoId, urls, canonicalUrl, canonicalReason: reason, duplicateUrls });
+    groups.push({
+      videoId,
+      urls,
+      canonicalUrl,
+      canonicalReason: reason,
+      canonicalPlaylists: playlists,
+      duplicateUrls,
+    });
   }
 
   return groups;
@@ -190,7 +213,11 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
 
         // Check whether a mapping already exists at this playlist+position for canonical.
         const collision = await PlaylistVideoMapping.findOne({
-          where: { videoUrl: canonicalUrl, playlistUrl, positionInPlaylist: position },
+          where: {
+            videoUrl: canonicalUrl,
+            playlistUrl,
+            positionInPlaylist: position,
+          },
           transaction,
         });
 
@@ -204,8 +231,14 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
 
       // 2. Propagate missing metadata fields from dup → canonical.
       const fieldsToPropagate: string[] = [
-        "downloadStatus", "fileName", "thumbNailFile", "onlineThumbnail",
-        "subTitleFile", "commentsFile", "descriptionFile", "saveDirectory",
+        "downloadStatus",
+        "fileName",
+        "thumbNailFile",
+        "onlineThumbnail",
+        "subTitleFile",
+        "commentsFile",
+        "descriptionFile",
+        "saveDirectory",
         "isMetaDataSynced",
       ];
       const updates: Record<string, unknown> = {};
@@ -277,11 +310,19 @@ export async function deduplicateAll(
         error: (err as Error).message,
         stack: (err as Error).stack,
       });
-      details.push({ ...group, action: "skipped", skipReason: (err as Error).message });
+      details.push({
+        ...group,
+        action: "skipped",
+        skipReason: (err as Error).message,
+      });
     }
   }
 
-  logger.info("dedup: completed", { dryRun, duplicatesFound: groups.length, mergedCount });
+  logger.info("dedup: completed", {
+    dryRun,
+    duplicatesFound: groups.length,
+    mergedCount,
+  });
 
   return {
     duplicatesFound: groups.length,

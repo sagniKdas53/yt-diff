@@ -21,9 +21,9 @@ import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import {
   BulkRefreshSignedUrlsRequestBodySchema,
   BulkSignedFilesRequestBodySchema,
+  DedupRequestBodySchema,
   DeletePlaylistRequestBodySchema,
   DeleteVideosRequestBodySchema,
-  DedupRequestBodySchema,
   DownloadRequestBodySchema,
   ListingRequestBodySchema,
   PlaylistDisplayRequestSchema,
