@@ -213,34 +213,36 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
 
       for (const mapping of dupMappings) {
         const playlistUrl = mapping.getDataValue("playlistUrl") as string;
-        const position = mapping.getDataValue("positionInPlaylist") as number;
 
-        // For 'None' (system playlist), we only ever want ONE entry per video.
-        if (playlistUrl === "None") {
-          const alreadyInNone = await PlaylistVideoMapping.findOne({
-            where: { videoUrl: canonicalUrl, playlistUrl: "None" },
-            transaction,
-          });
-          if (alreadyInNone) {
-            await mapping.destroy({ transaction });
-            continue;
-          }
-        }
-
-        // Check whether a mapping already exists at this playlist+position for canonical.
-        const collision = await PlaylistVideoMapping.findOne({
-          where: {
-            videoUrl: canonicalUrl,
-            playlistUrl,
-            positionInPlaylist: position,
-          },
+        // Ensure we only ever have ONE entry per video in any given playlist.
+        // If the canonical URL is already in this playlist, just delete the duplicate's mapping.
+        const alreadyInPlaylist = await PlaylistVideoMapping.findOne({
+          where: { videoUrl: canonicalUrl, playlistUrl },
           transaction,
         });
 
-        if (collision) {
-          // Already mapped at this exact position — just delete the dup mapping.
+        if (alreadyInPlaylist) {
+          const removedPosition = mapping.getDataValue("positionInPlaylist") as number;
+          logger.debug("dedup: removing duplicate playlist mapping and adjusting indexes", {
+            playlistUrl,
+            videoUrl: canonicalUrl,
+            removedPosition,
+            keptPosition: alreadyInPlaylist.getDataValue("positionInPlaylist"),
+          });
+
           await mapping.destroy({ transaction });
+
+          // Adjust indexes: Shift all subsequent items in this playlist down to fill the gap
+          await PlaylistVideoMapping.decrement("positionInPlaylist", {
+            by: 1,
+            where: {
+              playlistUrl,
+              positionInPlaylist: { [Op.gt]: removedPosition },
+            },
+            transaction,
+          });
         } else {
+          // No mapping for canonical exists yet in this playlist — re-home the duplicate's mapping.
           await mapping.update({ videoUrl: canonicalUrl }, { transaction });
         }
       }
