@@ -16,6 +16,7 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
 - **Signed File URLs** — Secure, time-limited download tokens prevent unauthenticated file access.
 - **Site-Specific Support** — Built-in handling for Iwara credentials, browser cookie injection, and HTTP proxy routing through Gluetun VPN.
 - **Automated Background Jobs** — Process cleanup, scheduled playlist updates, and orphan video pruning all run on configurable cron schedules.
+- **URL Deduplication** — Incoming URLs are canonicalized before storage: YouTube video IDs are extracted from any URL form (`youtu.be`, `m.youtube.com`, `watch?v=&list=...`), iwara.tv title slugs are stripped, and tracking parameters (`utm_*`, `si=`, `pp=`) are removed globally. A `/dedup` endpoint lets you scan and merge any existing duplicate records in one shot.
 
 ## Architecture
 
@@ -197,8 +198,8 @@ Three automated cron jobs run in the background:
 | Document | Description |
 | :------- | :---------- |
 | [Getting Started](docs/GETTING_STARTED.md) | Setup guide, env var reference, backup/restore |
-| [API Endpoints](docs/API_ENDPOINTS.md) | HTTP endpoints and WebSocket events |
-| [Database Schema](docs/DATABASE_SCHEMA.md) | Table definitions and relationships |
+| [API Endpoints](docs/API_ENDPOINTS.md) | HTTP endpoints, URL normalization, and WebSocket events |
+| [Database Schema](docs/DATABASE_SCHEMA.md) | Table definitions, indexes, deduplication logic |
 | [Listing & Updating](docs/LISTING_AND_UPDATING.md) | Playlist parsing and monitoring modes |
 | [Download Behavior](docs/DOWNLOAD_BEHAVIOR.md) | Concurrency control and download pipeline |
 | [Deletion Behavior](docs/DELETION_BEHAVIOR.md) | Playlist/video deletion and pruning flows |

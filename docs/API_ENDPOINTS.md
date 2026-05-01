@@ -70,21 +70,52 @@ dependencies minimal.
   - **Frontend Usage**: `SubList.jsx` uses this to resolve batch URLs
     efficiently instead of looping over `/getfile`.
 
-### 4. Authentication
+### 4. Maintenance & Administration
+
+- **`/reindexall`**
+  - **Description**: Re-runs the listing pipeline for all tracked videos (or a filtered subset) to refresh their metadata from yt-dlp. Accepts `start`, `stop`, `siteFilter`, and `chunkSize` parameters.
+  - **Request body**: `{ start?, stop?, siteFilter?, chunkSize? }`
+
+- **`/dedup`**
+  - **Description**: Scans `video_metadata` for records that share the same `videoId` but live under different `videoUrl` primary keys — a situation caused by URLs with trailing slugs or tracking parameters being added manually. In dry-run mode it only reports what would change; when `dryRun: false` it merges the duplicates and re-homes all `playlist_video_mappings` to the canonical URL.
+  - **Merge priority**: prefers records that belong to a real playlist over the "None" bucket; among equals, keeps the most recently updated record.
+  - **Request body**: `{ dryRun?: boolean (default true), siteFilter?: string }`
+  - **Response**: `{ status, duplicatesFound, mergedCount, details[] }`
+  - **Authentication**: Required.
+
+### 5. Authentication
 
 - **`/login`**, **`/register`**, **`/isregallowed`**
   - **Description**: Handles user authentication, registration queries, and
     determining if new signups are permitted based on server configurations.
   - **Frontend Usage**: Extensively utilized in `Login.jsx` and `Signup.jsx`.
 
-### 5. Health Check
+### 6. Health Check
 
 - **`/ping`** (GET)
   - **Description**: Returns `"pong"`. Used by the Docker healthcheck to verify
     the server is alive.
   - **Usage**: `curl -f http://127.0.0.1:8888/ytdiff/ping`
 
-## Websockets
+## URL Normalization
+
+All URLs submitted via `/list` or `/download` pass through a canonicalization
+pipeline before being stored as the `videoUrl` primary key. This prevents
+duplicate records when the same video is added via different URL forms:
+
+| Input | Canonical stored |
+| :---- | :--------------- |
+| `https://m.youtube.com/watch?v=ID` | `https://www.youtube.com/watch?v=ID` |
+| `https://youtu.be/ID?si=xxx` | `https://www.youtube.com/watch?v=ID` |
+| `https://youtube.com/watch?v=ID&list=RD&start_radio=1` | `https://www.youtube.com/watch?v=ID` |
+| `https://www.iwara.tv/video/ID/title-slug` | `https://www.iwara.tv/video/ID` |
+| `http://any-site.com/path` | `https://any-site.com/path` (protocol forced) |
+
+Tracking/noise parameters (`utm_*`, `fbclid`, `gclid`, `si`, `pp`) are stripped
+from all URLs. The normalizer is site-registry based — new sites can be added by
+appending a rule to `SITE_CANONICALIZERS` in `process-manager.ts`.
+
+## WebSockets
 
 - **Socket.io Connection**: Handled at `config.urlBase + "/socket.io/"`.
 - **Events**: Utilizes `connection`, `acknowledge`, and `disconnect` events.

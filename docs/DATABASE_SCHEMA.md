@@ -13,8 +13,8 @@ of individual videos, independent of any playlist.
 
 | Field                             | Type      | Description                                                                                                                   |
 | :-------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------- |
-| **`videoUrl`**                    | `STRING`  | **(Primary Key)** The full, exact URL of the video.                                                                           |
-| **`videoId`**                     | `STRING`  | The platform-specific unique identifier (e.g., the YouTube ID string).                                                        |
+| **`videoUrl`**                    | `STRING`  | **(Primary Key)** The canonical URL of the video, normalized at ingest time (see URL Normalization below). |
+| **`videoId`**                     | `STRING`  | The platform-specific unique identifier (e.g., the YouTube video ID). **Indexed** (non-unique) to support deduplication queries and the `videoId`-based fallback lookup. |
 | **`title`**                       | `STRING`  | The title of the video. May temporarily hold the `videoId` if `"NA"` was returned during a flat playlist parse.               |
 | **`approximateSize`**             | `BIGINT`  | Estimated file size in bytes returned blindly from the platform.                                                              |
 | **`downloadStatus`**              | `BOOLEAN` | Defaults to `false`. Becomes `true` only when the physical file is verified complete on disk.                                 |
@@ -51,6 +51,40 @@ of individual videos, independent of any playlist.
 > | Odysee      | `thumbs.odycdn.com`           | No      | ✅ Yes  |
 > | Facebook    | `scontent-*.xx.fbcdn.net`     | **Yes** | ❌ Skip |
 > | Instagram   | `scontent-*.cdninstagram.com` | **Yes** | ❌ Skip |
+
+---
+
+## URL Normalization & Deduplication
+
+The `videoUrl` primary key is **not** the raw URL submitted by the user — it is
+the output of `normalizeUrl()`, which canonicalizes URLs before any database
+write. This prevents duplicate records when the same video is indexed via
+different URL forms.
+
+**Normalization pipeline (applied to every inbound URL):**
+1. Force `https://` protocol
+2. Strip trailing slashes from pathname
+3. Remove tracking/noise query parameters (`utm_*`, `fbclid`, `gclid`, `si`, `pp`)
+4. Apply the first matching **site-specific canonicalizer** from the registry in `process-manager.ts`
+
+**Built-in site rules:**
+
+| Site | Rule |
+| :--- | :--- |
+| YouTube / youtu.be | Extract video ID → `https://www.youtube.com/watch?v={id}`; strip `list=`, `start_radio=`, `index=`, `si=`, `pp=` |
+| iwara.tv | Strip trailing title slug: `/video/{id}/{slug}` → `/video/{id}` |
+| All sites | `m.` → `www.` for YouTube mobile; force `https`; strip tracking params |
+
+**Fallback deduplication lookup:**
+If an incoming URL does not match any existing `videoUrl` PK after normalization,
+a secondary lookup fires using the `videoId` field, scoped to the same domain.
+This catches edge cases where normalization rules are incomplete, preventing
+a duplicate `VideoMetadata` row from being created.
+
+**Retroactive deduplication:**
+Use the `POST /dedup` endpoint to scan for and merge existing duplicate groups
+(same `videoId`, different `videoUrl` values). See
+[API_ENDPOINTS.md](API_ENDPOINTS.md) for the request/response format.
 
 ---
 
