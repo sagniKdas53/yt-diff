@@ -5,6 +5,7 @@ yt-data/
 dist/
 logs/
 venv/
+.venv/
 ssl/
 .git/
 .vscode/
