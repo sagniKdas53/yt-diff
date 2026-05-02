@@ -604,7 +604,7 @@
         "npm:sequelize@^6.37.8",
         "npm:socket.io@^4.8.3",
         "npm:uuid@14",
-        "npm:zod@^4.3.6"
+        "npm:zod@^4.4.1"
       ]
     }
   }
