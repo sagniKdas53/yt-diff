@@ -7,7 +7,7 @@ Deno.env.set("LOG_LEVELS", "trace");
 
 try {
   logger.info("Running manual dedup dry run...");
-  const result = await deduplicateAll(false);
+  const result = await deduplicateAll(true);
   console.log(JSON.stringify(result, null, 2));
 } catch (err) {
   console.error("Dedup failed:", err);

@@ -1,14 +1,20 @@
-import { VideoMetadata, PlaylistMetadata, sequelize } from "./src/db/models.ts";
-import { canonicalizeVideoUrl, canonicalizePlaylistUrl, deduplicateAll } from "./src/handlers/pipeline/dedup.ts";
+import { PlaylistMetadata, sequelize, VideoMetadata } from "./src/db/models.ts";
+import {
+  canonicalizePlaylistUrl,
+  canonicalizeVideoUrl,
+  deduplicateAll,
+} from "./src/handlers/pipeline/dedup.ts";
 import { logger } from "./src/logger.ts";
 
 async function run() {
   Deno.env.set("LOG_LEVELS", "info");
-  
+
   // 1. Run dedup to merge any duplicates safely
-  logger.info("Running deduplication first to ensure no primary key conflicts...");
+  logger.info(
+    "Running deduplication first to ensure no primary key conflicts...",
+  );
   await deduplicateAll(false);
-  
+
   // 2. Canonicalize Playlist URLs
   logger.info("Canonicalizing Playlist URLs...");
   const playlists = await PlaylistMetadata.findAll();
@@ -16,7 +22,7 @@ async function run() {
   for (const p of playlists) {
     const url = p.getDataValue("playlistUrl");
     if (url === "None" || url === "init") continue;
-    
+
     const canon = canonicalizePlaylistUrl(url);
     if (canon !== url) {
       pCount++;
@@ -24,7 +30,9 @@ async function run() {
       try {
         await p.update({ playlistUrl: canon });
       } catch (e) {
-        logger.error(`Failed to update playlist ${url}: ${(e as Error).message}`);
+        logger.error(
+          `Failed to update playlist ${url}: ${(e as Error).message}`,
+        );
       }
     }
   }
@@ -55,7 +63,7 @@ try {
   await run();
   logger.info("Done!");
 } catch (err) {
-  logger.error("Failed:", err);
+  logger.error("Failed:", err as any);
 } finally {
   await sequelize.close();
 }
