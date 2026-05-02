@@ -94,9 +94,6 @@ export function canonicalizeVideoUrl(urlStr: string): string {
       const viewkey = url.searchParams.get("viewkey");
       url.search = "";
       if (viewkey) url.searchParams.set("viewkey", viewkey);
-    } else {
-      const trackers = ["utm_source", "utm_medium", "utm_campaign", "si", "s", "rcm"];
-      for (const t of trackers) url.searchParams.delete(t);
     }
 
     if (url.hostname.includes("x.com") || url.hostname.includes("twitter.com")) {
@@ -141,8 +138,6 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
       }
     }
 
-    const trackers = ["utm_source", "utm_medium", "utm_campaign", "si", "s", "rcm"];
-    for (const t of trackers) url.searchParams.delete(t);
 
     if (url.hostname.includes("x.com") || url.hostname.includes("twitter.com")) {
        url.searchParams.set("s", "20");

@@ -99,21 +99,17 @@ dependencies minimal.
 
 ## URL Normalization
 
-All URLs submitted via `/list` or `/download` pass through a canonicalization
-pipeline before being stored as the `videoUrl` primary key. This prevents
-duplicate records when the same video is added via different URL forms:
+All URLs submitted via `/list` or `/download` (or discovered automatically by yt-dlp) pass through a strict canonicalization pipeline before being stored as primary keys (`videoUrl` or `playlistUrl`). This ensures the database prevents duplicate records at the point of entry when the same content is added via different URL formats.
 
-| Input | Canonical stored |
-| :---- | :--------------- |
-| `https://m.youtube.com/watch?v=ID` | `https://www.youtube.com/watch?v=ID` |
-| `https://youtu.be/ID?si=xxx` | `https://www.youtube.com/watch?v=ID` |
-| `https://youtube.com/watch?v=ID&list=RD&start_radio=1` | `https://www.youtube.com/watch?v=ID` |
-| `https://www.iwara.tv/video/ID/title-slug` | `https://www.iwara.tv/video/ID` |
-| `http://any-site.com/path` | `https://any-site.com/path` (protocol forced) |
+### Canonicalization Rules
 
-Tracking/noise parameters (`utm_*`, `fbclid`, `gclid`, `si`, `pp`) are stripped
-from all URLs. The normalizer is site-registry based — new sites can be added by
-appending a rule to `SITE_CANONICALIZERS` in `process-manager.ts`.
+| Platform | Input Example | Canonical Stored | Note |
+| :---- | :--------------- | :--------------- | :--- |
+| **YouTube** | `https://youtu.be/ID?si=xxx` | `https://www.youtube.com/watch?v=ID` | Normalizes `youtu.be`, `m.youtube.com`, and `/shorts/`. Strips `list`, `index`, `si`, `pp` for videos. |
+| **Iwara** | `https://www.iwara.tv/video/ID/slug` | `https://www.iwara.tv/video/ID` | Strips trailing title slug. |
+| **X / Twitter**| `https://x.com/user/status/ID` | `https://x.com/user/status/ID?s=20` | Appends/retains `?s=20` as it remains structurally constant. |
+
+The normalizer is registry-based—new sites can be added to `SITE_CANONICALIZERS` in `process-manager.ts` and `dedup.ts`.
 
 ## WebSockets
 
