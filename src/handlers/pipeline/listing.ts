@@ -2,7 +2,11 @@
 import he from "he";
 import { Model, Op } from "sequelize";
 import { config } from "../../config.ts";
-import { VideoMetadata, PlaylistMetadata, PlaylistVideoMapping } from "../../db/models.ts";
+import {
+  PlaylistMetadata,
+  PlaylistVideoMapping,
+  VideoMetadata,
+} from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import {
@@ -16,13 +20,27 @@ import {
 import { Semaphore } from "./semaphore.ts";
 import { playlistRegex, ProcessExitCodes } from "./types.ts";
 import type {
-  ListingRequestBody, ListingItem, ListingResult, ListingProcessEntry,
-  StreamedItemData, ParsedStreamItem, StreamingVideoProcessingResult,
-  VideoUpsertData, PlaylistMappingCreate, PlaylistMappingUpdate,
-  PipelineHandlerDependencies, ManagedProcess
+  ListingItem,
+  ListingProcessEntry,
+  ListingRequestBody,
+  ListingResult,
+  ManagedProcess,
+  ParsedStreamItem,
+  PipelineHandlerDependencies,
+  PlaylistMappingCreate,
+  PlaylistMappingUpdate,
+  StreamedItemData,
+  StreamingVideoProcessingResult,
+  VideoUpsertData,
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
-import { urlToTitle, truncateText, isSiteXDotCom, hasEphemeralThumbnails, normalizeUrl } from "./process-manager.ts";
+import {
+  hasEphemeralThumbnails,
+  isSiteXDotCom,
+  normalizeUrl,
+  truncateText,
+  urlToTitle,
+} from "./process-manager.ts";
 import { join } from "../../utils/path.ts";
 
 export function createListingFlow(
@@ -30,11 +48,20 @@ export function createListingFlow(
   listProcesses: Map<string, ListingProcessEntry>,
   processManager: {
     updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
-  }
+  },
 ) {
-  const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks, streamLines } = deps;
+  const {
+    safeEmit,
+    buildSiteArgs,
+    spawnPythonProcess,
+    streamTextChunks,
+    streamLines,
+  } = deps;
   const jsonMimeType = MIME_TYPES[".json"];
-  const ListingSemaphore = new Semaphore(config.queue.maxListings, "ListingSemaphore");
+  const ListingSemaphore = new Semaphore(
+    config.queue.maxListings,
+    "ListingSemaphore",
+  );
   let pendingPlaylistSortCounter: number | null = null;
   let pendingPlaylistSortCounterPromise: Promise<number> | null = null;
   let pendingPlaylistCreatePromise: Promise<void> = Promise.resolve();
@@ -42,7 +69,9 @@ export function createListingFlow(
   const { updateProcessActivity } = processManager;
 
   function buildDownloadLocation(videoEntry: Model): string | null {
-    const saveDirectory = videoEntry.getDataValue("saveDirectory") as string | null;
+    const saveDirectory = videoEntry.getDataValue("saveDirectory") as
+      | string
+      | null;
     const fileName = videoEntry.getDataValue("fileName") as string | null;
 
     if (!saveDirectory && !fileName) {
@@ -81,7 +110,9 @@ export function createListingFlow(
 
     const playlistUrls = [
       ...new Set(
-        mappings.map((mapping) => mapping.getDataValue("playlistUrl") as string),
+        mappings.map((mapping) =>
+          mapping.getDataValue("playlistUrl") as string
+        ),
       ),
     ];
 
@@ -120,8 +151,9 @@ export function createListingFlow(
         return {
           playlistUrl,
           title: playlist.title,
-          positionInPlaylist:
-            mapping.getDataValue("positionInPlaylist") as number,
+          positionInPlaylist: mapping.getDataValue(
+            "positionInPlaylist",
+          ) as number,
           sortOrder: playlist.sortOrder,
         };
       })
@@ -216,7 +248,9 @@ export function createListingFlow(
             const domainCore = parsedFallback.hostname
               .replace(/^www\./, "")
               .replace(/^m\./, "");
-            const pathParts = parsedFallback.pathname.split("/").filter(Boolean);
+            const pathParts = parsedFallback.pathname.split("/").filter(
+              Boolean,
+            );
             // Use the last meaningful path segment as a candidate videoId.
             const candidateId = pathParts[pathParts.length - 1] ||
               parsedFallback.searchParams.get("v") || "";
@@ -369,7 +403,9 @@ export function createListingFlow(
     ListingSemaphore.setMaxConcurrent(config.queue.maxListings);
 
     const listingResults = await Promise.all(
-      items.map((item) => listWithSemaphore(item, chunkSize, isScheduledUpdate)),
+      items.map((item) =>
+        listWithSemaphore(item, chunkSize, isScheduledUpdate)
+      ),
     );
 
     try {
@@ -379,7 +415,9 @@ export function createListingFlow(
             `Listed ${result.title || result.playlistTitle} successfully`,
           );
         } else {
-          logger.error(`Failed to list ${result.title}: ${JSON.stringify(result)}`);
+          logger.error(
+            `Failed to list ${result.title}: ${JSON.stringify(result)}`,
+          );
         }
       });
     } catch (error) {
@@ -466,8 +504,11 @@ export function createListingFlow(
         });
       }
 
-      const isPlaylist = playlistRegex.test(videoUrl) || itemType === "playlist";
-      itemType = isPlaylist && !isSiteXDotCom(videoUrl) ? "playlist" : "unlisted";
+      const isPlaylist = playlistRegex.test(videoUrl) ||
+        itemType === "playlist";
+      itemType = isPlaylist && !isSiteXDotCom(videoUrl)
+        ? "playlist"
+        : "unlisted";
 
       let playlistTitle = "";
       let seekPlaylistListTo = 0;
@@ -477,7 +518,9 @@ export function createListingFlow(
           where: { playlistUrl: videoUrl },
         });
         if (existingPlaylist) {
-          logger.debug("Playlist already exists in database", { url: videoUrl });
+          logger.debug("Playlist already exists in database", {
+            url: videoUrl,
+          });
           if (
             existingPlaylist.getDataValue("monitoringType") ===
               currentMonitoringType && !resolvedIsScheduledUpdate
@@ -489,9 +532,10 @@ export function createListingFlow(
           ) {
             logger.debug("Playlist monitoring has changed", { url: videoUrl });
             await existingPlaylist.update({
-              monitoringType: ["Refresh", "Full"].includes(currentMonitoringType)
-                ? "N/A"
-                : currentMonitoringType,
+              monitoringType:
+                ["Refresh", "Full"].includes(currentMonitoringType)
+                  ? "N/A"
+                  : currentMonitoringType,
               lastUpdatedByScheduler: resolvedIsScheduledUpdate ||
                   ["Refresh", "Full"].includes(currentMonitoringType)
                 ? Date.now()
@@ -629,7 +673,11 @@ export function createListingFlow(
     let ytDlpProcess: ManagedProcess;
 
     try {
-      const streamProcessor = streamPlayListItems(videoUrl, processKey, startIndex);
+      const streamProcessor = streamPlayListItems(
+        videoUrl,
+        processKey,
+        startIndex,
+      );
       ytDlpProcess = streamProcessor.process;
 
       for await (const line of streamProcessor.iterator) {
@@ -661,7 +709,8 @@ export function createListingFlow(
           }
 
           if (
-            result.alreadyExistedCount === chunkSize && monitoringType === "Start"
+            result.alreadyExistedCount === chunkSize &&
+            monitoringType === "Start"
           ) {
             consecutiveDuplicateChunks++;
             if (consecutiveDuplicateChunks >= 2) {
@@ -907,8 +956,10 @@ export function createListingFlow(
       const existingMapping = await PlaylistVideoMapping.findOne({
         where: {
           videoUrl: chunkItems.length === 1
-            ? normalizeUrl(JSON.parse(chunkItems[0]).webpage_url ||
-              JSON.parse(chunkItems[0]).url || "")
+            ? normalizeUrl(
+              JSON.parse(chunkItems[0]).webpage_url ||
+                JSON.parse(chunkItems[0]).url || "",
+            )
             : "",
           playlistUrl,
         },
@@ -916,7 +967,9 @@ export function createListingFlow(
 
       let newStartIndex: number;
       if (existingMapping) {
-        newStartIndex = existingMapping.getDataValue("positionInPlaylist") as number;
+        newStartIndex = existingMapping.getDataValue(
+          "positionInPlaylist",
+        ) as number;
       } else {
         const lastVideo = await PlaylistVideoMapping.findOne({
           where: { playlistUrl },
@@ -1037,10 +1090,16 @@ export function createListingFlow(
           }
         }
 
-        const exitCode = listProcess.killed ? null : (await listProcess.status).code;
-        const isAllowedError = exitCode === ProcessExitCodes.PARTIAL_ERROR && linesYielded > 0;
+        const exitCode = listProcess.killed
+          ? null
+          : (await listProcess.status).code;
+        const isAllowedError = exitCode === ProcessExitCodes.PARTIAL_ERROR &&
+          linesYielded > 0;
 
-        if (!listProcess.killed && exitCode !== ProcessExitCodes.SUCCESS && !isAllowedError) {
+        if (
+          !listProcess.killed && exitCode !== ProcessExitCodes.SUCCESS &&
+          !isAllowedError
+        ) {
           const processEntryInt = listProcesses.get(processKey);
           if (processEntryInt) {
             processEntryInt.status = "failed";
@@ -1176,7 +1235,9 @@ export function createListingFlow(
       const absoluteIndex = playlistUrl === "None"
         ? chunkStartIndex
         : chunkStartIndex + index;
-      const existingMapping = existingMappingsMap.get(`${videoUrl}|${absoluteIndex}`);
+      const existingMapping = existingMappingsMap.get(
+        `${videoUrl}|${absoluteIndex}`,
+      );
 
       if (
         monitoringType !== "Refresh" &&
@@ -1196,7 +1257,9 @@ export function createListingFlow(
           title === "NA" ? videoId.trim() : title,
           config.maxTitleLength,
         ),
-        approximateSize: approxSize === "NA" ? -1 : parseInt(String(approxSize)),
+        approximateSize: approxSize === "NA"
+          ? -1
+          : parseInt(String(approxSize)),
         downloadStatus: existingVideo
           ? Boolean(existingVideo.getDataValue("downloadStatus"))
           : false,
@@ -1314,7 +1377,11 @@ export function createListingFlow(
     };
   }
 
-  function handleListingError(error: Error, videoUrl: string, itemType: string) {
+  function handleListingError(
+    error: Error,
+    videoUrl: string,
+    itemType: string,
+  ) {
     logger.error("Listing failed", {
       url: videoUrl,
       error: error.message,
@@ -1367,7 +1434,7 @@ export function createListingFlow(
     };
   }
 
-  async function addPlaylist(playlistUrl: string, monitoringType: string) {
+  function addPlaylist(playlistUrl: string, monitoringType: string) {
     let playlistTitle = "";
 
     const processArgs = [
@@ -1503,7 +1570,7 @@ export function createListingFlow(
         defaults: {
           title: playlistTitle,
           monitoringType: monitoringType,
-          saveDirectory: playlistTitle,
+          saveDirectory: truncateText(playlistTitle, 30),
           sortOrder: nextPlaylistIndex,
           lastUpdatedByScheduler: Date.now(),
         },
@@ -1526,6 +1593,9 @@ export function createListingFlow(
     pendingPlaylistSortCounterPromise = null;
   }
 
-
-  return { processListingRequest, listItemsConcurrently, resetPendingPlaylistSortCounter };
+  return {
+    processListingRequest,
+    listItemsConcurrently,
+    resetPendingPlaylistSortCounter,
+  };
 }

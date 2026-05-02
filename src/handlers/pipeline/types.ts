@@ -1,7 +1,7 @@
 import { Model } from "sequelize";
 import { config, type AppConfig } from "../../config.ts";
 
-export const playlistRegex = /(?:playlist|list=|videos$)\b/i;
+export const playlistRegex = /(?:playlist|list=|creators|videos$)\b/i;
 
 export const downloadOptions = [
   "--progress",
