@@ -23,11 +23,7 @@ interface SiteCanonicalizer {
   canonicalize: (url: URL) => string;
 }
 
-/** Tracking/noise query parameters stripped from all URLs before site rules. */
-const STRIP_PARAMS = new Set([
-  "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-  "fbclid", "gclid", "si", "pp",
-]);
+
 
 /** YouTube video ID pattern (11 chars, base64url alphabet). */
 const YT_VIDEO_ID_RE = /[A-Za-z0-9_-]{11}/;
@@ -160,10 +156,7 @@ export function normalizeUrl(url: string): string {
     parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   }
 
-  // 3. Strip generic tracking params
-  for (const param of STRIP_PARAMS) {
-    parsed.searchParams.delete(param);
-  }
+
 
   // 4. Apply site-specific canonicalizer
   const rule = SITE_CANONICALIZERS.find((r) => r.match(parsed.hostname));
