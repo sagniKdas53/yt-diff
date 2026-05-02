@@ -61,7 +61,9 @@ export function canonicalizeVideoUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
 
-    if (url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")) {
+    if (
+      url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")
+    ) {
       url.hostname = "www.youtube.com";
       if (url.pathname.startsWith("/shorts/")) {
         const id = url.pathname.split("/")[2];
@@ -96,7 +98,9 @@ export function canonicalizeVideoUrl(urlStr: string): string {
       if (viewkey) url.searchParams.set("viewkey", viewkey);
     }
 
-    if (url.hostname.includes("x.com") || url.hostname.includes("twitter.com")) {
+    if (
+      url.hostname.includes("x.com") || url.hostname.includes("twitter.com")
+    ) {
       url.searchParams.set("s", "20");
     }
 
@@ -110,7 +114,9 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
 
-    if (url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")) {
+    if (
+      url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")
+    ) {
       url.hostname = "www.youtube.com";
       const list = url.searchParams.get("list");
       if (list) {
@@ -138,9 +144,10 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
       }
     }
 
-
-    if (url.hostname.includes("x.com") || url.hostname.includes("twitter.com")) {
-       url.searchParams.set("s", "20");
+    if (
+      url.hostname.includes("x.com") || url.hostname.includes("twitter.com")
+    ) {
+      url.searchParams.set("s", "20");
     }
 
     return url.toString();
@@ -207,6 +214,118 @@ async function pickCanonical(
 
 // ---------------------------------------------------------------------------
 // Core operations: Videos
+// ---------------------------------------------------------------------------
+
+export async function canonicalizeVideoUrlsInNonePlaylist(siteFilter?: string): Promise<void> {
+  const whereClause: any = { playlistUrl: "None" };
+  if (siteFilter) {
+    whereClause.videoUrl = { [Op.iLike]: `%${siteFilter}%` };
+  }
+
+  const mappings = await PlaylistVideoMapping.findAll({
+    where: whereClause,
+    order: [["positionInPlaylist", "ASC"]],
+  });
+
+  logger.info(`dedup: checking ${mappings.length} items in None playlist for canonicalization`);
+
+  for (const mapping of mappings) {
+    const originalUrl = mapping.getDataValue("videoUrl") as string;
+    const canonUrl = canonicalizeVideoUrl(originalUrl);
+
+    if (canonUrl === originalUrl) {
+      continue;
+    }
+
+    const transaction = await sequelize.transaction();
+    try {
+      // Check if canonUrl already exists in None playlist
+      const existingMapping = await PlaylistVideoMapping.findOne({
+        where: { playlistUrl: "None", videoUrl: canonUrl },
+        transaction,
+      });
+
+      if (existingMapping) {
+        const existingPos = existingMapping.getDataValue("positionInPlaylist") as number;
+        const currentPos = mapping.getDataValue("positionInPlaylist") as number;
+
+        let toRemove, toKeep;
+        if (existingPos > currentPos) {
+            toRemove = existingMapping;
+            toKeep = mapping;
+        } else {
+            toRemove = mapping;
+            toKeep = existingMapping;
+        }
+
+        const removedPos = toRemove.getDataValue("positionInPlaylist") as number;
+        
+        logger.info("dedup: found duplicate in None playlist during canonicalization", {
+          originalUrl,
+          canonUrl,
+          removedPos,
+        });
+
+        await toRemove.destroy({ transaction });
+        
+        await PlaylistVideoMapping.decrement("positionInPlaylist", {
+          by: 1,
+          where: {
+            playlistUrl: "None",
+            positionInPlaylist: { [Op.gt]: removedPos },
+          },
+          transaction,
+        });
+
+        if (toKeep === mapping) {
+            const meta = await VideoMetadata.findOne({ where: { videoUrl: originalUrl }, transaction });
+            const existingMeta = await VideoMetadata.findOne({ where: { videoUrl: canonUrl }, transaction });
+
+            if (!existingMeta) {
+               if (meta) {
+                 await meta.update({ videoUrl: canonUrl }, { transaction }); // cascades
+               } else {
+                 await mapping.update({ videoUrl: canonUrl }, { transaction });
+               }
+            } else {
+               await mapping.update({ videoUrl: canonUrl }, { transaction });
+               if (meta) await meta.destroy({ transaction }); 
+            }
+        } else {
+            const meta = await VideoMetadata.findOne({ where: { videoUrl: originalUrl }, transaction });
+            if (meta) {
+               await meta.destroy({ transaction });
+            }
+        }
+      } else {
+        logger.debug("dedup: canonicalizing url in None playlist", { originalUrl, canonUrl });
+        
+        const meta = await VideoMetadata.findOne({ where: { videoUrl: originalUrl }, transaction });
+        const existingMeta = await VideoMetadata.findOne({ where: { videoUrl: canonUrl }, transaction });
+        
+        if (!existingMeta) {
+           if (meta) {
+             await meta.update({ videoUrl: canonUrl }, { transaction }); // cascades
+           } else {
+             await mapping.update({ videoUrl: canonUrl }, { transaction });
+           }
+        } else {
+           await mapping.update({ videoUrl: canonUrl }, { transaction });
+           if (meta) await meta.destroy({ transaction });
+        }
+      }
+      await transaction.commit();
+    } catch (err) {
+      await transaction.rollback();
+      logger.error("dedup: error canonicalizing url in None playlist", {
+        originalUrl,
+        canonUrl,
+        error: (err as Error).message,
+      });
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 export async function findDuplicateVideos(
@@ -289,7 +408,9 @@ export async function findDuplicateVideos(
 
       const { canonicalUrl, reason, playlists } = await pickCanonical(urls);
       const duplicateUrls = urls.filter((u) => u !== canonicalUrl);
-      const sample = allVideos.find(v => v.getDataValue("videoUrl") === canonicalUrl);
+      const sample = allVideos.find((v) =>
+        v.getDataValue("videoUrl") === canonicalUrl
+      );
 
       groups.push({
         videoId: sample?.getDataValue("videoId") || "",
@@ -344,13 +465,20 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
         });
 
         if (alreadyInPlaylist) {
-          const removedPosition = mapping.getDataValue("positionInPlaylist") as number;
-          logger.debug("dedup: removing duplicate playlist mapping and adjusting indexes", {
-            playlistUrl,
-            videoUrl: canonicalUrl,
-            removedPosition,
-            keptPosition: alreadyInPlaylist.getDataValue("positionInPlaylist"),
-          });
+          const removedPosition = mapping.getDataValue(
+            "positionInPlaylist",
+          ) as number;
+          logger.debug(
+            "dedup: removing duplicate playlist mapping and adjusting indexes",
+            {
+              playlistUrl,
+              videoUrl: canonicalUrl,
+              removedPosition,
+              keptPosition: alreadyInPlaylist.getDataValue(
+                "positionInPlaylist",
+              ),
+            },
+          );
 
           await mapping.destroy({ transaction });
 
@@ -435,18 +563,20 @@ export async function findDuplicatePlaylists(
 
   const groups: DuplicatePlaylistGroup[] = [];
 
-  for (const [canon, urls] of canonGroups.entries()) {
+  for (const [_canon, urls] of canonGroups.entries()) {
     if (urls.length > 1) {
-      const records = allPlaylists.filter((p) => urls.includes(p.getDataValue("playlistUrl")));
-      
+      const records = allPlaylists.filter((p) =>
+        urls.includes(p.getDataValue("playlistUrl"))
+      );
+
       records.sort((a, b) => {
         const aDir = a.getDataValue("saveDirectory");
         const bDir = b.getDataValue("saveDirectory");
         const aHasDir = aDir && aDir !== "";
         const bHasDir = bDir && bDir !== "";
-        
+
         if (aHasDir !== bHasDir) return aHasDir ? -1 : 1;
-        
+
         const aTime = (a.getDataValue("updatedAt") as Date).getTime();
         const bTime = (b.getDataValue("updatedAt") as Date).getTime();
         return bTime - aTime;
@@ -455,11 +585,11 @@ export async function findDuplicatePlaylists(
       const winner = records[0];
       const canonicalUrl = winner.getDataValue("playlistUrl");
       const aDir = winner.getDataValue("saveDirectory");
-      const reason = (aDir && aDir !== "") 
-        ? "has non-empty saveDirectory" 
+      const reason = (aDir && aDir !== "")
+        ? "has non-empty saveDirectory"
         : "most recently updated";
 
-      const duplicateUrls = urls.filter(u => u !== canonicalUrl);
+      const duplicateUrls = urls.filter((u) => u !== canonicalUrl);
 
       groups.push({
         urls,
@@ -473,7 +603,9 @@ export async function findDuplicatePlaylists(
   return groups;
 }
 
-async function mergePlaylistRecords(group: DuplicatePlaylistGroup): Promise<void> {
+async function mergePlaylistRecords(
+  group: DuplicatePlaylistGroup,
+): Promise<void> {
   const { canonicalUrl, duplicateUrls } = group;
 
   const transaction = await sequelize.transaction();
@@ -504,28 +636,38 @@ async function mergePlaylistRecords(group: DuplicatePlaylistGroup): Promise<void
 
       for (const mapping of dupMappings) {
         const videoUrl = mapping.getDataValue("videoUrl") as string;
-        
+
         const alreadyInCanonical = await PlaylistVideoMapping.findOne({
           where: { playlistUrl: canonicalUrl, videoUrl },
           transaction,
         });
 
         if (alreadyInCanonical) {
-          const dupUpdatedAt = (mapping.getDataValue("updatedAt") as Date).getTime();
-          const canonUpdatedAt = (alreadyInCanonical.getDataValue("updatedAt") as Date).getTime();
-          
+          const dupUpdatedAt = (mapping.getDataValue("updatedAt") as Date)
+            .getTime();
+          const canonUpdatedAt =
+            (alreadyInCanonical.getDataValue("updatedAt") as Date).getTime();
+
           if (dupUpdatedAt > canonUpdatedAt) {
-            logger.debug("dedup: duplicate mapping is newer, replacing canonical mapping", {
-              playlistUrl: canonicalUrl,
-              videoUrl,
-            });
+            logger.debug(
+              "dedup: duplicate mapping is newer, replacing canonical mapping",
+              {
+                playlistUrl: canonicalUrl,
+                videoUrl,
+              },
+            );
             await alreadyInCanonical.destroy({ transaction });
-            await mapping.update({ playlistUrl: canonicalUrl }, { transaction });
-          } else {
-            logger.debug("dedup: canonical mapping is newer or equal, dropping duplicate mapping", {
-              playlistUrl: canonicalUrl,
-              videoUrl,
+            await mapping.update({ playlistUrl: canonicalUrl }, {
+              transaction,
             });
+          } else {
+            logger.debug(
+              "dedup: canonical mapping is newer or equal, dropping duplicate mapping",
+              {
+                playlistUrl: canonicalUrl,
+                videoUrl,
+              },
+            );
             await mapping.destroy({ transaction });
           }
         } else {
@@ -541,7 +683,10 @@ async function mergePlaylistRecords(group: DuplicatePlaylistGroup): Promise<void
       for (const field of fieldsToPropagate) {
         const canonVal = canonicalMeta.getDataValue(field);
         const dupVal = dupMeta.getDataValue(field);
-        if ((!canonVal || canonVal === "" || canonVal === "N/A") && dupVal && dupVal !== "" && dupVal !== "N/A") {
+        if (
+          (!canonVal || canonVal === "" || canonVal === "N/A") && dupVal &&
+          dupVal !== "" && dupVal !== "N/A"
+        ) {
           updates[field] = dupVal;
         }
       }
@@ -569,17 +714,35 @@ async function mergePlaylistRecords(group: DuplicatePlaylistGroup): Promise<void
 // Public orchestrator
 // ---------------------------------------------------------------------------
 
-export async function deduplicateAll(
+export interface DeduplicateUnlistedResult {
+  videoDuplicatesFound: number;
+  videoMergedCount: number;
+  videoDetails: Array<
+    DuplicateGroup & {
+      action: "merged" | "would_merge" | "skipped";
+      skipReason?: string;
+    }
+  >;
+}
+
+export async function deduplicateUnlisted(
   dryRun: boolean,
   siteFilter?: string,
-): Promise<DeduplicateResult> {
-  logger.info("dedup: starting scan", { dryRun, siteFilter });
+): Promise<DeduplicateUnlistedResult> {
+  logger.info("dedup: starting unlisted scan", { dryRun, siteFilter });
+
+  // 0. Canonicalize video urls in the None playlist first
+  if (!dryRun) {
+    await canonicalizeVideoUrlsInNonePlaylist(siteFilter);
+  }
 
   // 1. Process Videos
   const videoGroups = await findDuplicateVideos(siteFilter);
-  logger.info(`dedup: found ${videoGroups.length} video duplicate group(s)`, { dryRun });
+  logger.info(`dedup: found ${videoGroups.length} video duplicate group(s)`, {
+    dryRun,
+  });
 
-  const videoDetails: DeduplicateResult["videoDetails"] = [];
+  const videoDetails: DeduplicateUnlistedResult["videoDetails"] = [];
   let videoMergedCount = 0;
 
   for (const group of videoGroups) {
@@ -606,11 +769,44 @@ export async function deduplicateAll(
     }
   }
 
-  // 2. Process Playlists
-  const playlistGroups = await findDuplicatePlaylists(siteFilter);
-  logger.info(`dedup: found ${playlistGroups.length} playlist duplicate group(s)`, { dryRun });
+  logger.info("dedup: completed unlisted videos", {
+    dryRun,
+    videoDuplicatesFound: videoGroups.length,
+    videoMergedCount,
+  });
 
-  const playlistDetails: DeduplicateResult["playlistDetails"] = [];
+  return {
+    videoDuplicatesFound: videoGroups.length,
+    videoMergedCount,
+    videoDetails,
+  };
+}
+
+export interface DeduplicatePlaylistsResult {
+  playlistDuplicatesFound: number;
+  playlistMergedCount: number;
+  playlistDetails: Array<
+    DuplicatePlaylistGroup & {
+      action: "merged" | "would_merge" | "skipped";
+      skipReason?: string;
+    }
+  >;
+}
+
+export async function deduplicatePlaylists(
+  dryRun: boolean,
+  siteFilter?: string,
+): Promise<DeduplicatePlaylistsResult> {
+  logger.info("dedup: starting playlist scan", { dryRun, siteFilter });
+
+  // Process Playlists
+  const playlistGroups = await findDuplicatePlaylists(siteFilter);
+  logger.info(
+    `dedup: found ${playlistGroups.length} playlist duplicate group(s)`,
+    { dryRun },
+  );
+
+  const playlistDetails: DeduplicatePlaylistsResult["playlistDetails"] = [];
   let playlistMergedCount = 0;
 
   for (const group of playlistGroups) {
@@ -637,18 +833,13 @@ export async function deduplicateAll(
     }
   }
 
-  logger.info("dedup: completed", {
+  logger.info("dedup: completed playlists", {
     dryRun,
-    videoDuplicatesFound: videoGroups.length,
-    videoMergedCount,
     playlistDuplicatesFound: playlistGroups.length,
     playlistMergedCount,
   });
 
   return {
-    videoDuplicatesFound: videoGroups.length,
-    videoMergedCount,
-    videoDetails,
     playlistDuplicatesFound: playlistGroups.length,
     playlistMergedCount,
     playlistDetails,
@@ -668,7 +859,7 @@ export interface DedupRequestBody {
   siteFilter?: string;
 }
 
-export async function processDedupRequest(
+export async function processDedupUnlistedRequest(
   requestBody: DedupRequestBody,
   response: HttpResponseLike,
 ): Promise<void> {
@@ -677,14 +868,42 @@ export async function processDedupRequest(
     const dryRun = requestBody.dryRun !== false; // default true
     const siteFilter = requestBody.siteFilter?.trim() || undefined;
 
-    logger.info("dedup: request received", { dryRun, siteFilter });
+    logger.info("dedup-unlisted: request received", { dryRun, siteFilter });
 
-    const result = await deduplicateAll(dryRun, siteFilter);
+    const result = await deduplicateUnlisted(dryRun, siteFilter);
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
     response.end(JSON.stringify({ status: "success", ...result }));
   } catch (error) {
-    logger.error("dedup: request failed", {
+    logger.error("dedup-unlisted: request failed", {
+      error: (error as Error).message,
+      stack: (error as Error).stack,
+    });
+    response.writeHead(500, generateCorsHeaders(jsonMimeType));
+    response.end(JSON.stringify({
+      status: "error",
+      message: he.escape((error as Error).message),
+    }));
+  }
+}
+
+export async function processDedupPlaylistsRequest(
+  requestBody: DedupRequestBody,
+  response: HttpResponseLike,
+): Promise<void> {
+  const jsonMimeType = MIME_TYPES[".json"];
+  try {
+    const dryRun = requestBody.dryRun !== false; // default true
+    const siteFilter = requestBody.siteFilter?.trim() || undefined;
+
+    logger.info("dedup-playlists: request received", { dryRun, siteFilter });
+
+    const result = await deduplicatePlaylists(dryRun, siteFilter);
+
+    response.writeHead(200, generateCorsHeaders(jsonMimeType));
+    response.end(JSON.stringify({ status: "success", ...result }));
+  } catch (error) {
+    logger.error("dedup-playlists: request failed", {
       error: (error as Error).message,
       stack: (error as Error).stack,
     });

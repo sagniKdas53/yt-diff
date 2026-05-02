@@ -76,11 +76,17 @@ dependencies minimal.
   - **Description**: Re-runs the listing pipeline for all tracked videos (or a filtered subset) to refresh their metadata from yt-dlp. Accepts `start`, `stop`, `siteFilter`, and `chunkSize` parameters.
   - **Request body**: `{ start?, stop?, siteFilter?, chunkSize? }`
 
-- **`/dedup`**
-  - **Description**: Scans `video_metadata` for records that share the same `videoId` but live under different `videoUrl` primary keys — a situation caused by URLs with trailing slugs or tracking parameters being added manually. In dry-run mode it only reports what would change; when `dryRun: false` it merges the duplicates and re-homes all `playlist_video_mappings` to the canonical URL.
+- **`/dedup-unlisted`**
+  - **Description**: Canonicalizes URLs in the `None` playlist in-place. Then scans `video_metadata` for records that share the same `videoId` but live under different `videoUrl` primary keys. In dry-run mode it only reports what would change; when `dryRun: false` it merges the duplicates and re-homes all `playlist_video_mappings` to the canonical URL.
   - **Merge priority**: prefers records that belong to a real playlist over the "None" bucket; among equals, keeps the most recently updated record.
   - **Request body**: `{ dryRun?: boolean (default true), siteFilter?: string }`
-  - **Response**: `{ status, duplicatesFound, mergedCount, details[] }`
+  - **Response**: `{ status, videoDuplicatesFound, videoMergedCount, videoDetails[] }`
+  - **Authentication**: Required.
+
+- **`/dedup-playlists`**
+  - **Description**: Scans `playlist_metadata` for duplicate playlists via canoncialized URLs. Keeps the playlist with a non-empty `saveDirectory` or the most recently updated. Merges `playlist_video_mappings` to the canonical playlist URL.
+  - **Request body**: `{ dryRun?: boolean (default true), siteFilter?: string }`
+  - **Response**: `{ status, playlistDuplicatesFound, playlistMergedCount, playlistDetails[] }`
   - **Authentication**: Required.
 
 ### 5. Authentication
