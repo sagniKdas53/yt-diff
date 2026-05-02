@@ -235,7 +235,10 @@ export const config: AppConfig = {
       }
     };
 
-    const clientId = getEnvOrFile("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_ID_FILE");
+    const clientId = getEnvOrFile(
+      "YOUTUBE_CLIENT_ID",
+      "YOUTUBE_CLIENT_ID_FILE",
+    );
     const clientSecret = getEnvOrFile(
       "YOUTUBE_CLIENT_SECRET",
       "YOUTUBE_CLIENT_SECRET_FILE",

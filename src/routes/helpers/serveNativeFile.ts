@@ -37,7 +37,7 @@ export async function tryServeNativeFile(
     headers.set("Accept-Ranges", "bytes");
 
     const rangeHeader = request.headers.get("range");
-    
+
     if (rangeHeader) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
       if (match) {
@@ -57,7 +57,7 @@ export async function tryServeNativeFile(
 
         const chunkSize = end - start + 1;
         const file = await Deno.open(filePath, { read: true });
-        
+
         if (start > 0) {
           await file.seek(start, Deno.SeekMode.Start);
         }
@@ -69,23 +69,25 @@ export async function tryServeNativeFile(
         // clients stop reading early, but explicitly truncating the stream keeps
         // partial-content responses well-behaved across implementations.
         let bytesSent = 0;
-        const limitedStream = file.readable.pipeThrough(new TransformStream({
-          transform(chunk, controller) {
-            if (bytesSent >= chunkSize) {
-              controller.terminate();
-              return;
-            }
-            const remaining = chunkSize - bytesSent;
-            if (chunk.length <= remaining) {
-              controller.enqueue(chunk);
-              bytesSent += chunk.length;
-            } else {
-              controller.enqueue(chunk.subarray(0, remaining));
-              bytesSent += remaining;
-              controller.terminate();
-            }
-          }
-        }));
+        const limitedStream = file.readable.pipeThrough(
+          new TransformStream({
+            transform(chunk, controller) {
+              if (bytesSent >= chunkSize) {
+                controller.terminate();
+                return;
+              }
+              const remaining = chunkSize - bytesSent;
+              if (chunk.length <= remaining) {
+                controller.enqueue(chunk);
+                bytesSent += chunk.length;
+              } else {
+                controller.enqueue(chunk.subarray(0, remaining));
+                bytesSent += remaining;
+                controller.terminate();
+              }
+            },
+          }),
+        );
 
         return new Response(limitedStream, {
           status: 206,
@@ -102,20 +104,21 @@ export async function tryServeNativeFile(
       status: 200,
       headers,
     });
-
   } catch (error) {
     logger.error("Error serving native file", {
       filePath,
       error: error instanceof Error ? error.message : String(error),
     });
-    
+
     const errorHeaders = new Headers();
     const errorCors = generateCorsHeaders("text/plain");
-    Object.entries(errorCors).forEach(([k, v]) => errorHeaders.set(k, String(v)));
-    
-    return new Response("Internal Server Error", { 
+    Object.entries(errorCors).forEach(([k, v]) =>
+      errorHeaders.set(k, String(v))
+    );
+
+    return new Response("Internal Server Error", {
       status: 500,
-      headers: errorHeaders
+      headers: errorHeaders,
     });
   }
 }

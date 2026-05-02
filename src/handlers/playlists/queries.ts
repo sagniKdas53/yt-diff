@@ -1,12 +1,22 @@
 import he from "he";
 import { FindAndCountOptions, Op, WhereOptions } from "sequelize";
 import { config } from "../../config.ts";
-import { VideoMetadata, PlaylistMetadata, PlaylistVideoMapping } from "../../db/models.ts";
+import {
+  PlaylistMetadata,
+  PlaylistVideoMapping,
+  VideoMetadata,
+} from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import type {
-  PlaylistDisplayRequest, SubListRequest, PlaylistWhereShape, SafePlaylistVideoRow, SafePlaylistVideoMeta,
-  PlaylistVideoRowShape, PlaylistHandlerDependencies, HttpError
+  HttpError,
+  PlaylistDisplayRequest,
+  PlaylistHandlerDependencies,
+  PlaylistVideoRowShape,
+  PlaylistWhereShape,
+  SafePlaylistVideoMeta,
+  SafePlaylistVideoRow,
+  SubListRequest,
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
@@ -17,12 +27,16 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
     response: HttpResponseLike,
   ): Promise<void> {
     try {
-      const startIndex = requestBody.start !== undefined ? +requestBody.start : 0;
+      const startIndex = requestBody.start !== undefined
+        ? +requestBody.start
+        : 0;
       const pageSize = requestBody.stop !== undefined
         ? +requestBody.stop - startIndex
         : config.chunkSize;
       const sortColumn = requestBody.sort !== undefined ? +requestBody.sort : 1;
-      const sortOrder = requestBody.order !== undefined ? +requestBody.order : 1;
+      const sortOrder = requestBody.order !== undefined
+        ? +requestBody.order
+        : 1;
       const searchQuery = requestBody.query !== undefined
         ? requestBody.query
         : "";
@@ -274,7 +288,6 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       }));
     }
   }
-
 
   return { getPlaylistsForDisplay, getSubListVideos };
 }

@@ -1,10 +1,7 @@
 import type Redis from "ioredis";
 
 import { logger } from "../logger.ts";
-import type {
-  HttpRequestLike,
-  HttpResponseLike,
-} from "../transport/http.ts";
+import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 
 import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
 export type MiddlewareNext = (data: unknown, res: HttpResponseLike) => void;

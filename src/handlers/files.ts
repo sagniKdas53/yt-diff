@@ -5,11 +5,11 @@ import { logger } from "../logger.ts";
 import type { HttpResponseLike } from "../transport/http.ts";
 import { existsSync } from "../utils/fs.ts";
 import {
+  basename,
   extname,
   isWithinPath,
   join,
   resolve,
-  basename,
 } from "../utils/path.ts";
 
 import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
@@ -96,7 +96,10 @@ export function createFileHandlers({
       } else {
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
-          JSON.stringify({ status: "error", message: "File could not be found" }),
+          JSON.stringify({
+            status: "error",
+            message: "File could not be found",
+          }),
         );
       }
     } else {
@@ -179,11 +182,15 @@ export function createFileHandlers({
     response: HttpResponseLike,
   ) {
     if (
-      !requestBody || !requestBody.fileIds || !Array.isArray(requestBody.fileIds)
+      !requestBody || !requestBody.fileIds ||
+      !Array.isArray(requestBody.fileIds)
     ) {
       response.writeHead(400, generateCorsHeaders(jsonMimeType));
       return response.end(
-        JSON.stringify({ status: "error", message: "fileIds array is required" }),
+        JSON.stringify({
+          status: "error",
+          message: "fileIds array is required",
+        }),
       );
     }
 

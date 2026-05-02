@@ -32,7 +32,9 @@ export function normalize(value: string): string {
     return ".";
   }
   const absolute = isAbsolute(value);
-  const normalized = normalizeSegments(splitSegments(value), absolute).join("/");
+  const normalized = normalizeSegments(splitSegments(value), absolute).join(
+    "/",
+  );
   if (absolute) {
     return normalized ? `/${normalized}` : "/";
   }

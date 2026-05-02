@@ -1,15 +1,25 @@
 // deno-lint-ignore-file no-explicit-any
 import he from "he";
-import { Op, Model } from "sequelize";
+import { Model, Op } from "sequelize";
 import { config } from "../../config.ts";
-import { VideoMetadata, PlaylistMetadata, PlaylistVideoMapping, sequelize } from "../../db/models.ts";
+import {
+  PlaylistMetadata,
+  PlaylistVideoMapping,
+  sequelize,
+  VideoMetadata,
+} from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { existsSync, rmSync, unlinkSync } from "../../utils/fs.ts";
 import { join } from "../../utils/path.ts";
 import type {
-  UpdatePlaylistMonitoringRequest, DeletePlaylistRequestBody, ReindexAllRequestBody, DeleteVideosRequestBody,
-  ListingItem, PlaylistHandlerDependencies, HttpError
+  DeletePlaylistRequestBody,
+  DeleteVideosRequestBody,
+  HttpError,
+  ListingItem,
+  PlaylistHandlerDependencies,
+  ReindexAllRequestBody,
+  UpdatePlaylistMonitoringRequest,
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 
@@ -94,7 +104,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
-          JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+          JSON.stringify({
+            "status": "error",
+            "message": "Need a playListUrl",
+          }),
         );
       }
       if (playListUrl === "None") {
@@ -117,7 +130,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         });
         response.writeHead(404, generateCorsHeaders(jsonMimeType));
         return response.end(
-          JSON.stringify({ "status": "error", "message": "Playlist not found" }),
+          JSON.stringify({
+            "status": "error",
+            "message": "Playlist not found",
+          }),
         );
       }
 
@@ -155,9 +171,12 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
           // Force the next addPlaylist call to re-read the tail sortOrder from DB
           // after deletions reshuffle the playlist ordering.
           resetPendingPlaylistSortCounter();
-          logger.debug("Updated sortOrder for playlists after deleted playlist", {
-            deletedSortOrder,
-          });
+          logger.debug(
+            "Updated sortOrder for playlists after deleted playlist",
+            {
+              deletedSortOrder,
+            },
+          );
         }
 
         if (!deleteAllVideosInPlaylist && !deletePlaylist) {
@@ -407,7 +426,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         });
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
         return response.end(
-          JSON.stringify({ "status": "error", "message": "Need a playListUrl" }),
+          JSON.stringify({
+            "status": "error",
+            "message": "Need a playListUrl",
+          }),
         );
       }
 
@@ -457,7 +479,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         });
         response.writeHead(404, generateCorsHeaders(jsonMimeType));
         return response.end(
-          JSON.stringify({ "status": "error", "message": "Playlist not found" }),
+          JSON.stringify({
+            "status": "error",
+            "message": "Playlist not found",
+          }),
         );
       }
 
@@ -484,7 +509,9 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         );
 
         const effectiveVideoUrls = mappingIds.length > 0
-          ? mappings.map((mapping) => mapping.getDataValue("videoUrl") as string)
+          ? mappings.map((mapping) =>
+            mapping.getDataValue("videoUrl") as string
+          )
           : videoUrls;
 
         const videos = await VideoMetadata.findAll({
@@ -610,7 +637,9 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
                       transaction,
                     });
                     mappingIdsToDelete.push(
-                      ...mappingRows.map((row) => row.getDataValue("id") as string),
+                      ...mappingRows.map((row) =>
+                        row.getDataValue("id") as string
+                      ),
                     );
                   }
                 }
@@ -710,6 +739,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
     }
   }
 
-
-  return { updatePlaylistMonitoring, processDeletePlaylistRequest, processReindexAllRequest, processDeleteVideosRequest };
+  return {
+    updatePlaylistMonitoring,
+    processDeletePlaylistRequest,
+    processReindexAllRequest,
+    processDeleteVideosRequest,
+  };
 }
