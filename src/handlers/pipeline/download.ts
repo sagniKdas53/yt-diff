@@ -2,16 +2,34 @@
 import he from "he";
 import { Op } from "sequelize";
 import { config } from "../../config.ts";
-import { VideoMetadata, PlaylistMetadata, PlaylistVideoMapping } from "../../db/models.ts";
+import {
+  PlaylistMetadata,
+  PlaylistVideoMapping,
+  VideoMetadata,
+} from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { existsSync, mkdirSync, readdirSync } from "../../utils/fs.ts";
-import { basename, extname, join, relative, resolve, sep } from "../../utils/path.ts";
+import {
+  basename,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "../../utils/path.ts";
 import { Semaphore } from "./semaphore.ts";
-import type { 
-  DownloadRequestBody, DownloadItem, DownloadResult, DownloadProcessEntry, 
-  DownloadCompletionUpdates, DiscoveredMetadata, FileSyncStatus, HttpError,
-  PipelineHandlerDependencies, VideoEntryRecord
+import type {
+  DiscoveredMetadata,
+  DownloadCompletionUpdates,
+  DownloadItem,
+  DownloadProcessEntry,
+  DownloadRequestBody,
+  DownloadResult,
+  FileSyncStatus,
+  HttpError,
+  PipelineHandlerDependencies,
+  VideoEntryRecord,
 } from "./types.ts";
 import { downloadOptions, ProcessExitCodes } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
@@ -22,11 +40,15 @@ export function createDownloadFlow(
   processManager: {
     updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
     cleanupProcess: (processKey: string, pid: number | undefined) => void;
-  }
+  },
 ) {
-  const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks } = deps;
+  const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks } =
+    deps;
   const jsonMimeType = MIME_TYPES[".json"];
-  const DownloadSemaphore = new Semaphore(config.queue.maxDownloads, "DownloadSemaphore");
+  const DownloadSemaphore = new Semaphore(
+    config.queue.maxDownloads,
+    "DownloadSemaphore",
+  );
   const { updateProcessActivity, cleanupProcess } = processManager;
 
   async function processDownloadRequest(
@@ -58,7 +80,8 @@ export function createDownloadFlow(
         }
 
         let saveDirectory =
-          (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ?? "";
+          (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ??
+            "";
 
         if (playlistUrl !== "init" && playlistUrl !== "None") {
           try {
@@ -91,9 +114,10 @@ export function createDownloadFlow(
                 where: { playlistUrl: (mapping as any).playlistUrl },
               });
               if (playlist) {
-                saveDirectory = (playlist as unknown as { saveDirectory: string })
-                  ?.saveDirectory ??
-                  saveDirectory;
+                saveDirectory =
+                  (playlist as unknown as { saveDirectory: string })
+                    ?.saveDirectory ??
+                    saveDirectory;
               }
             }
           } catch (error) {
@@ -113,7 +137,10 @@ export function createDownloadFlow(
         uniqueUrls.add(videoUrl);
       }
 
-      void downloadItemsConcurrently(videosToDownload, config.queue.maxDownloads);
+      void downloadItemsConcurrently(
+        videosToDownload,
+        config.queue.maxDownloads,
+      );
       logger.debug("Download processes started", {
         itemCount: videosToDownload.length,
       });
@@ -285,15 +312,15 @@ export function createDownloadFlow(
                   const percent = parseFloat(percentMatch[0]);
                   const progressBlock = Math.floor(percent / 10);
 
-                if (progressBlock === 0 && progressPercent === null) {
-                  progressPercent = 0;
-                  logger.debug(output, { pid: downloadProcess.pid });
-                } else if (
-                  progressPercent !== null && progressBlock > progressPercent
-                ) {
-                  progressPercent = progressBlock;
-                  logger.debug(output, { pid: downloadProcess.pid });
-                }
+                  if (progressBlock === 0 && progressPercent === null) {
+                    progressPercent = 0;
+                    logger.debug(output, { pid: downloadProcess.pid });
+                  } else if (
+                    progressPercent !== null && progressBlock > progressPercent
+                  ) {
+                    progressPercent = progressBlock;
+                    logger.debug(output, { pid: downloadProcess.pid });
+                  }
 
                   safeEmit("downloading-percent-update", {
                     url: videoUrl,
@@ -327,9 +354,12 @@ export function createDownloadFlow(
               }
             }
           } catch (error) {
-            logger.error(`Download stdout processing error: ${(error as Error).message}`, {
-              pid: downloadProcess.pid,
-            });
+            logger.error(
+              `Download stdout processing error: ${(error as Error).message}`,
+              {
+                pid: downloadProcess.pid,
+              },
+            );
             updateProcessActivity(processKey);
             reject(error);
           }
@@ -337,7 +367,9 @@ export function createDownloadFlow(
 
         void (async () => {
           for await (const error of streamTextChunks(downloadProcess.stderr)) {
-            logger.error(`Download error: ${error}`, { pid: downloadProcess.pid });
+            logger.error(`Download error: ${error}`, {
+              pid: downloadProcess.pid,
+            });
             updateProcessActivity(processKey);
           }
         })();
@@ -350,7 +382,8 @@ export function createDownloadFlow(
             });
 
             if (code === ProcessExitCodes.SUCCESS) {
-              const unhelpfulTitle = videoTitle === videoId || videoTitle === "NA";
+              const unhelpfulTitle = videoTitle === videoId ||
+                videoTitle === "NA";
               const fallbackTitle = capturedTitle || videoTitle;
               const updates: DownloadCompletionUpdates = {
                 downloadStatus: true,
@@ -367,8 +400,12 @@ export function createDownloadFlow(
 
               const videoEntryForDiscovery = videoEntry
                 ? {
-                  downloadStatus: Boolean(videoEntry.getDataValue("downloadStatus")),
-                  fileName: videoEntry.getDataValue("fileName") as string | null,
+                  downloadStatus: Boolean(
+                    videoEntry.getDataValue("downloadStatus"),
+                  ),
+                  fileName: videoEntry.getDataValue("fileName") as
+                    | string
+                    | null,
                 }
                 : null;
               const { metadata, syncStatus } = discoverFiles(
@@ -553,7 +590,18 @@ export function createDownloadFlow(
       }
 
       if (config.saveSubs) {
-        const commonLanguages = ["en", "fr", "de", "es", "it", "pt", "ru", "ja", "zh", "ko"];
+        const commonLanguages = [
+          "en",
+          "fr",
+          "de",
+          "es",
+          "it",
+          "pt",
+          "ru",
+          "ja",
+          "zh",
+          "ko",
+        ];
         const subtitlePatterns = [
           ...patterns.subtitle,
           ...commonLanguages.flatMap((lang) =>
@@ -595,7 +643,9 @@ export function createDownloadFlow(
           "Video file not found with common extensions, scanning directory",
         );
         const files = readdirSync(savePath);
-        const filesOfInterest = files.filter((file) => file.startsWith(mainFileBase));
+        const filesOfInterest = files.filter((file) =>
+          file.startsWith(mainFileBase)
+        );
         const knownMetadataExts = [
           ...patterns.description,
           ...patterns.comments,

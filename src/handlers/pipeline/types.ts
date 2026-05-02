@@ -1,5 +1,5 @@
 import { Model } from "sequelize";
-import { config, type AppConfig } from "../../config.ts";
+import { type AppConfig, config } from "../../config.ts";
 
 export const playlistRegex = /(?:playlist|list=|creators|videos$)\b/i;
 
@@ -47,7 +47,10 @@ export interface ProcessLike {
   lastActivity: number;
   lastStdoutActivity: number;
   spawnTimeStamp: number;
-  spawnedProcess?: { kill: (signal: string) => boolean } | ManagedProcess | null;
+  spawnedProcess?:
+    | { kill: (signal: string) => boolean }
+    | ManagedProcess
+    | null;
 }
 
 export interface ListingRequestBody {
@@ -195,7 +198,9 @@ export type SiteArgBuilder = (url: string, config: AppConfig) => string[];
 export type StreamTextChunks = (
   stream: ReadableStream<Uint8Array>,
 ) => AsyncGenerator<string>;
-export type StreamLines = (stream: ReadableStream<Uint8Array>) => AsyncGenerator<string>;
+export type StreamLines = (
+  stream: ReadableStream<Uint8Array>,
+) => AsyncGenerator<string>;
 export type SpawnPythonProcess = (args: string[]) => ManagedProcess;
 export type HttpError = Error & { status?: number };
 
@@ -228,5 +233,5 @@ export type ListItemsConcurrently = (
 export enum ProcessExitCodes {
   SUCCESS = 0,
   PARTIAL_ERROR = 1, // Often generated when only partial list/data is scraped, or minor warning
-  SIGTERM = 143,     // Process was killed (e.g. by user/timeout sending SIGTERM)
+  SIGTERM = 143, // Process was killed (e.g. by user/timeout sending SIGTERM)
 }

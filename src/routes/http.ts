@@ -1,7 +1,4 @@
-import type {
-  HttpRequestLike,
-  HttpResponseLike,
-} from "../transport/http.ts";
+import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 
 export type RouteRunner = (
   req: HttpRequestLike,

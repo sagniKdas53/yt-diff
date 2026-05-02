@@ -11,10 +11,7 @@ import {
 import { logger } from "../logger.ts";
 
 import {
-  type CleanupOptions,
   type CleanupStaleProcesses,
-  type ListingItem as JobListingItem,
-  type ListingResult as JobResult,
   type ListItemsConcurrently,
   type ProcessLike,
 } from "../handlers/pipeline/index.ts";
@@ -240,9 +237,12 @@ export function createJobs({
 
           if (mappingsToCreate.length > 0) {
             await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
-            logger.info("Moved unreferenced downloaded videos to 'None' playlist", {
-              count: mappingsToCreate.length,
-            });
+            logger.info(
+              "Moved unreferenced downloaded videos to 'None' playlist",
+              {
+                count: mappingsToCreate.length,
+              },
+            );
           }
 
           if (videoUrlsToDestroy.length > 0) {

@@ -7,10 +7,7 @@ import type { Socket } from "socket.io";
 import { config } from "../config.ts";
 import { UserAccount } from "../db/models.ts";
 import { logger } from "../logger.ts";
-import type {
-  HttpRequestLike,
-  HttpResponseLike,
-} from "../transport/http.ts";
+import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 
 export interface CachedUser {
   id: string;
@@ -26,9 +23,12 @@ export interface AuthJwtPayload extends jwt.JwtPayload {
   lastPasswordChangeTime?: number;
 }
 
-
-import { parseRequestJson, generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
-import { UserAuthSchema, IsRegistrationAllowedSchema } from "./validator.ts";
+import {
+  generateCorsHeaders,
+  MIME_TYPES,
+  parseRequestJson,
+} from "../utils/http.ts";
+import { IsRegistrationAllowedSchema, UserAuthSchema } from "./validator.ts";
 type NextHandler = (data: unknown, res: HttpResponseLike) => unknown;
 type TokenExpiredEmitter = (payload: { error: string }) => void;
 type GenerateAuthToken = (
@@ -43,7 +43,6 @@ interface AuthDependencies {
   hashPassword: HashPassword;
   emitTokenExpired?: TokenExpiredEmitter;
 }
-
 
 async function getAuthenticatedUser(
   redis: Redis,
@@ -110,7 +109,10 @@ export function createAuthMiddleware({
 
       let requestData = {};
       try {
-        requestData = await parseRequestJson(request) as Record<string, unknown>;
+        requestData = await parseRequestJson(request) as Record<
+          string,
+          unknown
+        >;
       } catch (error) {
         logger.error("Failed to parse request JSON", {
           error: (error as Error).message,
@@ -269,7 +271,10 @@ export function createAuthMiddleware({
 
       let requestData = {};
       try {
-        requestData = await parseRequestJson(request) as Record<string, unknown>;
+        requestData = await parseRequestJson(request) as Record<
+          string,
+          unknown
+        >;
       } catch (error) {
         logger.error("Failed to parse request JSON", {
           error: (error as Error).message,
@@ -359,7 +364,10 @@ export function createAuthMiddleware({
     try {
       let requestData = {};
       try {
-        requestData = await parseRequestJson(request) as Record<string, unknown>;
+        requestData = await parseRequestJson(request) as Record<
+          string,
+          unknown
+        >;
       } catch (error) {
         logger.error("Failed to parse request JSON", {
           error: (error as Error).message,

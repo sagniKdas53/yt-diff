@@ -3,10 +3,7 @@ import type {
   RateLimitFunction,
   RequestHandler,
 } from "../middleware/rateLimit.ts";
-import type {
-  HttpRequestLike,
-  HttpResponseLike,
-} from "../transport/http.ts";
+import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 import type { RouteDefinition } from "./http.ts";
 
 type BodyHandler = (data: unknown, res: HttpResponseLike) => unknown;
@@ -95,8 +92,7 @@ export function createApiRoutes({
     {
       method: "POST",
       path: config.urlBase + "/getplay",
-      run: (req, res) =>
-        authenticateRequest(req, res, getPlaylistsForDisplay),
+      run: (req, res) => authenticateRequest(req, res, getPlaylistsForDisplay),
     },
     {
       method: "POST",
@@ -107,8 +103,7 @@ export function createApiRoutes({
     {
       method: "POST",
       path: config.urlBase + "/getsub",
-      run: (req, res) =>
-        authenticateRequest(req, res, getSubListVideos),
+      run: (req, res) => authenticateRequest(req, res, getSubListVideos),
     },
     {
       method: "POST",
@@ -119,26 +114,22 @@ export function createApiRoutes({
     {
       method: "POST",
       path: config.urlBase + "/getfile",
-      run: (req, res) =>
-        authenticateRequest(req, res, makeSignedUrl),
+      run: (req, res) => authenticateRequest(req, res, makeSignedUrl),
     },
     {
       method: "POST",
       path: config.urlBase + "/refreshfile",
-      run: (req, res) =>
-        authenticateRequest(req, res, refreshSignedUrl),
+      run: (req, res) => authenticateRequest(req, res, refreshSignedUrl),
     },
     {
       method: "POST",
       path: config.urlBase + "/refreshfiles",
-      run: (req, res) =>
-        authenticateRequest(req, res, refreshSignedUrls),
+      run: (req, res) => authenticateRequest(req, res, refreshSignedUrls),
     },
     {
       method: "POST",
       path: config.urlBase + "/getfiles",
-      run: (req, res) =>
-        authenticateRequest(req, res, makeSignedUrls),
+      run: (req, res) => authenticateRequest(req, res, makeSignedUrls),
     },
     {
       method: "POST",

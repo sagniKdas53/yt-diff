@@ -294,7 +294,9 @@ export function isYouTubeUrl(url: string): boolean {
       "youtu.be",
       "m.youtube.com",
     ];
-    return youtubeHosts.some((h) => hostname === h || hostname.endsWith("." + h));
+    return youtubeHosts.some((h) =>
+      hostname === h || hostname.endsWith("." + h)
+    );
   } catch {
     return false;
   }
@@ -325,7 +327,9 @@ export function isYouTubeApiConfigured(): boolean {
 export async function* fetchPlaylistItemsChunked(
   playlistId: string,
   chunkSize: number,
-): AsyncGenerator<{ items: string[]; chunkStartIndex: number; totalExpected: number }> {
+): AsyncGenerator<
+  { items: string[]; chunkStartIndex: number; totalExpected: number }
+> {
   let nextPageToken: string | undefined;
   let pageCount = 0;
   let totalItemsYielded = 0;

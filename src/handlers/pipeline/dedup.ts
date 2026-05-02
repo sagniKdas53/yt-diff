@@ -105,7 +105,7 @@ export function canonicalizeVideoUrl(urlStr: string): string {
     }
 
     return url.toString();
-  } catch (e) {
+  } catch (_e) {
     return urlStr;
   }
 }
@@ -151,7 +151,7 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
     }
 
     return url.toString();
-  } catch (e) {
+  } catch (_e) {
     return urlStr;
   }
 }
@@ -216,7 +216,9 @@ async function pickCanonical(
 // Core operations: Videos
 // ---------------------------------------------------------------------------
 
-export async function canonicalizeVideoUrlsInNonePlaylist(siteFilter?: string): Promise<void> {
+export async function canonicalizeVideoUrlsInNonePlaylist(
+  siteFilter?: string,
+): Promise<void> {
   const whereClause: any = { playlistUrl: "None" };
   if (siteFilter) {
     whereClause.videoUrl = { [Op.iLike]: `%${siteFilter}%` };
@@ -227,7 +229,9 @@ export async function canonicalizeVideoUrlsInNonePlaylist(siteFilter?: string): 
     order: [["positionInPlaylist", "ASC"]],
   });
 
-  logger.info(`dedup: checking ${mappings.length} items in None playlist for canonicalization`);
+  logger.info(
+    `dedup: checking ${mappings.length} items in None playlist for canonicalization`,
+  );
 
   for (const mapping of mappings) {
     const originalUrl = mapping.getDataValue("videoUrl") as string;
@@ -246,28 +250,35 @@ export async function canonicalizeVideoUrlsInNonePlaylist(siteFilter?: string): 
       });
 
       if (existingMapping) {
-        const existingPos = existingMapping.getDataValue("positionInPlaylist") as number;
+        const existingPos = existingMapping.getDataValue(
+          "positionInPlaylist",
+        ) as number;
         const currentPos = mapping.getDataValue("positionInPlaylist") as number;
 
         let toRemove, toKeep;
         if (existingPos > currentPos) {
-            toRemove = existingMapping;
-            toKeep = mapping;
+          toRemove = existingMapping;
+          toKeep = mapping;
         } else {
-            toRemove = mapping;
-            toKeep = existingMapping;
+          toRemove = mapping;
+          toKeep = existingMapping;
         }
 
-        const removedPos = toRemove.getDataValue("positionInPlaylist") as number;
-        
-        logger.info("dedup: found duplicate in None playlist during canonicalization", {
-          originalUrl,
-          canonUrl,
-          removedPos,
-        });
+        const removedPos = toRemove.getDataValue(
+          "positionInPlaylist",
+        ) as number;
+
+        logger.info(
+          "dedup: found duplicate in None playlist during canonicalization",
+          {
+            originalUrl,
+            canonUrl,
+            removedPos,
+          },
+        );
 
         await toRemove.destroy({ transaction });
-        
+
         await PlaylistVideoMapping.decrement("positionInPlaylist", {
           by: 1,
           where: {
@@ -278,40 +289,58 @@ export async function canonicalizeVideoUrlsInNonePlaylist(siteFilter?: string): 
         });
 
         if (toKeep === mapping) {
-            const meta = await VideoMetadata.findOne({ where: { videoUrl: originalUrl }, transaction });
-            const existingMeta = await VideoMetadata.findOne({ where: { videoUrl: canonUrl }, transaction });
+          const meta = await VideoMetadata.findOne({
+            where: { videoUrl: originalUrl },
+            transaction,
+          });
+          const existingMeta = await VideoMetadata.findOne({
+            where: { videoUrl: canonUrl },
+            transaction,
+          });
 
-            if (!existingMeta) {
-               if (meta) {
-                 await meta.update({ videoUrl: canonUrl }, { transaction }); // cascades
-               } else {
-                 await mapping.update({ videoUrl: canonUrl }, { transaction });
-               }
-            } else {
-               await mapping.update({ videoUrl: canonUrl }, { transaction });
-               if (meta) await meta.destroy({ transaction }); 
-            }
-        } else {
-            const meta = await VideoMetadata.findOne({ where: { videoUrl: originalUrl }, transaction });
+          if (!existingMeta) {
             if (meta) {
-               await meta.destroy({ transaction });
+              await meta.update({ videoUrl: canonUrl }, { transaction }); // cascades
+            } else {
+              await mapping.update({ videoUrl: canonUrl }, { transaction });
             }
+          } else {
+            await mapping.update({ videoUrl: canonUrl }, { transaction });
+            if (meta) await meta.destroy({ transaction });
+          }
+        } else {
+          const meta = await VideoMetadata.findOne({
+            where: { videoUrl: originalUrl },
+            transaction,
+          });
+          if (meta) {
+            await meta.destroy({ transaction });
+          }
         }
       } else {
-        logger.debug("dedup: canonicalizing url in None playlist", { originalUrl, canonUrl });
-        
-        const meta = await VideoMetadata.findOne({ where: { videoUrl: originalUrl }, transaction });
-        const existingMeta = await VideoMetadata.findOne({ where: { videoUrl: canonUrl }, transaction });
-        
+        logger.debug("dedup: canonicalizing url in None playlist", {
+          originalUrl,
+          canonUrl,
+        });
+
+        const meta = await VideoMetadata.findOne({
+          where: { videoUrl: originalUrl },
+          transaction,
+        });
+        const existingMeta = await VideoMetadata.findOne({
+          where: { videoUrl: canonUrl },
+          transaction,
+        });
+
         if (!existingMeta) {
-           if (meta) {
-             await meta.update({ videoUrl: canonUrl }, { transaction }); // cascades
-           } else {
-             await mapping.update({ videoUrl: canonUrl }, { transaction });
-           }
+          if (meta) {
+            await meta.update({ videoUrl: canonUrl }, { transaction }); // cascades
+          } else {
+            await mapping.update({ videoUrl: canonUrl }, { transaction });
+          }
         } else {
-           await mapping.update({ videoUrl: canonUrl }, { transaction });
-           if (meta) await meta.destroy({ transaction });
+          await mapping.update({ videoUrl: canonUrl }, { transaction });
+          if (meta) await meta.destroy({ transaction });
         }
       }
       await transaction.commit();

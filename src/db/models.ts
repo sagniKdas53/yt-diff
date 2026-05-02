@@ -289,9 +289,11 @@ export async function initializeDatabase() {
         "CREATE INDEX IF NOT EXISTS idx_playlist_metadata_title_trgm ON playlist_metadata USING gin (title gin_trgm_ops);",
       );
       await sequelize.query(
-        "CREATE INDEX IF NOT EXISTS idx_video_metadata_video_id ON video_metadata (\"videoId\");",
+        'CREATE INDEX IF NOT EXISTS idx_video_metadata_video_id ON video_metadata ("videoId");',
       );
-      logger.info("Trigram indexes and videoId index checked/created successfully");
+      logger.info(
+        "Trigram indexes and videoId index checked/created successfully",
+      );
     } catch (err) {
       logger.error("Failed to create indexes", {
         error: (err as Error).message,

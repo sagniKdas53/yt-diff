@@ -13,7 +13,10 @@ import {
   type ProcessLike,
   type SiteArgBuilder,
 } from "./src/handlers/pipeline/index.ts";
-import { processDedupUnlistedRequest, processDedupPlaylistsRequest } from "./src/handlers/pipeline/dedup.ts";
+import {
+  processDedupPlaylistsRequest,
+  processDedupUnlistedRequest,
+} from "./src/handlers/pipeline/dedup.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";

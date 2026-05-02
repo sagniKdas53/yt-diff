@@ -1,6 +1,10 @@
 import { config } from "../../config.ts";
 import { logger } from "../../logger.ts";
-import type { ProcessLike, DownloadProcessEntry, ListingProcessEntry } from "./types.ts";
+import type {
+  DownloadProcessEntry,
+  ListingProcessEntry,
+  ProcessLike,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Site canonicalizer registry
@@ -23,8 +27,6 @@ interface SiteCanonicalizer {
   canonicalize: (url: URL) => string;
 }
 
-
-
 /** YouTube video ID pattern (11 chars, base64url alphabet). */
 const YT_VIDEO_ID_RE = /[A-Za-z0-9_-]{11}/;
 
@@ -46,7 +48,9 @@ function extractYouTubeVideoId(url: URL): string | null {
   const v = url.searchParams.get("v");
   if (v && YT_VIDEO_ID_RE.test(v)) return v;
   // /shorts/ID  or  /embed/ID
-  const shortMatch = url.pathname.match(/\/(?:shorts|embed)\/([A-Za-z0-9_-]{11})/);
+  const shortMatch = url.pathname.match(
+    /\/(?:shorts|embed)\/([A-Za-z0-9_-]{11})/,
+  );
   if (shortMatch) return shortMatch[1];
   return null;
 }
@@ -57,11 +61,17 @@ const SITE_CANONICALIZERS: SiteCanonicalizer[] = [
   // -------------------------------------------------------------------------
   {
     name: "youtube",
-    match: (h) => [
-      "youtube.com", "www.youtube.com", "m.youtube.com", "www.m.youtube.com",
-      "youtu.be", "www.youtu.be",
-      "youtube-nocookie.com", "www.youtube-nocookie.com",
-    ].includes(h),
+    match: (h) =>
+      [
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "www.m.youtube.com",
+        "youtu.be",
+        "www.youtu.be",
+        "youtube-nocookie.com",
+        "www.youtube-nocookie.com",
+      ].includes(h),
     canonicalize: (url) => {
       const videoId = extractYouTubeVideoId(url);
       if (videoId) {
@@ -112,7 +122,6 @@ const SITE_CANONICALIZERS: SiteCanonicalizer[] = [
       return url.toString();
     },
   },
-
   // -------------------------------------------------------------------------
   // Add more site rules here as needed, e.g.:
   //
@@ -155,8 +164,6 @@ export function normalizeUrl(url: string): string {
   if (parsed.pathname.length > 1 && parsed.pathname.endsWith("/")) {
     parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   }
-
-
 
   // 4. Apply site-specific canonicalizer
   const rule = SITE_CANONICALIZERS.find((r) => r.match(parsed.hostname));
@@ -233,11 +240,16 @@ export function hasEphemeralThumbnails(videoUrl: string): boolean {
   // These sites commonly return signed thumbnail URLs that expire quickly, so
   // we avoid persisting them as stable metadata.
   const ephemeralHosts = ["facebook.com", "instagram.com", "pornhub.com"];
-  return ephemeralHosts.some((h) => hostname === h || hostname.endsWith("." + h));
+  return ephemeralHosts.some((h) =>
+    hostname === h || hostname.endsWith("." + h)
+  );
 }
 
 export function getProcessStates(processMap: Map<string, ProcessLike>) {
-  const states: Record<string, { status: string; type: string; lastActive: number }> = {};
+  const states: Record<
+    string,
+    { status: string; type: string; lastActive: number }
+  > = {};
   for (const [processId, process] of processMap.entries()) {
     states[processId] = {
       status: process.status,
@@ -301,7 +313,11 @@ export function cleanupStaleProcesses(
         !(idleTime > maxIdleTime) && !isErrorOnly
       ) {
         logger.info(
-          `Skipping cleanup for active list process ${processId} (age: ${Math.round(age / 1000)}s, last stdout: ${Math.round((now - lastStdoutActivity) / 1000)}s ago)`,
+          `Skipping cleanup for active list process ${processId} (age: ${
+            Math.round(age / 1000)
+          }s, last stdout: ${
+            Math.round((now - lastStdoutActivity) / 1000)
+          }s ago)`,
         );
         continue;
       }
@@ -337,7 +353,7 @@ export function cleanupStaleProcesses(
 
 export function createProcessManager(
   downloadProcesses: Map<string, DownloadProcessEntry>,
-  listProcesses: Map<string, ListingProcessEntry>
+  listProcesses: Map<string, ListingProcessEntry>,
 ) {
   function updateProcessActivity(processKey: string, isStdout = false) {
     const downloadEntry = downloadProcesses.get(processKey);

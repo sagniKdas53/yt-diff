@@ -1,5 +1,12 @@
-import type { DownloadProcessEntry, ListingProcessEntry, PipelineHandlerDependencies } from "./types.ts";
-import { createProcessManager, cleanupStaleProcesses } from "./process-manager.ts";
+import type {
+  DownloadProcessEntry,
+  ListingProcessEntry,
+  PipelineHandlerDependencies,
+} from "./types.ts";
+import {
+  cleanupStaleProcesses,
+  createProcessManager,
+} from "./process-manager.ts";
 import { createDownloadFlow } from "./download.ts";
 import { createListingFlow } from "./listing.ts";
 
@@ -10,7 +17,11 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
   const listProcesses = new Map<string, ListingProcessEntry>();
 
   const processManager = createProcessManager(downloadProcesses, listProcesses);
-  const downloadFlow = createDownloadFlow(deps, downloadProcesses, processManager);
+  const downloadFlow = createDownloadFlow(
+    deps,
+    downloadProcesses,
+    processManager,
+  );
   const listingFlow = createListingFlow(deps, listProcesses, processManager);
 
   return {
@@ -20,6 +31,7 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
     listItemsConcurrently: listingFlow.listItemsConcurrently,
     processDownloadRequest: downloadFlow.processDownloadRequest,
     processListingRequest: listingFlow.processListingRequest,
-    resetPendingPlaylistSortCounter: listingFlow.resetPendingPlaylistSortCounter,
+    resetPendingPlaylistSortCounter:
+      listingFlow.resetPendingPlaylistSortCounter,
   };
 }

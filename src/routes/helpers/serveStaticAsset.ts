@@ -47,7 +47,9 @@ export function serveStaticAsset(
     return true;
   }
 
-  const resHeaders = generateCorsHeaders(staticAssets[assetPath]!.type) as Record<
+  const resHeaders = generateCorsHeaders(
+    staticAssets[assetPath]!.type,
+  ) as Record<
     string,
     string | number
   >;
