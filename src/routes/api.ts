@@ -34,7 +34,8 @@ interface ApiRouteDependencies {
   refreshSignedUrls: BodyHandler;
   makeSignedUrls: BodyHandler;
   processReindexAllRequest: BodyHandler;
-  processDedupRequest: BodyHandler;
+  processDedupUnlistedRequest: BodyHandler;
+  processDedupPlaylistsRequest: BodyHandler;
 }
 
 export function createApiRoutes({
@@ -55,7 +56,8 @@ export function createApiRoutes({
   refreshSignedUrls,
   makeSignedUrls,
   processReindexAllRequest,
-  processDedupRequest,
+  processDedupUnlistedRequest,
+  processDedupPlaylistsRequest,
 }: ApiRouteDependencies): RouteDefinition[] {
   return [
     {
@@ -146,9 +148,15 @@ export function createApiRoutes({
     },
     {
       method: "POST",
-      path: config.urlBase + "/dedup",
+      path: config.urlBase + "/dedup-unlisted",
       run: (req, res) =>
-        authenticateRequest(req, res, processDedupRequest),
+        authenticateRequest(req, res, processDedupUnlistedRequest),
+    },
+    {
+      method: "POST",
+      path: config.urlBase + "/dedup-playlists",
+      run: (req, res) =>
+        authenticateRequest(req, res, processDedupPlaylistsRequest),
     },
     {
       method: "POST",

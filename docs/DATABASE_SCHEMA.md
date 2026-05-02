@@ -103,6 +103,11 @@ or generic collections.
 | **`lastUpdatedByScheduler`**      | `DATE`    | Timestamp marking the last precise moment the background cron job executed against this URL. |
 | **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                              |
 
+> [!NOTE]
+> **Pseudo-Playlists**: There are a few reserved `playlistUrl` values that do not represent actual playlists:
+> - **`None`**: Used for individual videos that were downloaded without a playlist context (unlisted).
+> - **`init`**: A frontend-only placeholder value signifying that no specific playlist needs to be loaded by default. This should not be treated as a real playlist in backend processing.
+
 ---
 
 ## 3. `PlaylistVideoMapping` (playlist_video_mapping)
