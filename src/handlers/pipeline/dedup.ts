@@ -113,9 +113,12 @@ export function canonicalizeVideoUrl(urlStr: string): string {
 export function canonicalizePlaylistUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
+    const hostname = url.hostname.toLowerCase();
+    const hostMatches = (host: string, base: string): boolean =>
+      host === base || host.endsWith(`.${base}`);
 
     if (
-      url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")
+      hostMatches(hostname, "youtube.com") || hostMatches(hostname, "youtu.be")
     ) {
       url.hostname = "www.youtube.com";
       const list = url.searchParams.get("list");
@@ -125,10 +128,10 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
       } else if (url.pathname === "/playlist") {
         url.search = "";
       }
-    } else if (url.hostname.includes("iwara.tv")) {
+    } else if (hostMatches(hostname, "iwara.tv")) {
       url.searchParams.delete("sort");
       url.searchParams.delete("page");
-    } else if (url.hostname.includes("spankbang.com")) {
+    } else if (hostMatches(hostname, "spankbang.com")) {
       url.searchParams.delete("o");
       url.searchParams.delete("p");
       const parts = url.pathname.split("/").filter(Boolean);
@@ -137,7 +140,7 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
         if (pid.endsWith("-nohrcs")) pid = pid.replace("-nohrcs", "");
         url.pathname = `/${pid}/playlist`;
       }
-    } else if (url.hostname.includes("xhamster.com")) {
+    } else if (hostMatches(hostname, "xhamster.com")) {
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts.length >= 2 && parts[0] === "creators") {
         url.pathname = `/creators/${parts[1]}`;
@@ -145,7 +148,7 @@ export function canonicalizePlaylistUrl(urlStr: string): string {
     }
 
     if (
-      url.hostname.includes("x.com") || url.hostname.includes("twitter.com")
+      hostMatches(hostname, "x.com") || hostMatches(hostname, "twitter.com")
     ) {
       url.searchParams.set("s", "20");
     }
