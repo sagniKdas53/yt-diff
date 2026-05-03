@@ -57,12 +57,17 @@ export interface DeduplicateResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+function isHostOrSubdomain(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
 export function canonicalizeVideoUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
 
     if (
-      url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")
+      isHostOrSubdomain(url.hostname, "youtube.com") ||
+      isHostOrSubdomain(url.hostname, "youtu.be")
     ) {
       url.hostname = "www.youtube.com";
       if (url.pathname.startsWith("/shorts/")) {
@@ -78,28 +83,29 @@ export function canonicalizeVideoUrl(urlStr: string): string {
       const v = url.searchParams.get("v");
       url.search = "";
       if (v) url.searchParams.set("v", v);
-    } else if (url.hostname.includes("iwara.tv")) {
+    } else if (isHostOrSubdomain(url.hostname, "iwara.tv")) {
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts.length >= 2 && parts[0] === "video") {
         url.pathname = `/video/${parts[1]}`;
       }
       url.search = "";
-    } else if (url.hostname.includes("spankbang.com")) {
+    } else if (isHostOrSubdomain(url.hostname, "spankbang.com")) {
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts.length >= 2 && parts[1] === "video") {
         url.pathname = `/${parts[0]}/video`;
       }
       url.search = "";
-    } else if (url.hostname.includes("xhamster.com")) {
+    } else if (isHostOrSubdomain(url.hostname, "xhamster.com")) {
       url.search = "";
-    } else if (url.hostname.includes("pornhub.com")) {
+    } else if (isHostOrSubdomain(url.hostname, "pornhub.com")) {
       const viewkey = url.searchParams.get("viewkey");
       url.search = "";
       if (viewkey) url.searchParams.set("viewkey", viewkey);
     }
 
     if (
-      url.hostname.includes("x.com") || url.hostname.includes("twitter.com")
+      isHostOrSubdomain(url.hostname, "x.com") ||
+      isHostOrSubdomain(url.hostname, "twitter.com")
     ) {
       url.searchParams.set("s", "20");
     }
