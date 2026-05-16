@@ -64,7 +64,7 @@ services:
       retries: 5
 
   yt-diff:
-    image: ghcr.io/sagnikdas53/yt-diff:master
+    image: yt-diff:local
     container_name: yt-diff
     restart: unless-stopped
     build:
@@ -176,7 +176,7 @@ services:
       retries: 3
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:8.1.6-alpine
     container_name: valkey
     restart: always
     networks:
@@ -195,7 +195,7 @@ services:
   pgbackups:
     container_name: pgbackups
     user: postgres:postgres
-    image: prodrigestivill/postgres-backup-local
+    image: prodrigestivill/postgres-backup-local:18-debian-d257e5d
     restart: always
     volumes:
       - type: bind
@@ -221,7 +221,7 @@ services:
       - HEALTHCHECK_PORT=8080
 
   pgadmin:
-    image: dpage/pgadmin4
+    image: dpage/pgadmin4:9.14.0
     container_name: pgadmin4
     restart: always
     ports:
@@ -261,7 +261,7 @@ services:
       retries: 5
 
   gluetun:
-    image: qmcgaw/gluetun
+    image: qmcgaw/gluetun:v3.41.1
     container_name: gluetun
     networks:
       - revProxy-net
