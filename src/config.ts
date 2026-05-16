@@ -70,6 +70,7 @@ export interface AppConfig {
   saveThumbnail: boolean;
   restrictFilenames: boolean;
   maxFileNameLength: number;
+  forceOverwrites: boolean;
   logLevel: string;
   logDisableColors: boolean;
   maxTitleLength: number;
@@ -186,6 +187,7 @@ export const config: AppConfig = {
   saveThumbnail: Deno.env.get("SAVE_THUMBNAIL") !== "false",
   restrictFilenames: Deno.env.get("RESTRICT_FILENAMES") !== "false",
   maxFileNameLength: +(Deno.env.get("MAX_FILENAME_LENGTH") || NaN),
+  forceOverwrites: Deno.env.get("FORCE_OVERWRITES") === "true",
   logLevel: (Deno.env.get("LOG_LEVELS") || "trace").toLowerCase(),
   logDisableColors: Deno.env.get("NO_COLOR") === "true",
   maxTitleLength: 255,

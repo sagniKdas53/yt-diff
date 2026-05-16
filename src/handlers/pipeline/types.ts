@@ -32,6 +32,10 @@ if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
   downloadOptions.push(`${config.maxFileNameLength}`);
 }
 
+if (config.forceOverwrites) {
+  downloadOptions.push("--force-overwrites");
+}
+
 export interface ManagedProcess {
   pid: number;
   readonly killed: boolean;
