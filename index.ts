@@ -367,7 +367,7 @@ const siteArgBuilders: SiteArgBuilder[] = [
 
 export function buildSiteArgs(url: string, config: AppConfig): string[] {
   const args = siteArgBuilders.flatMap((builder) => builder(url, config));
-  if (config.proxy_string && !isSiteIwaraDotTv(url)) {
+  if (config.proxy_string) {
     args.push("--proxy", config.proxy_string as string);
   }
   return args;
