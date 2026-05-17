@@ -106,8 +106,8 @@ ghcr.io/sagnikdas53/yt-diff:master
 git clone --recurse-submodules https://github.com/sagniKdas53/yt-diff.git
 cd yt-diff
 
-# Install backend deps
-deno install
+# Warm the backend dependency cache
+deno cache --lock=deno.lock --lock-write index.ts
 
 # Build frontend
 cd frontend && npm install && npm run build && cd ..
