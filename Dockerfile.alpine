@@ -67,22 +67,22 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
-COPY package.json ./
 COPY deno.lock ./
 COPY deno.json ./
 COPY index.ts ./
+COPY src ./src
 
 # Create a non-root user and group for running the application
 # Alpine uses addgroup/adduser instead of groupadd/useradd
-RUN addgroup -S -g 1000 ytdiff && \
-    adduser -S -u 1000 -G ytdiff -s /sbin/nologin ytdiff && \
+RUN addgroup -g 1000 ytdiff && \
+    adduser -D -u 1000 -G ytdiff -s /sbin/nologin ytdiff && \
     # Create cache directory with proper permissions
     mkdir -p /home/ytdiff/.cache/yt-dlp && \
     chown -R ytdiff:ytdiff /home/ytdiff && \
     # Ensure the app directory exists and set ownership
     mkdir -p /app && chown -R ytdiff:ytdiff /app && \
-    # Deno install packages in the same layer
-    deno install
+    # Warm the Deno dependency cache using the checked-in lockfile.
+    deno cache --lock=deno.lock index.ts
 
 USER ytdiff
 
