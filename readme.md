@@ -107,7 +107,7 @@ git clone --recurse-submodules https://github.com/sagniKdas53/yt-diff.git
 cd yt-diff
 
 # Warm the backend dependency cache
-deno cache --lock=deno.lock --lock-write index.ts
+deno cache --lock=deno.lock index.ts
 
 # Build frontend
 cd frontend && npm install && npm run build && cd ..
