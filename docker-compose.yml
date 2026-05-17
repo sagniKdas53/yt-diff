@@ -175,7 +175,7 @@ services:
       retries: 3
 
   valkey:
-    image: valkey/valkey:8.1.6-alpine
+    image: valkey/valkey:8.1.7-alpine
     container_name: valkey
     restart: always
     networks:
