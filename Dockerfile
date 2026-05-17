@@ -135,7 +135,6 @@ COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
 COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
-COPY package.json ./
 COPY deno.lock ./
 COPY deno.json ./
 COPY index.ts ./
@@ -149,8 +148,8 @@ RUN groupadd ytdiff --gid=1000 && \
     chown -R ytdiff:ytdiff /home/ytdiff && \
     # Ensure the app directory exists and set ownership
     mkdir -p /app && chown -R ytdiff:ytdiff /app && \
-    # Deno install packages in the same layer
-    deno install
+    # Warm and refresh the Deno dependency lock during the image build.
+    deno cache --lock=deno.lock --lock-write index.ts
 
 USER ytdiff
 
