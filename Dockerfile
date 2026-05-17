@@ -135,7 +135,6 @@ COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
 COPY --from=frontend-builder /app/dist ./dist
 
 # Copy backend application files
-COPY package.json ./
 COPY deno.lock ./
 COPY deno.json ./
 COPY index.ts ./
@@ -143,14 +142,14 @@ COPY src ./src
 
 # Create a non-root user and group for running the application
 RUN groupadd ytdiff --gid=1000 && \
-    useradd --system --shell /bin/false --gid 1000 --uid 1000 --home /home/ytdiff ytdiff && \
+    useradd --shell /usr/sbin/nologin --gid 1000 --uid 1000 --home /home/ytdiff --create-home ytdiff && \
     # Create cache directory with proper permissions
     mkdir -p /home/ytdiff/.cache/yt-dlp && \
     chown -R ytdiff:ytdiff /home/ytdiff && \
     # Ensure the app directory exists and set ownership
     mkdir -p /app && chown -R ytdiff:ytdiff /app && \
-    # Deno install packages in the same layer
-    deno install
+    # Warm the Deno dependency cache using the checked-in lockfile.
+    deno cache --lock=deno.lock index.ts
 
 USER ytdiff
 

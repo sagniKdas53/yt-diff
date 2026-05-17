@@ -71,7 +71,7 @@ cd yt-diff
 ### 2. Install Backend Dependencies
 
 ```bash
-deno install
+deno cache --lock=deno.lock index.ts
 ```
 
 ### 3. Build the Frontend
