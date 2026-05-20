@@ -33,7 +33,7 @@ volumes:
 
 services:
   yt-db:
-    image: postgres:16.2-alpine3.19
+    image: postgres:16.6-alpine3.19
     # postgres:14.10-alpine3.18
     container_name: yt-db
     ports:
