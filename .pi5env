@@ -4,3 +4,6 @@ LOG_LEVELS=trace
 HOST_SAVE_PATH=/mnt/nvme/stuff/yt-diff/
 DB_BACKUP_LOCATION=/mnt/nvme/stuff/misc/yt-db/
 HOST_COOKIES_FILE=/home/pi5/Documents/docker-composes/yt-diff/cookie_secret.txt
+SERVICE_PROVIDER_VPN=nordvpn
+FREE=off
+SERVER_COUNTRIES_PREFERRED=Japan
