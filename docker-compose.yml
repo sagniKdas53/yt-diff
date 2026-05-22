@@ -33,8 +33,7 @@ volumes:
 
 services:
   yt-db:
-    image: postgres:16.2-alpine3.19
-    # postgres:14.10-alpine3.18
+    image: postgres:16-alpine
     container_name: yt-db
     ports:
       - 5432:5432
@@ -175,7 +174,7 @@ services:
       retries: 3
 
   valkey:
-    image: valkey/valkey:8.1.7-alpine
+    image: valkey/valkey:9-alpine
     container_name: valkey
     restart: always
     networks:
@@ -220,7 +219,7 @@ services:
       - HEALTHCHECK_PORT=8080
 
   pgadmin:
-    image: dpage/pgadmin4:9.15.0
+    image: dpage/pgadmin4:9
     container_name: pgadmin4
     restart: always
     ports:
@@ -260,7 +259,7 @@ services:
       retries: 5
 
   gluetun:
-    image: qmcgaw/gluetun:v3.41.1
+    image: qmcgaw/gluetun:v3
     container_name: gluetun
     networks:
       - revProxy-net
@@ -275,7 +274,7 @@ services:
       - OPENVPN_USER_SECRETFILE=/run/secrets/openvpn_user
       - OPENVPN_PASSWORD_SECRETFILE=/run/secrets/openvpn_password
       - SERVER_COUNTRIES=${SERVER_COUNTRIES_PREFERRED}
-      #- FREE_ONLY=${FREE}
+      - FREE_ONLY=${FREE}
       - Tz=${TZ_PREFERRED}
       - HTTPPROXY=${HTTP_PROXY}
       - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}

@@ -1,17 +1,17 @@
-node_modules/
-migration-scripts/*.csv
-migration-scripts/*.sql
-yt-data/
-dist/
-logs/
-venv/
-.venv/
-ssl/
-.git/
-.vscode/
-.github/
-.kilo/
-docs/
-tests/
-*.log
-*.md
+# 1. Ignore everything globally
+*
+
+# 2. Allow your backend files
+!deno.lock
+!deno.json
+!index.ts
+!src/
+
+# 3. Allow the frontend folder
+!frontend/
+
+# 4. Block the massive frontend development folders
+frontend/node_modules
+frontend/dist
+frontend/.git
+frontend/.vscode
