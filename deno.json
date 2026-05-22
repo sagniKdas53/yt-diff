@@ -7,7 +7,7 @@
         "he": "npm:he@1.2.0",
         "ioredis": "npm:ioredis@5.10.1",
         "jsonwebtoken": "npm:jsonwebtoken@9.0.3",
-        "pg": "npm:pg@8.20.0",
+        "pg": "npm:pg@8.21.0",
         "sequelize": "npm:sequelize@6.37.8",
         "socket.io": "npm:socket.io@4.8.3",
         "zod": "npm:zod@4.4.3"
