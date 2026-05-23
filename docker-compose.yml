@@ -198,7 +198,8 @@ services:
     links:
       - yt-db
     depends_on:
-      - yt-db
+      yt-db:
+        condition: service_healthy
     secrets:
       - db_password
     networks:
