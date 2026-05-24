@@ -79,8 +79,12 @@ services:
     depends_on:
       yt-db:
         condition: service_healthy
-      valkey:
-        condition: service_healthy
+      # Disabled: Watchtower doesn't respect depends_on ordering during
+      # rolling restarts, which can cause yt-diff to fail if valkey is
+      # restarted first. Safe to skip since valkey is ephemeral cache
+      # only — a brief restart causes no data loss.
+      # valkey:
+      #   condition: service_healthy
     networks:
       - revProxy-net
     ports:
