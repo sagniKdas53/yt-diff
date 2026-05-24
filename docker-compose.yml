@@ -79,12 +79,8 @@ services:
     depends_on:
       yt-db:
         condition: service_healthy
-      # Disabled: Watchtower doesn't respect depends_on ordering during
-      # rolling restarts, which can cause yt-diff to fail if valkey is
-      # restarted first. Safe to skip since valkey is ephemeral cache
-      # only — a brief restart causes no data loss.
-      # valkey:
-      #   condition: service_healthy
+      valkey:
+        condition: service_healthy
     networks:
       - revProxy-net
     ports:
@@ -218,6 +214,8 @@ services:
       - SCHEDULE=@daily
       - BACKUP_KEEP_DAYS=7
       - HEALTHCHECK_PORT=8080
+    # This won't be needing any labels as it's not going to be updated automatically by Watchtower
+    # and since it's healthchecks keep failing autoheal is not needed either, nither is traefik monitoring
 
   pgadmin:
     image: dpage/pgadmin4:9
