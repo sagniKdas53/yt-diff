@@ -350,7 +350,8 @@ const siteArgBuilders: SiteArgBuilder[] = [
   // iwara.tv
   (url, config) => {
     if (isSiteIwaraDotTv(url)) {
-      const args = ["--impersonate", "Chrome-133"];
+      const args = [];
+      //["--impersonate", "Chrome-133"];
       if (config.iwara && config.iwara.username && config.iwara.password) {
         args.push(
           "--username",
