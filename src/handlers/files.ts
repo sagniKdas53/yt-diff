@@ -194,7 +194,7 @@ export function createFileHandlers({
       );
     }
 
-    const results: Record<string, RefreshedSignedFileResponseEntry | null> = {};
+    const results = new Map<string, RefreshedSignedFileResponseEntry | null>();
     const now = Date.now();
 
     for (const fileId of requestBody.fileIds) {
@@ -204,7 +204,7 @@ export function createFileHandlers({
 
       const cachedEntry = await redis.get(`signed:${fileId}`);
       if (!cachedEntry) {
-        results[fileId] = null;
+        results.set(fileId, null);
         continue;
       }
 
@@ -219,11 +219,11 @@ export function createFileHandlers({
         config.cache.maxAge,
       );
 
-      results[fileId] = { expiry };
+      results.set(fileId, { expiry });
     }
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    return response.end(JSON.stringify({ status: "success", files: results }));
+    return response.end(JSON.stringify({ status: "success", files: Object.fromEntries(results) }));
   }
 
   async function makeSignedUrls(
@@ -242,7 +242,7 @@ export function createFileHandlers({
       );
     }
 
-    const results: Record<string, BulkSignedFileResponseEntry | null> = {};
+    const results = new Map<string, BulkSignedFileResponseEntry | null>();
     const now = Date.now();
 
     for (const file of requestBody.files) {
@@ -258,7 +258,7 @@ export function createFileHandlers({
       const saveRoot = resolve(config.saveLocation);
 
       if (!isWithinPath(saveRoot, resolvedPath) || !existsSync(resolvedPath)) {
-        results[fileName] = null;
+        results.set(fileName, null);
         continue;
       }
 
@@ -276,14 +276,14 @@ export function createFileHandlers({
         config.cache.maxAge,
       );
 
-      results[fileName] = {
+      results.set(fileName, {
         signedUrlId,
         expiry,
-      };
+      });
     }
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({ status: "success", files: results }));
+    response.end(JSON.stringify({ status: "success", files: Object.fromEntries(results) }));
   }
 
   return {

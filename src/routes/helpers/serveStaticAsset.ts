@@ -35,7 +35,7 @@ export function serveStaticAsset(
   const assetPath = req.url;
   const reqEncoding = req.headers["accept-encoding"] || "";
 
-  if (!assetPath || !staticAssets[assetPath]) {
+  if (!assetPath || !Object.hasOwn(staticAssets, assetPath)) {
     logger.error("Requested Resource couldn't be found", {
       url: req.url,
       method: req.method,
@@ -53,18 +53,21 @@ export function serveStaticAsset(
     string,
     string | number
   >;
-  if (reqEncoding.includes("br") && staticAssets[assetPath + ".br"]) {
+  const brKey = assetPath + ".br";
+  const gzKey = assetPath + ".gz";
+
+  if (reqEncoding.includes("br") && Object.hasOwn(staticAssets, brKey)) {
     resHeaders["Content-Encoding"] = "br";
     res.writeHead(200, resHeaders);
-    res.write(staticAssets[assetPath + ".br"].file);
+    res.write(staticAssets[brKey].file);
     res.end();
     return true;
   }
 
-  if (reqEncoding.includes("gzip") && staticAssets[assetPath + ".gz"]) {
+  if (reqEncoding.includes("gzip") && Object.hasOwn(staticAssets, gzKey)) {
     resHeaders["Content-Encoding"] = "gzip";
     res.writeHead(200, resHeaders);
-    res.write(staticAssets[assetPath + ".gz"].file);
+    res.write(staticAssets[gzKey].file);
     res.end();
     return true;
   }

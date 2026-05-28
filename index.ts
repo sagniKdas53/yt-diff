@@ -517,14 +517,23 @@ function getFiles(dir: string): Array<{ filePath: string; extension: string }> {
  * @return {Object<string, {file: Uint8Array, type: string}>} - The dictionary of static assets, where the key is the file path and the value is an object containing the file content and its type.
  */
 function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
+  // Use Object.create(null) to create a prototype-free dictionary, preventing
+  // any possibility of prototype pollution through bracket notation keys.
   const staticAssets: Record<
     string,
     { file: Uint8Array | string; type: string }
-  > = {};
+  > = Object.create(null) as Record<
+    string,
+    { file: Uint8Array | string; type: string }
+  >;
+  const fallbackMime = "application/octet-stream";
   fileList.forEach((element) => {
+    const mimeType = Object.hasOwn(MIME_TYPES, element.extension)
+      ? MIME_TYPES[element.extension]
+      : fallbackMime;
     staticAssets[element.filePath.replace("dist", config.urlBase)] = {
       file: readFileSync(element.filePath),
-      type: MIME_TYPES[element.extension],
+      type: mimeType,
     };
   });
   staticAssets[`${config.urlBase}/`] =
