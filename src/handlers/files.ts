@@ -48,7 +48,7 @@ export function createFileHandlers({
   redis,
 }: FileHandlerDependencies) {
   const jsonMimeType = MIME_TYPES[".json"];
-  const mimeTypes = MIME_TYPES;
+  const mimeTypes = new Map<string, string>(Object.entries(MIME_TYPES));
   async function makeSignedUrl(
     requestBody: SignedFileRequestBody,
     response: HttpResponseLike,
@@ -123,7 +123,7 @@ export function createFileHandlers({
       `signed:${signedUrlId}`,
       JSON.stringify({
         filePath: absolutePath,
-        mimeType: mimeTypes[extname(absolutePath)] ||
+        mimeType: mimeTypes.get(extname(absolutePath)) ||
           "application/octet-stream",
         expiry,
       }),
