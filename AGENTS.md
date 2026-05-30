@@ -7,7 +7,8 @@ The backend entry point is [`index.ts`](index.ts). Docker and deployment files l
 Use the Makefile for container workflows:
 
 ```bash
-make up        # Start the stack with local env files
+make local     # Generate .env from base.env + local.env
+make pi5       # Generate .env from base.env + pi5.env
 make build     # Rebuild images without cache
 make check     # Validate the Compose configuration
 make logs      # Follow service logs
@@ -26,7 +27,7 @@ Tests are integration-heavy and run against a containerized stack. Keep test cas
 Recent commits use short, imperative messages with optional prefixes like `feat:`, `fix:`, `refactor:`, and `chore:`. Keep commits scoped to one concern and describe the user-visible effect. PRs should explain what changed, why it changed, and how it was verified. Include screenshots for frontend work and note any new environment variables, secrets, or Docker changes.
 
 ## Security & Configuration Tips
-Do not commit secrets or local overrides. This repository relies on files such as `.env`, `.localenv`, and secret files like `secret_key.txt` and `db_password.txt`; keep them local and out of version control. When changing Compose settings, verify the result with `make check` before merging.
+Do not commit secrets or generated local overrides. This repository relies on `base.env`, deployment env files such as `local.env` and `pi5.env`, the generated `.env`, and secret files like `secret_key.txt` and `db_password.txt`; keep secrets local and keep the generated `.env` out of version control. When changing Compose settings, verify the result with `make check` before merging.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

@@ -90,7 +90,8 @@ The built assets land in `dist/` and are served as static files by the backend.
 Run them via Docker (simplest option):
 
 ```bash
-docker compose --env-file .env --env-file .localenv up -d yt-db valkey
+make local
+docker compose up -d yt-db valkey
 ```
 
 Or install them natively and ensure they're running on the default ports
@@ -157,14 +158,16 @@ cd yt-diff
 
 ### 2. Configure Environment
 
-Edit the `.env` file — the key variables to customize:
+Edit `base.env` for shared defaults and `local.env`/`pi5.env`/`pi4.env` for deployment-specific values:
 
 ```ini
-# Server identity
+# Shared defaults live in base.env
 PROTOCOL=https
 PORT=8888
-HOSTNAME=your.hostname.here
 BASE_URL=/ytdiff
+
+# Deployment-specific values live in local.env, pi5.env, or pi4.env
+HOSTNAME=your.hostname.here
 
 # Paths (host machine)
 HOST_SAVE_PATH=/path/to/your/video/storage
@@ -192,14 +195,16 @@ described in [Option A, Step 5](#5-configure-secrets).
 Using the pre-built image from GHCR:
 
 ```bash
-make up
+make local
+docker compose up -d
 ```
 
 Or build locally:
 
 ```bash
+make local
 make build
-make up
+docker compose up -d
 ```
 
 This starts all services: `yt-db`, `valkey`, `yt-diff`, `pgbackups`, `pgadmin`,

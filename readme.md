@@ -62,9 +62,12 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
    cd yt-diff
    ```
 
-2. **Configure environment** — edit `.env` with your paths and preferences:
+2. **Configure environment** — edit `base.env` for shared defaults and the deployment env file for host-specific values:
 
    ```ini
+   # base.env holds shared defaults
+
+   # local.env / pi5.env / pi4.env hold deployment-specific values
    HOSTNAME=your.hostname.here
    HOST_SAVE_PATH=/path/to/video/storage
    DB_LOCATION=/path/to/postgres/data
@@ -80,19 +83,24 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
    | `proxy_string.txt` | *(optional)* HTTP proxy URL |
    | `iwara.json` | *(optional)* `{"username": "...", "password": "..."}` |
 
-4. **Start everything**
+4. **Generate `.env` for your deployment**
 
    ```bash
-   # Using pre-built image from GHCR
-   make up
-
-   # Or build locally
-   make build && make up
+   make local   # or: make pi5 / make pi4
    ```
 
-5. **Verify** — `curl http://localhost:8888/ytdiff/ping` should return `pong`
+5. **Start everything**
 
-6. **Register** — open the web UI and create your first user account.
+   ```bash
+   docker compose up -d
+
+   # Or build locally
+   make local && make build && docker compose up -d
+   ```
+
+6. **Verify** — `curl http://localhost:8888/ytdiff/ping` should return `pong`
+
+7. **Register** — open the web UI and create your first user account.
 
 ### Pre-built Image
 
@@ -112,8 +120,9 @@ deno cache --lock=deno.lock index.ts
 # Build frontend
 cd frontend && npm install && npm run build && cd ..
 
-# Start Postgres + Valkey
-docker compose --env-file .env --env-file .localenv up -d yt-db valkey
+# Generate deployment env once, then start Postgres + Valkey
+make local
+docker compose up -d yt-db valkey
 
 # Run the server (pick one)
 deno task dev          # basic
@@ -209,11 +218,12 @@ Three automated cron jobs run in the background:
 ## Makefile Commands
 
 ```bash
-make up                    # Start all containers
-make up CONTAINER=yt-diff  # Start a specific container
-make up-remote             # Start with remote env overrides
+make local                 # Generate .env from base.env + local.env
+make pi5                   # Generate .env from base.env + pi5.env
+make pi4                   # Generate .env from base.env + pi4.env
+make env TARGET=pi5        # Regenerate .env for a deployment and validate it
 make build                 # Build without cache
-make check                 # Validate compose config
+make check                 # Validate compose config using generated .env
 make down                  # Stop all containers
 make logs                  # Follow container logs
 ```

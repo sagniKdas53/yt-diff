@@ -1,24 +1,52 @@
-.PHONY: local pi4 pi5 build check down logs
-COMPOSE_ENV_FILES = --env-file .env --env-file .localenv $(if $(ENV_FILE),--env-file $(ENV_FILE),)
-# Usage: make local CONTAINER=yt-db or make up to start all containers
+.PHONY: env local pi4 pi5 build check down logs
+
+TARGET ?= local
+TARGET_ENV = $(TARGET).env
+GENERATED_ENV = .env
+REQUIRED_ENV_VARS = DB_LOCATION HOSTNAME LOG_LEVELS HOST_SAVE_PATH DB_BACKUP_LOCATION HOST_COOKIES_FILE
+
+env:
+	@test -f base.env || { echo "Missing base.env"; exit 1; }
+	@test -f $(TARGET_ENV) || { echo "Missing $(TARGET_ENV)"; exit 1; }
+	@awk -F= ' \
+		!/^[[:space:]]*#/ && NF >= 2 { \
+			key = $$1; \
+			sub(/^[[:space:]]+/, "", key); \
+			sub(/[[:space:]]+$$/, "", key); \
+			if (!(key in seen)) order[++count] = key; \
+			seen[key] = 1; \
+			line[key] = $$0; \
+			next; \
+		} \
+		{ extra[++extra_count] = $$0 } \
+		END { \
+			for (i = 1; i <= extra_count; i++) if (extra[i] == "") print extra[i]; \
+			for (i = 1; i <= count; i++) print line[order[i]]; \
+		} \
+	' base.env $(TARGET_ENV) > $(GENERATED_ENV)
+	@for var in $(REQUIRED_ENV_VARS); do \
+		grep -q "^$$var=" $(GENERATED_ENV) || { echo "Missing required env var: $$var"; rm -f $(GENERATED_ENV); exit 1; }; \
+	done
+	@docker compose config >/dev/null || { echo "Generated .env is invalid"; rm -f $(GENERATED_ENV); exit 1; }
+	@echo "Generated $(GENERATED_ENV) from base.env + $(TARGET_ENV)"
+
 local:
-	docker compose --env-file .env --env-file .localenv up -d --build $(CONTAINER)
+	@$(MAKE) env TARGET=local
 
 pi5:
-	docker compose --env-file .env --env-file .pi5env up -d --build $(CONTAINER)
+	@$(MAKE) env TARGET=pi5
 
 pi4:
-	docker compose --env-file .env --env-file .pi4env up -d --build $(CONTAINER)	
+	@$(MAKE) env TARGET=pi4
 
-# You can specify which env file to use when building, for example: make build ENV_FILE=.pi5env
 build:
-	docker compose $(COMPOSE_ENV_FILES) build --no-cache
+	docker compose build --no-cache
 
 check:
-	docker compose $(COMPOSE_ENV_FILES) config
+	docker compose config
 
 down:
-	docker compose $(COMPOSE_ENV_FILES) down
+	docker compose down
 
 logs:
-	docker compose $(COMPOSE_ENV_FILES) logs -f
+	docker compose logs -f

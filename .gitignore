@@ -24,3 +24,4 @@ youtube_refresh_token.txt
 youtube_api_key.txt
 pg_admin_*.txt
 .claude
+.env
