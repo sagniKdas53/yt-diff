@@ -368,7 +368,9 @@ const siteArgBuilders: SiteArgBuilder[] = [
 
 export function buildSiteArgs(url: string, config: AppConfig): string[] {
   const args = siteArgBuilders.flatMap((builder) => builder(url, config));
-  if (config.proxy_string) {
+  // Skip proxy for iwara.tv — Cloudflare blocks VPN/datacenter IPs,
+  // causing 503 tunnel failures. Iwara works fine via direct connection.
+  if (config.proxy_string && !isSiteIwaraDotTv(url)) {
     args.push("--proxy", config.proxy_string as string);
   }
   return args;
