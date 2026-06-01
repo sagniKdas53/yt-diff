@@ -252,7 +252,7 @@ export function createListingFlow(
               Boolean,
             );
             // Use the last meaningful path segment as a candidate videoId.
-            const candidateId = pathParts[pathParts.length - 1] ||
+            const candidateId = pathParts.at(-1) ||
               parsedFallback.searchParams.get("v") || "";
             if (candidateId && domainCore) {
               const byId = await VideoMetadata.findOne({

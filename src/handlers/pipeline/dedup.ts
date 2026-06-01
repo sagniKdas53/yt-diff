@@ -416,12 +416,16 @@ export async function findDuplicateVideos(
   };
 
   for (const group of videoIdGroups.values()) {
-    const urls = Array.from(group);
-    for (let i = 1; i < urls.length; i++) union(urls[0], urls[i]);
+    const [first, ...rest] = Array.from(group);
+    if (first) {
+      for (const url of rest) union(first, url);
+    }
   }
   for (const group of canonGroups.values()) {
-    const urls = Array.from(group);
-    for (let i = 1; i < urls.length; i++) union(urls[0], urls[i]);
+    const [first, ...rest] = Array.from(group);
+    if (first) {
+      for (const url of rest) union(first, url);
+    }
   }
 
   const mergedGroups = new Map<string, string[]>();
@@ -549,7 +553,7 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
         const canonVal = canonicalMeta.getDataValue(field);
         const dupVal = dupMeta.getDataValue(field);
         if (!canonVal && dupVal) {
-          updates[field] = dupVal;
+          Reflect.set(updates, field, dupVal);
         }
       }
       if (Object.keys(updates).length > 0) {
@@ -725,7 +729,7 @@ async function mergePlaylistRecords(
           (!canonVal || canonVal === "" || canonVal === "N/A") && dupVal &&
           dupVal !== "" && dupVal !== "N/A"
         ) {
-          updates[field] = dupVal;
+          Reflect.set(updates, field, dupVal);
         }
       }
       if (Object.keys(updates).length > 0) {

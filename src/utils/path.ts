@@ -11,7 +11,7 @@ function normalizeSegments(segments: string[], absolute: boolean): string[] {
       continue;
     }
     if (segment === "..") {
-      if (normalized.length > 0 && normalized[normalized.length - 1] !== "..") {
+      if (normalized.length > 0 && normalized.at(-1) !== "..") {
         normalized.pop();
       } else if (!absolute) {
         normalized.push("..");
@@ -71,7 +71,7 @@ export function basename(value: string): string {
     return "/";
   }
   const segments = splitSegments(normalized);
-  return segments[segments.length - 1] || "";
+  return segments.at(-1) || "";
 }
 
 export function extname(value: string): string {

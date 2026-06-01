@@ -246,18 +246,18 @@ export function hasEphemeralThumbnails(videoUrl: string): boolean {
 }
 
 export function getProcessStates(processMap: Map<string, ProcessLike>) {
-  const states: Record<
+  const states = new Map<
     string,
     { status: string; type: string; lastActive: number }
-  > = {};
+  >();
   for (const [processId, process] of processMap.entries()) {
-    states[processId] = {
+    states.set(processId, {
       status: process.status,
       type: process.spawnType,
       lastActive: process.lastActivity,
-    };
+    });
   }
-  return JSON.stringify(states);
+  return JSON.stringify(Object.fromEntries(states));
 }
 
 export function cleanupStaleProcesses(

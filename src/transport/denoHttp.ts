@@ -7,11 +7,11 @@ type Listener = (...args: any[]) => void;
 function normalizeHeaders(
   headers: Headers,
 ): Record<string, string | string[] | undefined> {
-  const normalized: Record<string, string | string[] | undefined> = {};
+  const normalized = new Map<string, string | string[] | undefined>();
   headers.forEach((value, key) => {
-    normalized[key.toLowerCase()] = value;
+    normalized.set(key.toLowerCase(), value);
   });
-  return normalized;
+  return Object.fromEntries(normalized);
 }
 
 function toUint8Array(chunk: string | Uint8Array): Uint8Array {
