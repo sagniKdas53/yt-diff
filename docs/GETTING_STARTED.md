@@ -99,20 +99,20 @@ Or install them natively and ensure they're running on the default ports
 
 ### 5. Configure Secrets
 
-Create these files in the project root:
+Create these files in the `secrets/` directory:
 
 | File | Contents |
 | :--- | :------- |
-| `db_password.txt` | Your PostgreSQL password (must match the `yt-db` container) |
-| `secret_key.txt` | A random JWT signing key (any string) |
+| `secrets/db_password.txt` | Your PostgreSQL password (must match the `yt-db` container) |
+| `secrets/secret_key.txt` | A random JWT signing key (any string) |
 
 Optional:
 
 | File | Contents |
 | :--- | :------- |
-| `cookie_secret.txt` | Netscape-format cookies for `yt-dlp` (used for x.com, YouTube WL/LL, etc.) |
-| `proxy_string.txt` | HTTP proxy URL (e.g., `http://user:pass@host:port/`) |
-| `iwara.json` | `{"username": "...", "password": "..."}` for Iwara credentials |
+| `secrets/cookie_secret.txt` | Netscape-format cookies for `yt-dlp` (used for x.com, YouTube WL/LL, etc.) |
+| `secrets/proxy_string.txt` | HTTP proxy URL (e.g., `http://user:pass@host:port/`) |
+| `secrets/iwara.json` | `{"username": "...", "password": "..."}` for Iwara credentials |
 
 ### 6. Start the Server
 
@@ -187,7 +187,7 @@ PRUNE_INTERVAL=0 */12 * * *
 TZ_PREFERRED=Asia/Kolkata
 ```
 
-Create the secret files (`db_password.txt`, `secret_key.txt`, etc.) as
+Create the secret files in `secrets/` (`db_password.txt`, `secret_key.txt`, etc.) as
 described in [Option A, Step 5](#5-configure-secrets).
 
 ### 3. Build & Start

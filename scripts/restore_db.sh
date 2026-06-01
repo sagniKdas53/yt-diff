@@ -3,7 +3,7 @@
 # Configuration
 ENV_FILE=".env"
 LOCAL_ENV_FILE=".localenv"
-DB_PASS_FILE="db_password.txt"
+DB_PASS_FILE="secrets/db_password.txt"
 
 # Check if a file argument was provided
 if [ -z "$1" ]; then

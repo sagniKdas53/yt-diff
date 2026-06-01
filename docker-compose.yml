@@ -4,29 +4,29 @@ networks:
 
 secrets:
   db_password:
-    file: db_password.txt
+    file: secrets/db_password.txt
   secret_key:
-    file: secret_key.txt
+    file: secrets/secret_key.txt
   openvpn_user:
-    file: openvpn_user.txt
+    file: secrets/openvpn_user.txt
   openvpn_password:
-    file: openvpn_password.txt
+    file: secrets/openvpn_password.txt
   proxy_string:
-    file: proxy_string.txt
+    file: secrets/proxy_string.txt
   iwara_config:
-    file: iwara.json
+    file: secrets/iwara.json
   # youtube_client_id:
-  #   file: youtube_client_id.txt
+  #   file: secrets/youtube_client_id.txt
   # youtube_client_secret:
-  #   file: youtube_client_secret.txt
+  #   file: secrets/youtube_client_secret.txt
   # youtube_refresh_token:
-  #   file: youtube_refresh_token.txt
+  #   file: secrets/youtube_refresh_token.txt
   youtube_api_key:
-    file: youtube_api_key.txt
+    file: secrets/youtube_api_key.txt
   pg_admin_email:
-    file: pg_admin_email.txt
+    file: secrets/pg_admin_email.txt
   pg_admin_password:
-    file: pg_admin_password.txt
+    file: secrets/pg_admin_password.txt
 
 volumes:
   pgadmin-data:

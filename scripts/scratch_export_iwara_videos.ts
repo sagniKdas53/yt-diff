@@ -5,13 +5,13 @@ if (
   !Deno.env.get("DB_PASSWORD_FILE") ||
   Deno.env.get("DB_PASSWORD_FILE") === "/run/secrets/db_password"
 ) {
-  Deno.env.set("DB_PASSWORD_FILE", "./db_password.txt");
+  Deno.env.set("DB_PASSWORD_FILE", "./secrets/db_password.txt");
 }
 if (
   !Deno.env.get("SECRET_KEY_FILE") ||
   Deno.env.get("SECRET_KEY_FILE") === "/run/secrets/secret_key"
 ) {
-  Deno.env.set("SECRET_KEY_FILE", "./secret_key.txt");
+  Deno.env.set("SECRET_KEY_FILE", "./secrets/secret_key.txt");
 }
 if (Deno.env.get("DB_HOST") === "yt-db") {
   Deno.env.set("DB_HOST", "localhost");

@@ -3,7 +3,7 @@ This repository (yt-diff) bundles a Deno backend, a React + Vite frontend and Do
 Quick orientation
 - Backend: `index.ts` plus `src/` — Deno HTTP server + Socket.IO instance using Sequelize (Postgres). Key files: `index.ts`, `src/**/*`.
 - Frontend: `frontend/` — Vite + React app. Built during Docker image build; built assets are placed in `dist/` and served by the Deno server. Key files: `frontend/src/components/*`, `frontend/package.json`, `frontend/readme.md`.
-- Docker: `Dockerfile`, `Dockerfile.alpine`, `docker-compose.yml` — multi-stage images that download yt-dlp/ffmpeg and build the frontend. The compose file wires a `postgres` service and expects secrets in `db_password.txt` and `secret_key.txt`.
+- Docker: `Dockerfile`, `Dockerfile.alpine`, `docker-compose.yml` — multi-stage images that download yt-dlp/ffmpeg and build the frontend. The compose file wires a `postgres` service and expects secrets in `secrets/db_password.txt` and `secrets/secret_key.txt`.
 
 What matters to an AI coding agent
 - Global config and envs live in `src/config.ts`. Use env names from `docker-compose.yml` (.env/.env.local expected). Important env keys: `SECRET_KEY[_FILE]`, `DB_PASSWORD[_FILE]`, `BASE_URL`/`VITE_BASE_PATH`, `SAVE_PATH`, `PORT`.

@@ -74,14 +74,14 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
    DB_BACKUP_LOCATION=/path/to/backups
    ```
 
-3. **Set up secrets** — create these files in the project root:
+3. **Set up secrets** — create these files in the `secrets/` directory:
 
    | File | Contents |
    | :--- | :------- |
-   | `db_password.txt` | PostgreSQL password |
-   | `secret_key.txt` | JWT signing key (any random string) |
-   | `proxy_string.txt` | *(optional)* HTTP proxy URL |
-   | `iwara.json` | *(optional)* `{"username": "...", "password": "..."}` |
+   | `secrets/db_password.txt` | PostgreSQL password |
+   | `secrets/secret_key.txt` | JWT signing key (any random string) |
+   | `secrets/proxy_string.txt` | *(optional)* HTTP proxy URL |
+   | `secrets/iwara.json` | *(optional)* `{"username": "...", "password": "..."}` |
 
 4. **Generate `.env` for your deployment**
 
