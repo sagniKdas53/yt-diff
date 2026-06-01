@@ -25,3 +25,4 @@ youtube_api_key.txt
 pg_admin_*.txt
 .claude
 .env
+secrets

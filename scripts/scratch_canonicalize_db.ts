@@ -1,10 +1,14 @@
-import { PlaylistMetadata, sequelize, VideoMetadata } from "./src/db/models.ts";
+import {
+  PlaylistMetadata,
+  sequelize,
+  VideoMetadata,
+} from "../src/db/models.ts";
 import {
   canonicalizePlaylistUrl,
   canonicalizeVideoUrl,
   deduplicateAll,
-} from "./src/handlers/pipeline/dedup.ts";
-import { logger } from "./src/logger.ts";
+} from "../src/handlers/pipeline/dedup.ts";
+import { logger } from "../src/logger.ts";
 
 async function run() {
   Deno.env.set("LOG_LEVELS", "info");

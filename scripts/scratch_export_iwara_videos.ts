@@ -18,9 +18,9 @@ if (Deno.env.get("DB_HOST") === "yt-db") {
 }
 
 const { PlaylistVideoMapping, VideoMetadata, sequelize } = await import(
-  "./src/db/models.ts"
+  "../src/db/models.ts"
 );
-const { logger } = await import("./src/logger.ts");
+const { logger } = await import("../src/logger.ts");
 
 async function run() {
   Deno.env.set("LOG_LEVELS", "info");
