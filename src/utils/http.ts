@@ -15,6 +15,8 @@ export const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".json": "application/json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
+  ".vtt": "text/vtt; charset=utf-8",
+  ".srt": "application/x-subrip; charset=utf-8",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mkv": "video/x-matroska",

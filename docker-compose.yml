@@ -11,8 +11,8 @@ secrets:
     file: secrets/openvpn_user.txt
   openvpn_password:
     file: secrets/openvpn_password.txt
-  proxy_string:
-    file: secrets/proxy_string.txt
+  # proxy_string:
+  #   file: secrets/proxy_string.txt
   iwara_config:
     file: secrets/iwara.json
   # youtube_client_id:
@@ -91,7 +91,7 @@ services:
     secrets:
       - db_password
       - secret_key
-      - proxy_string
+      # - proxy_string
       - iwara_config
       # - youtube_client_id
       # - youtube_client_secret
@@ -139,7 +139,8 @@ services:
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
       - PRUNE_INTERVAL=${PRUNE_INTERVAL}
       # Proxy Info
-      - PROXY_STRING_FILE=/run/secrets/proxy_string
+      # - PROXY_STRING_FILE=/run/secrets/proxy_string
+      - PROXY_STRING=http://${HTTP_PROXY_USER}:${HTTP_PROXY_PASSWORD}@gluetun:3128
       # Redis Configuration
       - REDIS_HOST=valkey
       - REDIS_PORT=6379
