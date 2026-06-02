@@ -1,44 +1,12 @@
 {
     "deno.enable": true,
     "deno.lint": true,
-    "cSpell.words": [
-        "addgroup",
-        "adduser",
-        "Autoheal",
-        "autoremove",
-        "centurylinklabs",
-        "certresolver",
-        "delplay",
-        "delsub",
-        "dpage",
-        "elif",
-        "ffplay",
-        "ffprobe",
-        "gcompat",
-        "getfile",
-        "getplay",
-        "getsub",
-        "healthcheck",
-        "isregallowed",
-        "logfmt",
-        "metadatum",
-        "nologin",
-        "noninteractive",
-        "pgadmin",
-        "phantomjs",
-        "pornhub",
-        "purevert",
-        "sagnikdas",
-        "tailsolver",
-        "tini",
-        "traefik",
-        "undownloaded",
-        "UUIDV",
-        "venv",
-        "vidlist",
-        "websecure",
-        "youtu",
-        "ytdiff"
+    "makefile.configureOnOpen": false,
+    "editor.formatOnSave": true,
+    "eslint.workingDirectories": [
+        "./frontend"
     ],
-    "makefile.configureOnOpen": false
+    "[typescript]": {
+        "editor.defaultFormatter": "denoland.vscode-deno"
+    }
 }

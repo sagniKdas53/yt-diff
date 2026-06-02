@@ -1,12 +1,12 @@
 .PHONY: env local pi4 pi5 build check down logs
 
 TARGET ?= local
-TARGET_ENV = $(TARGET).env
+TARGET_ENV = envs/$(TARGET).env
 GENERATED_ENV = .env
 REQUIRED_ENV_VARS = DB_LOCATION HOSTNAME LOG_LEVELS HOST_SAVE_PATH DB_BACKUP_LOCATION HOST_COOKIES_FILE
 
 env:
-	@test -f base.env || { echo "Missing base.env"; exit 1; }
+	@test -f envs/base.env || { echo "Missing envs/base.env"; exit 1; }
 	@test -f $(TARGET_ENV) || { echo "Missing $(TARGET_ENV)"; exit 1; }
 	@awk -F= ' \
 		!/^[[:space:]]*#/ && NF >= 2 { \
@@ -23,12 +23,12 @@ env:
 			for (i = 1; i <= extra_count; i++) if (extra[i] == "") print extra[i]; \
 			for (i = 1; i <= count; i++) print line[order[i]]; \
 		} \
-	' base.env $(TARGET_ENV) > $(GENERATED_ENV)
+	' envs/base.env $(TARGET_ENV) > $(GENERATED_ENV)
 	@for var in $(REQUIRED_ENV_VARS); do \
 		grep -q "^$$var=" $(GENERATED_ENV) || { echo "Missing required env var: $$var"; rm -f $(GENERATED_ENV); exit 1; }; \
 	done
 	@docker compose config >/dev/null || { echo "Generated .env is invalid"; rm -f $(GENERATED_ENV); exit 1; }
-	@echo "Generated $(GENERATED_ENV) from base.env + $(TARGET_ENV)"
+	@echo "Generated $(GENERATED_ENV) from envs/base.env + $(TARGET_ENV)"
 
 local:
 	@$(MAKE) env TARGET=local

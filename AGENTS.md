@@ -27,7 +27,7 @@ Tests are integration-heavy and run against a containerized stack. Keep test cas
 Recent commits use short, imperative messages with optional prefixes like `feat:`, `fix:`, `refactor:`, and `chore:`. Keep commits scoped to one concern and describe the user-visible effect. PRs should explain what changed, why it changed, and how it was verified. Include screenshots for frontend work and note any new environment variables, secrets, or Docker changes.
 
 ## Security & Configuration Tips
-Do not commit secrets or generated local overrides. This repository relies on `base.env`, deployment env files such as `local.env` and `pi5.env`, the generated `.env`, and secret files under `secrets/` such as `secrets/secret_key.txt` and `secrets/db_password.txt`; keep secrets local and keep the generated `.env` out of version control. When changing Compose settings, verify the result with `make check` before merging.
+Do not commit secrets or generated local overrides. This repository relies on `envs/base.env`, deployment env files such as `envs/local.env` and `envs/pi5.env`, the generated `.env`, and secret files under `secrets/` such as `secrets/secret_key.txt` and `secrets/db_password.txt`; keep secrets local and keep the generated `.env` out of version control. When changing Compose settings, verify the result with `make check` before merging.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
