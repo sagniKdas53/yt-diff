@@ -2,7 +2,7 @@
     "compilerOptions": {
         "module": "ESNext",
         "moduleResolution": "Bundler",
-        "target": "ES2024",
+        "target": "es2024",
         "jsx": "react-jsx",
         "strictNullChecks": true,
         "strictFunctionTypes": true,
