@@ -1,10 +1,10 @@
 # Todo
 
-1. [ ] Split this giant script into smaller blocks, and then import functions so that it's more manageable.
-   1. [ ] Now that we have moved to deno we can use ES modules to import/export functions and classes.
-   2. [ ] Make sure to keep the main.ts file as the entry point, and have it import functions from other files.
-   3. [ ] Make sure to keep the database related functions in a separate file, the API related functions in another file, and the utility functions in another file.
-   4. [ ] Make sure to keep the cron job related functions in another file.
+1. [x] Split this giant script into smaller blocks, and then import functions so that it's more manageable.
+   1. [x] Now that we have moved to deno we can use ES modules to import/export functions and classes.
+   2. [x] Make sure to keep the main.ts file as the entry point, and have it import functions from other files.
+   3. [x] Make sure to keep the database related functions in a separate file, the API related functions in another file, and the utility functions in another file.
+   4. [x] Make sure to keep the cron job related functions in another file.
 2. [x] Fix the login issue, where the token validation takes so long (due to the new bcryptjs library) that the request shows as not logged in.
 3. [x] Recreate the update playlist functionality, which was broken during the migration to the new database structure (I forgot how it worked exactly).
 4. ~~[ ] Add a retry mechanism for videos, It will work something like this~~
