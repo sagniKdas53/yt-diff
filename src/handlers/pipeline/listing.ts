@@ -1438,8 +1438,9 @@ export function createListingFlow(
     let playlistTitle = "";
 
     const processArgs = [
-      "--playlist-end",
-      "1",
+      "--playlist-items",
+      "1:5",
+      "--ignore-errors",
       "--dump-json",
       "--no-download",
       playlistUrl,
@@ -1461,9 +1462,17 @@ export function createListingFlow(
     });
 
     return new Promise((resolve, reject) => {
+      // Capture the first valid JSON line from stdout.
+      // With --ignore-errors, yt-dlp skips broken items and emits JSON only
+      // for accessible ones. We only need the first valid line to extract
+      // the playlist_title field.
+      let firstValidLine: string | null = null;
       void (async () => {
-        for await (const data of streamTextChunks(titleProcess.stdout)) {
-          playlistTitle += data;
+        for await (const line of streamLines(titleProcess.stdout)) {
+          const trimmed = line.trim();
+          if (trimmed.length > 0 && !firstValidLine) {
+            firstValidLine = trimmed;
+          }
         }
       })();
 
@@ -1476,21 +1485,30 @@ export function createListingFlow(
       void (async () => {
         const { code } = await titleProcess.status;
         try {
-          if (code !== 0) {
-            throw new Error("Failed to get playlist title");
-          }
-
-          try {
-            const jsonData = JSON.parse(playlistTitle.toString().trim());
-            if (jsonData) {
-              playlistTitle = jsonData.playlist_title || jsonData.title ||
-                playlistTitle;
+          // With --ignore-errors, exit code 1 (partial error) is expected
+          // when some items fail but others succeed. We only care about
+          // whether we got at least one valid JSON line.
+          if (firstValidLine) {
+            try {
+              const jsonData = JSON.parse(firstValidLine);
+              if (jsonData) {
+                playlistTitle = jsonData.playlist_title || jsonData.title ||
+                  playlistTitle;
+              }
+            } catch (e) {
+              logger.error("Failed to parse playlist title JSON", {
+                firstValidLine,
+                error: e as Error,
+              });
             }
-          } catch (e) {
-            logger.error("Failed to parse playlist title JSON", {
-              playlistTitle,
-              error: e as Error,
-            });
+          } else {
+            // All probed items failed or playlist has no items accessible
+            // in the first 5 entries. Fall back to URL-derived title.
+            logger.warn(
+              "No valid items found in first 5 entries, using URL-derived title",
+              { url: playlistUrl, exitCode: code },
+            );
+            playlistTitle = urlToTitle(playlistUrl);
           }
 
           if (!playlistTitle || playlistTitle.toString().trim() === "NA") {
