@@ -30,6 +30,7 @@ import {
   DownloadRequestBodySchema,
   ListingRequestBodySchema,
   PlaylistDisplayRequestSchema,
+  QueueStatusRequestBodySchema,
   RefreshSignedUrlRequestBodySchema,
   ReindexAllRequestBodySchema,
   SignedFileRequestBodySchema,
@@ -79,6 +80,9 @@ if (config.db.password instanceof Error) {
   logger.error("Configuration error", { error: config.db.password });
   throw config.db.password;
 }
+
+const connectionGeneration = Date.now();
+
 if (config.cookiesFile instanceof Error) {
   logger.warn("Cookies file configuration error, proceeding without cookies", {
     error: config.cookiesFile,
@@ -453,6 +457,7 @@ const {
   listItemsConcurrently,
   processDownloadRequest,
   processListingRequest,
+  getQueueSnapshot,
   resetPendingPlaylistSortCounter,
 } = createPipelineHandlers({
   safeEmit,
@@ -484,6 +489,20 @@ const {
  * @param {http.ServerResponse} response - HTTP response object
  * @returns {Promise<void>} Resolves when deletion is complete
  */
+
+function processQueueStatusRequest(
+  _data: unknown,
+  res: HttpResponseLike,
+) {
+  res.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
+  res.end(
+    JSON.stringify({
+      status: "success",
+      generation: connectionGeneration,
+      queue: getQueueSnapshot(),
+    }),
+  );
+}
 
 // Functions to run the server
 
@@ -600,6 +619,7 @@ const { io: _io, sock } = createSocketServer({
   corsAllowedOrigins: CORS_ALLOWED_ORIGINS,
   authenticateSocket,
   redis,
+  connectionGeneration,
 });
 
 const socketSidecarPort = await new Promise<number>((resolve, reject) => {
@@ -691,6 +711,10 @@ const apiRoutes = createApiRoutes({
   processDedupPlaylistsRequest: validateBody(
     DedupRequestBodySchema,
     processDedupPlaylistsRequest,
+  ),
+  processQueueStatusRequest: validateBody(
+    QueueStatusRequestBodySchema,
+    processQueueStatusRequest,
   ),
 });
 

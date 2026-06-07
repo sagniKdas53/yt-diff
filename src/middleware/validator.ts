@@ -124,3 +124,5 @@ export const DedupRequestBodySchema = z.object({
   dryRun: z.boolean().optional().default(true),
   siteFilter: z.string().optional(),
 });
+
+export const QueueStatusRequestBodySchema = z.object({});

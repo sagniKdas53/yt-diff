@@ -15,6 +15,7 @@ interface SocketDependencies {
   corsAllowedOrigins: string[];
   authenticateSocket: AuthenticateSocket;
   redis: Redis;
+  connectionGeneration: number;
 }
 
 export function createSocketServer({
@@ -22,6 +23,7 @@ export function createSocketServer({
   corsAllowedOrigins,
   authenticateSocket,
   redis,
+  connectionGeneration,
 }: SocketDependencies) {
   const io = new Server(server, {
     path: config.urlBase + "/socket.io/",
@@ -157,7 +159,7 @@ export function createSocketServer({
       return;
     }
 
-    socket.emit("init", { message: "Connected", id: socket.id });
+    socket.emit("init", { message: "Connected", id: socket.id, generation: connectionGeneration });
     socket.on("acknowledge", ({ data, id }: { data: string; id: string }) => {
       logger.info(`Acknowledged from client id ${id}`, {
         id,

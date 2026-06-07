@@ -193,6 +193,7 @@ export interface DownloadCompletionUpdates extends DiscoveredMetadata {
 export interface DownloadProcessEntry extends ProcessLike {
   url: string;
   title: string;
+  queuePosition: number;
 }
 
 export interface ListingProcessEntry extends ProcessLike {

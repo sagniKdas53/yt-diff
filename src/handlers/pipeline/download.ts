@@ -50,6 +50,7 @@ export function createDownloadFlow(
     "DownloadSemaphore",
   );
   const { updateProcessActivity, cleanupProcess } = processManager;
+  let queueSequence = 0;
 
   async function processDownloadRequest(
     requestBody: DownloadRequestBody,
@@ -137,19 +138,26 @@ export function createDownloadFlow(
         uniqueUrls.add(videoUrl);
       }
 
+      // Assign queue positions before starting downloads so they can be
+      // included in both the HTTP response and the socket events.
+      const itemsWithPositions = videosToDownload.map((item) => ({
+        ...item,
+        queuePosition: ++queueSequence,
+      }));
+
       void downloadItemsConcurrently(
-        videosToDownload,
+        itemsWithPositions,
         config.queue.maxDownloads,
       );
       logger.debug("Download processes started", {
-        itemCount: videosToDownload.length,
+        itemCount: itemsWithPositions.length,
       });
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
       response.end(JSON.stringify({
         status: "success",
         message: "Downloads initiated",
-        items: videosToDownload,
+        items: itemsWithPositions,
       }));
     } catch (error) {
       logger.error("Download processing failed", {
@@ -167,7 +175,7 @@ export function createDownloadFlow(
   }
 
   async function downloadItemsConcurrently(
-    items: DownloadItem[],
+    items: (DownloadItem & { queuePosition: number })[],
     maxConcurrent: number = 2,
   ): Promise<boolean> {
     logger.trace(
@@ -207,7 +215,7 @@ export function createDownloadFlow(
   }
 
   async function downloadWithSemaphore(
-    downloadItem: DownloadItem,
+    downloadItem: DownloadItem & { queuePosition: number },
   ): Promise<DownloadResult> {
     logger.trace(
       `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
@@ -216,11 +224,12 @@ export function createDownloadFlow(
     await DownloadSemaphore.acquire();
 
     try {
-      const { url: videoUrl, title: videoTitle } = downloadItem;
+      const { url: videoUrl, title: videoTitle, queuePosition } = downloadItem;
       const now = Date.now();
       const downloadEntry: DownloadProcessEntry = {
         url: videoUrl,
         title: videoTitle,
+        queuePosition,
         spawnType: "download",
         lastActivity: now,
         lastStdoutActivity: now,
@@ -244,7 +253,7 @@ export function createDownloadFlow(
   }
 
   function executeDownload(
-    downloadItem: DownloadItem,
+    downloadItem: DownloadItem & { queuePosition: number },
     processKey: string,
   ): Promise<DownloadResult> {
     const {
@@ -252,6 +261,7 @@ export function createDownloadFlow(
       title: videoTitle,
       saveDirectory,
       videoId,
+      queuePosition,
     } = downloadItem;
 
     try {
@@ -270,7 +280,7 @@ export function createDownloadFlow(
         let capturedFileName: string | null = null;
         const processArgs = ["-P", "home:" + savePath, videoUrl];
 
-        safeEmit("download-started", { url: videoUrl, percentage: 101 });
+        safeEmit("download-started", { url: videoUrl, percentage: 101, queuePosition });
 
         const siteArgs = buildSiteArgs(videoUrl, config);
         if (siteArgs.length > 0) {
@@ -710,5 +720,30 @@ export function createDownloadFlow(
     }
   }
 
-  return { processDownloadRequest };
+  /**
+   * Returns a snapshot of all active and pending download entries,
+   * sorted by their backend-assigned queue position.
+   */
+  function getQueueSnapshot() {
+    const entries: {
+      url: string;
+      title: string;
+      status: string;
+      queuePosition: number;
+    }[] = [];
+
+    for (const entry of downloadProcesses.values()) {
+      entries.push({
+        url: entry.url,
+        title: entry.title,
+        status: entry.status,
+        queuePosition: entry.queuePosition,
+      });
+    }
+
+    entries.sort((a, b) => a.queuePosition - b.queuePosition);
+    return entries;
+  }
+
+  return { processDownloadRequest, getQueueSnapshot };
 }
