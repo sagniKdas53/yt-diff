@@ -21,7 +21,7 @@ export function validateBody<T>(
         JSON.stringify({
           status: "error",
           message: "Invalid payload",
-          errors: result.error.errors,
+          errors: result.error.issues,
         }),
       );
     }
@@ -108,7 +108,7 @@ export const BulkSignedFilesRequestBodySchema = z.object({
 });
 
 export const UserAuthSchema = z.object({
-  userName: z.string().min(1, "Username is required"),
+  username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required").max(
     72,
     "Password too long",

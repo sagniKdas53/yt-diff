@@ -21,6 +21,7 @@ export interface CachedUser {
 export interface AuthJwtPayload extends jwt.JwtPayload {
   id: string;
   lastPasswordChangeTime?: number;
+  exp?: number;
 }
 
 import {
@@ -135,10 +136,10 @@ export function createAuthMiddleware({
           message: "Invalid payload",
         }));
       }
-      const { userName, password } = parsed.data;
+      const { username, password } = parsed.data;
 
       const existingUser = await UserAccount.findOne({
-        where: { username: userName },
+        where: { username: username },
       });
 
       if (existingUser) {
@@ -151,7 +152,7 @@ export function createAuthMiddleware({
 
       const [salt, hashedPassword] = await hashPassword(password);
       await UserAccount.create({
-        username: userName,
+        username: username,
         passwordSalt: salt,
         passwordHash: hashedPassword,
       });
@@ -388,17 +389,17 @@ export function createAuthMiddleware({
         }));
       }
       const {
-        userName,
+        username,
         password,
         expiry_time: expiryTime = "31d",
       } = parsed.data;
 
       const user = await UserAccount.findOne({
-        where: { username: userName },
+        where: { username: username },
       });
 
       if (!user) {
-        logger.warn(`Authentication failed for user ${userName}`);
+        logger.warn(`Authentication failed for user ${username}`);
         response.writeHead(401, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
           status: "error",
@@ -412,7 +413,7 @@ export function createAuthMiddleware({
       );
 
       if (!isPasswordValid) {
-        logger.warn(`Authentication failed for user ${userName}`);
+        logger.warn(`Authentication failed for user ${username}`);
         response.writeHead(401, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
           status: "error",
@@ -424,7 +425,7 @@ export function createAuthMiddleware({
         user as unknown as { id: string; updatedAt: Date },
         expiryTime,
       );
-      logger.info(`Authentication successful for user ${userName}`);
+      logger.info(`Authentication successful for user ${username}`);
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
       return response.end(JSON.stringify({
