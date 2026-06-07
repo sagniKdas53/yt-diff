@@ -159,7 +159,11 @@ export function createSocketServer({
       return;
     }
 
-    socket.emit("init", { message: "Connected", id: socket.id, generation: connectionGeneration });
+    socket.emit("init", {
+      message: "Connected",
+      id: socket.id,
+      generation: connectionGeneration,
+    });
     socket.on("acknowledge", ({ data, id }: { data: string; id: string }) => {
       logger.info(`Acknowledged from client id ${id}`, {
         id,

@@ -223,7 +223,9 @@ export function createFileHandlers({
     }
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    return response.end(JSON.stringify({ status: "success", files: Object.fromEntries(results) }));
+    return response.end(
+      JSON.stringify({ status: "success", files: Object.fromEntries(results) }),
+    );
   }
 
   async function makeSignedUrls(
@@ -283,7 +285,9 @@ export function createFileHandlers({
     }
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({ status: "success", files: Object.fromEntries(results) }));
+    response.end(
+      JSON.stringify({ status: "success", files: Object.fromEntries(results) }),
+    );
   }
 
   return {

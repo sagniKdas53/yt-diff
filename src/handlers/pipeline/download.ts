@@ -280,7 +280,11 @@ export function createDownloadFlow(
         let capturedFileName: string | null = null;
         const processArgs = ["-P", "home:" + savePath, videoUrl];
 
-        safeEmit("download-started", { url: videoUrl, percentage: 101, queuePosition });
+        safeEmit("download-started", {
+          url: videoUrl,
+          percentage: 101,
+          queuePosition,
+        });
 
         const siteArgs = buildSiteArgs(videoUrl, config);
         if (siteArgs.length > 0) {
