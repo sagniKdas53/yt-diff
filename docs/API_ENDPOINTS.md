@@ -91,10 +91,27 @@ dependencies minimal.
 
 ### 5. Authentication
 
-- **`/login`**, **`/register`**, **`/isregallowed`**
-  - **Description**: Handles user authentication, registration queries, and
-    determining if new signups are permitted based on server configurations.
-  - **Frontend Usage**: Extensively utilized in `Login.jsx` and `Signup.jsx`.
+- **`/login`**
+  - **Description**: Authenticates a user and returns a JWT token.
+  - **Request body**: `{ username: string, password: string, expiry_time?: string }`
+  - **Response**: `{ status: "success", token: string }`
+  - **Frontend Usage**: `Login.jsx` calls this on form submission.
+
+- **`/register`**
+  - **Description**: Creates a new user account when registration is enabled and
+    the user cap has not been reached.
+  - **Request body**: `{ username: string, password: string }`
+  - **Response**: `{ status: "success", message: "User registered successfully" }`
+  - **Frontend Usage**: `Signup.jsx` calls this on form submission.
+
+- **`/isregallowed`**
+  - **Description**: Checks whether new user registrations are currently permitted
+    based on server configuration and the existing user count.
+  - **Request body**: `{ sendStats?: boolean }` (an empty `{}` is valid)
+  - **Response** (default): `{ registrationAllowed: boolean }`
+  - **Response** (`sendStats: true`): `{ registrationAllowed: boolean, currentUsers: number, maxUsers: number }`
+  - **Frontend Usage**: `Login.jsx` queries this on mount to show or hide the
+    signup option.
 
 ### 6. Health Check
 
