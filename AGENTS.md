@@ -32,7 +32,7 @@ Do not commit secrets or generated local overrides. This repository relies on `e
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **yt-diff** (2078 symbols, 3423 relationships, 90 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **yt-diff** (2324 symbols, 3847 relationships, 107 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
