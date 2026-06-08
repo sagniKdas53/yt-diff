@@ -27,7 +27,9 @@ leveraging a custom class-based Semaphore (`DownloadSemaphore`).
 1. **Dynamic Config**: It forces the semaphore's maximum concurrent limit via
    `DownloadSemaphore.setMaxConcurrent(maxConcurrent)` mapped directly to the
    server environment's config `config.queue.maxDownloads` limit.
-2. **Duplicate Filtration**: It sweeps the internal map tracker
+2. **Queue Position Tracking**: It assigns a `queuePosition` to each item being queued,
+   allowing clients to fetch exactly where their items are in the queue via `/queuestatus` and socket updates.
+3. **Duplicate Filtration**: It sweeps the internal map tracker
    (`downloadProcesses`) to filter out URLs that are _already actively in the
    queue_ (`"running"` or `"pending"` status). This blocks eager users pushing
    the download button on the UI ten times successively and generating 10
@@ -39,21 +41,20 @@ leveraging a custom class-based Semaphore (`DownloadSemaphore`).
 
 This serves as the atomic lock handler controlling process creation timing.
 
-1. **Acquiring the Lock**: The thread calls `await DownloadSemaphore.acquire()`.
-   If 2 active downloads are running, and the limit is 2, the thread halts its
+1. **Tracking Initialization**: A unique `entryKey` is generated using the URL and timestamp
+   (`pending_http..._1701241...`).
+2. An entry is pushed to the global `downloadProcesses` Map setting the download
+   to a `"pending"` state, along with its calculated `queuePosition`.
+3. **Acquiring the Lock**: The thread calls `await DownloadSemaphore.acquire()`.
+   If 1 active download is running, and the limit is 1, the thread halts its
    execution linearly right here until a previous download finishes and releases
    its lock token.
-2. **Tracking Initialization**: Once a lock token is acquired, a unique
-   `entryKey` is generated using the URL and timestamp
-   (`pending_http..._1701241...`).
-3. An entry is pushed to the global `downloadProcesses` Map setting the download
-   to a `"pending"` state.
 4. The system invokes the actual physical downloader via `executeDownload()`.
 5. **Always Release**: Inside a strict `try/finally` block, regardless of if the
    video succeeded, errored out due to IP blocks, or crashed—the code will
    **always** call `DownloadSemaphore.release()`. The pending entry is safely
    deleted from the map, freeing up space globally for the next video waiting in
-   line.
+   line. When the queue size reaches zero, the `queueSequence` counter is reset.
 
 ## 4. The Subprocess Executor (`executeDownload`)
 
@@ -77,3 +78,6 @@ This is where the child shells are instantiated interacting with `yt-dlp`.
    flagging `downloadStatus` as `true` and saving the exact strings of generated
    filenames (e.g., `fileName`, `thumbNailFile`) directly to the relational
    database.
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

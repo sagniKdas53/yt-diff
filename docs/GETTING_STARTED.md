@@ -41,17 +41,17 @@ Deno/TypeScript server.
 
 ## Prerequisites
 
-| Dependency | Purpose | Install |
-| :--------- | :------ | :------ |
-| **Deno** | Runtime for the TypeScript backend | [deno.land](https://deno.land/#installation) |
-| **PostgreSQL** | Relational database for video/playlist metadata | via Docker or system package |
-| **Valkey** (or Redis) | Rate limiting and caching | via Docker or system package |
-| **Python 3** | Required by `yt-dlp` | System package |
-| **yt-dlp** | Video extraction engine | `pip install -U "yt-dlp[default]"` |
-| **curl_cffi** | Browser impersonation for sites that need it | `pip install curl_cffi` |
-| **ffmpeg** | Media post-processing (muxing, thumbnails) | [ffmpeg.org](https://ffmpeg.org/) |
-| **Node.js & npm** | Building the React frontend (dev only) | [nodejs.org](https://nodejs.org/) |
-| **Docker & Docker Compose** | Production deployment | [docker.com](https://docs.docker.com/get-docker/) |
+| Dependency                  | Purpose                                         | Install                                           |
+| :-------------------------- | :---------------------------------------------- | :------------------------------------------------ |
+| **Deno**                    | Runtime for the TypeScript backend              | [deno.land](https://deno.land/#installation)      |
+| **PostgreSQL**              | Relational database for video/playlist metadata | via Docker or system package                      |
+| **Valkey** (or Redis)       | Rate limiting and caching                       | via Docker or system package                      |
+| **Python 3**                | Required by `yt-dlp`                            | System package                                    |
+| **yt-dlp**                  | Video extraction engine                         | `pip install -U "yt-dlp[default]"`                |
+| **curl_cffi**               | Browser impersonation for sites that need it    | `pip install curl_cffi`                           |
+| **ffmpeg**                  | Media post-processing (muxing, thumbnails)      | [ffmpeg.org](https://ffmpeg.org/)                 |
+| **Node.js & npm**           | Building the React frontend (dev only)          | [nodejs.org](https://nodejs.org/)                 |
+| **Docker & Docker Compose** | Production deployment                           | [docker.com](https://docs.docker.com/get-docker/) |
 
 ---
 
@@ -101,18 +101,18 @@ Or install them natively and ensure they're running on the default ports
 
 Create these files in the `secrets/` directory:
 
-| File | Contents |
-| :--- | :------- |
+| File                      | Contents                                                    |
+| :------------------------ | :---------------------------------------------------------- |
 | `secrets/db_password.txt` | Your PostgreSQL password (must match the `yt-db` container) |
-| `secrets/secret_key.txt` | A random JWT signing key (any string) |
+| `secrets/secret_key.txt`  | A random JWT signing key (any string)                       |
 
 Optional:
 
-| File | Contents |
-| :--- | :------- |
+| File                        | Contents                                                                   |
+| :-------------------------- | :------------------------------------------------------------------------- |
 | `secrets/cookie_secret.txt` | Netscape-format cookies for `yt-dlp` (used for x.com, YouTube WL/LL, etc.) |
-| `secrets/proxy_string.txt` | HTTP proxy URL (e.g., `http://user:pass@host:port/`) |
-| `secrets/iwara.json` | `{"username": "...", "password": "..."}` for Iwara credentials |
+| `secrets/proxy_string.txt`  | HTTP proxy URL (e.g., `http://user:pass@host:port/`)                       |
+| `secrets/iwara.json`        | `{"username": "...", "password": "..."}` for Iwara credentials             |
 
 ### 6. Start the Server
 
@@ -136,6 +136,12 @@ deno task iwara
 
 # Everything enabled
 deno task full
+
+# Code quality and tooling
+deno task fmt    # Format code
+deno task lint   # Lint code
+deno task check  # Type check
+deno task ship   # Run check, lint, and fmt together
 ```
 
 The server starts on `http://localhost:8888/ytdiff` by default.
@@ -243,98 +249,98 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 
 ### Server
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `PROTOCOL` | `http` | Protocol for URL generation (`http` or `https`) |
-| `HOSTNAME` | `localhost` | Server hostname |
-| `PORT` | `8888` | HTTP listen port |
-| `BASE_URL` | `/ytdiff` | URL prefix for all routes |
-| `HIDE_PORTS` | `false` | Omit port from logged URLs (behind a reverse proxy) |
-| `USE_NATIVE_HTTPS` | `false` | Enable built-in HTTPS (requires `SSL_KEY`, `SSL_CERT`) |
-| `NO_COLOR` | `false` | Disable ANSI colors in log output |
+| Variable           | Default     | Description                                            |
+| :----------------- | :---------- | :----------------------------------------------------- |
+| `PROTOCOL`         | `http`      | Protocol for URL generation (`http` or `https`)        |
+| `HOSTNAME`         | `localhost` | Server hostname                                        |
+| `PORT`             | `8888`      | HTTP listen port                                       |
+| `BASE_URL`         | `/ytdiff`   | URL prefix for all routes                              |
+| `HIDE_PORTS`       | `false`     | Omit port from logged URLs (behind a reverse proxy)    |
+| `USE_NATIVE_HTTPS` | `false`     | Enable built-in HTTPS (requires `SSL_KEY`, `SSL_CERT`) |
+| `NO_COLOR`         | `false`     | Disable ANSI colors in log output                      |
 
 ### Database
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `DB_HOST` | `localhost` | PostgreSQL hostname |
-| `DB_USERNAME` | `ytdiff` | PostgreSQL username |
-| `DB_PASSWORD_FILE` | — | Path to file containing the DB password |
-| `DB_PASSWORD` | — | Direct DB password (fallback if file not set) |
+| Variable           | Default     | Description                                   |
+| :----------------- | :---------- | :-------------------------------------------- |
+| `DB_HOST`          | `localhost` | PostgreSQL hostname                           |
+| `DB_USERNAME`      | `ytdiff`    | PostgreSQL username                           |
+| `DB_PASSWORD_FILE` | —           | Path to file containing the DB password       |
+| `DB_PASSWORD`      | —           | Direct DB password (fallback if file not set) |
 
 ### Redis / Valkey
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `REDIS_HOST` | `localhost` | Redis/Valkey hostname |
-| `REDIS_PORT` | `6379` | Redis/Valkey port |
-| `REDIS_PASSWORD` | — | Redis/Valkey password (optional) |
+| Variable         | Default     | Description                      |
+| :--------------- | :---------- | :------------------------------- |
+| `REDIS_HOST`     | `localhost` | Redis/Valkey hostname            |
+| `REDIS_PORT`     | `6379`      | Redis/Valkey port                |
+| `REDIS_PASSWORD` | —           | Redis/Valkey password (optional) |
 
 ### Downloads & Listings
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `SAVE_PATH` | `/home/.../yt-diff-data/` | Root directory for downloaded files |
-| `COOKIES_FILE` | — | Path to Netscape-format cookies file (global fallback for all sites) |
-| `X_COOKIES_FILE` | — | Path to cookies file for x.com only (overrides `COOKIES_FILE`) |
-| `YOUTUBE_COOKIES_FILE` | — | Path to cookies file for YouTube only (overrides `COOKIES_FILE`) |
-| `PROXY_STRING_FILE` | — | Path to file containing HTTP proxy URL |
-| `PROXY_STRING` | — | Direct proxy URL (fallback) |
-| `SLEEP` | `3` | Seconds to wait before starting jobs on boot |
-| `CHUNK_SIZE_DEFAULT` | `10` | Videos per processing chunk during listing |
-| `MAX_DOWNLOADS` | `2` | Max concurrent download processes |
-| `MAX_LISTINGS` | `2` | Max concurrent listing processes |
-| `SAVE_SUBTITLES` | `true` | Download subtitle files |
-| `SAVE_DESCRIPTION` | `true` | Download description files |
-| `SAVE_COMMENTS` | `true` | Download comments as JSON |
-| `SAVE_THUMBNAIL` | `true` | Download thumbnail images |
-| `RESTRICT_FILENAMES` | `true` | Use `yt-dlp --restrict-filenames` |
-| `MAX_FILENAME_LENGTH` | — | Truncate filenames to this length |
+| Variable               | Default                   | Description                                                                                                 |
+| :--------------------- | :------------------------ | :---------------------------------------------------------------------------------------------------------- |
+| `SAVE_PATH`            | `/home/.../yt-diff-data/` | Root directory for downloaded files                                                                         |
+| `COOKIES_FILE`         | —                         | Path to Netscape-format cookies file (global fallback for all sites)                                        |
+| `X_COOKIES_FILE`       | —                         | Path to cookies file for x.com only (overrides `COOKIES_FILE`)                                              |
+| `YOUTUBE_COOKIES_FILE` | —                         | Path to cookies file for YouTube only (overrides `COOKIES_FILE`)                                            |
+| `PROXY_STRING_FILE`    | —                         | Path to file containing HTTP proxy URL                                                                      |
+| `PROXY_STRING`         | —                         | Direct proxy URL (fallback). Note: Currently restricted to `x.com` and `iwara.tv` due to Cloudflare blocks. |
+| `SLEEP`                | `3`                       | Seconds to wait before starting jobs on boot                                                                |
+| `CHUNK_SIZE_DEFAULT`   | `10`                      | Videos per processing chunk during listing                                                                  |
+| `MAX_DOWNLOADS`        | `1`                       | Max concurrent download processes                                                                           |
+| `MAX_LISTINGS`         | `1`                       | Max concurrent listing processes                                                                            |
+| `SAVE_SUBTITLES`       | `true`                    | Download subtitle files                                                                                     |
+| `SAVE_DESCRIPTION`     | `true`                    | Download description files                                                                                  |
+| `SAVE_COMMENTS`        | `true`                    | Download comments as JSON                                                                                   |
+| `SAVE_THUMBNAIL`       | `true`                    | Download thumbnail images                                                                                   |
+| `RESTRICT_FILENAMES`   | `true`                    | Use `yt-dlp --restrict-filenames`                                                                           |
+| `MAX_FILENAME_LENGTH`  | —                         | Truncate filenames to this length                                                                           |
 
 ### YouTube API (Optional)
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `YOUTUBE_API_KEY` | — | YouTube Data API v3 key (public/unlisted playlists only) |
-| `YOUTUBE_CLIENT_ID` | — | OAuth2 client ID (all playlists including private) |
-| `YOUTUBE_CLIENT_SECRET` | — | OAuth2 client secret |
-| `YOUTUBE_REFRESH_TOKEN` | — | OAuth2 refresh token |
+| Variable                | Default | Description                                              |
+| :---------------------- | :------ | :------------------------------------------------------- |
+| `YOUTUBE_API_KEY`       | —       | YouTube Data API v3 key (public/unlisted playlists only) |
+| `YOUTUBE_CLIENT_ID`     | —       | OAuth2 client ID (all playlists including private)       |
+| `YOUTUBE_CLIENT_SECRET` | —       | OAuth2 client secret                                     |
+| `YOUTUBE_REFRESH_TOKEN` | —       | OAuth2 refresh token                                     |
 
 > **Note:** OAuth2 takes priority over API key if both are set. See
 > [YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md) for full details.
 
 ### Scheduling
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `UPDATE_SCHEDULED` | `*/30 * * * *` | Cron expression for playlist update checks |
-| `PRUNE_INTERVAL` | `*/30 * * * *` | Cron expression for orphan video pruning |
-| `CLEANUP_INTERVAL` | `*/10 * * * *` | Cron expression for stale process cleanup |
-| `PROCESS_MAX_AGE` | `300000` | Max process age in ms before cleanup kills it |
-| `TZ_PREFERRED` | `Asia/Kolkata` | Timezone for cron job scheduling |
+| Variable           | Default        | Description                                   |
+| :----------------- | :------------- | :-------------------------------------------- |
+| `UPDATE_SCHEDULED` | `*/30 * * * *` | Cron expression for playlist update checks    |
+| `PRUNE_INTERVAL`   | `*/30 * * * *` | Cron expression for orphan video pruning      |
+| `CLEANUP_INTERVAL` | `*/10 * * * *` | Cron expression for stale process cleanup     |
+| `PROCESS_MAX_AGE`  | `300000`       | Max process age in ms before cleanup kills it |
+| `TZ_PREFERRED`     | `Asia/Kolkata` | Timezone for cron job scheduling              |
 
 ### Authentication
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `SECRET_KEY_FILE` | — | Path to file containing the JWT signing key |
-| `SECRET_KEY` | — | Direct JWT key (fallback) |
-| `ALLOW_REGISTRATION` | `true` | Allow new user sign-ups |
-| `MAX_USERS` | `15` | Maximum number of allowed user accounts |
-| `RATE_LIMIT_GLOBAL_MAX_REQUESTS` | `10` | Rate limit: max requests per IP per window. Set to 0 to disable throttling. |
-| `RATE_LIMIT_ACTION_MAX_REQUESTS` | `10` | Rate limit: max requests for actions per window. Set to 0 to disable throttling. |
-| `CACHE_MAX_AGE` | `3600` | Rate limit window in seconds |
-| `CACHE_MAX_ITEMS` | `100` | Max entries in the rate limit cache in memory |
-| `ACTION_WINDOW_SEC` | `3600` | Rate limit window for specific actions in seconds |
+| Variable                         | Default | Description                                                                      |
+| :------------------------------- | :------ | :------------------------------------------------------------------------------- |
+| `SECRET_KEY_FILE`                | —       | Path to file containing the JWT signing key                                      |
+| `SECRET_KEY`                     | —       | Direct JWT key (fallback)                                                        |
+| `ALLOW_REGISTRATION`             | `true`  | Allow new user sign-ups                                                          |
+| `MAX_USERS`                      | `15`    | Maximum number of allowed user accounts                                          |
+| `RATE_LIMIT_GLOBAL_MAX_REQUESTS` | `10`    | Rate limit: max requests per IP per window. Set to 0 to disable throttling.      |
+| `RATE_LIMIT_ACTION_MAX_REQUESTS` | `10`    | Rate limit: max requests for actions per window. Set to 0 to disable throttling. |
+| `CACHE_MAX_AGE`                  | `3600`  | Rate limit window in seconds                                                     |
+| `CACHE_MAX_ITEMS`                | `100`   | Max entries in the rate limit cache in memory                                    |
+| `ACTION_WINDOW_SEC`              | `3600`  | Rate limit window for specific actions in seconds                                |
 
 ### Iwara (Optional)
 
-| Variable | Default | Description |
-| :------- | :------ | :---------- |
-| `IWARA_CONF_FILE` | — | Path to JSON file with `username` and `password` |
-| `IWARA_CONF` | — | Direct JSON string (fallback) |
-| `IWARA_USERNAME` | — | Iwara username (overrides JSON config) |
-| `IWARA_PASSWORD` | — | Iwara password (overrides JSON config) |
+| Variable          | Default | Description                                      |
+| :---------------- | :------ | :----------------------------------------------- |
+| `IWARA_CONF_FILE` | —       | Path to JSON file with `username` and `password` |
+| `IWARA_CONF`      | —       | Direct JSON string (fallback)                    |
+| `IWARA_USERNAME`  | —       | Iwara username (overrides JSON config)           |
+| `IWARA_PASSWORD`  | —       | Iwara password (overrides JSON config)           |
 
 ---
 
@@ -372,3 +378,6 @@ Use the included `restore_db.sh` script:
 - [Deletion Behavior](DELETION_BEHAVIOR.md) — Playlist/video deletion flows
 - [Automated Jobs](AUTOMATED_JOBS.md) — Background cron job details
 - [Search](SEARCH_SCOPED_AND_GLOBAL.md) — Search syntax for the UI
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

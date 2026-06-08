@@ -6,11 +6,11 @@ This document describes how yt-diff decides which method to use when listing (in
 
 yt-diff supports three authentication methods for YouTube, each suited to different use cases:
 
-| Method | Env Vars | Use Case |
-|---|---|---|
-| **OAuth2** | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | All playlists and channels (public, unlisted, private) |
-| **API Key** | `YOUTUBE_API_KEY` | Public and unlisted playlists/channels only |
-| **Cookies** | `COOKIES_FILE` | Watch Later, Liked Videos, and any site requiring login (x.com, etc.) |
+| Method      | Env Vars                                                              | Use Case                                                              |
+| ----------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **OAuth2**  | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | All playlists and channels (public, unlisted, private)                |
+| **API Key** | `YOUTUBE_API_KEY`                                                     | Public and unlisted playlists/channels only                           |
+| **Cookies** | `COOKIES_FILE`                                                        | Watch Later, Liked Videos, and any site requiring login (x.com, etc.) |
 
 > **Note:** OAuth2 takes priority over API Key when both are configured.
 
@@ -69,11 +69,11 @@ If `COOKIES_FILE` is set, yt-dlp receives `--cookies <file>` for YouTube URLs. T
 
 Channel URLs are resolved to their uploads playlist via the YouTube Data API:
 
-| URL Format | Example | Resolution |
-|---|---|---|
-| `/@handle` | `/@Hibiki_dad/videos` | `channels.list?forHandle=Hibiki_dad` → uploads playlist `UU...` |
-| `/channel/UCxxxx` | `/channel/UC1234` | Direct conversion: `UC1234` → `UU1234` |
-| `/c/name` | `/c/ChannelName/videos` | `channels.list?forHandle=ChannelName` → uploads playlist `UU...` |
+| URL Format        | Example                 | Resolution                                                       |
+| ----------------- | ----------------------- | ---------------------------------------------------------------- |
+| `/@handle`        | `/@Hibiki_dad/videos`   | `channels.list?forHandle=Hibiki_dad` → uploads playlist `UU...`  |
+| `/channel/UCxxxx` | `/channel/UC1234`       | Direct conversion: `UC1234` → `UU1234`                           |
+| `/c/name`         | `/c/ChannelName/videos` | `channels.list?forHandle=ChannelName` → uploads playlist `UU...` |
 
 The resolved uploads playlist is then fetched using the same `playlistItems.list` pagination as regular playlists.
 
@@ -81,11 +81,11 @@ The resolved uploads playlist is then fetched using the same `playlistItems.list
 
 Cookie files use the Netscape format and are configured via environment variables. Each site can have its own cookie file, with a global fallback:
 
-| Env Var | Applies To | Notes |
-|---|---|---|
-| `X_COOKIES_FILE` | x.com only | Site-specific, highest priority for x.com |
-| `YOUTUBE_COOKIES_FILE` | youtube.com only | Site-specific, needed for WL/LL and authenticated downloads |
-| `COOKIES_FILE` | Any site (global fallback) | Used when no site-specific var is set |
+| Env Var                | Applies To                 | Notes                                                       |
+| ---------------------- | -------------------------- | ----------------------------------------------------------- |
+| `X_COOKIES_FILE`       | x.com only                 | Site-specific, highest priority for x.com                   |
+| `YOUTUBE_COOKIES_FILE` | youtube.com only           | Site-specific, needed for WL/LL and authenticated downloads |
+| `COOKIES_FILE`         | Any site (global fallback) | Used when no site-specific var is set                       |
 
 **Resolution order per site:**
 - **x.com**: `X_COOKIES_FILE` → `COOKIES_FILE`
@@ -107,10 +107,10 @@ This means you can safely set `X_COOKIES_FILE` for x.com without cookies being p
 
 The YouTube Data API v3 has a daily quota of **10,000 units** on the free tier.
 
-| Operation | Cost | Example |
-|---|---|---|
+| Operation                                     | Cost   | Example                         |
+| --------------------------------------------- | ------ | ------------------------------- |
 | `playlistItems.list` (1 page, up to 50 items) | 1 unit | 5,000-item playlist = 100 units |
-| `channels.list` (resolve handle) | 1 unit | Once per channel URL |
+| `channels.list` (resolve handle)              | 1 unit | Once per channel URL            |
 
 This allows ~100 full scrapes of 5,000-item playlists per day.
 
@@ -167,3 +167,6 @@ environment:
   # OR use a single global file for all sites:
   # - COOKIES_FILE=/run/secrets/all_cookies
 ```
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

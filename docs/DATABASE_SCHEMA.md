@@ -11,24 +11,24 @@ many-to-many relationship structure to map videos to playlists.
 This is the core table responsible for storing the specific state and metadata
 of individual videos, independent of any playlist.
 
-| Field                             | Type      | Description                                                                                                                   |
-| :-------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------- |
-| **`videoUrl`**                    | `STRING`  | **(Primary Key)** The canonical URL of the video, normalized at ingest time (see URL Normalization below). |
-| **`videoId`**                     | `STRING`  | The platform-specific unique identifier (e.g., the YouTube video ID). **Indexed** (non-unique) to support deduplication queries and the `videoId`-based fallback lookup. |
-| **`title`**                       | `STRING`  | The title of the video. May temporarily hold the `videoId` if `"NA"` was returned during a flat playlist parse.               |
-| **`approximateSize`**             | `BIGINT`  | Estimated file size in bytes returned blindly from the platform.                                                              |
-| **`downloadStatus`**              | `BOOLEAN` | Defaults to `false`. Becomes `true` only when the physical file is verified complete on disk.                                 |
-| **`isAvailable`**                 | `BOOLEAN` | Defaults to `true`. Marks if the video has been deleted, privated, or removed from the platform.                              |
-| **`fileName`**                    | `STRING`  | The name of the file on the local disk (including extension). `null` if not downloaded.                                       |
-| **`thumbNailFile`**               | `STRING`  | Path/Name to the downloaded thumbnail file.                                                                                   |
-| **`subTitleFile`**                | `STRING`  | Path/Name to the downloaded subtitle file.                                                                                    |
-| **`commentsFile`**                | `STRING`  | Path/Name to the downloaded JSON comments file.                                                                               |
-| **`descriptionFile`**             | `STRING`  | Path/Name to the downloaded text description file.                                                                            |
-| **`isMetaDataSynced`**            | `BOOLEAN` | Marker for secondary asynchronous processes to verify if they have finished migrating metadata from the filesystem to the DB. |
+| Field                             | Type      | Description                                                                                                                                                                                                                                                       |
+| :-------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`videoUrl`**                    | `STRING`  | **(Primary Key)** The canonical URL of the video, normalized at ingest time (see URL Normalization below).                                                                                                                                                        |
+| **`videoId`**                     | `STRING`  | The platform-specific unique identifier (e.g., the YouTube video ID). **Indexed** (non-unique) to support deduplication queries and the `videoId`-based fallback lookup.                                                                                          |
+| **`title`**                       | `STRING`  | The title of the video. May temporarily hold the `videoId` if `"NA"` was returned during a flat playlist parse.                                                                                                                                                   |
+| **`approximateSize`**             | `BIGINT`  | Estimated file size in bytes returned blindly from the platform.                                                                                                                                                                                                  |
+| **`downloadStatus`**              | `BOOLEAN` | Defaults to `false`. Becomes `true` only when the physical file is verified complete on disk.                                                                                                                                                                     |
+| **`isAvailable`**                 | `BOOLEAN` | Defaults to `true`. Marks if the video has been deleted, privated, or removed from the platform.                                                                                                                                                                  |
+| **`fileName`**                    | `STRING`  | The name of the file on the local disk (including extension). `null` if not downloaded.                                                                                                                                                                           |
+| **`thumbNailFile`**               | `STRING`  | Path/Name to the downloaded thumbnail file.                                                                                                                                                                                                                       |
+| **`subTitleFile`**                | `STRING`  | Path/Name to the downloaded subtitle file.                                                                                                                                                                                                                        |
+| **`commentsFile`**                | `STRING`  | Path/Name to the downloaded JSON comments file.                                                                                                                                                                                                                   |
+| **`descriptionFile`**             | `STRING`  | Path/Name to the downloaded text description file.                                                                                                                                                                                                                |
+| **`isMetaDataSynced`**            | `BOOLEAN` | Marker for secondary asynchronous processes to verify if they have finished migrating metadata from the filesystem to the DB.                                                                                                                                     |
 | **`onlineThumbnail`**             | `TEXT`    | Online thumbnail URL scraped from `yt-dlp` output. Used as a fallback when `thumbNailFile` is not available. `TEXT` type because some platform CDN URLs exceed 255 characters. Explicitly set to `null` for platforms with ephemeral thumbnails (see note below). |
-| **`saveDirectory`**               | `STRING`  | Directory relative to `saveLocation` where this video's files are stored. `null` if not downloaded, empty string for root.    |
-| **`raw_metadata`**                | `JSONB`   | Full pruned `yt-dlp` JSON output (bulky arrays like `formats`, `thumbnails`, `subtitles` are removed before storage). **Excluded from the default Sequelize scope** — must be explicitly requested in queries. |
-| **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                                                               |
+| **`saveDirectory`**               | `STRING`  | Directory relative to `saveLocation` where this video's files are stored. `null` if not downloaded, empty string for root.                                                                                                                                        |
+| **`raw_metadata`**                | `JSONB`   | Full pruned `yt-dlp` JSON output (bulky arrays like `formats`, `thumbnails`, `subtitles` are removed before storage). **Excluded from the default Sequelize scope** — must be explicitly requested in queries.                                                    |
+| **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                                                                                                                                                                                                   |
 
 > [!IMPORTANT]
 > **Ephemeral Thumbnail Handling**: Facebook and Instagram CDN thumbnail
@@ -69,11 +69,11 @@ different URL forms.
 
 **Built-in site rules:**
 
-| Site | Rule |
-| :--- | :--- |
+| Site               | Rule                                                                                                             |
+| :----------------- | :--------------------------------------------------------------------------------------------------------------- |
 | YouTube / youtu.be | Extract video ID → `https://www.youtube.com/watch?v={id}`; strip `list=`, `start_radio=`, `index=`, `si=`, `pp=` |
-| iwara.tv | Strip trailing title slug: `/video/{id}/{slug}` → `/video/{id}` |
-| All sites | `m.` → `www.` for YouTube mobile; force `https`; strip tracking params |
+| iwara.tv           | Strip trailing title slug: `/video/{id}/{slug}` → `/video/{id}`                                                  |
+| All sites          | `m.` → `www.` for YouTube mobile; force `https`; strip tracking params                                           |
 
 **Fallback deduplication lookup:**
 If an incoming URL does not match any existing `videoUrl` PK after normalization,
@@ -141,3 +141,6 @@ Responsible for securing access to the web interface and API endpoints.
 | **`username`**     | `STRING` | Unique login username.                                       |
 | **`passwordHash`** | `STRING` | Securely hashed user password via `bcrypt`.                  |
 | **`passwordSalt`** | `STRING` | The bcrypt salt generated specifically for this user's hash. |
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

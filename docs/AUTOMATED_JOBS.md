@@ -8,11 +8,11 @@ server boots and are logged with their next scheduled run time.
 
 ## Job Overview
 
-| Job | Default Schedule | Env Var | Purpose |
-| :-- | :--------------- | :------ | :------ |
+| Job         | Default Schedule              | Env Var            | Purpose                                    |
+| :---------- | :---------------------------- | :----------------- | :----------------------------------------- |
 | **Cleanup** | `*/10 * * * *` (every 10 min) | `CLEANUP_INTERVAL` | Kill stale/zombie `yt-dlp` child processes |
-| **Update** | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED` | Re-scan monitored playlists for new videos |
-| **Prune** | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL` | Remove or relocate orphaned video records |
+| **Update**  | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED` | Re-scan monitored playlists for new videos |
+| **Prune**   | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`   | Remove or relocate orphaned video records  |
 
 > [!NOTE]
 > All schedules use standard
@@ -41,10 +41,10 @@ processes (`yt-dlp` instances) that have gone stale.
 
 ### Configuration
 
-| Env Var | Default | Description |
-| :------ | :------ | :---------- |
-| `CLEANUP_INTERVAL` | `*/10 * * * *` | Cron expression for cleanup frequency |
-| `PROCESS_MAX_AGE` | `300000` (5 min) | Max age in milliseconds before a process is considered stale |
+| Env Var            | Default          | Description                                                  |
+| :----------------- | :--------------- | :----------------------------------------------------------- |
+| `CLEANUP_INTERVAL` | `*/10 * * * *`   | Cron expression for cleanup frequency                        |
+| `PROCESS_MAX_AGE`  | `300000` (5 min) | Max age in milliseconds before a process is considered stale |
 
 ---
 
@@ -70,12 +70,12 @@ videos that were added since the last check.
 
 ### Monitoring Types Recap
 
-| Type | Behavior | Best For |
-| :--- | :------- | :------- |
-| **Start** | Scans from index 1 forward; exits early after 2 consecutive fully-duplicate chunks | Channels where new videos appear at the **top** |
-| **End** | Scans from `(max index - chunk size + 1)` onward | Playlists where new videos are **appended** at the bottom |
-| **Full** | Complete start-to-end re-scan; resets to `N/A` after success | Playlists with arbitrary insertions, deletions, or reordering |
-| **N/A** | Ignored by the scheduler entirely | Completed archives, single videos |
+| Type      | Behavior                                                                           | Best For                                                      |
+| :-------- | :--------------------------------------------------------------------------------- | :------------------------------------------------------------ |
+| **Start** | Scans from index 1 forward; exits early after 2 consecutive fully-duplicate chunks | Channels where new videos appear at the **top**               |
+| **End**   | Scans from `(max index - chunk size + 1)` onward                                   | Playlists where new videos are **appended** at the bottom     |
+| **Full**  | Complete start-to-end re-scan; resets to `N/A` after success                       | Playlists with arbitrary insertions, deletions, or reordering |
+| **N/A**   | Ignored by the scheduler entirely                                                  | Completed archives, single videos                             |
 
 > [!TIP]
 > For a detailed explanation of each monitoring mode's internal logic, see
@@ -83,11 +83,11 @@ videos that were added since the last check.
 
 ### Configuration
 
-| Env Var | Default | Description |
-| :------ | :------ | :---------- |
-| `UPDATE_SCHEDULED` | `*/30 * * * *` | Cron expression for update frequency |
-| `CHUNK_SIZE_DEFAULT` | `10` | Number of videos per processing chunk |
-| `MAX_LISTINGS` | `2` | Max concurrent listing processes |
+| Env Var              | Default        | Description                           |
+| :------------------- | :------------- | :------------------------------------ |
+| `UPDATE_SCHEDULED`   | `*/30 * * * *` | Cron expression for update frequency  |
+| `CHUNK_SIZE_DEFAULT` | `10`           | Number of videos per processing chunk |
+| `MAX_LISTINGS`       | `2`            | Max concurrent listing processes      |
 
 ---
 
@@ -123,8 +123,8 @@ Orphaned videos are created when:
 
 ### Configuration
 
-| Env Var | Default | Description |
-| :------ | :------ | :---------- |
+| Env Var          | Default        | Description                         |
+| :--------------- | :------------- | :---------------------------------- |
 | `PRUNE_INTERVAL` | `*/30 * * * *` | Cron expression for prune frequency |
 
 ---
@@ -139,3 +139,6 @@ level=info msg="Started {name} job" schedule="{cron expression}" nextRun="{forma
 ```
 
 Jobs continue running for the lifetime of the server process.
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

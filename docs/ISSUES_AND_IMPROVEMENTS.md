@@ -25,3 +25,6 @@ The codebase contains two active workarounds for upstream bugs. See [`MONKEY_PAT
 The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSONB structures. While bulky arrays (formats/thumbnails) are pruned, accumulating this across thousands of videos might bloat PostgreSQL storage unnecessarily if the fields are never queried.
 
 - **Suggested Improvement**: Periodically review whether `raw_metadata` is actively utilized. If not, consider extracting only specific metadata keys explicitly rather than a catch-all JSON dump, or offload this archival data to file-based cache.
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

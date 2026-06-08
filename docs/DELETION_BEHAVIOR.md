@@ -12,12 +12,12 @@ the `/delplay` endpoint directly.
 
 ### Request Parameters
 
-| Parameter                   | Type      | Default | Description                                              |
-| :-------------------------- | :-------- | :------ | :------------------------------------------------------- |
-| **`playListUrl`**           | `string`  | —       | **(Required)** URL of the playlist to act on.            |
-| **`deleteAllVideosInPlaylist`** | `boolean` | `false` | Remove all video mappings from this playlist.        |
-| **`deletePlaylist`**        | `boolean` | `false` | Delete the playlist record itself from `PlaylistMetadata`.|
-| **`cleanUp`**               | `boolean` | `false` | Physically remove the playlist's directory from disk.    |
+| Parameter                       | Type      | Default | Description                                                |
+| :------------------------------ | :-------- | :------ | :--------------------------------------------------------- |
+| **`playListUrl`**               | `string`  | —       | **(Required)** URL of the playlist to act on.              |
+| **`deleteAllVideosInPlaylist`** | `boolean` | `false` | Remove all video mappings from this playlist.              |
+| **`deletePlaylist`**            | `boolean` | `false` | Delete the playlist record itself from `PlaylistMetadata`. |
+| **`cleanUp`**                   | `boolean` | `false` | Physically remove the playlist's directory from disk.      |
 
 ### Guard Rails
 
@@ -69,13 +69,13 @@ Triggered when a user deletes specific videos from the SubList panel
 
 ### Request Parameters
 
-| Parameter               | Type       | Default | Description                                                         |
-| :---------------------- | :--------- | :------ | :------------------------------------------------------------------ |
-| **`playListUrl`**       | `string`   | —       | **(Required)** URL of the playlist context.                         |
-| **`videoUrls`**         | `string[]` | —       | **(Required)** Array of video URLs to process.                      |
-| **`cleanUp`**           | `boolean`  | `false` | Physically delete downloaded files from disk.                       |
-| **`deleteVideoMappings`** | `boolean` | `false` | Remove the playlist-video mapping for this playlist.               |
-| **`deleteVideosInDB`**  | `boolean`  | `false` | Permanently delete the video record from `VideoMetadata` (cascade). |
+| Parameter                 | Type       | Default | Description                                                         |
+| :------------------------ | :--------- | :------ | :------------------------------------------------------------------ |
+| **`playListUrl`**         | `string`   | —       | **(Required)** URL of the playlist context.                         |
+| **`videoUrls`**           | `string[]` | —       | **(Required)** Array of video URLs to process.                      |
+| **`cleanUp`**             | `boolean`  | `false` | Physically delete downloaded files from disk.                       |
+| **`deleteVideoMappings`** | `boolean`  | `false` | Remove the playlist-video mapping for this playlist.                |
+| **`deleteVideosInDB`**    | `boolean`  | `false` | Permanently delete the video record from `VideoMetadata` (cascade). |
 
 ### Execution Flow
 
@@ -145,17 +145,20 @@ This situation arises when:
 
 For each unreferenced video:
 
-| Condition | Action |
-| :-------- | :----- |
+| Condition                                     | Action                                                                                                        |
+| :-------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
 | `downloadStatus = true` (file exists on disk) | **Move** to the "None" playlist by creating a new mapping with the next available `positionInPlaylist` index. |
-| `downloadStatus = false` (not downloaded) | **Destroy** the `VideoMetadata` row entirely. |
+| `downloadStatus = false` (not downloaded)     | **Destroy** the `VideoMetadata` row entirely.                                                                 |
 
 This ensures downloaded content is never silently deleted — it's always
 preserved under the "None" bucket where the user can find and manage it.
 
 ### Configuration
 
-| Env Var | Default | Description |
-| :------ | :------ | :---------- |
+| Env Var          | Default        | Description                         |
+| :--------------- | :------------- | :---------------------------------- |
 | `PRUNE_INTERVAL` | `*/30 * * * *` | Cron expression for prune frequency |
-| `TZ_PREFERRED` | `Asia/Kolkata` | Timezone for scheduling |
+| `TZ_PREFERRED`   | `Asia/Kolkata` | Timezone for scheduling             |
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

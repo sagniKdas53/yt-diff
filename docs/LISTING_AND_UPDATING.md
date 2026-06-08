@@ -187,3 +187,6 @@ matches this behavior:
   configuration, cookie handling, and authentication modes
 - [Automated Jobs](AUTOMATED_JOBS.md) — Background scheduler details
 - [Download Behavior](DOWNLOAD_BEHAVIOR.md) — How downloads are processed
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

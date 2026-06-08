@@ -33,3 +33,6 @@
 19. [x] Fix the issue where there is a descripency in the number of items to list, in the dialog box it says 50 but it's actually 64 (2^6), the progression should be 2^0,2^3,2^5,2^6 (maybe 2^7 would be better as we are going in a series of 2^(odd numbers))
 20. [x] Fix the issue where meta data update is not clear log line `2025-11-16T04:55:38.811395865Z level=trace msg="Checking video metadata for updates" ts=2025-11-16T04:55:38.811Z videoId="NA" newData=[object Object]` use the videoUrl insted of ID is it's not always unque
 21. [x] Add an option to use the --proxy URL option of yt-dlp so that we don't need to mount the entire stack on gluetun insted we can expose a port though gluetun+squid so that we can do something like `--proxy http://proxy_user:proxy_pass@proxy_server:proxy_port`
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

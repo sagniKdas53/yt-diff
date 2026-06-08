@@ -47,3 +47,6 @@ const process = spawn("python3", ["-c", YT_DLP_PATCHED_CMD, ...args]);
 
 ## Suggested Upstream Action
 The `curl_cffi` maintainers should investigate the safety of the `Curl.reset` method, specifically ensuring that any underlying C-objects are not accessed after being freed during rapid re-initialization cycles.
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

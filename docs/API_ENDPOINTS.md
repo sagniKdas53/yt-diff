@@ -89,6 +89,12 @@ dependencies minimal.
   - **Response**: `{ status, playlistDuplicatesFound, playlistMergedCount, playlistDetails[] }`
   - **Authentication**: Required.
 
+- **`/queuestatus`**
+  - **Description**: Returns the current snapshot of active and pending download processes in the queue along with their queue positions.
+  - **Request body**: `{}`
+  - **Response**: `{ status: "success", generation: number, queue: Array<{ url: string, title: string, status: string, queuePosition: number }> }`
+  - **Authentication**: Required.
+
 ### 5. Authentication
 
 - **`/login`**
@@ -126,18 +132,21 @@ All URLs submitted via `/list` or `/download` (or discovered automatically by yt
 
 ### Canonicalization Rules
 
-| Platform | Input Example | Canonical Stored | Note |
-| :---- | :--------------- | :--------------- | :--- |
-| **YouTube** | `https://youtu.be/ID?si=xxx` | `https://www.youtube.com/watch?v=ID` | Normalizes `youtu.be`, `m.youtube.com`, and `/shorts/`. Strips `list`, `index`, `si`, `pp` for videos. |
-| **Iwara** | `https://www.iwara.tv/video/ID/slug` | `https://www.iwara.tv/video/ID` | Strips trailing title slug. |
-| **X / Twitter**| `https://x.com/user/status/ID` | `https://x.com/user/status/ID?s=20` | Appends/retains `?s=20` as it remains structurally constant. |
+| Platform        | Input Example                        | Canonical Stored                     | Note                                                                                                   |
+| :-------------- | :----------------------------------- | :----------------------------------- | :----------------------------------------------------------------------------------------------------- |
+| **YouTube**     | `https://youtu.be/ID?si=xxx`         | `https://www.youtube.com/watch?v=ID` | Normalizes `youtu.be`, `m.youtube.com`, and `/shorts/`. Strips `list`, `index`, `si`, `pp` for videos. |
+| **Iwara**       | `https://www.iwara.tv/video/ID/slug` | `https://www.iwara.tv/video/ID`      | Strips trailing title slug.                                                                            |
+| **X / Twitter** | `https://x.com/user/status/ID`       | `https://x.com/user/status/ID?s=20`  | Appends/retains `?s=20` as it remains structurally constant.                                           |
 
 The normalizer is registry-based—new sites can be added to `SITE_CANONICALIZERS` in `process-manager.ts` and `dedup.ts`.
 
 ## WebSockets
 
 - **Socket.io Connection**: Handled at `config.urlBase + "/socket.io/"`.
-- **Events**: Utilizes `connection`, `acknowledge`, and `disconnect` events.
+- **Events**: Utilizes `connection`, `acknowledge`, and `disconnect` events. The `init` event also passes a `generation` timestamp to identify the current server session.
 - **Frontend Interaction**: The frontend subscribes to socket events to receive
   real-time progress updates of active background downloads and metadata listing
   processes, ensuring the UI stays fresh without constant polling.
+
+---
+*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*
