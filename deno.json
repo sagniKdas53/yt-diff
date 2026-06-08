@@ -19,6 +19,10 @@
         "iwara": "SECRET_KEY_FILE=secrets/secret_key.txt DB_PASSWORD_FILE=secrets/db_password.txt IWARA_CONF_FILE=secrets/iwara.json deno run --allow-all --watch index.ts",
         "youtube": "SECRET_KEY_FILE=secrets/secret_key.txt DB_PASSWORD_FILE=secrets/db_password.txt YOUTUBE_API_KEY_FILE=secrets/youtube_api_key.txt deno run --allow-all --watch index.ts",
         "cache": "CACHE_MAX_AGE=310 CACHE_MAX_ITEMS=1000 SECRET_KEY_FILE=secrets/secret_key.txt DB_PASSWORD_FILE=secrets/db_password.txt deno run --allow-all --watch index.ts",
-        "full": "CACHE_MAX_AGE=600 CACHE_MAX_ITEMS=1000 SECRET_KEY_FILE=secrets/secret_key.txt DB_PASSWORD_FILE=secrets/db_password.txt COOKIES_FILE=secrets/cookie_secret.txt PROXY_STRING_FILE=secrets/proxy_string.txt IWARA_CONF_FILE=secrets/iwara.json YOUTUBE_API_KEY_FILE=secrets/youtube_api_key.txt deno run --allow-all --watch index.ts"
+        "full": "CACHE_MAX_AGE=600 CACHE_MAX_ITEMS=1000 SECRET_KEY_FILE=secrets/secret_key.txt DB_PASSWORD_FILE=secrets/db_password.txt COOKIES_FILE=secrets/cookie_secret.txt PROXY_STRING_FILE=secrets/proxy_string.txt IWARA_CONF_FILE=secrets/iwara.json YOUTUBE_API_KEY_FILE=secrets/youtube_api_key.txt deno run --allow-all --watch index.ts",
+        "lint": "deno lint index.ts src/",
+        "check": "deno check index.ts src/",
+        "fmt": "deno fmt index.ts src/",
+        "ship": "deno check index.ts src/ && deno lint index.ts src/ && deno fmt index.ts src/"
     }
 }

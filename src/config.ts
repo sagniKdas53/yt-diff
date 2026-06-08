@@ -147,8 +147,9 @@ export const config: AppConfig = {
     actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
   },
   queue: {
-    maxListings: +(Deno.env.get("MAX_LISTINGS") || 2),
-    maxDownloads: +(Deno.env.get("MAX_DOWNLOADS") || 2),
+    // Parallelims be damned, I don't care.
+    maxListings: +(Deno.env.get("MAX_LISTINGS") || 1),
+    maxDownloads: +(Deno.env.get("MAX_DOWNLOADS") || 1),
     cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *",
     maxIdle: +(Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000),
     maxLifetime: +(Deno.env.get("PROCESS_MAX_LIFETIME") || 15 * 60 * 1000),

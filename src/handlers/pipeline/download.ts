@@ -221,34 +221,38 @@ export function createDownloadFlow(
       `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
     );
 
-    await DownloadSemaphore.acquire();
+    const { url: videoUrl, title: videoTitle, queuePosition } = downloadItem;
+    const now = Date.now();
+    const downloadEntry: DownloadProcessEntry = {
+      url: videoUrl,
+      title: videoTitle,
+      queuePosition,
+      spawnType: "download",
+      lastActivity: now,
+      lastStdoutActivity: now,
+      spawnTimeStamp: now,
+      status: "pending",
+    };
+
+    const entryKey = `pending_${videoUrl}_${Date.now()}`;
+    downloadProcesses.set(entryKey, downloadEntry);
 
     try {
-      const { url: videoUrl, title: videoTitle, queuePosition } = downloadItem;
-      const now = Date.now();
-      const downloadEntry: DownloadProcessEntry = {
-        url: videoUrl,
-        title: videoTitle,
-        queuePosition,
-        spawnType: "download",
-        lastActivity: now,
-        lastStdoutActivity: now,
-        spawnTimeStamp: now,
-        status: "pending",
-      };
+      await DownloadSemaphore.acquire();
 
-      const entryKey = `pending_${videoUrl}_${Date.now()}`;
-      downloadProcesses.set(entryKey, downloadEntry);
-
-      const result = await executeDownload(downloadItem, entryKey);
-
+      try {
+        const result = await executeDownload(downloadItem, entryKey);
+        return result;
+      } finally {
+        DownloadSemaphore.release();
+      }
+    } finally {
       if (downloadProcesses.has(entryKey)) {
         downloadProcesses.delete(entryKey);
       }
-
-      return result;
-    } finally {
-      DownloadSemaphore.release();
+      if (downloadProcesses.size === 0) {
+        queueSequence = 0;
+      }
     }
   }
 
@@ -261,7 +265,6 @@ export function createDownloadFlow(
       title: videoTitle,
       saveDirectory,
       videoId,
-      queuePosition,
     } = downloadItem;
 
     try {
@@ -283,7 +286,6 @@ export function createDownloadFlow(
         safeEmit("download-started", {
           url: videoUrl,
           percentage: 101,
-          queuePosition,
         });
 
         const siteArgs = buildSiteArgs(videoUrl, config);
@@ -724,29 +726,16 @@ export function createDownloadFlow(
     }
   }
 
-  /**
-   * Returns a snapshot of all active and pending download entries,
-   * sorted by their backend-assigned queue position.
-   */
   function getQueueSnapshot() {
-    const entries: {
-      url: string;
-      title: string;
-      status: string;
-      queuePosition: number;
-    }[] = [];
+    const sortedEntries = Array.from(downloadProcesses.values())
+      .sort((a, b) => a.queuePosition - b.queuePosition);
 
-    for (const entry of downloadProcesses.values()) {
-      entries.push({
-        url: entry.url,
-        title: entry.title,
-        status: entry.status,
-        queuePosition: entry.queuePosition,
-      });
-    }
-
-    entries.sort((a, b) => a.queuePosition - b.queuePosition);
-    return entries;
+    return sortedEntries.map((entry, index) => ({
+      url: entry.url,
+      title: entry.title,
+      status: entry.status,
+      queuePosition: index + 1,
+    }));
   }
 
   return { processDownloadRequest, getQueueSnapshot };
