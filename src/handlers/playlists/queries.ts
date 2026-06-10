@@ -127,8 +127,8 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
       // Default mode preserves playlist order via positionInPlaylist ASC.
       const sortOrder = sortByDownloaded
-        ? [VideoMetadata, "downloadStatus", "DESC"]
-        : ["positionInPlaylist", "ASC"];
+        ? [[VideoMetadata, "downloadStatus", "DESC"], ["positionInPlaylist", "ASC"]]
+        : [["positionInPlaylist", "ASC"]];
 
       logger.trace("Fetching playlist videos", {
         startIndex,
@@ -220,22 +220,23 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         where: mappingWhere,
         limit: endIndex - startIndex,
         offset: startIndex,
-        order: [sortOrder as [string | typeof VideoMetadata, string, string]],
+        order: sortOrder as any,
       };
 
       const results = await PlaylistVideoMapping.findAndCountAll(queryOptions);
 
       let playlistSaveDir = "";
+      let playlistTitle: string | null = null;
       try {
         const playlist = await PlaylistMetadata.findOne({
           where: { playlistUrl },
         });
 
-        playlistSaveDir =
-          (playlist as unknown as { saveDirectory?: string } | null)
-            ?.saveDirectory ?? "";
+        const pData = playlist as unknown as { saveDirectory?: string; title?: string } | null;
+        playlistSaveDir = pData?.saveDirectory ?? "";
+        playlistTitle = pData?.title ?? null;
       } catch (err) {
-        logger.warn("Could not fetch playlist saveDirectory", {
+        logger.warn("Could not fetch playlist details", {
           playlistUrl,
           error: (err as Error).message,
         });
@@ -271,6 +272,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         count: results.count,
         rows: safeRows,
         saveDirectory: playlistSaveDir,
+        playlistTitle,
       };
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
