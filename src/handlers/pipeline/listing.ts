@@ -211,14 +211,13 @@ export function createListingFlow(
 
         if (playlistEntry) {
           logger.debug("Playlist found in database", { url: normalizedUrl });
-          if ((playlistEntry as any).monitoringType === monitoringType) {
+          if (playlistEntry.monitoringType === monitoringType) {
             logger.debug("Playlist monitoring hasn't changed so skipping", {
               url: normalizedUrl,
             });
             safeEmit("listing-playlist-skipped-because-same-monitoring", {
-              message: `Playlist ${
-                (playlistEntry as any).title
-              } is already being monitored with type ${monitoringType}, skipping.`,
+              message:
+                `Playlist ${playlistEntry.title} is already being monitored with type ${monitoringType}, skipping.`,
             });
             continue;
           } else {
@@ -228,7 +227,7 @@ export function createListingFlow(
             itemsToList.push({
               url: normalizedUrl,
               type: "playlist",
-              previousMonitoringType: (playlistEntry as any).monitoringType,
+              previousMonitoringType: playlistEntry.monitoringType,
               currentMonitoringType: monitoringType,
               reason: "Monitoring type changed",
             });
@@ -305,11 +304,11 @@ export function createListingFlow(
             safeEmit("listing-single-item-complete", {
               url: canonicalUrl,
               type: "video",
-              title: (videoEntry as any).title,
+              title: videoEntry.title,
               itemLabel: displayLabel,
               status: "completed",
               processedChunks: 1,
-              seekSubListTo: (existingMapping as any).positionInPlaylist,
+              seekSubListTo: existingMapping.positionInPlaylist,
               alreadyExisted: true,
               duplicateScope: "none",
               downloadLocation,
@@ -331,13 +330,13 @@ export function createListingFlow(
           safeEmit("listing-single-item-complete", {
             url: canonicalUrl,
             type: "video",
-            title: (videoEntry as any).title,
+            title: videoEntry.title,
             itemLabel: displayLabel,
             status: "completed",
             processedChunks: 1,
             seekSubListTo: newPosition,
             alreadyExisted: false,
-            addedFromDownloaded: Boolean((videoEntry as any).downloadStatus),
+            addedFromDownloaded: Boolean(videoEntry.downloadStatus),
             addedFromExisting: true,
             downloadLocation,
             existingPlaylists,
@@ -522,12 +521,12 @@ export function createListingFlow(
             url: videoUrl,
           });
           if (
-            existingPlaylist.getDataValue("monitoringType") ===
+            existingPlaylist.monitoringType ===
               currentMonitoringType && !resolvedIsScheduledUpdate
           ) {
             return handleEmptyResponse(videoUrl);
           } else if (
-            existingPlaylist.getDataValue("monitoringType") !==
+            existingPlaylist.monitoringType !==
               currentMonitoringType
           ) {
             logger.debug("Playlist monitoring has changed", { url: videoUrl });
@@ -538,20 +537,20 @@ export function createListingFlow(
                   : currentMonitoringType,
               lastUpdatedByScheduler: resolvedIsScheduledUpdate ||
                   ["Refresh", "Full"].includes(currentMonitoringType)
-                ? Date.now()
-                : existingPlaylist.getDataValue("lastUpdatedByScheduler"),
+                ? new Date()
+                : existingPlaylist.lastUpdatedByScheduler,
             });
             logger.debug("Playlist monitoring type updated", { url: videoUrl });
           } else if (resolvedIsScheduledUpdate) {
             await existingPlaylist.update({
               monitoringType: currentMonitoringType === "Full"
                 ? "N/A"
-                : existingPlaylist.getDataValue("monitoringType"),
-              lastUpdatedByScheduler: Date.now(),
+                : existingPlaylist.monitoringType,
+              lastUpdatedByScheduler: new Date(),
             });
           }
-          playlistTitle = existingPlaylist.getDataValue("title");
-          seekPlaylistListTo = (existingPlaylist as any).sortOrder;
+          playlistTitle = existingPlaylist.title;
+          seekPlaylistListTo = existingPlaylist.sortOrder;
         } else {
           logger.debug("Playlist not found in database, adding to database", {
             url: videoUrl,
@@ -562,8 +561,8 @@ export function createListingFlow(
               ? "N/A"
               : currentMonitoringType,
           );
-          playlistTitle = (newPlaylist as any).title;
-          seekPlaylistListTo = (newPlaylist as any).sortOrder;
+          playlistTitle = newPlaylist.title;
+          seekPlaylistListTo = newPlaylist.sortOrder;
         }
 
         return await handlePlaylistStreaming({
@@ -1331,7 +1330,7 @@ export function createListingFlow(
         ).values(),
       ];
       await VideoMetadata.unscoped().bulkCreate(
-        deduplicatedVideos as unknown as Array<Record<string, unknown>>,
+        deduplicatedVideos as any,
         {
           updateOnDuplicate: [
             "videoId",
@@ -1348,7 +1347,7 @@ export function createListingFlow(
 
     if (mappingsToCreate.length > 0) {
       await PlaylistVideoMapping.bulkCreate(
-        mappingsToCreate as unknown as Array<Record<string, unknown>>,
+        mappingsToCreate as any,
       );
     }
 
@@ -1434,7 +1433,10 @@ export function createListingFlow(
     };
   }
 
-  function addPlaylist(playlistUrl: string, monitoringType: string) {
+  function addPlaylist(
+    playlistUrl: string,
+    monitoringType: string,
+  ): Promise<PlaylistMetadata> {
     let playlistTitle = "";
 
     const processArgs = [
@@ -1554,9 +1556,9 @@ export function createListingFlow(
         order: [["sortOrder", "DESC"]],
         attributes: ["sortOrder"],
         limit: 1,
-      }).then((lastPlaylist: Model | null) => {
+      }).then((lastPlaylist: PlaylistMetadata | null) => {
         const initialValue = lastPlaylist !== null
-          ? (lastPlaylist as any).sortOrder + 1
+          ? lastPlaylist.sortOrder + 1
           : 0;
         pendingPlaylistSortCounter = initialValue;
         return initialValue;
@@ -1586,11 +1588,12 @@ export function createListingFlow(
       const [playlist, created] = await PlaylistMetadata.findOrCreate({
         where: { playlistUrl: playlistUrl },
         defaults: {
+          playlistUrl: playlistUrl,
           title: playlistTitle,
           monitoringType: monitoringType,
           saveDirectory: truncateText(playlistTitle, 30),
           sortOrder: nextPlaylistIndex,
-          lastUpdatedByScheduler: Date.now(),
+          lastUpdatedByScheduler: new Date(),
         },
       });
 

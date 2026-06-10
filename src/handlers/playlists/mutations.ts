@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
 import he from "he";
 import { Model, Op } from "sequelize";
 import { config } from "../../config.ts";
@@ -59,7 +58,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
 
       logger.debug("Successfully updated monitoring type", {
         playlistUrl,
-        oldType: (playlist as any).monitoringType,
+        oldType: playlist.monitoringType,
         newType: monitoringType,
       });
 
@@ -123,7 +122,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         );
       }
 
-      const playlist = await PlaylistMetadata.findByPk(playListUrl) as any;
+      const playlist = await PlaylistMetadata.findByPk(playListUrl);
       if (!playlist) {
         logger.error("Playlist not found", {
           "requestBody": JSON.stringify(requestBody),
@@ -548,9 +547,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
               continue;
             }
 
-            const video = videos.find((v: any) =>
-              v.getDataValue("videoUrl") === videoUrl
-            ) as any;
+            const video = videos.find((v) => v.videoUrl === videoUrl);
 
             if (!video) {
               logger.warn("Video not found", { videoUrl });
@@ -560,13 +557,13 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
 
             let allFilesRemoved = true;
 
-            if (cleanUp && video.getDataValue("downloadStatus")) {
+            if (cleanUp && video.downloadStatus) {
               const filesToRemove: Record<string, string | null> = {
-                "fileName": video.getDataValue("fileName"),
-                "thumbNailFile": video.getDataValue("thumbNailFile"),
-                "subTitleFile": video.getDataValue("subTitleFile"),
-                "commentsFile": video.getDataValue("commentsFile"),
-                "descriptionFile": video.getDataValue("descriptionFile"),
+                "fileName": video.fileName,
+                "thumbNailFile": video.thumbNailFile,
+                "subTitleFile": video.subTitleFile,
+                "commentsFile": video.commentsFile,
+                "descriptionFile": video.descriptionFile,
               };
 
               logger.debug("Removing files for video", {
@@ -579,7 +576,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
                   try {
                     const filePath = join(
                       config.saveLocation,
-                      video.getDataValue("saveDirectory") || "",
+                      video.saveDirectory || "",
                       value,
                     );
                     logger.debug("Removing file", {
@@ -699,9 +696,8 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
 
         response.writeHead(200, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
-          "message": `Processed ${deleted.length} video(s) from playlist ${
-            (playlist as any).title
-          }`,
+          "message":
+            `Processed ${deleted.length} video(s) from playlist ${playlist.title}`,
           "deleted": deleted,
           "failed": failed,
           "cleanUp": cleanUp,

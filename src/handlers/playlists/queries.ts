@@ -1,5 +1,5 @@
 import he from "he";
-import { FindAndCountOptions, Op, WhereOptions } from "sequelize";
+import { FindAndCountOptions, Op, Order, WhereOptions } from "sequelize";
 import { config } from "../../config.ts";
 import {
   PlaylistMetadata,
@@ -12,7 +12,6 @@ import type {
   HttpError,
   PlaylistDisplayRequest,
   PlaylistHandlerDependencies,
-  PlaylistVideoRowShape,
   PlaylistWhereShape,
   SafePlaylistVideoMeta,
   SafePlaylistVideoRow,
@@ -126,8 +125,11 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
 
       // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
       // Default mode preserves playlist order via positionInPlaylist ASC.
-      const sortOrder = sortByDownloaded
-        ? [[VideoMetadata, "downloadStatus", "DESC"], ["positionInPlaylist", "ASC"]]
+      const sortOrder: Order = sortByDownloaded
+        ? [[VideoMetadata, "downloadStatus", "DESC"], [
+          "positionInPlaylist",
+          "ASC",
+        ]]
         : [["positionInPlaylist", "ASC"]];
 
       logger.trace("Fetching playlist videos", {
@@ -220,7 +222,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         where: mappingWhere,
         limit: endIndex - startIndex,
         offset: startIndex,
-        order: sortOrder as any,
+        order: sortOrder,
       };
 
       const results = await PlaylistVideoMapping.findAndCountAll(queryOptions);
@@ -232,9 +234,8 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
           where: { playlistUrl },
         });
 
-        const pData = playlist as unknown as { saveDirectory?: string; title?: string } | null;
-        playlistSaveDir = pData?.saveDirectory ?? "";
-        playlistTitle = pData?.title ?? null;
+        playlistSaveDir = playlist?.saveDirectory ?? "";
+        playlistTitle = playlist?.title ?? null;
       } catch (err) {
         logger.warn("Could not fetch playlist details", {
           playlistUrl,
@@ -243,27 +244,26 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       }
 
       const safeRows: SafePlaylistVideoRow[] = results.rows.map((row) => {
-        const typedRow = row as unknown as PlaylistVideoRowShape;
-        const vm = typedRow.video_metadatum || {};
+        const vm = row.video_metadatum;
         const safeVideoMeta: SafePlaylistVideoMeta = {
-          title: vm.title,
-          videoId: vm.videoId,
-          videoUrl: vm.videoUrl,
-          downloadStatus: vm.downloadStatus,
-          isAvailable: vm.isAvailable,
-          fileName: vm.fileName,
-          thumbNailFile: vm.thumbNailFile,
-          onlineThumbnail: vm.onlineThumbnail,
-          subTitleFile: vm.subTitleFile,
-          descriptionFile: vm.descriptionFile,
-          isMetaDataSynced: vm.isMetaDataSynced,
-          saveDirectory: vm.saveDirectory,
+          title: vm?.title,
+          videoId: vm?.videoId,
+          videoUrl: vm?.videoUrl,
+          downloadStatus: vm?.downloadStatus,
+          isAvailable: vm?.isAvailable,
+          fileName: vm?.fileName,
+          thumbNailFile: vm?.thumbNailFile,
+          onlineThumbnail: vm?.onlineThumbnail,
+          subTitleFile: vm?.subTitleFile,
+          descriptionFile: vm?.descriptionFile,
+          isMetaDataSynced: vm?.isMetaDataSynced,
+          saveDirectory: vm?.saveDirectory,
         };
 
         return {
-          id: typedRow.id,
-          positionInPlaylist: typedRow.positionInPlaylist,
-          playlistUrl: typedRow.playlistUrl,
+          id: row.id,
+          positionInPlaylist: row.positionInPlaylist,
+          playlistUrl: row.playlistUrl,
           video_metadatum: safeVideoMeta,
         };
       });

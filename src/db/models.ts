@@ -1,5 +1,10 @@
 import pg from "pg";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes, Model, Sequelize } from "sequelize";
+import type {
+  CreationOptional,
+  InferAttributes,
+  InferCreationAttributes,
+} from "sequelize";
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
@@ -20,7 +25,30 @@ export const sequelize = new Sequelize({
   },
 });
 
-export const VideoMetadata = sequelize.define("video_metadata", {
+export class VideoMetadata extends Model<
+  InferAttributes<VideoMetadata>,
+  InferCreationAttributes<VideoMetadata>
+> {
+  declare videoUrl: string;
+  declare videoId: string;
+  declare title: string;
+  declare approximateSize: number | string;
+  declare downloadStatus: CreationOptional<boolean>;
+  declare isAvailable: CreationOptional<boolean>;
+  declare fileName: CreationOptional<string | null>;
+  declare thumbNailFile: CreationOptional<string | null>;
+  declare onlineThumbnail: CreationOptional<string | null>;
+  declare subTitleFile: CreationOptional<string | null>;
+  declare commentsFile: CreationOptional<string | null>;
+  declare descriptionFile: CreationOptional<string | null>;
+  declare isMetaDataSynced: CreationOptional<boolean>;
+  declare saveDirectory: CreationOptional<string | null>;
+  declare raw_metadata: CreationOptional<unknown>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+VideoMetadata.init({
   videoUrl: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -114,6 +142,8 @@ export const VideoMetadata = sequelize.define("video_metadata", {
     allowNull: false,
   },
 }, {
+  sequelize,
+  modelName: "video_metadata",
   defaultScope: {
     attributes: { exclude: ["raw_metadata"] },
   },
@@ -126,7 +156,21 @@ export const VideoMetadata = sequelize.define("video_metadata", {
   ],
 });
 
-export const PlaylistMetadata = sequelize.define("playlist_metadata", {
+export class PlaylistMetadata extends Model<
+  InferAttributes<PlaylistMetadata>,
+  InferCreationAttributes<PlaylistMetadata>
+> {
+  declare playlistUrl: string;
+  declare title: string;
+  declare sortOrder: CreationOptional<number>;
+  declare monitoringType: string;
+  declare saveDirectory: string;
+  declare lastUpdatedByScheduler: Date;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+PlaylistMetadata.init({
   playlistUrl: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -166,9 +210,26 @@ export const PlaylistMetadata = sequelize.define("playlist_metadata", {
     comment:
       "Timestamp of the last update made by the scheduler, default value is createdAt",
   },
+}, {
+  sequelize,
+  modelName: "playlist_metadata",
 });
 
-export const PlaylistVideoMapping = sequelize.define("playlist_video_mapping", {
+export class PlaylistVideoMapping extends Model<
+  InferAttributes<PlaylistVideoMapping>,
+  InferCreationAttributes<PlaylistVideoMapping>
+> {
+  declare id: CreationOptional<string>;
+  declare videoUrl: string;
+  declare playlistUrl: string;
+  declare positionInPlaylist: CreationOptional<number>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+
+  declare video_metadatum?: VideoMetadata;
+}
+
+PlaylistVideoMapping.init({
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -203,7 +264,17 @@ export const PlaylistVideoMapping = sequelize.define("playlist_video_mapping", {
     defaultValue: 0,
     comment: "Order of video within playlist",
   },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
 }, {
+  sequelize,
+  modelName: "playlist_video_mapping",
   indexes: [
     {
       fields: ["playlistUrl", "positionInPlaylist"],
@@ -211,7 +282,19 @@ export const PlaylistVideoMapping = sequelize.define("playlist_video_mapping", {
   ],
 });
 
-export const UserAccount = sequelize.define("user_account", {
+export class UserAccount extends Model<
+  InferAttributes<UserAccount>,
+  InferCreationAttributes<UserAccount>
+> {
+  declare id: CreationOptional<string>;
+  declare username: string;
+  declare passwordHash: string;
+  declare passwordSalt: string;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+UserAccount.init({
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -233,6 +316,17 @@ export const UserAccount = sequelize.define("user_account", {
     allowNull: false,
     comment: "Salt used in password hashing",
   },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: "user_account",
 });
 
 PlaylistVideoMapping.belongsTo(VideoMetadata, {
@@ -274,9 +368,9 @@ export async function initializeDatabase() {
       host: config.db.host,
       database: config.db.name,
       tables: JSON.stringify([
-        (VideoMetadata as unknown as { name: string }).name,
-        (PlaylistMetadata as unknown as { name: string }).name,
-        (PlaylistVideoMapping as unknown as { name: string }).name,
+        VideoMetadata.name,
+        PlaylistMetadata.name,
+        PlaylistVideoMapping.name,
       ]),
     });
 
@@ -300,9 +394,10 @@ export async function initializeDatabase() {
       });
     }
 
-    const [unlistedPlaylist, created] = await PlaylistMetadata.findOrCreate({
+    const [_unlistedPlaylist, created] = await PlaylistMetadata.findOrCreate({
       where: { playlistUrl: "None" },
       defaults: {
+        playlistUrl: "None",
         title: "None",
         monitoringType: "N/A",
         saveDirectory: "",
@@ -316,7 +411,7 @@ export async function initializeDatabase() {
         host: config.db.host,
         database: config.db.name,
         tables: JSON.stringify([
-          (unlistedPlaylist as unknown as { name: string }).name,
+          PlaylistMetadata.name,
         ]),
       });
     }

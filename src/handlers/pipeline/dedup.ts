@@ -1,5 +1,4 @@
-// deno-lint-ignore-file no-explicit-any
-import { Op } from "sequelize";
+import { type InferAttributes, Op, type WhereOptions } from "sequelize";
 import {
   PlaylistMetadata,
   PlaylistVideoMapping,
@@ -201,7 +200,7 @@ async function pickCanonical(
         url,
         inRealPlaylist: realPlaylists.length > 0,
         playlists: playlistUrls,
-        updatedAt: (meta as any)?.updatedAt ?? new Date(0),
+        updatedAt: meta?.updatedAt ?? new Date(0),
       };
     }),
   );
@@ -228,7 +227,7 @@ async function pickCanonical(
 export async function canonicalizeVideoUrlsInNonePlaylist(
   siteFilter?: string,
 ): Promise<void> {
-  const whereClause: any = { playlistUrl: "None" };
+  const whereClause: WhereOptions = { playlistUrl: "None" };
   if (siteFilter) {
     whereClause.videoUrl = { [Op.iLike]: `%${siteFilter}%` };
   }
@@ -476,7 +475,7 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
     const canonicalMeta = await VideoMetadata.findOne({
       where: { videoUrl: canonicalUrl },
       transaction,
-    }) as any;
+    });
 
     if (!canonicalMeta) {
       throw new Error(`Canonical record not found: ${canonicalUrl}`);
@@ -486,7 +485,7 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
       const dupMeta = await VideoMetadata.findOne({
         where: { videoUrl: dupUrl },
         transaction,
-      }) as any;
+      });
 
       if (!dupMeta) {
         logger.warn("dedup: duplicate record already gone", { dupUrl });
@@ -550,8 +549,12 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
       ];
       const updates: Record<string, unknown> = {};
       for (const field of fieldsToPropagate) {
-        const canonVal = canonicalMeta.getDataValue(field);
-        const dupVal = dupMeta.getDataValue(field);
+        const canonVal = canonicalMeta.getDataValue(
+          field as keyof InferAttributes<VideoMetadata>,
+        );
+        const dupVal = dupMeta.getDataValue(
+          field as keyof InferAttributes<VideoMetadata>,
+        );
         if (!canonVal && dupVal) {
           Reflect.set(updates, field, dupVal);
         }
@@ -655,7 +658,7 @@ async function mergePlaylistRecords(
     const canonicalMeta = await PlaylistMetadata.findOne({
       where: { playlistUrl: canonicalUrl },
       transaction,
-    }) as any;
+    });
 
     if (!canonicalMeta) {
       throw new Error(`Canonical playlist not found: ${canonicalUrl}`);
@@ -665,7 +668,7 @@ async function mergePlaylistRecords(
       const dupMeta = await PlaylistMetadata.findOne({
         where: { playlistUrl: dupUrl },
         transaction,
-      }) as any;
+      });
 
       if (!dupMeta) {
         continue;
@@ -723,8 +726,12 @@ async function mergePlaylistRecords(
       ];
       const updates: Record<string, unknown> = {};
       for (const field of fieldsToPropagate) {
-        const canonVal = canonicalMeta.getDataValue(field);
-        const dupVal = dupMeta.getDataValue(field);
+        const canonVal = canonicalMeta.getDataValue(
+          field as keyof InferAttributes<PlaylistMetadata>,
+        );
+        const dupVal = dupMeta.getDataValue(
+          field as keyof InferAttributes<PlaylistMetadata>,
+        );
         if (
           (!canonVal || canonVal === "" || canonVal === "N/A") && dupVal &&
           dupVal !== "" && dupVal !== "N/A"

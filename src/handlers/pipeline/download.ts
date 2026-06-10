@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
 import he from "he";
 import { Op } from "sequelize";
 import { config } from "../../config.ts";
@@ -80,9 +79,7 @@ export function createDownloadFlow(
           }));
         }
 
-        let saveDirectory =
-          (videoEntry as unknown as { saveDirectory: string })?.saveDirectory ??
-            "";
+        let saveDirectory = videoEntry.saveDirectory ?? "";
 
         if (playlistUrl !== "init" && playlistUrl !== "None") {
           try {
@@ -90,9 +87,7 @@ export function createDownloadFlow(
               where: { playlistUrl: playlistUrl },
             });
             if (playlist) {
-              saveDirectory = (playlist as unknown as { saveDirectory: string })
-                ?.saveDirectory ??
-                saveDirectory;
+              saveDirectory = playlist.saveDirectory;
             }
           } catch (error) {
             logger.error("Error getting playlist save directory", {
@@ -112,13 +107,10 @@ export function createDownloadFlow(
             });
             if (mapping) {
               const playlist = await PlaylistMetadata.findOne({
-                where: { playlistUrl: (mapping as any).playlistUrl },
+                where: { playlistUrl: mapping.playlistUrl },
               });
               if (playlist) {
-                saveDirectory =
-                  (playlist as unknown as { saveDirectory: string })
-                    ?.saveDirectory ??
-                    saveDirectory;
+                saveDirectory = playlist.saveDirectory;
               }
             }
           } catch (error) {
@@ -131,9 +123,9 @@ export function createDownloadFlow(
 
         videosToDownload.push({
           url: videoUrl,
-          title: (videoEntry as unknown as { title: string }).title,
+          title: videoEntry.title,
           saveDirectory: saveDirectory,
-          videoId: (videoEntry as unknown as { videoId: string }).videoId,
+          videoId: videoEntry.videoId,
         });
         uniqueUrls.add(videoUrl);
       }
