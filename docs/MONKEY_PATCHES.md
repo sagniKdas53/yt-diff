@@ -44,46 +44,6 @@ const proc = spawn("python3", ["-c", YT_DLP_PATCHED_CMD, ...args]);
 
 Full analysis: [`curl_cffi_segfault_analysis.md`](./curl_cffi_segfault_analysis.md)
 
----
-
-## Patch 2 — `yt-dlp` Iwara Extractor Post-Migration Fix
-
-| Field                 | Detail                                                                                                                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Upstream project**  | [yt-dlp](https://github.com/yt-dlp/yt-dlp)                                                                                                                                                   |
-| **Upstream PR**       | [#16014](https://github.com/yt-dlp/yt-dlp/pull/16014) — _not yet merged_                                                                                                                     |
-| **Fixes issues**      | [#16009](https://github.com/yt-dlp/yt-dlp/issues/16009), [#16146](https://github.com/yt-dlp/yt-dlp/issues/16146)                                                                             |
-| **Symptom**           | After iwara.tv migrated its infrastructure, only 360p/preview formats could be fetched; higher quality formats and login all broke                                                           |
-| **Root cause**        | Three hardcoded values became stale after site migration: API domain (`api.iwara.tv`), files domain (`files.iwara.tv`), and the X-Version HMAC secret key used to sign file-listing requests |
-| **Patch type**        | Build-time — `sed -i` applied to the installed `iwara.py` extractor inside the Docker image                                                                                                  |
-| **Patch location**    | `Dockerfile`, within the final stage `RUN` block, immediately after `pip install yt-dlp`                                                                                                     |
-| **Removal condition** | PR #16014 is merged into yt-dlp master **and** a new pip release is published; bump the pip install and delete the patch block                                                               |
-
-### What the patch changes
-
-| Old value              | New value                          | Affects                                              |
-| ---------------------- | ---------------------------------- | ---------------------------------------------------- |
-| `api.iwara.tv`         | `apiq.iwara.tv`                    | Login, media token, video/user/playlist API calls    |
-| `files.iwara.tv`       | `filesq.iwara.tv`                  | Thumbnail URLs                                       |
-| `5nFp9kmbNnHdAFhaqMvt` | `mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN` | X-Version SHA1 HMAC secret for file-listing endpoint |
-
-### Implementation
-
-In `Dockerfile` (final stage `RUN` block):
-
-```dockerfile
-# Patch iwara extractor: update API domain, files domain, and X-Version secret key
-# Fixes formats beyond 360p/preview (yt-dlp PR #16014, not yet merged upstream)
-echo "DEBUG: Applying iwara extractor patch (PR #16014)" && \
-IWARA_PY=$(find /opt/venv/lib -name 'iwara.py' -path '*/yt_dlp/extractor/*') && \
-sed -i \
-    -e "s|'https://api\.iwara\.tv/|'https://apiq.iwara.tv/|g" \
-    -e 's|"https://api\.iwara\.tv/|"https://apiq.iwara.tv/|g' \
-    -e "s|https://files\.iwara\.tv/|https://filesq.iwara.tv/|g" \
-    -e "s|5nFp9kmbNnHdAFhaqMvt|mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN|g" \
-    "$IWARA_PY" && \
-echo "DEBUG: Iwara patch applied to $IWARA_PY" && \
-```
 
 ---
 *Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*

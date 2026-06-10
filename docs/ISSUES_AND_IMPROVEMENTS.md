@@ -13,12 +13,9 @@ Raw array pushes like `downloadOptions.push('--trim-filenames')` are fine curren
 
 ### 2. Active Monkey Patches
 
-The codebase contains two active workarounds for upstream bugs. See [`MONKEY_PATCHES.md`](./MONKEY_PATCHES.md) for full details, implementation snippets, and removal conditions.
+The codebase contains one active workaround for an upstream bug. See [`MONKEY_PATCHES.md`](./MONKEY_PATCHES.md) for full details, implementation snippets, and removal conditions.
 
 - **`curl_cffi` Segfault** (`index.ts`) — `curl_cffi.Curl.reset` is patched to a no-op at runtime via `python3 -c` to prevent `SIGABRT` crashes when `--impersonate` is used. Remove once `curl_cffi` fixes `Curl.reset` safety upstream.
-
-- **`yt-dlp` Iwara Extractor** (`Dockerfile`) — A `sed` patch applied at image build time updates the API domain (`api.iwara.tv` → `apiq.iwara.tv`), files domain, and X-Version HMAC secret key following iwara.tv's site migration. Tracked upstream at [yt-dlp PR #16014](https://github.com/yt-dlp/yt-dlp/pull/16014). Remove once PR #16014 is merged and a new yt-dlp pip release is published.
-
 
 ### 3. Large JSONB Payload Storage
 
