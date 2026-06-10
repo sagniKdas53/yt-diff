@@ -149,4 +149,4 @@ The normalizer is registry-based—new sites can be added to `SITE_CANONICALIZER
   processes, ensuring the UI stays fresh without constant polling.
 
 ---
-*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*
+*Last updated at: 2026-06-10T14:01:59+05:30*

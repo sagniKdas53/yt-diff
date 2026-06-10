@@ -380,4 +380,4 @@ Use the included `restore_db.sh` script:
 - [Search](SEARCH_SCOPED_AND_GLOBAL.md) — Search syntax for the UI
 
 ---
-*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*
+*Last updated at: 2026-06-10T14:01:59+05:30*

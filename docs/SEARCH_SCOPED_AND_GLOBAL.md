@@ -78,4 +78,4 @@ global:^20[0-9]{2}
 - Downloads initiated from a `global:` search will automatically resolve each video's correct **save directory** from its original playlist mapping.
 
 ---
-*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*
+*Last updated at: 2026-06-10T14:01:59+05:30*

@@ -24,4 +24,4 @@ The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSO
 - **Suggested Improvement**: Periodically review whether `raw_metadata` is actively utilized. If not, consider extracting only specific metadata keys explicitly rather than a catch-all JSON dump, or offload this archival data to file-based cache.
 
 ---
-*Last updated at commit: 5673d43683f100c539919aec1e62d87c6841f0cc*
+*Last updated at: 2026-06-10T14:01:59+05:30*
