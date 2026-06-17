@@ -274,17 +274,17 @@ export function proxyWebSocketRequest(
   request: Request,
   upstreamOrigin: string,
 ): Response {
-  const { socket: clientSocket, response } = Deno.upgradeWebSocket(request);
   const requestUrl = new URL(request.url);
+  const protocolHeader = request.headers.get("sec-websocket-protocol");
+  const protocols = protocolHeader?.split(",").map((value) => value.trim())
+    .filter(Boolean);
+
+  const { socket: clientSocket, response } = Deno.upgradeWebSocket(request);
   const upstreamUrl = new URL(
     `${requestUrl.pathname}${requestUrl.search}`,
     upstreamOrigin,
   );
   upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
-
-  const protocolHeader = request.headers.get("sec-websocket-protocol");
-  const protocols = protocolHeader?.split(",").map((value) => value.trim())
-    .filter(Boolean);
 
   const upstreamSocket = protocols && protocols.length > 0
     ? new WebSocket(upstreamUrl, protocols)
