@@ -35,8 +35,8 @@ services:
   yt-db:
     image: postgres:16-alpine
     container_name: yt-db
-    # ports:
-    #   - 5432:5432
+    ports:
+      - 5432:5432
     expose:
       - 5432
     restart: always
@@ -196,7 +196,6 @@ services:
 
   pgbackups:
     container_name: pgbackups
-    user: postgres:postgres
     image: prodrigestivill/postgres-backup-local:18-debian-d257e5d
     restart: always
     volumes:
