@@ -68,12 +68,13 @@ export function canonicalizeVideoUrl(urlStr: string): string {
       isHostOrSubdomain(url.hostname, "youtube.com") ||
       isHostOrSubdomain(url.hostname, "youtu.be")
     ) {
+      const isYoutuBe = url.hostname === "youtu.be" || url.hostname === "www.youtu.be";
       url.hostname = "www.youtube.com";
       if (url.pathname.startsWith("/shorts/")) {
         const id = url.pathname.split("/")[2];
         url.pathname = "/watch";
         url.searchParams.set("v", id);
-      } else if (url.hostname === "youtu.be") {
+      } else if (isYoutuBe) {
         const id = url.pathname.substring(1);
         url.hostname = "www.youtube.com";
         url.pathname = "/watch";

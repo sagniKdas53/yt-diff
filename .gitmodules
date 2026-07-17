@@ -3,6 +3,6 @@
 	url = https://github.com/sagniKdas53/yt-diff-react
 	branch = material
 [submodule "tests"]
-	path = tests
+	path = validation
 	url = https://github.com/sagniKdas53/yt-diff-tests.git
 	branch = main

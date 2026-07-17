@@ -10,7 +10,8 @@
         "pg": "npm:pg@8.21.0",
         "sequelize": "npm:sequelize@6.37.8",
         "socket.io": "npm:socket.io@4.8.3",
-        "zod": "npm:zod@4.4.3"
+        "zod": "npm:zod@4.4.3",
+        "std/": "https://deno.land/std@0.224.0/"
     },
     "tasks": {
         "dev": "SECRET_KEY_FILE=secrets/secret_key.txt DB_PASSWORD_FILE=secrets/db_password.txt deno run --allow-all --watch index.ts",
@@ -23,6 +24,7 @@
         "lint": "deno lint index.ts src/",
         "check": "deno check index.ts src/",
         "fmt": "deno fmt index.ts src/",
-        "ship": "deno check index.ts src/ && deno lint index.ts src/ && deno fmt index.ts src/"
+        "ship": "deno check index.ts src/ && deno lint index.ts src/ && deno fmt index.ts src/",
+        "test:unit": "deno test --allow-read --allow-write --allow-env tests/"
     }
 }
