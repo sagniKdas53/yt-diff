@@ -9,7 +9,7 @@ import {
 } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
-import { existsSync, rmSync, unlinkSync } from "../../utils/fs.ts";
+import { exists, rm, unlink } from "../../utils/fs.ts";
 import { join } from "../../utils/path.ts";
 import type {
   DeletePlaylistRequestBody,
@@ -200,7 +200,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
               saveDirectory: playlist.saveDirectory,
               absolutePath: playListDir,
             });
-            rmSync(playListDir, { recursive: true, force: true });
+            await rm(playListDir, { recursive: true, force: true });
             logger.debug("Playlist directory cleaned up", {
               saveDirectory: playlist.saveDirectory,
             });
@@ -585,8 +585,8 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
                       value,
                       filePath,
                     });
-                    if (existsSync(filePath)) {
-                      unlinkSync(filePath);
+                    if (await exists(filePath)) {
+                      await unlink(filePath);
                       logger.debug("Removed file", {
                         videoUrl,
                         key,

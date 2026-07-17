@@ -469,6 +469,43 @@ const {
   streamLines,
 });
 
+function terminateChildProcesses() {
+  logger.info("Cleaning up active subprocesses before shutdown...");
+  for (const proc of downloadProcesses.values()) {
+    if (proc.spawnedProcess && typeof proc.spawnedProcess.kill === "function") {
+      try {
+        proc.spawnedProcess.kill("SIGKILL");
+      } catch (_e) {
+        // ignore
+      }
+    }
+  }
+  for (const proc of listProcesses.values()) {
+    if (proc.spawnedProcess && typeof proc.spawnedProcess.kill === "function") {
+      try {
+        proc.spawnedProcess.kill("SIGKILL");
+      } catch (_e) {
+        // ignore
+      }
+    }
+  }
+}
+
+try {
+  Deno.addSignalListener("SIGINT", () => {
+    terminateChildProcesses();
+    Deno.exit(0);
+  });
+  Deno.addSignalListener("SIGTERM", () => {
+    terminateChildProcesses();
+    Deno.exit(0);
+  });
+} catch (error) {
+  logger.warn("Failed to register signal listeners (non-POSIX platform?)", {
+    error: (error as Error).message,
+  });
+}
+
 const {
   updatePlaylistMonitoring,
   processDeletePlaylistRequest,

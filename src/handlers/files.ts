@@ -3,7 +3,7 @@ import type Redis from "ioredis";
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { HttpResponseLike } from "../transport/http.ts";
-import { existsSync } from "../utils/fs.ts";
+import { exists } from "../utils/fs.ts";
 import {
   basename,
   extname,
@@ -91,7 +91,7 @@ export function createFileHandlers({
         resolved: resolvedPath,
         saveRoot,
       });
-      if (existsSync(resolvedPath)) {
+      if (await exists(resolvedPath)) {
         absolutePath = resolvedPath;
       } else {
         response.writeHead(400, generateCorsHeaders(jsonMimeType));
@@ -259,7 +259,7 @@ export function createFileHandlers({
       const resolvedPath = resolve(joined);
       const saveRoot = resolve(config.saveLocation);
 
-      if (!isWithinPath(saveRoot, resolvedPath) || !existsSync(resolvedPath)) {
+      if (!isWithinPath(saveRoot, resolvedPath) || !(await exists(resolvedPath))) {
         results.set(fileName, null);
         continue;
       }

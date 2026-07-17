@@ -8,7 +8,7 @@ import {
 } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
-import { existsSync, mkdirSync, readdirSync } from "../../utils/fs.ts";
+import { exists, mkdir, readdir } from "../../utils/fs.ts";
 import {
   basename,
   extname,
@@ -248,7 +248,7 @@ export function createDownloadFlow(
     }
   }
 
-  function executeDownload(
+  async function executeDownload(
     downloadItem: DownloadItem & { queuePosition: number },
     processKey: string,
   ): Promise<DownloadResult> {
@@ -265,8 +265,8 @@ export function createDownloadFlow(
 
       logger.debug(`Downloading to path: ${savePath}`);
 
-      if (savePath !== config.saveLocation && !existsSync(savePath)) {
-        mkdirSync(savePath, { recursive: true });
+      if (savePath !== config.saveLocation && !(await exists(savePath))) {
+        await mkdir(savePath, { recursive: true });
       }
 
       return new Promise<DownloadResult>((resolve, reject) => {
@@ -416,7 +416,7 @@ export function createDownloadFlow(
                     | null,
                 }
                 : null;
-              const { metadata, syncStatus } = discoverFiles(
+              const { metadata, syncStatus } = await discoverFiles(
                 capturedFileName,
                 savePath,
                 videoEntryForDiscovery,
@@ -522,11 +522,11 @@ export function createDownloadFlow(
     }
   }
 
-  function discoverFiles(
+  async function discoverFiles(
     mainFileName: string | null,
     savePath: string,
     videoEntry: Pick<VideoEntryRecord, "downloadStatus" | "fileName"> | null,
-  ): { metadata: DiscoveredMetadata; syncStatus: FileSyncStatus } {
+  ): Promise<{ metadata: DiscoveredMetadata; syncStatus: FileSyncStatus }> {
     const metadata: DiscoveredMetadata = {
       fileName: null,
       descriptionFile: null,
@@ -548,19 +548,26 @@ export function createDownloadFlow(
       if (videoEntry && videoEntry.downloadStatus) {
         mainFileName = videoEntry.fileName ?? null;
         logger.debug("Using main file name from database", { mainFileName });
-      } else {
-        logger.debug("No main file name found in database");
-        return { metadata, syncStatus };
       }
     }
 
+    if (!mainFileName) {
+      logger.debug("No main file name found in database");
+      return { metadata, syncStatus };
+    }
+
     try {
-      const mainFileExt = extname(mainFileName!).toLowerCase();
-      const mainFileBase = mainFileName!.replace(mainFileExt, "");
+      const base = basename(mainFileName);
+      const mainFileExt = extname(mainFileName);
+      const mainFileBase = base.endsWith(mainFileExt)
+        ? base.slice(0, -mainFileExt.length)
+        : base;
+
       logger.debug("Scanning savePath for extra metadata files", {
         savePath,
         mainFileBase,
       });
+
       const patterns = {
         video: [".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"],
         description: [".description"],
@@ -569,10 +576,10 @@ export function createDownloadFlow(
         thumbnail: [".webp", ".jpg", ".jpeg", ".png"],
       };
 
-      const checkFile = (baseName: string, extensions: string[]) => {
+      const checkFile = async (baseName: string, extensions: string[]) => {
         for (const ext of extensions) {
           const filePath = join(savePath, baseName + ext);
-          if (existsSync(filePath)) {
+          if (await exists(filePath)) {
             return baseName + ext;
           }
         }
@@ -580,7 +587,7 @@ export function createDownloadFlow(
       };
 
       if (config.saveDescription) {
-        const found = checkFile(mainFileBase, patterns.description);
+        const found = await checkFile(mainFileBase, patterns.description);
         if (found) {
           metadata.descriptionFile = found;
           syncStatus.descriptionFileFound = true;
@@ -589,7 +596,7 @@ export function createDownloadFlow(
       }
 
       if (config.saveComments) {
-        const found = checkFile(mainFileBase, patterns.comments);
+        const found = await checkFile(mainFileBase, patterns.comments);
         if (found) {
           metadata.commentsFile = found;
           syncStatus.commentsFileFound = true;
@@ -617,7 +624,7 @@ export function createDownloadFlow(
           ),
         ];
 
-        const found = checkFile(mainFileBase, subtitlePatterns);
+        const found = await checkFile(mainFileBase, subtitlePatterns);
         if (found) {
           metadata.subTitleFile = found;
           syncStatus.subTitleFileFound = true;
@@ -626,7 +633,7 @@ export function createDownloadFlow(
       }
 
       if (config.saveThumbnail) {
-        const found = checkFile(mainFileBase, patterns.thumbnail);
+        const found = await checkFile(mainFileBase, patterns.thumbnail);
         if (found) {
           metadata.thumbNailFile = found;
           syncStatus.thumbNailFileFound = true;
@@ -641,7 +648,7 @@ export function createDownloadFlow(
         ];
       }
 
-      const videoFile = checkFile(mainFileBase, patterns.video);
+      const videoFile = await checkFile(mainFileBase, patterns.video);
       if (videoFile) {
         metadata.fileName = videoFile;
         syncStatus.videoFileFound = true;
@@ -650,7 +657,7 @@ export function createDownloadFlow(
         logger.trace(
           "Video file not found with common extensions, scanning directory",
         );
-        const files = readdirSync(savePath);
+        const files = await readdir(savePath);
         const filesOfInterest = files.filter((file) =>
           file.startsWith(mainFileBase)
         );

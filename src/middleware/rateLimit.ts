@@ -67,9 +67,14 @@ export function createRateLimit({
       return (currentHandler as RequestHandler)(request, response);
     }
 
-    const currentRequests = Number((await redis.get(`ip:${clientIp}`)) ?? 0);
+    const key = `ip:${clientIp}`;
+    const currentRequests = await redis.incr(key);
 
-    if (currentRequests >= maxRequestsPerWindow) {
+    if (currentRequests === 1) {
+      await redis.expire(key, windowSeconds);
+    }
+
+    if (currentRequests > maxRequestsPerWindow) {
       logger.debug(`Rate limit exceeded for ${clientIp}`);
       response.writeHead(429, generateCorsHeaders(jsonMimeType));
       return response.end(JSON.stringify({
@@ -78,9 +83,7 @@ export function createRateLimit({
       }));
     }
 
-    await redis.set(`ip:${clientIp}`, currentRequests + 1, "EX", windowSeconds);
-
-    logger.debug(`Request count for ${clientIp}: ${currentRequests + 1}`);
+    logger.debug(`Request count for ${clientIp}: ${currentRequests}`);
     if (currentHandler.length >= 3) {
       return (currentHandler as MiddlewareHandler)(
         request,

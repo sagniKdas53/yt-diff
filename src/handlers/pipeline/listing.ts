@@ -5,6 +5,7 @@ import { config } from "../../config.ts";
 import {
   PlaylistMetadata,
   PlaylistVideoMapping,
+  sequelize,
   VideoMetadata,
 } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
@@ -1352,10 +1353,14 @@ export function createListingFlow(
     }
 
     if (mappingsToUpdate.length > 0) {
-      await Promise.all(
-        mappingsToUpdate.map((m) =>
-          m.instance.update({ positionInPlaylist: m.position })
-        ),
+      const cases = mappingsToUpdate
+        .map((m) => `WHEN "id" = '${m.instance.getDataValue("id")}' THEN ${m.position}`)
+        .join(" ");
+      const ids = mappingsToUpdate
+        .map((m) => `'${m.instance.getDataValue("id")}'`)
+        .join(", ");
+      await sequelize.query(
+        `UPDATE playlist_video_mappings SET "positionInPlaylist" = CASE ${cases} END WHERE "id" IN (${ids})`,
       );
     }
 

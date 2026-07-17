@@ -56,3 +56,50 @@ export function statSync(targetPath: string): Deno.FileInfo {
 export async function stat(targetPath: string): Promise<Deno.FileInfo> {
   return await Deno.stat(targetPath);
 }
+
+export async function exists(filePath: string): Promise<boolean> {
+  try {
+    await Deno.stat(filePath);
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export async function readdir(dirPath: string): Promise<string[]> {
+  const files: string[] = [];
+  for await (const entry of Deno.readDir(dirPath)) {
+    files.push(entry.name);
+  }
+  return files;
+}
+
+export async function mkdir(
+  dirPath: string,
+  options?: { recursive?: boolean },
+): Promise<void> {
+  await Deno.mkdir(dirPath, { recursive: options?.recursive });
+}
+
+export async function rm(
+  targetPath: string,
+  options?: { recursive?: boolean; force?: boolean },
+): Promise<void> {
+  try {
+    await Deno.remove(targetPath, { recursive: options?.recursive });
+  } catch (error) {
+    if (
+      options?.force && error instanceof Deno.errors.NotFound
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function unlink(filePath: string): Promise<void> {
+  await Deno.remove(filePath);
+}
