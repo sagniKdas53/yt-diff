@@ -17,9 +17,11 @@ import {
   processDedupPlaylistsRequest,
   processDedupUnlistedRequest,
 } from "./src/handlers/pipeline/dedup.ts";
+import { processLookupRequest } from "./src/handlers/lookup.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
+import { createBotAuthWrapper } from "./src/middleware/bot-auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import {
   BulkRefreshSignedUrlsRequestBodySchema,
@@ -443,6 +445,9 @@ const {
   emitTokenExpired,
 });
 
+const { wrapWithBotAuth } = createBotAuthWrapper();
+const botAwareAuthenticateRequest = wrapWithBotAuth(authenticateRequest);
+
 const rateLimit = createRateLimit({
   redis,
 });
@@ -693,7 +698,7 @@ const socketSidecarPort = await new Promise<number>((resolve, reject) => {
 const socketSidecarOrigin = `http://127.0.0.1:${socketSidecarPort}`;
 
 const apiRoutes = createApiRoutes({
-  authenticateRequest,
+  authenticateRequest: botAwareAuthenticateRequest,
   authenticateUser,
   isRegistrationAllowed,
   rateLimit,
@@ -755,6 +760,7 @@ const apiRoutes = createApiRoutes({
     QueueStatusRequestBodySchema,
     processQueueStatusRequest,
   ),
+  processLookupRequest,
 });
 
 const jobs = createJobs({

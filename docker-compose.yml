@@ -153,6 +153,8 @@ services:
       # - YOUTUBE_CLIENT_SECRET_FILE=/run/secrets/youtube_client_secret
       # - YOUTUBE_REFRESH_TOKEN_FILE=/run/secrets/youtube_refresh_token
       - YOUTUBE_API_KEY_FILE=/run/secrets/youtube_api_key
+      # Bot authentication
+      - BOT_API_KEY=${BOT_API_KEY}
 
     labels:
       - "traefik.enable=true"
@@ -303,3 +305,37 @@ services:
       - "autoheal.enable=true"
       # Watchtower monitoring
       - "com.centurylinklabs.watchtower.enable=true"
+
+  discord-bot:
+    build:
+      context: ./bots/discord
+    container_name: yt-diff-discord-bot
+    restart: unless-stopped
+    depends_on:
+      yt-diff:
+        condition: service_healthy
+    networks:
+      - revProxy-net
+    environment:
+      - DISCORD_TOKEN=${DISCORD_BOT_TOKEN}
+      - BOT_API_KEY=${BOT_API_KEY}
+      - YTDIFF_API_BASE=http://yt-diff:${PORT}${BASE_URL}
+      - BOT_MODE=${BOT_MODE:-persistent}
+      - EPHEMERAL_TTL_HOURS=${EPHEMERAL_TTL_HOURS:-24}
+
+  telegram-bot:
+    build:
+      context: ./bots/telegram
+    container_name: yt-diff-telegram-bot
+    restart: unless-stopped
+    depends_on:
+      yt-diff:
+        condition: service_healthy
+    networks:
+      - revProxy-net
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BOT_API_KEY=${BOT_API_KEY}
+      - YTDIFF_API_BASE=http://yt-diff:${PORT}${BASE_URL}
+      - BOT_MODE=${BOT_MODE:-persistent}
+      - EPHEMERAL_TTL_HOURS=${EPHEMERAL_TTL_HOURS:-24}

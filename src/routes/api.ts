@@ -34,6 +34,7 @@ interface ApiRouteDependencies {
   processDedupUnlistedRequest: BodyHandler;
   processDedupPlaylistsRequest: BodyHandler;
   processQueueStatusRequest: BodyHandler;
+  processLookupRequest: BodyHandler;
 }
 
 export function createApiRoutes({
@@ -57,6 +58,7 @@ export function createApiRoutes({
   processDedupUnlistedRequest,
   processDedupPlaylistsRequest,
   processQueueStatusRequest,
+  processLookupRequest,
 }: ApiRouteDependencies): RouteDefinition[] {
   return [
     {
@@ -195,6 +197,12 @@ export function createApiRoutes({
       path: config.urlBase + "/queuestatus",
       run: (req, res) =>
         authenticateRequest(req, res, processQueueStatusRequest),
+    },
+    {
+      method: "POST",
+      path: config.urlBase + "/lookup",
+      run: (req, res) =>
+        authenticateRequest(req, res, processLookupRequest),
     },
   ];
 }

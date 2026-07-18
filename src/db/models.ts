@@ -44,6 +44,7 @@ export class VideoMetadata extends Model<
   declare isMetaDataSynced: CreationOptional<boolean>;
   declare saveDirectory: CreationOptional<string | null>;
   declare raw_metadata: CreationOptional<unknown>;
+  declare ephemeralTtl: CreationOptional<Date | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -132,6 +133,13 @@ VideoMetadata.init({
     allowNull: true,
     comment:
       "Full pruned yt-dlp JSON output for future use (tags, age rating, etc). Bulky arrays like formats/thumbnails/subtitles are removed before storage.",
+  },
+  ephemeralTtl: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      "If set, video record and downloaded files will be auto-deleted after this timestamp (used by bot ephemeral mode).",
   },
   createdAt: {
     type: DataTypes.DATE,

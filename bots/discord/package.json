@@ -1,0 +1,17 @@
+{
+  "name": "yt-diff-discord-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Discord bot adapter for yt-diff — send a YouTube/x.com link, get the video back",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.0",
+    "dotenv": "^16.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

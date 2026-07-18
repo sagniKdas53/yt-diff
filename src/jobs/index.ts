@@ -191,6 +191,7 @@ export function createJobs({
       logger.debug("Starting scheduled DB prune process");
       void (async () => {
         try {
+          // ── Orphan cleanup (existing logic) ──────────────────────
           // Use NOT EXISTS so pruning stays in SQL instead of loading all mapped
           // video URLs into memory first.
           const unreferencedVideos = await VideoMetadata.findAll({
@@ -200,63 +201,99 @@ export function createJobs({
             )`),
           });
 
-          if (unreferencedVideos.length === 0) {
-            logger.info("No unreferenced videos found to prune");
-            return;
-          }
+          if (unreferencedVideos.length > 0) {
+            const mappingsToCreate = [];
+            const videoUrlsToDestroy = [];
 
-          const mappingsToCreate = [];
-          const videoUrlsToDestroy = [];
+            const maxPositionResult = await PlaylistVideoMapping.max(
+              "positionInPlaylist",
+              { where: { playlistUrl: "None" } },
+            );
+            const maxPosition =
+              typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
+                ? maxPositionResult
+                : -1;
+            let nextPosition = maxPosition;
 
-          const maxPositionResult = await PlaylistVideoMapping.max(
-            "positionInPlaylist",
-            {
-              where: { playlistUrl: "None" },
-            },
-          );
-          const maxPosition =
-            typeof maxPositionResult === "number" && !isNaN(maxPositionResult)
-              ? maxPositionResult
-              : -1;
-          let nextPosition = maxPosition;
+            for (const video of unreferencedVideos) {
+              const isDownloaded = video.getDataValue("downloadStatus");
+              const videoUrl = video.getDataValue("videoUrl");
 
-          for (const video of unreferencedVideos) {
-            const isDownloaded = video.getDataValue("downloadStatus");
-            const videoUrl = video.getDataValue("videoUrl");
+              if (isDownloaded) {
+                mappingsToCreate.push({
+                  videoUrl,
+                  playlistUrl: "None",
+                  positionInPlaylist: ++nextPosition,
+                });
+              } else {
+                videoUrlsToDestroy.push(videoUrl);
+              }
+            }
 
-            if (isDownloaded) {
-              mappingsToCreate.push({
-                videoUrl,
-                playlistUrl: "None",
-                positionInPlaylist: ++nextPosition,
+            if (mappingsToCreate.length > 0) {
+              await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
+              logger.info(
+                "Moved unreferenced downloaded videos to 'None' playlist",
+                { count: mappingsToCreate.length },
+              );
+            }
+
+            if (videoUrlsToDestroy.length > 0) {
+              await VideoMetadata.destroy({
+                where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
               });
-            } else {
-              videoUrlsToDestroy.push(videoUrl);
+              logger.info("Pruned unreferenced non-downloaded videos", {
+                count: videoUrlsToDestroy.length,
+              });
             }
           }
 
-          if (mappingsToCreate.length > 0) {
-            await PlaylistVideoMapping.bulkCreate(mappingsToCreate);
-            logger.info(
-              "Moved unreferenced downloaded videos to 'None' playlist",
-              {
-                count: mappingsToCreate.length,
-              },
+          // ── Ephemeral TTL cleanup ──────────────────────────────
+          // Delete video records and their playlist mappings where
+          // ephemeralTtl has passed. Files on disk are NOT deleted
+          // here — the existing file cleanup in delsub handles that
+          // when the mapping cascade triggers.
+          const expiredVideos = await VideoMetadata.findAll({
+            where: {
+              ephemeralTtl: { [Op.ne]: null, [Op.lt]: new Date() },
+            },
+          });
+
+          if (expiredVideos.length > 0) {
+            const expiredUrls = expiredVideos.map((v) =>
+              v.getDataValue("videoUrl")
             );
+
+            // Remove playlist mappings first (cascade would handle it, but
+            // explicit is safer for logging)
+            const destroyedMappings = await PlaylistVideoMapping.destroy({
+              where: { videoUrl: { [Op.in]: expiredUrls } },
+            });
+
+            // Remove the video records
+            const destroyedVideos = await VideoMetadata.destroy({
+              where: { videoUrl: { [Op.in]: expiredUrls } },
+            });
+
+            logger.info("Ephemeral TTL prune completed", {
+              expiredCount: expiredVideos.length,
+              destroyedMappings,
+              destroyedVideos,
+              nextRun: formatNextRun(jobs.prune),
+            });
           }
 
-          if (videoUrlsToDestroy.length > 0) {
-            await VideoMetadata.destroy({
-              where: { videoUrl: { [Op.in]: videoUrlsToDestroy } },
-            });
-            logger.info("Pruned unreferenced non-downloaded videos", {
-              count: videoUrlsToDestroy.length,
-            });
+          // Summary log when nothing to do
+          if (unreferencedVideos.length === 0 && expiredVideos.length === 0) {
+            logger.info("No videos to prune (orphans or ephemeral)");
+            return;
           }
 
           logger.info("Completed DB prune process", {
-            movedCount: mappingsToCreate.length,
-            prunedCount: videoUrlsToDestroy.length,
+            orphanMovedCount: unreferencedVideos.length > 0
+              ? unreferencedVideos.length
+              : 0,
+            ephemeralExpiredCount: expiredVideos.length,
             nextRun: formatNextRun(jobs.prune),
           });
         } catch (err) {
