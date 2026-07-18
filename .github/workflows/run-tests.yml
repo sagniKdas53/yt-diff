@@ -14,6 +14,30 @@ permissions:
   pull-requests: write
 
 jobs:
+  unit-tests:
+    name: Unit Tests (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Cache Deno dependencies
+        run: deno cache bots/core/mod.ts
+      - name: Run bot-core unit tests
+        run: deno test --allow-read bots/core/url-parser.test.ts
+      - name: Run backend unit tests
+        run: deno task test:unit
+      - name: Report results
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Unit Test Results
+          path: "*.xml"
+          reporter: java-junit
+
   e2e-tests:
     name: E2E Integration Tests
     runs-on: ubuntu-latest
