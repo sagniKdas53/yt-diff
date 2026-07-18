@@ -445,7 +445,7 @@ const {
   emitTokenExpired,
 });
 
-const { wrapWithBotAuth } = createBotAuthWrapper();
+const wrapWithBotAuth = createBotAuthWrapper();
 const botAwareAuthenticateRequest = wrapWithBotAuth(authenticateRequest);
 
 const rateLimit = createRateLimit({
