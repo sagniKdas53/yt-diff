@@ -10,7 +10,7 @@ export const downloadOptions = [
   config.saveSubs ? "--write-subs" : "",
   config.saveSubs ? "--write-auto-subs" : "",
   config.saveSubs ? "--sub-langs" : "",
-  config.saveSubs ? "en.*" : "",
+  config.saveSubs ? "en" : "",
   config.saveSubs ? "--convert-subs" : "",
   config.saveSubs ? "vtt" : "",
   config.saveDescription ? "--write-description" : "",

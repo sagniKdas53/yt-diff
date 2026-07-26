@@ -273,6 +273,7 @@ export function createDownloadFlow(
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
+        const stderrLines: string[] = [];
         const processArgs = ["-P", "home:" + savePath, videoUrl];
 
         safeEmit("download-started", {
@@ -375,6 +376,8 @@ export function createDownloadFlow(
 
         void (async () => {
           for await (const error of streamTextChunks(downloadProcess.stderr)) {
+            const errText = error.toString().trim();
+            stderrLines.push(errText);
             logger.error(`Download error: ${error}`, {
               pid: downloadProcess.pid,
             });
@@ -478,6 +481,123 @@ export function createDownloadFlow(
                 status: "success",
               });
             } else {
+              // Check if this is a YouTube download that failed due to
+              // non-essential features (subs, description) — retry with
+              // minimal options (video + thumbnail only).
+              const isYouTube = (() => {
+                try {
+                  const host = new URL(videoUrl).hostname;
+                  return host === "youtube.com" ||
+                    host === "www.youtube.com" ||
+                    host === "m.youtube.com" || host === "youtu.be" ||
+                    host.endsWith(".youtube.com");
+                } catch {
+                  return false;
+                }
+              })();
+
+              const stderrText = stderrLines.join("\n");
+              const isSubtitleError = /subtitle|subs/i.test(stderrText);
+              const isDescriptionError = /description|Cannot write/i.test(
+                stderrText,
+              );
+              const isRecoverableError = isSubtitleError ||
+                isDescriptionError;
+
+              if (isYouTube && isRecoverableError) {
+                logger.info(
+                  `YouTube download failed on subs/description, retrying with minimal options: ${videoTitle}`,
+                );
+
+                // Retry with only video + thumbnail (skip subs, description)
+                const minimalOptions = downloadOptions.filter((opt) => {
+                  if (
+                    opt === "--write-subs" ||
+                    opt === "--write-auto-subs" ||
+                    opt === "--sub-langs" || opt === "en" ||
+                    opt === "--convert-subs" || opt === "vtt" ||
+                    opt === "--write-description"
+                  ) {
+                    return false;
+                  }
+                  return true;
+                });
+
+                try {
+                  const retryArgs = [...minimalOptions, ...processArgs];
+                  const retryProcess = spawnPythonProcess(retryArgs);
+                  const { code: retryCode } = await retryProcess.status;
+
+                  if (retryCode === ProcessExitCodes.SUCCESS) {
+                    // Success on retry — run file discovery
+                    const updates: DownloadCompletionUpdates = {
+                      downloadStatus: true,
+                      isAvailable: true,
+                      title: capturedTitle || videoTitle,
+                      fileName: null,
+                      descriptionFile: null,
+                      commentsFile: null,
+                      subTitleFile: null,
+                      thumbNailFile: null,
+                      isMetaDataSynced: true,
+                      saveDirectory: computeSaveDirectory(savePath),
+                    };
+
+                    const videoEntryForDiscovery = videoEntry
+                      ? {
+                        downloadStatus: Boolean(
+                          videoEntry.getDataValue("downloadStatus"),
+                        ),
+                        fileName: videoEntry.getDataValue("fileName") as
+                          | string
+                          | null,
+                      }
+                      : null;
+
+                    const { metadata } = await discoverFiles(
+                      capturedFileName,
+                      savePath,
+                      videoEntryForDiscovery,
+                    );
+
+                    Object.assign(updates, metadata);
+
+                    if (videoEntry) {
+                      logger.debug(
+                        `Updating video after retry: ${
+                          JSON.stringify(updates)
+                        }`,
+                        { pid: downloadProcess.pid },
+                      );
+                      await videoEntry.update(updates);
+                    }
+
+                    safeEmit("download-done", {
+                      url: videoUrl,
+                      title: updates.title,
+                      fileName: updates.fileName,
+                      saveDirectory: computeSaveDirectory(savePath),
+                      isMetaDataSynced: updates.isMetaDataSynced,
+                      thumbNailFile: updates.thumbNailFile,
+                      subTitleFile: updates.subTitleFile,
+                      descriptionFile: updates.descriptionFile,
+                    });
+
+                    cleanupProcess(processKey, downloadProcess.pid);
+                    resolve({
+                      url: videoUrl,
+                      title: updates.title,
+                      status: "success",
+                    });
+                    return;
+                  }
+                } catch (retryError) {
+                  logger.error(
+                    `Retry also failed: ${(retryError as Error).message}`,
+                  );
+                }
+              }
+
               const errorMsg = code === ProcessExitCodes.SIGTERM
                 ? "Process was killed (likely by user or timeout)"
                 : `Process exited with code ${code}`;
