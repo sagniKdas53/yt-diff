@@ -25,7 +25,6 @@ import {
   normalizeUrl,
 } from "./src/handlers/pipeline/process-manager.ts";
 import { createBotService } from "./src/bot/index.ts";
-import { removeVideoFiles } from "./src/handlers/videoFiles.ts";
 import {
   processDedupPlaylistsRequest,
   processDedupUnlistedRequest,
@@ -874,7 +873,6 @@ const botService = createBotService({
   getQueueSnapshot,
   listProcesses: listProcesses as Map<string, unknown>,
   setPlaylistMonitoring,
-  removeVideoFiles,
   createSignedUrlForPath,
   normalizeUrl,
   // Mirrors executeListing's own classification, including the x.com

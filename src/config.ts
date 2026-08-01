@@ -107,6 +107,7 @@ export interface AppConfig {
   };
   db: {
     host: string;
+    port: number;
     user: string;
     name: string;
     password: string | Error | undefined;
@@ -210,6 +211,9 @@ export const config: AppConfig = {
   },
   db: {
     host: Deno.env.get("DB_HOST") || "localhost",
+    // Inside the compose network this is always 5432; it is configurable so a
+    // host-side dev run can reach a container published on a different port.
+    port: +(Deno.env.get("DB_PORT") || 5432),
     user: Deno.env.get("DB_USERNAME") || "ytdiff",
     name: "vidlist",
     password: (() => {

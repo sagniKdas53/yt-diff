@@ -11,6 +11,7 @@ import { logger } from "../logger.ts";
 
 export const sequelize = new Sequelize({
   host: config.db.host,
+  port: config.db.port,
   dialect: "postgres",
   dialectModule: pg,
   logging: false,

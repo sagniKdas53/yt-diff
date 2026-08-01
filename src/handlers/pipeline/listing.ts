@@ -1068,15 +1068,35 @@ export function createListingFlow(
       throw new Error(`Process entry not found: ${processKey}`);
     }
 
-    void (async () => {
+    // Retain the last yt-dlp diagnostic so a failure can report *why* rather
+    // than only an exit code ("No video could be found in this tweet" is far
+    // more actionable than "Process exited with code 1").
+    let lastStderr = "";
+    const stderrDrained = (async () => {
       for await (const data of streamTextChunks(listProcess.stderr)) {
         logger.error("List process error", {
           error: data,
           pid: listProcess.pid,
         });
+        const trimmed = data.trim();
+        if (trimmed) {
+          lastStderr = trimmed;
+        }
         updateProcessActivity(processKey);
       }
-    })();
+    })().catch(() => {
+      // Draining stderr is best-effort; never let it mask the real failure.
+    });
+
+    /** Last stderr line, normalised for use in an error message. */
+    function stderrReason(): string {
+      const line = lastStderr
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .pop() ?? "";
+      return line.replace(/^ERROR:\s*/i, "").slice(0, 300);
+    }
 
     async function* lineIterator() {
       let linesYielded = 0;
@@ -1106,7 +1126,15 @@ export function createListingFlow(
             processEntryInt.lastActivity = Date.now();
             listProcesses.set(processKey, processEntryInt);
           }
-          throw new Error(`Process exited with code ${exitCode}`);
+          // Keeps the original prefix so anything matching on it still works,
+          // and appends the reason when yt-dlp gave one.
+          await stderrDrained;
+          const reason = stderrReason();
+          throw new Error(
+            reason
+              ? `Process exited with code ${exitCode}: ${reason}`
+              : `Process exited with code ${exitCode}`,
+          );
         } else {
           const processEntryInt = listProcesses.get(processKey);
           if (processEntryInt) {

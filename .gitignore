@@ -11,3 +11,6 @@ secrets/
 .codex
 .claude
 .env
+# Vendored binaries/archives should never land in the repo
+*.tar.bz2
+*.tar.xz

@@ -5,7 +5,7 @@ ARG NODE_VERSION=22.20.0
 ARG VITE_BASE_PATH=/ytdiff
 
 # ---- Stage 1: Prebuilt Binaries Builder ----
-# This stage downloads/extracts ffmpeg and phantomjs
+# This stage downloads/extracts ffmpeg and deno
 FROM debian:stable-slim AS prebuilt-binaries-builder
 
 ARG TARGETARCH
@@ -15,7 +15,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     APT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/00-no-extras && \
     DEBIAN_FRONTEND=noninteractive apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y curl ca-certificates xz-utils bzip2 unzip --no-install-recommends && \
+    apt-get install -y curl ca-certificates xz-utils unzip --no-install-recommends && \
     mkdir -p /dist/bin && \
     cd /tmp && \
     # ---- START: FFMPEG Installation ----
@@ -31,16 +31,12 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     /dist/bin/ffmpeg -version && \
     # ---- END: FFMPEG Installation ---- \
     \
-    echo "DEBUG: Downloading and extracting PhantomJS binary" && \
-    # Download PhantomJS (Note: x86_64 only from this source, will be skipped on ARM64)
-    if [ "$TARGETARCH" = "amd64" ]; \
-    then \
-    curl -L "https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2" -o "phantomjs.tar.bz2" && \
-    tar -xf phantomjs.tar.bz2 && \
-    mv phantomjs-2.1.1-linux-x86_64/bin/phantomjs /dist/bin/phantomjs; \
-    else \
-    echo "INFO: Skipping PhantomJS for $TARGETARCH as only x86_64 binary is available from the script's original source."; \
-    fi && \
+    # PhantomJS was removed here. It was only ever fetched on amd64 (ARM builds
+    # have always skipped it), the upstream bitbucket download is now dead, and
+    # yt-dlp's modern JS/anti-bot handling is yt-dlp-ejs (which uses the Deno
+    # installed below) plus curl_cffi, both installed in the runtime stage.
+    # The only remaining yt-dlp users of PhantomJS are the iqiyi extractor and a
+    # conditional pornhub anti-bot fallback; neither works on ARM today either.
     # ---- START: Deno Installation ----
     echo "DEBUG: Installing Deno" && \
     DENO_ARCH="" && \
@@ -57,7 +53,7 @@ RUN echo 'APT::Get::Install-Recommends "false"; \
     # ---- END: Added Deno Installation ----
     # Cleanup build dependencies and downloaded files
     cd / && rm -rf /tmp/* && \
-    apt-get purge -y curl xz-utils bzip2 unzip && \
+    apt-get purge -y curl xz-utils unzip && \
     apt-get autoremove -y --purge && \
     rm -rf /var/lib/apt/lists/*
 
@@ -117,7 +113,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
 # This ensures that when the script runs 'yt-dlp', it finds the one we just installed in /opt/venv/bin/yt-dlp
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy prebuilt binaries (ffmpeg, phantomjs, deno) from the prebuilt-binaries-builder stage
+# Copy prebuilt binaries (ffmpeg, deno) from the prebuilt-binaries-builder stage
 COPY --from=prebuilt-binaries-builder /dist/bin/* /usr/local/bin/
 
 # Copy built frontend assets from the frontend-builder stage

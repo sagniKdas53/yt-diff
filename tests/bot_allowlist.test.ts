@@ -75,7 +75,17 @@ function coreWith(allowedChatIds: string[], spy: SpyAdapter) {
     getQueueSnapshot: explode("getQueueSnapshot"),
     listProcesses: new Map(),
     setPlaylistMonitoring: explode("setPlaylistMonitoring"),
-    removeVideoFiles: explode("removeVideoFiles"),
+    // Every store method throws too, so a rejected message touching the
+    // database at all would surface as a failure rather than passing quietly.
+    store: {
+      createSubmission: explode("createSubmission"),
+      updateSubmission: explode("updateSubmission"),
+      findVideoByUrl: explode("findVideoByUrl"),
+      findVideosByVideoId: explode("findVideosByVideoId"),
+      listSubmissions: explode("listSubmissions"),
+      findSubmissionByPrefix: explode("findSubmissionByPrefix"),
+      purgeVideoFiles: explode("purgeVideoFiles"),
+    } as unknown as Parameters<typeof createBotCore>[0]["store"],
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,
     allowedChatIds,

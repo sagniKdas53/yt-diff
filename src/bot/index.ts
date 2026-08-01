@@ -1,10 +1,10 @@
 import { config } from "../config.ts";
-import type { VideoMetadata } from "../db/models.ts";
 import type { AppEventBus } from "../events.ts";
 import { logger } from "../logger.ts";
 import { createTelegramAdapter } from "./adapters/telegram.ts";
 import { type BotCoreDependencies, createBotCore } from "./core.ts";
 import { createDelivery } from "./delivery.ts";
+import { type BotStore, createSequelizeBotStore } from "./store.ts";
 import type { BotAdapter } from "./types.ts";
 
 export type { BotAdapter } from "./types.ts";
@@ -16,7 +16,8 @@ export interface BotServiceDependencies {
   getQueueSnapshot: BotCoreDependencies["getQueueSnapshot"];
   listProcesses: Map<string, unknown>;
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;
-  removeVideoFiles: (video: VideoMetadata) => Promise<boolean>;
+  /** Defaults to the Sequelize-backed store; injectable for tests. */
+  store?: BotStore;
   createSignedUrlForPath: (
     absPath: string,
     ttlSeconds?: number,
@@ -81,7 +82,7 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     getQueueSnapshot: deps.getQueueSnapshot,
     listProcesses: deps.listProcesses,
     setPlaylistMonitoring: deps.setPlaylistMonitoring,
-    removeVideoFiles: deps.removeVideoFiles,
+    store: deps.store ?? createSequelizeBotStore(),
     normalizeUrl: deps.normalizeUrl,
     isPlaylistUrl: deps.isPlaylistUrl,
     allowedChatIds: config.bot.allowedChatIds,

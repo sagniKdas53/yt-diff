@@ -23,6 +23,8 @@ secrets:
   #   file: secrets/youtube_refresh_token.txt
   youtube_api_key:
     file: secrets/youtube_api_key.txt
+  bot_token:
+    file: secrets/bot_token.txt
   pg_admin_email:
     file: secrets/pg_admin_email.txt
   pg_admin_password:
@@ -35,8 +37,11 @@ services:
   yt-db:
     image: postgres:16-alpine
     container_name: yt-db
+    # Published on a non-default host port so it cannot collide with another
+    # project's postgres. Containers on revProxy-net still talk to 5432.
+    # Host-side runs need DB_PORT to match the left-hand side.
     ports:
-      - 5432:5432
+      - ${DB_HOST_PORT:-5433}:5432
     expose:
       - 5432
     restart: always
@@ -99,6 +104,7 @@ services:
       # - youtube_client_secret
       # - youtube_refresh_token
       - youtube_api_key
+      - bot_token
 
     environment:
       - PROTOCOL=${PROTOCOL}
@@ -153,6 +159,21 @@ services:
       # - YOUTUBE_CLIENT_SECRET_FILE=/run/secrets/youtube_client_secret
       # - YOUTUBE_REFRESH_TOKEN_FILE=/run/secrets/youtube_refresh_token
       - YOUTUBE_API_KEY_FILE=/run/secrets/youtube_api_key
+      # Chat bot. Fails closed: with BOT_ENABLED=true and an empty
+      # BOT_ALLOWED_CHAT_IDS the bot logs an error and starts nothing.
+      # x.com cookies reach the bot through X_COOKIES_FILE above, since every
+      # download and listing goes through the same buildSiteArgs.
+      - BOT_ENABLED=${BOT_ENABLED}
+      - BOT_TELEGRAM_TOKEN_FILE=/run/secrets/bot_token
+      - BOT_ALLOWED_CHAT_IDS=${BOT_ALLOWED_CHAT_IDS}
+      # Must be the externally reachable origin — HOSTNAME is container-internal.
+      - BOT_PUBLIC_BASE_URL=${BOT_PUBLIC_BASE_URL}
+      - BOT_RETENTION_MODE=${BOT_RETENTION_MODE}
+      - BOT_RETENTION_HOURS=${BOT_RETENTION_HOURS}
+      - BOT_REAP_INTERVAL=${BOT_REAP_INTERVAL}
+      - BOT_SIGNED_URL_TTL=${BOT_SIGNED_URL_TTL}
+      - BOT_TELEGRAM_MAX_UPLOAD=${BOT_TELEGRAM_MAX_UPLOAD}
+      - BOT_MAX_PENDING_PER_CHAT=${BOT_MAX_PENDING_PER_CHAT}
 
     labels:
       - "traefik.enable=true"
@@ -181,8 +202,10 @@ services:
     restart: always
     networks:
       - revProxy-net
-    #ports:
-    #  - "6379:6379"
+    # Non-default host port for the same reason as yt-db; host-side runs need
+    # REDIS_PORT to match the left-hand side.
+    ports:
+      - ${REDIS_HOST_PORT:-6380}:6379
     expose:
       - 6379
     labels:

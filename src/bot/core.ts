@@ -1,12 +1,10 @@
-import { Op } from "sequelize";
-
-import { BotSubmission, VideoMetadata } from "../db/models.ts";
 import type { AppEventBus } from "../events.ts";
 import { logger } from "../logger.ts";
 import { exists } from "../utils/fs.ts";
 import { join } from "../utils/path.ts";
 import { HELP_TEXT, parseCommand } from "./commands.ts";
 import type { Delivery } from "./delivery.ts";
+import type { BotStore, VideoRecord } from "./store.ts";
 import type {
   BotAdapter,
   DeliveryTarget,
@@ -61,7 +59,7 @@ export interface BotCoreDependencies {
   }[];
   listProcesses: Map<string, unknown>;
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;
-  removeVideoFiles: (video: VideoMetadata) => Promise<boolean>;
+  store: BotStore;
   normalizeUrl: (url: string) => string;
   isPlaylistUrl: (url: string) => boolean;
   allowedChatIds: string[];
@@ -153,9 +151,7 @@ export function createBotCore(deps: BotCoreDependencies) {
     pending.delete(canonicalUrl);
 
     try {
-      await BotSubmission.update(updates, {
-        where: { id: entry.submissionId },
-      });
+      await deps.store.updateSubmission(entry.submissionId, updates);
     } catch (error) {
       logger.error("Failed to record submission outcome", {
         submissionId: entry.submissionId,
@@ -169,6 +165,12 @@ export function createBotCore(deps: BotCoreDependencies) {
     canonicalUrl: string,
     message: string,
   ) {
+    // A listing failure arrives twice — once on the bus, once as the awaited
+    // ListingResult. Whichever lands first reports it; re-editing with the same
+    // text makes Telegram reject the edit as "message is not modified".
+    if (entry.settled) {
+      return;
+    }
     await settle(entry, canonicalUrl, {
       status: "failed",
       errorMessage: message,
@@ -185,10 +187,8 @@ export function createBotCore(deps: BotCoreDependencies) {
    */
   async function resolveIndexedVideo(
     canonicalUrl: string,
-  ): Promise<VideoMetadata | null> {
-    const direct = await VideoMetadata.findOne({
-      where: { videoUrl: canonicalUrl },
-    });
+  ): Promise<VideoRecord | null> {
+    const direct = await deps.store.findVideoByUrl(canonicalUrl);
     if (direct) {
       return direct;
     }
@@ -208,10 +208,7 @@ export function createBotCore(deps: BotCoreDependencies) {
       return null;
     }
 
-    const candidates = await VideoMetadata.findAll({
-      where: { videoId },
-      limit: 25,
-    });
+    const candidates = await deps.store.findVideosByVideoId(videoId);
     return candidates.find((candidate) => {
       try {
         return new URL(candidate.videoUrl).hostname.replace(/^www\./, "") ===
@@ -223,7 +220,7 @@ export function createBotCore(deps: BotCoreDependencies) {
   }
 
   /** True when the row claims a download and the media file is really there. */
-  async function hasFileOnDisk(video: VideoMetadata): Promise<boolean> {
+  async function hasFileOnDisk(video: VideoRecord): Promise<boolean> {
     if (!video.downloadStatus || !video.fileName) {
       return false;
     }
@@ -339,21 +336,11 @@ export function createBotCore(deps: BotCoreDependencies) {
       return;
     }
 
-    const isPlaylist = deps.isPlaylistUrl(canonicalUrl);
-
-    const submission = await BotSubmission.create({
-      platform: adapter.platform,
-      chatId: message.chatId,
-      messageId: message.messageId,
-      requestedUrl: rawUrl,
-      canonicalUrl: null,
-      kind: isPlaylist ? "playlist" : "video",
-      status: "pending",
-      retention: deps.retentionMode,
-    });
-
+    // Reserve the slot synchronously. Everything below awaits, so two messages
+    // arriving together would both clear the check above and double-queue the
+    // same download (which also defeats the per-chat backpressure).
     const entry: PendingSubmission = {
-      submissionId: submission.id,
+      submissionId: "",
       adapter,
       target,
       ack: null,
@@ -363,6 +350,26 @@ export function createBotCore(deps: BotCoreDependencies) {
       watchdog: null,
       settled: false,
     };
+    pending.set(canonicalUrl, entry);
+
+    const isPlaylist = deps.isPlaylistUrl(canonicalUrl);
+
+    let submission: { id: string };
+    try {
+      submission = await deps.store.createSubmission({
+        platform: adapter.platform,
+        chatId: message.chatId,
+        messageId: message.messageId,
+        requestedUrl: rawUrl,
+        kind: isPlaylist ? "playlist" : "video",
+        retention: deps.retentionMode,
+      });
+    } catch (error) {
+      // Release the reservation, otherwise the URL is wedged until restart.
+      pending.delete(canonicalUrl);
+      throw error;
+    }
+    entry.submissionId = submission.id;
 
     // Tier 1: already downloaded and the file is still on disk. No listing, no
     // download, no yt-dlp process — and downloadedByBot stays false so the
@@ -374,12 +381,11 @@ export function createBotCore(deps: BotCoreDependencies) {
         target,
         "Already have that one, sending…",
       );
-      pending.set(canonicalUrl, entry);
       entry.watchdog = armWatchdog(canonicalUrl);
-      await BotSubmission.update(
-        { canonicalUrl: known.videoUrl, status: "downloading" },
-        { where: { id: submission.id } },
-      );
+      await deps.store.updateSubmission(submission.id, {
+        canonicalUrl: known.videoUrl,
+        status: "downloading",
+      });
       await deliverVideo(entry, canonicalUrl, known, false);
       return;
     }
@@ -387,12 +393,11 @@ export function createBotCore(deps: BotCoreDependencies) {
     // Tier 2: indexed but not downloaded — skip listing entirely.
     if (known) {
       entry.ack = await reply(adapter, target, "Queued for download…");
-      pending.set(canonicalUrl, entry);
       entry.watchdog = armWatchdog(canonicalUrl);
-      await BotSubmission.update(
-        { canonicalUrl: known.videoUrl, status: "downloading" },
-        { where: { id: submission.id } },
-      );
+      await deps.store.updateSubmission(submission.id, {
+        canonicalUrl: known.videoUrl,
+        status: "downloading",
+      });
       await enqueue(entry, canonicalUrl, known.videoUrl);
       return;
     }
@@ -406,12 +411,8 @@ export function createBotCore(deps: BotCoreDependencies) {
         ? `Indexing… (${listingQueueDepth} ahead in the listing queue)`
         : "Indexing…",
     );
-    pending.set(canonicalUrl, entry);
     entry.watchdog = armWatchdog(canonicalUrl);
-    await BotSubmission.update(
-      { status: "indexing" },
-      { where: { id: submission.id } },
-    );
+    await deps.store.updateSubmission(submission.id, { status: "indexing" });
 
     let results: ListingResultLike[];
     try {
@@ -464,10 +465,10 @@ export function createBotCore(deps: BotCoreDependencies) {
       return;
     }
 
-    await BotSubmission.update(
-      { canonicalUrl: indexed.videoUrl, status: "downloading" },
-      { where: { id: submission.id } },
-    );
+    await deps.store.updateSubmission(submission.id, {
+      canonicalUrl: indexed.videoUrl,
+      status: "downloading",
+    });
     await enqueue(entry, canonicalUrl, indexed.videoUrl);
   }
 
@@ -529,11 +530,7 @@ export function createBotCore(deps: BotCoreDependencies) {
     target: DeliveryTarget,
     limit: number,
   ) {
-    const rows = await BotSubmission.findAll({
-      where: { chatId: target.chatId },
-      order: [["createdAt", "DESC"]],
-      limit,
-    });
+    const rows = await deps.store.listSubmissions(target.chatId, limit);
 
     if (rows.length === 0) {
       await reply(adapter, target, "No submissions yet.");
@@ -548,29 +545,23 @@ export function createBotCore(deps: BotCoreDependencies) {
     await reply(adapter, target, lines.join("\n"));
   }
 
-  /** Resolves a user-supplied short id prefix to one of their submissions. */
-  async function findSubmissionByPrefix(
-    chatId: string,
-    idPrefix: string,
-  ): Promise<BotSubmission | null> {
-    const rows = await BotSubmission.findAll({
-      where: { chatId, id: { [Op.like]: `${idPrefix}%` } },
-      limit: 2,
-    });
-    return rows.length === 1 ? rows[0] : null;
-  }
-
   async function handleKeep(
     adapter: BotAdapter,
     target: DeliveryTarget,
     idPrefix: string,
   ) {
-    const submission = await findSubmissionByPrefix(target.chatId, idPrefix);
+    const submission = await deps.store.findSubmissionByPrefix(
+      target.chatId,
+      idPrefix,
+    );
     if (!submission) {
       await reply(adapter, target, "No single submission matches that id.");
       return;
     }
-    await submission.update({ retention: "persistent", expiresAt: null });
+    await deps.store.updateSubmission(submission.id, {
+      retention: "persistent",
+      expiresAt: null,
+    });
     await reply(
       adapter,
       target,
@@ -583,7 +574,10 @@ export function createBotCore(deps: BotCoreDependencies) {
     target: DeliveryTarget,
     idPrefix: string,
   ) {
-    const submission = await findSubmissionByPrefix(target.chatId, idPrefix);
+    const submission = await deps.store.findSubmissionByPrefix(
+      target.chatId,
+      idPrefix,
+    );
     if (!submission) {
       await reply(adapter, target, "No single submission matches that id.");
       return;
@@ -593,30 +587,13 @@ export function createBotCore(deps: BotCoreDependencies) {
       return;
     }
 
-    const video = await VideoMetadata.findOne({
-      where: { videoUrl: submission.canonicalUrl },
-    });
-    if (!video) {
-      await reply(adapter, target, "That video is no longer in the database.");
-      return;
-    }
-
-    const removed = await deps.removeVideoFiles(video);
-    if (!removed) {
+    const purged = await deps.store.purgeVideoFiles(submission.canonicalUrl);
+    if (!purged) {
       await reply(adapter, target, "Some files could not be removed.");
       return;
     }
 
-    await video.update({
-      downloadStatus: false,
-      fileName: null,
-      thumbNailFile: null,
-      subTitleFile: null,
-      commentsFile: null,
-      descriptionFile: null,
-      saveDirectory: null,
-    });
-    await submission.update({ status: "reaped" });
+    await deps.store.updateSubmission(submission.id, { status: "reaped" });
     await reply(adapter, target, "Removed.");
   }
 
