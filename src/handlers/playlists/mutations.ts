@@ -9,7 +9,7 @@ import {
 } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
-import { exists, rm, unlink } from "../../utils/fs.ts";
+import { rm } from "../../utils/fs.ts";
 import { join } from "../../utils/path.ts";
 import type {
   DeletePlaylistRequestBody,
@@ -21,6 +21,7 @@ import type {
   UpdatePlaylistMonitoringRequest,
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { removeVideoFiles } from "../videoFiles.ts";
 
 export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
   const { listItemsConcurrently, resetPendingPlaylistSortCounter } = deps;
@@ -558,60 +559,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             let allFilesRemoved = true;
 
             if (cleanUp && video.downloadStatus) {
-              const filesToRemove: Record<string, string | null> = {
-                "fileName": video.fileName,
-                "thumbNailFile": video.thumbNailFile,
-                "subTitleFile": video.subTitleFile,
-                "commentsFile": video.commentsFile,
-                "descriptionFile": video.descriptionFile,
-              };
-
-              logger.debug("Removing files for video", {
-                videoUrl,
-                filesToRemove: JSON.stringify(filesToRemove),
-              });
-
-              for (const [key, value] of Object.entries(filesToRemove)) {
-                if (value) {
-                  try {
-                    const filePath = join(
-                      config.saveLocation,
-                      video.saveDirectory || "",
-                      value,
-                    );
-                    logger.debug("Removing file", {
-                      videoUrl,
-                      key,
-                      value,
-                      filePath,
-                    });
-                    if (await exists(filePath)) {
-                      await unlink(filePath);
-                      logger.debug("Removed file", {
-                        videoUrl,
-                        key,
-                        value,
-                        filePath,
-                      });
-                    } else {
-                      logger.warn("File to remove not found", {
-                        videoUrl,
-                        key,
-                        value,
-                        filePath,
-                      });
-                    }
-                  } catch (error) {
-                    logger.error("Failed to remove file", {
-                      videoUrl,
-                      key,
-                      value,
-                      error: (error as Error).message,
-                    });
-                    allFilesRemoved = false;
-                  }
-                }
-              }
+              allFilesRemoved = await removeVideoFiles(video);
             }
 
             if (allFilesRemoved || !cleanUp) {

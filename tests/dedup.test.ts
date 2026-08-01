@@ -17,7 +17,9 @@ Deno.test("dedup - canonicalizeVideoUrl standardizes YouTube videos", () => {
   );
   // standard watch with list query removed
   assertEquals(
-    canonicalizeVideoUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=abc"),
+    canonicalizeVideoUrl(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=abc",
+    ),
     "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   );
 });
@@ -38,7 +40,9 @@ Deno.test("dedup - canonicalizeVideoUrl standardizes Spankbang videos", () => {
 
 Deno.test("dedup - canonicalizeVideoUrl standardizes Pornhub videos", () => {
   assertEquals(
-    canonicalizeVideoUrl("https://www.pornhub.com/view_video.php?viewkey=ph12345&other=garbage"),
+    canonicalizeVideoUrl(
+      "https://www.pornhub.com/view_video.php?viewkey=ph12345&other=garbage",
+    ),
     "https://www.pornhub.com/view_video.php?viewkey=ph12345",
   );
 });
@@ -53,7 +57,9 @@ Deno.test("dedup - canonicalizeVideoUrl standardizes X/Twitter links", () => {
 Deno.test("dedup - canonicalizePlaylistUrl standardizes playlists", () => {
   // YouTube list
   assertEquals(
-    canonicalizePlaylistUrl("https://www.youtube.com/playlist?list=PL123&index=4"),
+    canonicalizePlaylistUrl(
+      "https://www.youtube.com/playlist?list=PL123&index=4",
+    ),
     "https://www.youtube.com/playlist?list=PL123",
   );
   // Iwara

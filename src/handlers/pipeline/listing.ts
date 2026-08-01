@@ -1354,7 +1354,9 @@ export function createListingFlow(
 
     if (mappingsToUpdate.length > 0) {
       const cases = mappingsToUpdate
-        .map((m) => `WHEN "id" = '${m.instance.getDataValue("id")}' THEN ${m.position}`)
+        .map((m) =>
+          `WHEN "id" = '${m.instance.getDataValue("id")}' THEN ${m.position}`
+        )
         .join(" ");
       const ids = mappingsToUpdate
         .map((m) => `'${m.instance.getDataValue("id")}'`)

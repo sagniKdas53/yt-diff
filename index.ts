@@ -5,6 +5,12 @@ import Redis from "ioredis";
 
 import { type AppConfig, config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
 import { initializeDatabase } from "./src/db/models.ts";
+import {
+  type AppEventMap,
+  type AppEventName,
+  appEvents,
+  isAppEventName,
+} from "./src/events.ts";
 import { createFileHandlers } from "./src/handlers/files.ts";
 import { createPlaylistHandlers } from "./src/handlers/playlists/index.ts";
 import {
@@ -138,8 +144,13 @@ redis.on("connect", () => {
 });
 
 /**
- * Safely emit socket.io events if socket server is available.
+ * Safely emit socket.io events if socket server is available, then fan the same
+ * event out to the in-process bus.
+ *
  * Wraps emit calls in try/catch to avoid crashing the process when socket is not ready.
+ * The bus fan-out sits outside that catch so a socket failure cannot starve
+ * server-side consumers, and it swallows handler errors itself.
+ *
  * @param {string} event - Event name
  * @param {any} payload - Event payload
  */
@@ -155,6 +166,11 @@ function safeEmit(event: string, payload: unknown) {
       event,
       error: e instanceof Error ? e.message : "Unknown error",
     });
+  }
+
+  // Events the bus does not model (socket-only UI chatter) are ignored.
+  if (isAppEventName(event)) {
+    appEvents.emit(event, payload as AppEventMap[AppEventName]);
   }
 }
 

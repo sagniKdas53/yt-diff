@@ -1,11 +1,5 @@
 import { assertEquals } from "std/assert/mod.ts";
-import {
-  exists,
-  mkdir,
-  readdir,
-  rm,
-  unlink,
-} from "../src/utils/fs.ts";
+import { exists, mkdir, readdir, rm, unlink } from "../src/utils/fs.ts";
 import { join } from "../src/utils/path.ts";
 
 Deno.test("fs - exists detects files and directories", async () => {

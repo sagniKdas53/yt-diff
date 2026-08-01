@@ -30,6 +30,7 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
     listProcesses,
     listItemsConcurrently: listingFlow.listItemsConcurrently,
     processDownloadRequest: downloadFlow.processDownloadRequest,
+    resolveAndEnqueue: downloadFlow.resolveAndEnqueue,
     processListingRequest: listingFlow.processListingRequest,
     getQueueSnapshot: downloadFlow.getQueueSnapshot,
     resetPendingPlaylistSortCounter:

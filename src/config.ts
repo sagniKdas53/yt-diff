@@ -14,6 +14,84 @@ function fileExists(filePath: string): boolean {
   }
 }
 
+export type BotConfig = AppConfig["bot"];
+
+/**
+ * Builds the bot configuration and decides whether it is safe to enable.
+ *
+ * Fails closed: an open bot on a yt-dlp box lets anyone who can message it make
+ * the server fetch arbitrary URLs and fill the disk, so every misconfiguration
+ * disables the bot outright rather than degrading it. The reason is returned in
+ * `_configError` for the bootstrap to log, because config.ts cannot import the
+ * logger without a cycle.
+ *
+ * Dependencies are injected so the guard can be tested without mutating the
+ * process environment.
+ *
+ * @param getEnv - Environment lookup
+ * @param readFile - Reads and trims a secret file
+ */
+export function resolveBotConfig(
+  getEnv: (key: string) => string | undefined,
+  readFile: (path: string) => string,
+): AppConfig["bot"] {
+  const requested = getEnv("BOT_ENABLED") === "true";
+
+  const allowedChatIds = (getEnv("BOT_ALLOWED_CHAT_IDS") || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+
+  const rawRetentionMode = (getEnv("BOT_RETENTION_MODE") || "ephemeral")
+    .toLowerCase();
+  const retentionMode = rawRetentionMode === "persistent"
+    ? "persistent" as const
+    : "ephemeral" as const;
+
+  let telegramToken = "";
+  let configError: Error | null = null;
+  const tokenFile = getEnv("BOT_TELEGRAM_TOKEN_FILE");
+  try {
+    telegramToken = tokenFile
+      ? readFile(tokenFile)
+      : getEnv("BOT_TELEGRAM_TOKEN")?.trim() || "";
+  } catch (e) {
+    // A token file that was named but cannot be read is a misconfiguration,
+    // not a reason to silently fall back to an inline token.
+    configError = e instanceof Error ? e : new Error(String(e));
+  }
+
+  if (requested && !configError) {
+    if (allowedChatIds.length === 0) {
+      configError = new Error(
+        "BOT_ENABLED is true but BOT_ALLOWED_CHAT_IDS is empty; refusing to start an unrestricted bot",
+      );
+    } else if (!telegramToken) {
+      configError = new Error(
+        "BOT_ENABLED is true but no bot token was provided; set BOT_TELEGRAM_TOKEN_FILE or BOT_TELEGRAM_TOKEN",
+      );
+    } else if (rawRetentionMode !== retentionMode) {
+      configError = new Error(
+        `BOT_RETENTION_MODE must be "ephemeral" or "persistent", got "${rawRetentionMode}"`,
+      );
+    }
+  }
+
+  return {
+    enabled: requested && configError === null,
+    telegramToken,
+    allowedChatIds,
+    publicBaseUrl: (getEnv("BOT_PUBLIC_BASE_URL") || "").replace(/\/+$/, ""),
+    retentionMode,
+    retentionHours: +(getEnv("BOT_RETENTION_HOURS") ?? 24),
+    reapInterval: getEnv("BOT_REAP_INTERVAL") || "0 * * * *",
+    signedUrlTtl: +(getEnv("BOT_SIGNED_URL_TTL") || 21600),
+    telegramMaxUpload: +(getEnv("BOT_TELEGRAM_MAX_UPLOAD") || 50000000),
+    maxPendingPerChat: +(getEnv("BOT_MAX_PENDING_PER_CHAT") || 5),
+    _configError: configError,
+  };
+}
+
 export interface AppConfig {
   protocol: string;
   host: string;
@@ -88,6 +166,26 @@ export interface AppConfig {
     clientSecret?: string;
     refreshToken?: string;
   } | null;
+  bot: {
+    /**
+     * Effective switch. False whenever the bot is misconfigured, so that a
+     * broken config can never result in a running, unguarded bot.
+     */
+    enabled: boolean;
+    telegramToken: string;
+    /** Chats permitted to command the bot. Empty means the bot stays off. */
+    allowedChatIds: string[];
+    /** External origin for signed URLs; config.host is often container-internal. */
+    publicBaseUrl: string;
+    retentionMode: "ephemeral" | "persistent";
+    retentionHours: number;
+    reapInterval: string;
+    signedUrlTtl: number;
+    telegramMaxUpload: number;
+    maxPendingPerChat: number;
+    /** Why the bot refused to enable itself; logged once during bootstrap. */
+    _configError: Error | null;
+  };
   maxClients: number;
   connectedClients: number;
 }
@@ -272,6 +370,11 @@ export const config: AppConfig = {
 
     return null;
   })(),
+
+  bot: resolveBotConfig(
+    (key) => Deno.env.get(key),
+    readTrimmedFile,
+  ),
 
   maxClients: 10,
   connectedClients: 0,

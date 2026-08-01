@@ -51,105 +51,137 @@ export function createDownloadFlow(
   const { updateProcessActivity, cleanupProcess } = processManager;
   let queueSequence = 0;
 
+  /**
+   * Resolves each URL's save directory, assigns queue positions, and starts the
+   * downloads — everything `processDownloadRequest` did before it wrote a
+   * response. Transport-agnostic so the bot can enqueue without an HTTP
+   * response object.
+   *
+   * If any URL is not indexed, nothing is enqueued and the URL is returned in
+   * `notIndexed`. That mirrors the original handler, which returned 404 on the
+   * first miss and started no downloads at all; resolution short-circuits there
+   * for the same reason, so `notIndexed` holds at most one entry.
+   *
+   * @param urlList - Video URLs to download; duplicates are ignored
+   * @param playlistUrl - Owning playlist, or "None"/"init" for unlisted videos
+   */
+  async function resolveAndEnqueue(
+    urlList: string[],
+    playlistUrl: string,
+  ): Promise<{
+    items: (DownloadItem & { queuePosition: number })[];
+    notIndexed: string[];
+  }> {
+    const videosToDownload: DownloadItem[] = [];
+    const uniqueUrls = new Set();
+
+    for (const videoUrl of urlList) {
+      if (uniqueUrls.has(videoUrl)) {
+        continue;
+      }
+
+      logger.debug("Checking video in database", { url: videoUrl });
+
+      const videoEntry = await VideoMetadata.findOne({
+        where: { videoUrl: videoUrl },
+      });
+
+      if (!videoEntry) {
+        logger.error("Video not found in database", { url: videoUrl });
+        return { items: [], notIndexed: [videoUrl] };
+      }
+
+      let saveDirectory = videoEntry.saveDirectory ?? "";
+
+      if (playlistUrl !== "init" && playlistUrl !== "None") {
+        try {
+          const playlist = await PlaylistMetadata.findOne({
+            where: { playlistUrl: playlistUrl },
+          });
+          if (playlist) {
+            saveDirectory = playlist.saveDirectory;
+          }
+        } catch (error) {
+          logger.error("Error getting playlist save directory", {
+            error: (error as Error).message,
+            playlistUrl,
+          });
+        }
+      } else if (!saveDirectory || saveDirectory === "None") {
+        try {
+          const mapping = await PlaylistVideoMapping.findOne({
+            where: {
+              videoUrl: videoUrl,
+              playlistUrl: {
+                [Op.notIn]: ["init", "None"],
+              },
+            },
+          });
+          if (mapping) {
+            const playlist = await PlaylistMetadata.findOne({
+              where: { playlistUrl: mapping.playlistUrl },
+            });
+            if (playlist) {
+              saveDirectory = playlist.saveDirectory;
+            }
+          }
+        } catch (error) {
+          logger.error("Error getting fallback playlist save directory", {
+            error: (error as Error).message,
+            videoUrl,
+          });
+        }
+      }
+
+      videosToDownload.push({
+        url: videoUrl,
+        title: videoEntry.title,
+        saveDirectory: saveDirectory,
+        videoId: videoEntry.videoId,
+      });
+      uniqueUrls.add(videoUrl);
+    }
+
+    // Assign queue positions before starting downloads so they can be
+    // included in both the HTTP response and the socket events.
+    const itemsWithPositions = videosToDownload.map((item) => ({
+      ...item,
+      queuePosition: ++queueSequence,
+    }));
+
+    void downloadItemsConcurrently(
+      itemsWithPositions,
+      config.queue.maxDownloads,
+    );
+    logger.debug("Download processes started", {
+      itemCount: itemsWithPositions.length,
+    });
+
+    return { items: itemsWithPositions, notIndexed: [] };
+  }
+
   async function processDownloadRequest(
     requestBody: DownloadRequestBody,
     response: HttpResponseLike,
   ) {
     try {
-      const videosToDownload: DownloadItem[] = [];
-      const uniqueUrls = new Set();
-      const playlistUrl = requestBody.playListUrl ?? "None";
-
-      for (const videoUrl of requestBody.urlList) {
-        if (uniqueUrls.has(videoUrl)) {
-          continue;
-        }
-
-        logger.debug("Checking video in database", { url: videoUrl });
-
-        const videoEntry = await VideoMetadata.findOne({
-          where: { videoUrl: videoUrl },
-        });
-
-        if (!videoEntry) {
-          logger.error("Video not found in database", { url: videoUrl });
-          response.writeHead(404, generateCorsHeaders(jsonMimeType));
-          return response.end(JSON.stringify({
-            error: `Video with URL ${videoUrl} is not indexed`,
-          }));
-        }
-
-        let saveDirectory = videoEntry.saveDirectory ?? "";
-
-        if (playlistUrl !== "init" && playlistUrl !== "None") {
-          try {
-            const playlist = await PlaylistMetadata.findOne({
-              where: { playlistUrl: playlistUrl },
-            });
-            if (playlist) {
-              saveDirectory = playlist.saveDirectory;
-            }
-          } catch (error) {
-            logger.error("Error getting playlist save directory", {
-              error: (error as Error).message,
-              playlistUrl,
-            });
-          }
-        } else if (!saveDirectory || saveDirectory === "None") {
-          try {
-            const mapping = await PlaylistVideoMapping.findOne({
-              where: {
-                videoUrl: videoUrl,
-                playlistUrl: {
-                  [Op.notIn]: ["init", "None"],
-                },
-              },
-            });
-            if (mapping) {
-              const playlist = await PlaylistMetadata.findOne({
-                where: { playlistUrl: mapping.playlistUrl },
-              });
-              if (playlist) {
-                saveDirectory = playlist.saveDirectory;
-              }
-            }
-          } catch (error) {
-            logger.error("Error getting fallback playlist save directory", {
-              error: (error as Error).message,
-              videoUrl,
-            });
-          }
-        }
-
-        videosToDownload.push({
-          url: videoUrl,
-          title: videoEntry.title,
-          saveDirectory: saveDirectory,
-          videoId: videoEntry.videoId,
-        });
-        uniqueUrls.add(videoUrl);
-      }
-
-      // Assign queue positions before starting downloads so they can be
-      // included in both the HTTP response and the socket events.
-      const itemsWithPositions = videosToDownload.map((item) => ({
-        ...item,
-        queuePosition: ++queueSequence,
-      }));
-
-      void downloadItemsConcurrently(
-        itemsWithPositions,
-        config.queue.maxDownloads,
+      const { items, notIndexed } = await resolveAndEnqueue(
+        requestBody.urlList,
+        requestBody.playListUrl ?? "None",
       );
-      logger.debug("Download processes started", {
-        itemCount: itemsWithPositions.length,
-      });
+
+      if (notIndexed.length > 0) {
+        response.writeHead(404, generateCorsHeaders(jsonMimeType));
+        return response.end(JSON.stringify({
+          error: `Video with URL ${notIndexed[0]} is not indexed`,
+        }));
+      }
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
       response.end(JSON.stringify({
         status: "success",
         message: "Downloads initiated",
-        items: itemsWithPositions,
+        items,
       }));
     } catch (error) {
       logger.error("Download processing failed", {
@@ -482,11 +514,15 @@ export function createDownloadFlow(
                 ? "Process was killed (likely by user or timeout)"
                 : `Process exited with code ${code}`;
 
+              // `error` is additive: existing socket consumers ignore it, while
+              // in-process consumers get the reason without having to await the
+              // resolved ListingResult.
               safeEmit("download-failed", {
                 title: videoEntry
                   ? videoEntry.getDataValue("title") as string
                   : videoTitle,
                 url: videoUrl,
+                error: errorMsg,
               });
 
               resolve({
@@ -737,5 +773,5 @@ export function createDownloadFlow(
     }));
   }
 
-  return { processDownloadRequest, getQueueSnapshot };
+  return { processDownloadRequest, resolveAndEnqueue, getQueueSnapshot };
 }

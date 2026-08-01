@@ -49,6 +49,40 @@ export function createFileHandlers({
 }: FileHandlerDependencies) {
   const jsonMimeType = MIME_TYPES[".json"];
   const mimeTypes = new Map<string, string>(Object.entries(MIME_TYPES));
+
+  /**
+   * Mints a signed-URL entry in Redis for an already-validated absolute path.
+   *
+   * Callers are responsible for path-traversal and existence checks; this only
+   * writes the entry. The `ttl` is stored alongside the payload so that
+   * `getSignedFileMetadata` can slide the expiry by the entry's own lifetime
+   * rather than the global default.
+   *
+   * @param absPath - Absolute, already-validated path to the file
+   * @param ttlSeconds - Lifetime of the signed entry; defaults to the cache max age
+   */
+  async function createSignedUrlForPath(
+    absPath: string,
+    ttlSeconds: number = config.cache.maxAge,
+  ): Promise<BulkSignedFileResponseEntry> {
+    const signedUrlId = crypto.randomUUID();
+    const expiry = Date.now() + ttlSeconds * 1000;
+
+    await redis.set(
+      `signed:${signedUrlId}`,
+      JSON.stringify({
+        filePath: absPath,
+        mimeType: mimeTypes.get(extname(absPath)) || "application/octet-stream",
+        expiry,
+        ttl: ttlSeconds,
+      }),
+      "EX",
+      ttlSeconds,
+    );
+
+    return { signedUrlId, expiry };
+  }
+
   async function makeSignedUrl(
     requestBody: SignedFileRequestBody,
     response: HttpResponseLike,
@@ -115,21 +149,7 @@ export function createFileHandlers({
       );
     }
 
-    const now = Date.now();
-    const signedUrlId = crypto.randomUUID();
-    const expiry = now + config.cache.maxAge * 1000;
-
-    await redis.set(
-      `signed:${signedUrlId}`,
-      JSON.stringify({
-        filePath: absolutePath,
-        mimeType: mimeTypes.get(extname(absolutePath)) ||
-          "application/octet-stream",
-        expiry,
-      }),
-      "EX",
-      config.cache.maxAge,
-    );
+    const { signedUrlId, expiry } = await createSignedUrlForPath(absolutePath);
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
     response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
@@ -245,7 +265,6 @@ export function createFileHandlers({
     }
 
     const results = new Map<string, BulkSignedFileResponseEntry | null>();
-    const now = Date.now();
 
     for (const file of requestBody.files) {
       const { saveDirectory, fileName } = file;
@@ -259,29 +278,17 @@ export function createFileHandlers({
       const resolvedPath = resolve(joined);
       const saveRoot = resolve(config.saveLocation);
 
-      if (!isWithinPath(saveRoot, resolvedPath) || !(await exists(resolvedPath))) {
+      if (
+        !isWithinPath(saveRoot, resolvedPath) || !(await exists(resolvedPath))
+      ) {
         results.set(fileName, null);
         continue;
       }
 
-      const signedUrlId = crypto.randomUUID();
-      const expiry = now + config.cache.maxAge * 1000;
-
-      await redis.set(
-        `signed:${signedUrlId}`,
-        JSON.stringify({
-          filePath: resolvedPath,
-          mimeType: "application/octet-stream",
-          expiry,
-        }),
-        "EX",
-        config.cache.maxAge,
-      );
-
-      results.set(fileName, {
-        signedUrlId,
-        expiry,
-      });
+      // Resolves the real MIME type instead of the blanket octet-stream this
+      // used to write, which forced a download even with ?inline=true because
+      // serveNativeFile sets Content-Type from the stored value.
+      results.set(fileName, await createSignedUrlForPath(resolvedPath));
     }
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
@@ -291,6 +298,7 @@ export function createFileHandlers({
   }
 
   return {
+    createSignedUrlForPath,
     makeSignedUrl,
     makeSignedUrls,
     refreshSignedUrl,

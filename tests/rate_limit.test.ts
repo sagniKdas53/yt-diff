@@ -116,14 +116,41 @@ Deno.test("rateLimit - blocks requests with 429 when limit is exceeded", async (
   const res = new MockResponse() as any;
 
   // Execute 2 requests under a limit of 2
-  await rateLimit(req, res, () => { nextCalls++; }, () => {}, 2, 60);
-  await rateLimit(req, res, () => { nextCalls++; }, () => {}, 2, 60);
+  await rateLimit(
+    req,
+    res,
+    () => {
+      nextCalls++;
+    },
+    () => {},
+    2,
+    60,
+  );
+  await rateLimit(
+    req,
+    res,
+    () => {
+      nextCalls++;
+    },
+    () => {},
+    2,
+    60,
+  );
 
   assertEquals(nextCalls, 2);
   assertEquals(res.statusCode, 200);
 
   // Third request should exceed the limit
-  await rateLimit(req, res, () => { nextCalls++; }, () => {}, 2, 60);
+  await rateLimit(
+    req,
+    res,
+    () => {
+      nextCalls++;
+    },
+    () => {},
+    2,
+    60,
+  );
   assertEquals(nextCalls, 2); // next should not be called
   assertEquals(res.statusCode, 429);
 

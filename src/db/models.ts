@@ -329,6 +329,144 @@ UserAccount.init({
   modelName: "user_account",
 });
 
+/**
+ * One chat-bot request, from the message that arrived to the file that was
+ * delivered.
+ *
+ * Kept deliberately separate from VideoMetadata so that submission history
+ * survives a video being deleted from the web UI, and so the retention reaper
+ * can tell — in SQL rather than by convention — which files the bot actually
+ * fetched versus which already existed when it was asked.
+ */
+export class BotSubmission extends Model<
+  InferAttributes<BotSubmission>,
+  InferCreationAttributes<BotSubmission>
+> {
+  declare id: CreationOptional<string>;
+  declare platform: string;
+  declare chatId: string;
+  declare messageId: CreationOptional<string | null>;
+  declare requestedUrl: string;
+  declare canonicalUrl: CreationOptional<string | null>;
+  declare kind: string;
+  declare playlistUrl: CreationOptional<string | null>;
+  declare status: CreationOptional<string>;
+  declare deliveryMode: CreationOptional<string | null>;
+  declare retention: CreationOptional<string>;
+  declare downloadedByBot: CreationOptional<boolean>;
+  declare expiresAt: CreationOptional<Date | null>;
+  declare errorMessage: CreationOptional<string | null>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+BotSubmission.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  platform: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Originating chat platform: "telegram" or "discord"',
+  },
+  chatId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "Platform chat/channel the request came from",
+  },
+  messageId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Acknowledgement message edited in place as the request advances",
+  },
+  requestedUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: "URL exactly as the user typed it",
+  },
+  canonicalUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    references: {
+      model: VideoMetadata,
+      key: "videoUrl",
+    },
+    onUpdate: "CASCADE",
+    // SET NULL, not CASCADE: deleting a video from the web UI must not erase
+    // the record that the bot was once asked for it.
+    onDelete: "SET NULL",
+    comment: "Result of normalizeUrl(); foreign key linking to VideoMetadata",
+  },
+  kind: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Whether the request was for a "video" or a "playlist"',
+  },
+  playlistUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Playlist this submission belongs to, when applicable",
+  },
+  status: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "pending",
+    comment: "pending | indexing | downloading | delivered | failed | reaped",
+  },
+  deliveryMode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'How the file reached the user: "upload" or "signed_url"',
+  },
+  retention: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "ephemeral",
+    comment: '"ephemeral" (reaped after expiry) or "persistent"',
+  },
+  downloadedByBot: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment:
+      "False when the file already existed; the reaper never deletes those",
+  },
+  expiresAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: "Null when persistent or when downloadedByBot is false",
+  },
+  errorMessage: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: "Reason recorded alongside status='failed'",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: "bot_submission",
+  indexes: [
+    {
+      // Drives the retention reaper's selection.
+      fields: ["status", "expiresAt"],
+    },
+    {
+      // Drives the submit-path dedupe lookup.
+      fields: ["canonicalUrl"],
+    },
+  ],
+});
+
 PlaylistVideoMapping.belongsTo(VideoMetadata, {
   foreignKey: "videoUrl",
 });
@@ -371,6 +509,7 @@ export async function initializeDatabase() {
         VideoMetadata.name,
         PlaylistMetadata.name,
         PlaylistVideoMapping.name,
+        BotSubmission.name,
       ]),
     });
 
