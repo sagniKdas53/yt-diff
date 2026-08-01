@@ -16,9 +16,16 @@ import { createPlaylistHandlers } from "./src/handlers/playlists/index.ts";
 import {
   createPipelineHandlers,
   downloadOptions,
+  playlistRegex,
   type ProcessLike,
   type SiteArgBuilder,
 } from "./src/handlers/pipeline/index.ts";
+import {
+  isSiteXDotCom as isPipelineSiteXDotCom,
+  normalizeUrl,
+} from "./src/handlers/pipeline/process-manager.ts";
+import { createBotService } from "./src/bot/index.ts";
+import { removeVideoFiles } from "./src/handlers/videoFiles.ts";
 import {
   processDedupPlaylistsRequest,
   processDedupUnlistedRequest,
@@ -254,7 +261,13 @@ async function* streamLines(stream: ReadableStream<Uint8Array>) {
   }
 }
 
-void initializeDatabase();
+// Retained so bootstrap can wait for the schema (and the BotSubmission table)
+// before starting anything that writes to it.
+const dbReady = initializeDatabase();
+dbReady.catch(() => {
+  // initializeDatabase already logs; this only stops an unhandled rejection
+  // while the promise is awaited later in bootstrapRuntime.
+});
 
 // Utility functions
 /**
@@ -463,10 +476,15 @@ const rateLimit = createRateLimit({
   redis,
 });
 
-const { makeSignedUrl, makeSignedUrls, refreshSignedUrl, refreshSignedUrls } =
-  createFileHandlers({
-    redis,
-  });
+const {
+  createSignedUrlForPath,
+  makeSignedUrl,
+  makeSignedUrls,
+  refreshSignedUrl,
+  refreshSignedUrls,
+} = createFileHandlers({
+  redis,
+});
 
 const {
   cleanupStaleProcesses,
@@ -475,6 +493,7 @@ const {
   listItemsConcurrently,
   processDownloadRequest,
   processListingRequest,
+  resolveAndEnqueue,
   getQueueSnapshot,
   resetPendingPlaylistSortCounter,
 } = createPipelineHandlers({
@@ -507,15 +526,34 @@ function terminateChildProcesses() {
   }
 }
 
+/**
+ * Stops the bot, then kills child processes, then exits.
+ *
+ * The bot is stopped first so long-polling is torn down before its in-flight
+ * downloads are killed; the exit is capped by a timer so a hung adapter cannot
+ * prevent shutdown.
+ */
+function shutdown() {
+  const exit = () => {
+    terminateChildProcesses();
+    Deno.exit(0);
+  };
+  const failsafe = setTimeout(exit, 5000);
+  botService.stop()
+    .catch((error: unknown) => {
+      logger.warn("Bot did not stop cleanly", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    })
+    .finally(() => {
+      clearTimeout(failsafe);
+      exit();
+    });
+}
+
 try {
-  Deno.addSignalListener("SIGINT", () => {
-    terminateChildProcesses();
-    Deno.exit(0);
-  });
-  Deno.addSignalListener("SIGTERM", () => {
-    terminateChildProcesses();
-    Deno.exit(0);
-  });
+  Deno.addSignalListener("SIGINT", shutdown);
+  Deno.addSignalListener("SIGTERM", shutdown);
 } catch (error) {
   logger.warn("Failed to register signal listeners (non-POSIX platform?)", {
     error: (error as Error).message,
@@ -780,6 +818,71 @@ const jobs = createJobs({
   listItemsConcurrently,
 });
 
+/**
+ * Calls the HTTP-shaped `updatePlaylistMonitoring` from a non-HTTP caller.
+ *
+ * The handler writes its outcome to a response object rather than returning it,
+ * so this captures the status code and turns a non-2xx into a thrown error.
+ * Extracting a transport-agnostic core would be a cleaner seam, but that is a
+ * larger refactor than /watch justifies today.
+ */
+function setPlaylistMonitoring(
+  url: string,
+  monitoringType: string,
+): Promise<void> {
+  let statusCode = 500;
+  let body = "";
+
+  const capture: HttpResponseLike = {
+    headersSent: false,
+    setHeader: () => undefined,
+    writeHead: (code: number) => {
+      statusCode = code;
+      return undefined;
+    },
+    write: (chunk: string | Uint8Array) => {
+      body += typeof chunk === "string"
+        ? chunk
+        : new TextDecoder().decode(chunk);
+      return undefined;
+    },
+    end: (chunk?: string | Uint8Array) => {
+      if (chunk) {
+        body += typeof chunk === "string"
+          ? chunk
+          : new TextDecoder().decode(chunk);
+      }
+      return undefined;
+    },
+  };
+
+  return updatePlaylistMonitoring({ url, watch: monitoringType }, capture).then(
+    () => {
+      if (statusCode < 200 || statusCode >= 300) {
+        throw new Error(
+          body || `updatePlaylistMonitoring failed (${statusCode})`,
+        );
+      }
+    },
+  );
+}
+
+const botService = createBotService({
+  events: appEvents,
+  listItemsConcurrently,
+  resolveAndEnqueue,
+  getQueueSnapshot,
+  listProcesses: listProcesses as Map<string, unknown>,
+  setPlaylistMonitoring,
+  removeVideoFiles,
+  createSignedUrlForPath,
+  normalizeUrl,
+  // Mirrors executeListing's own classification, including the x.com
+  // single-item exception.
+  isPlaylistUrl: (url: string) =>
+    playlistRegex.test(url) && !isPipelineSiteXDotCom(url),
+});
+
 function handleRequest(
   req: HttpRequestLike,
   res: HttpResponseLike,
@@ -870,6 +973,17 @@ async function bootstrapRuntime() {
     "List Options: yt-dlp --playlist-start {start_num} --playlist-end {stop_num} --dump-json --no-download {bodyUrl}",
   );
   startJobs(jobs);
+
+  // The bot writes BotSubmission rows immediately on its first message, so the
+  // schema must exist before any adapter is listening.
+  try {
+    await dbReady;
+    await botService.start();
+  } catch (error) {
+    logger.error("Chat bot could not be started", {
+      error: (error as Error).message,
+    });
+  }
 }
 
 Deno.serve(
