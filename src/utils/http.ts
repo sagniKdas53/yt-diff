@@ -117,19 +117,54 @@ export function parseRequestJson(request: HttpRequestLike): Promise<unknown> {
  * @param {number} [options.maxAge] - Cache max age in seconds
  * @returns {Object} Object containing CORS headers
  */
+/**
+ * Builds the CORS + Content-Type headers for a response.
+ *
+ * `Access-Control-Allow-Origin` accepts **exactly one** origin or `*`; a
+ * comma-joined list is rejected by every browser. This used to join the whole
+ * allowlist, which happened to work only because `CORS_ALLOWED_ORIGINS` has a
+ * single entry — adding a second would have silently broken CORS everywhere.
+ *
+ * Passing `requestOrigin` echoes it back when it is allowed, which is what makes
+ * a multi-origin allowlist work. Call sites that omit it keep the previous
+ * single-origin behaviour, so none of them had to change.
+ *
+ * `Vary: Origin` is always set: the response now depends on the request's
+ * Origin header, and without it a shared cache could serve one origin's
+ * response to another.
+ *
+ * @param contentType - Value for the Content-Type header
+ * @param requestOrigin - The request's Origin header, when available
+ */
 export function generateCorsHeaders(
   contentType: string,
   {
     allowedOrigins = CORS_ALLOWED_ORIGINS,
     allowedMethods = CORS_ALLOWED_HEADERS,
     maxAge = config.defaultCORSMaxAge,
+    requestOrigin,
+  }: {
+    allowedOrigins?: string[];
+    allowedMethods?: string[];
+    maxAge?: number;
+    requestOrigin?: string | null;
   } = {},
 ) {
+  // A wildcard allowlist stays a wildcard; otherwise echo the caller's origin
+  // when it is permitted, and fall back to the first configured origin so the
+  // header is always a single valid value.
+  const allowOrigin = allowedOrigins.includes("*")
+    ? "*"
+    : requestOrigin && allowedOrigins.includes(requestOrigin)
+    ? requestOrigin
+    : allowedOrigins[0] ?? "";
+
   return {
-    "Access-Control-Allow-Origin": allowedOrigins.join(", "),
+    "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": allowedMethods.join(", "),
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": maxAge,
+    "Vary": "Origin",
     "Content-Type": contentType,
   };
 }

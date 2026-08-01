@@ -34,5 +34,26 @@
 20. [x] Fix the issue where meta data update is not clear log line `2025-11-16T04:55:38.811395865Z level=trace msg="Checking video metadata for updates" ts=2025-11-16T04:55:38.811Z videoId="NA" newData=[object Object]` use the videoUrl insted of ID is it's not always unque
 21. [x] Add an option to use the --proxy URL option of yt-dlp so that we don't need to mount the entire stack on gluetun insted we can expose a port though gluetun+squid so that we can do something like `--proxy http://proxy_user:proxy_pass@proxy_server:proxy_port`
 
+22. [x] Add a Telegram chat bot — send a link, get the video file back in the chat. See [`BOT.md`](./BOT.md).
+    1. [x] Intake and delivery layer only, no new yt-dlp logic — reuses the existing listing, download queue, semaphores, cookies and proxy handling
+    2. [x] Three-tier dedupe: on-disk delivers immediately, indexed-but-not-downloaded skips listing, unknown indexes then downloads
+    3. [x] Upload the file when it fits, signed URL when it does not, with the reason stated in chat
+    4. [x] Ephemeral/persistent retention, with a reaper cron job that never deletes a file the bot did not download
+    5. [x] Fails closed — any misconfiguration disables the bot rather than running it unguarded
+23. [ ] Add a Discord adapter for the chat bot
+    - The `BotAdapter` interface (`src/bot/types.ts`) is already platform-agnostic
+      and `BotCore` holds every command, dedupe and dispatch decision, so this
+      should be roughly one ~90-line file plus registration in
+      `createBotService` — no changes to `BotCore` itself. If it turns out to
+      need `BotCore` changes, the seam is in the wrong place.
+    - Add `discord.js` to `deno.json` imports (hand-edit — `deno add` writes a
+      root `package.json`, which this project deliberately does not have).
+    - `BOT_DISCORD_TOKEN_FILE` enables it; `BOT_DISCORD_MAX_UPLOAD` defaults to
+      10 MiB for a non-boosted server (50/100 MiB at boost L2/L3). At that
+      ceiling the signed-URL fallback becomes the common case rather than the
+      exception, which is exactly what the size check is for.
+    - **Deferred**: rarely used, and setting up a Discord bot application is
+      more work than it is currently worth. Picked up only if the need appears.
+
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+*Last updated at: 2026-08-02*

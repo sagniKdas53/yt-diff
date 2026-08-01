@@ -12,8 +12,14 @@ updates:
     schedule:
       interval: "weekly"
 
-  # Maintain dependencies for npm
-  - package-ecosystem: "npm"
+  # No npm ecosystem here. The backend is Deno and declares its dependencies in
+  # deno.json / deno.lock, which Dependabot does not support. The only real
+  # package.json belongs to the `frontend` git submodule and is updated in that
+  # repository, not this one.
+  #
+  # This block used to point at a root package.json containing `{}`, which made
+  # Dependabot report the project as npm-with-no-dependencies.
+  - package-ecosystem: "gitsubmodule"
     directory: "/"
     schedule:
       interval: "weekly"

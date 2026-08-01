@@ -1015,7 +1015,14 @@ Deno.serve(
       const nativeResponse = await tryServeNativeFile(
         request,
         metadata,
-        generateCorsHeaders,
+        // The file-serving path is the one that genuinely needs multi-origin
+        // support (cross-origin video playback and signed links), and it is one
+        // of the few places with the Request in scope. Binding the origin here
+        // avoids threading it through the other call sites.
+        (contentType: string) =>
+          generateCorsHeaders(contentType, {
+            requestOrigin: request.headers.get("origin"),
+          }),
       );
       if (nativeResponse) {
         return nativeResponse;

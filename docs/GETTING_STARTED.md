@@ -137,6 +137,12 @@ deno task iwara
 # Everything enabled
 deno task full
 
+# Telegram chat bot (persistent — downloaded files are kept)
+deno task bot
+
+# Telegram chat bot (ephemeral — files reaped 15 min after delivery, for testing)
+deno task bot:ephemeral
+
 # Code quality and tooling
 deno task fmt    # Format code
 deno task lint   # Lint code
@@ -145,6 +151,35 @@ deno task ship   # Run check, lint, and fmt together
 ```
 
 The server starts on `http://localhost:8888/ytdiff` by default.
+
+> [!NOTE]
+> The `deno task` entries set `DB_PORT=5433` and `REDIS_PORT=6380`, matching the
+> non-default host ports the compose file publishes so they cannot collide with
+> another project's Postgres or Redis. Inside the compose network the services
+> still talk to 5432 / 6379.
+
+#### Chat bot environment variables
+
+Optional — the bot is off unless `BOT_ENABLED=true`, and an instance that never
+configures it is unaffected. Full setup guide in [`BOT.md`](./BOT.md).
+
+| Variable | Default | Purpose |
+| :-- | :-- | :-- |
+| `BOT_ENABLED` | `false` | Master switch. Nothing is constructed when false. |
+| `BOT_TELEGRAM_TOKEN_FILE` | — | Path to the bot token (or `BOT_TELEGRAM_TOKEN` inline). |
+| `BOT_ALLOWED_CHAT_IDS` | — | Comma-separated. **Empty ⇒ the bot refuses to start.** |
+| `BOT_PUBLIC_BASE_URL` | — | Externally reachable origin for download links. |
+| `BOT_RETENTION_MODE` | `ephemeral` | `ephemeral` \| `persistent`. Persistent registers no reaper. |
+| `BOT_RETENTION_HOURS` | `24` | Fractional allowed (`0.25` = 15 min). |
+| `BOT_REAP_INTERVAL` | `0 * * * *` | Reaper cron; ephemeral mode only. |
+| `BOT_SIGNED_URL_TTL` | `21600` | 6h. Links self-evict from Redis on this TTL. |
+| `BOT_TELEGRAM_MAX_UPLOAD` | `50000000` | Above this a link is sent instead of the file. |
+| `BOT_MAX_PENDING_PER_CHAT` | `5` | Backpressure per chat. |
+| `BOT_LARGE_FILE_WARN` | `104857600` | Warn before downloading if the estimate exceeds 100 MB. |
+
+The bot **fails closed**: any misconfiguration (empty allowlist, missing token,
+invalid retention mode, non-cron reap interval, non-numeric retention hours)
+logs an error and starts no adapters rather than running unguarded.
 
 ### 7. Register a User
 

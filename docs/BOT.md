@@ -255,7 +255,8 @@ If a link works in the web UI it works in the bot, and vice versa.
   while a containerised bot is live makes them fight over `getUpdates` and
   neither reliably receives messages.
 - **Telegram only.** `BotAdapter` is platform-agnostic so Discord can be added
-  without touching `BotCore`, but no Discord adapter exists yet.
+  without touching `BotCore`, but no Discord adapter exists yet — deferred, see
+  [`TODO.md`](./TODO.md) item 23.
 
 ---
 *Last updated at: 2026-08-02*
