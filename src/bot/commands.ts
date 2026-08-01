@@ -1,10 +1,11 @@
 import type { BotCommand } from "./types.ts";
 
-/** Monitoring types accepted by /watch, matching the web UI's vocabulary. */
+/** Monitoring types accepted by /index, matching the web UI's vocabulary. */
 const MONITORING_TYPES = ["Start", "End", "Full"];
 
 const DEFAULT_HISTORY_LIMIT = 10;
 const MAX_HISTORY_LIMIT = 50;
+const DEFAULT_SEARCH_LIMIT = 10;
 
 /**
  * A bare URL is the main path, so anything that parses as http(s) counts as a
@@ -52,6 +53,34 @@ export function parseCommand(raw: string): BotCommand {
       return command === "get" ? { kind: "get", url } : { kind: "link", url };
     }
 
+    case "index": {
+      const url = args[0];
+      if (!url || !looksLikeUrl(url)) {
+        return { kind: "unknown", text };
+      }
+      // No mode means a plain index into the "None" pseudo-playlist: catalogue
+      // it, do not download it, do not monitor it.
+      const requested = args[1];
+      if (!requested) {
+        return { kind: "index", url, monitoringType: null };
+      }
+      const monitoringType = MONITORING_TYPES.find(
+        (type) => type.toLowerCase() === requested.toLowerCase(),
+      );
+      if (!monitoringType) {
+        return { kind: "unknown", text };
+      }
+      return { kind: "index", url, monitoringType };
+    }
+
+    case "search": {
+      const query = args.join(" ").trim();
+      if (!query) {
+        return { kind: "unknown", text };
+      }
+      return { kind: "search", query, limit: DEFAULT_SEARCH_LIMIT };
+    }
+
     case "keep":
     case "rm": {
       const id = args[0];
@@ -59,24 +88,6 @@ export function parseCommand(raw: string): BotCommand {
         return { kind: "unknown", text };
       }
       return command === "keep" ? { kind: "keep", id } : { kind: "remove", id };
-    }
-
-    case "watch": {
-      const url = args[0];
-      if (!url || !looksLikeUrl(url)) {
-        return { kind: "unknown", text };
-      }
-      // Default to Full: a /watch with no mode should track the whole feed
-      // rather than silently monitoring one end of it.
-      const requested = args[1];
-      const monitoringType = MONITORING_TYPES.find(
-        (type) => type.toLowerCase() === requested?.toLowerCase(),
-      ) ?? (requested ? null : "Full");
-
-      if (!monitoringType) {
-        return { kind: "unknown", text };
-      }
-      return { kind: "watch", url, monitoringType };
     }
 
     case "status":
@@ -100,15 +111,30 @@ export function parseCommand(raw: string): BotCommand {
 }
 
 export const HELP_TEXT = [
-  "Send me a link and I'll fetch the video and send it back.",
+  "Send me a link and I'll download the video and send the file back.",
+  "If it's too big to upload, you get a download link instead.",
   "",
-  "<url>            index, download, deliver",
-  "/get <url>       same as sending a bare link",
-  "/link <url>      always reply with a link, never upload",
-  "/watch <url> [Start|End|Full]   monitor a playlist",
-  "/keep <id>       keep an ephemeral file from being reaped",
-  "/rm <id>         delete a submission's files now",
-  "/status          what the queue is doing",
-  "/history [n]     recent submissions",
-  "/help            this message",
+  "GET A VIDEO",
+  "<link>          download it and send the file  (just paste a link)",
+  "/get <link>     same thing, spelled out",
+  "/link <link>    send me a download link instead of the file itself —",
+  "                useful for big files, or to save the upload wait",
+  "",
+  "BROWSE WHAT'S STORED",
+  "/search <text>  find videos already indexed, by title or link",
+  "/history [n]    your recent requests (default 10)",
+  "/status         what's downloading right now",
+  "",
+  "INDEX WITHOUT DOWNLOADING",
+  "/index <link>   catalogue it so it's searchable, but don't download",
+  "/index <playlist-link> Start|End|Full   also keep it updated",
+  "                Start = watch for new items at the top",
+  "                End   = watch for new items at the bottom",
+  "                Full  = re-scan everything (slowest)",
+  "",
+  "MANAGE FILES",
+  "/keep <id>      stop this file being auto-deleted later",
+  "/rm <id>        delete this file now",
+  "",
+  "The <id> is the short code at the start of each /history line.",
 ].join("\n");

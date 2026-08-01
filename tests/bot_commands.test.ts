@@ -47,31 +47,60 @@ Deno.test("parseCommand - a command needing a URL rejects a missing one", () => 
   );
 });
 
-Deno.test("parseCommand - /watch defaults to Full", () => {
+Deno.test("parseCommand - /index with no mode is catalogue-only", () => {
+  // No monitoring: index into "None" so it is searchable, but do not download
+  // and do not schedule updates.
   assertEquals(
-    parseCommand("/watch https://youtube.com/playlist?list=PL1"),
+    parseCommand("/index https://www.youtube.com/watch?v=abc"),
     {
-      kind: "watch",
-      url: "https://youtube.com/playlist?list=PL1",
-      monitoringType: "Full",
+      kind: "index",
+      url: "https://www.youtube.com/watch?v=abc",
+      monitoringType: null,
     },
   );
 });
 
-Deno.test("parseCommand - /watch accepts a mode case-insensitively", () => {
+Deno.test("parseCommand - /index accepts a mode case-insensitively", () => {
   assertEquals(
-    parseCommand("/watch https://youtube.com/playlist?list=PL1 start"),
+    parseCommand("/index https://youtube.com/playlist?list=PL1 start"),
     {
-      kind: "watch",
+      kind: "index",
       url: "https://youtube.com/playlist?list=PL1",
       monitoringType: "Start",
     },
   );
 });
 
-Deno.test("parseCommand - /watch rejects an unknown mode", () => {
-  const text = "/watch https://youtube.com/playlist?list=PL1 sometimes";
+Deno.test("parseCommand - /index rejects an unknown mode", () => {
+  const text = "/index https://youtube.com/playlist?list=PL1 sometimes";
   assertEquals(parseCommand(text), { kind: "unknown", text });
+});
+
+Deno.test("parseCommand - /watch is gone", () => {
+  const text = "/watch https://youtube.com/playlist?list=PL1";
+  assertEquals(parseCommand(text), { kind: "unknown", text });
+});
+
+Deno.test("parseCommand - /search takes a free-text query", () => {
+  assertEquals(parseCommand("/search cat videos"), {
+    kind: "search",
+    query: "cat videos",
+    limit: 10,
+  });
+  // A URL is a perfectly good search term too.
+  assertEquals(parseCommand("/search https://x.com/a/status/1"), {
+    kind: "search",
+    query: "https://x.com/a/status/1",
+    limit: 10,
+  });
+});
+
+Deno.test("parseCommand - /search with no query is rejected", () => {
+  assertEquals(parseCommand("/search"), { kind: "unknown", text: "/search" });
+  assertEquals(parseCommand("/search    "), {
+    kind: "unknown",
+    text: "/search",
+  });
 });
 
 Deno.test("parseCommand - /keep and /rm need an id", () => {

@@ -54,6 +54,7 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
       Promise.resolve(video && video.videoUrl === videoUrl ? video : null),
     findVideosByVideoId: () => Promise.resolve([]),
     listSubmissions: () => Promise.resolve([]),
+    searchVideos: () => Promise.resolve([]),
     findSubmissionByPrefix: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
   };
@@ -94,6 +95,7 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     retentionHours: 24,
     saveLocation,
     chunkSize: 10,
+    largeFileWarnBytes: 104857600,
   });
 
   const message = (text: string): IncomingMessage => ({
@@ -133,6 +135,7 @@ const downloadedVideo: VideoRecord = {
   downloadStatus: true,
   fileName: "video.mp4",
   saveDirectory: "",
+  approximateSize: 1024,
 };
 
 Deno.test("dedupe tier 1 - downloaded and on disk skips listing and enqueue", async () => {

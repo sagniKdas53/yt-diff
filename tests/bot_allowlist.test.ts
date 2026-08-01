@@ -83,6 +83,7 @@ function coreWith(allowedChatIds: string[], spy: SpyAdapter) {
       findVideoByUrl: explode("findVideoByUrl"),
       findVideosByVideoId: explode("findVideosByVideoId"),
       listSubmissions: explode("listSubmissions"),
+      searchVideos: explode("searchVideos"),
       findSubmissionByPrefix: explode("findSubmissionByPrefix"),
       purgeVideoFiles: explode("purgeVideoFiles"),
     } as unknown as Parameters<typeof createBotCore>[0]["store"],
@@ -94,6 +95,7 @@ function coreWith(allowedChatIds: string[], spy: SpyAdapter) {
     retentionHours: 24,
     saveLocation: "/tmp",
     chunkSize: 10,
+    largeFileWarnBytes: 104857600,
   });
 
   return { core, touched };

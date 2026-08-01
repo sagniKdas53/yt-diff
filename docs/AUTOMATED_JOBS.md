@@ -1,7 +1,8 @@
 # Automated Jobs in yt-diff
 
-`yt-diff` uses [`node-cron`](https://www.npmjs.com/package/cron) to run three
-background jobs on configurable schedules. All jobs start automatically when the
+`yt-diff` uses [`node-cron`](https://www.npmjs.com/package/cron) to run
+background jobs on configurable schedules. Three always run; a fourth is
+registered only when the chat bot is enabled. All jobs start automatically when the
 server boots and are logged with their next scheduled run time.
 
 ---
@@ -13,6 +14,11 @@ server boots and are logged with their next scheduled run time.
 | **Cleanup** | `*/10 * * * *` (every 10 min) | `CLEANUP_INTERVAL` | Kill stale/zombie `yt-dlp` child processes |
 | **Update**  | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED` | Re-scan monitored playlists for new videos |
 | **Prune**   | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`   | Remove or relocate orphaned video records  |
+| **Bot Retention** | `0 * * * *` (hourly)    | `BOT_REAP_INTERVAL` | Delete expired ephemeral chat-bot downloads |
+
+> [!NOTE]
+> **Bot Retention only exists when `BOT_ENABLED=true`.** It is constructed in
+> `createJobs` behind that flag, so a disabled bot registers no reaper at all.
 
 > [!NOTE]
 > All schedules use standard
@@ -139,6 +145,118 @@ level=info msg="Started {name} job" schedule="{cron expression}" nextRun="{forma
 ```
 
 Jobs continue running for the lifetime of the server process.
+
+---
+
+## 4. Bot Retention Job (Reaper)
+
+**Purpose**: Deletes the files of expired *ephemeral* chat-bot downloads, so a
+bot used as a "fetch me this video" tool does not slowly fill the disk.
+
+Registered only when `BOT_ENABLED=true`. Implemented in `src/bot/retention.ts`.
+
+### What it selects
+
+A submission is reaped only when **all** of these hold:
+
+```
+status          = 'delivered'
+retention       = 'ephemeral'
+downloadedByBot = true
+expiresAt       < now()
+canonicalUrl    IS NOT NULL
+```
+
+### Three guards, all load-bearing
+
+1. **`downloadedByBot = true` only.** When the bot is asked for something that
+   was *already on disk*, it delivers the existing file and records
+   `downloadedByBot = false, expiresAt = null`. The reaper therefore never
+   deletes a file the bot did not fetch — this covers web-UI downloads and
+   re-sends of anything fetched earlier.
+2. **Must have a `BotSubmission` row.** Selection starts from that table, so a
+   video with no bot involvement is unreachable by the reaper.
+3. **Skips monitored playlists.** Anything mapped to a playlist whose
+   `monitoringType` is `Start`, `End` or `Full` is left alone, otherwise the
+   reaper and the scheduled Update job fight over the same files.
+
+### What it deletes, and what survives
+
+Deleted from `SAVE_PATH`: the media file and all four sidecars (thumbnail,
+subtitles, comments, description), via the shared `removeVideoFiles` helper —
+the same one the web UI's delete-with-cleanup uses, so the two cannot drift.
+
+The `VideoMetadata` row is then reset to exactly the columns that
+delete-with-cleanup resets:
+
+```
+downloadStatus = false
+fileName, thumbNailFile, subTitleFile, commentsFile,
+descriptionFile, saveDirectory = null
+```
+
+**The row itself and its playlist mapping always survive.** Nothing is ever
+hard-deleted. That is what keeps `/search`, `/history` and one-command re-fetch
+working after a reap — the video is simply marked "not downloaded" again.
+
+Finally the submission is marked `status = 'reaped'`.
+
+### Verified behaviour
+
+A live run against two expired submissions:
+
+```
+considered=2 reaped=2 skipped=0
+```
+
+- both `.mp4` files and all sidecars gone from `SAVE_PATH`
+- both rows: `downloadStatus=false`, all five file columns `NULL`
+- both submissions: `status='reaped'`
+- `VideoMetadata` rows and their `None` mappings intact, titles preserved
+- a web-UI-downloaded video sitting in the same directory: **untouched**
+
+---
+
+## Retention vs. signed-URL expiry — two independent mechanisms
+
+These are often confused. They are unrelated and both correct:
+
+| | Signed download links | Downloaded files |
+| :-- | :-- | :-- |
+| Stored in | Redis (`signed:<uuid>`) | `SAVE_PATH` on disk |
+| Expires via | Redis key TTL — **self-evicting** | Bot Retention job |
+| Controlled by | `BOT_SIGNED_URL_TTL` (default 6h) | `BOT_RETENTION_HOURS` (default 24h) |
+| On expiry | the link 404s | the file is deleted, row reset |
+
+**Signed URLs need no cleanup code.** Redis evicts the key on its own when the
+TTL lapses; nothing scans for stale links. The TTL *slides* on each access, and
+since the `getSignedFileMetadata` fix it slides by the entry's **own** stored
+`ttl` rather than the global `CACHE_MAX_AGE` — so a 6-hour bot link stays a
+6-hour link instead of collapsing to 1 hour the first time it is opened.
+
+The two combine predictably:
+
+- **Persistent submission** — file kept forever; the link still expires after
+  `BOT_SIGNED_URL_TTL`. Ask the bot again to get a fresh link; no re-download
+  happens because dedupe tier 1 sees the file on disk.
+- **Ephemeral submission** — the link expires first (6h), then the file is
+  reaped (24h). After that, asking again re-downloads it.
+
+### Testing retention quickly
+
+`BOT_RETENTION_HOURS` accepts fractional values:
+
+```
+BOT_REAP_INTERVAL="*/15 * * * *"   # sweep every 15 minutes
+BOT_RETENTION_HOURS=0.25           # expire 15 minutes after delivery
+```
+
+Both are already set in the `deno task bot` / `deno task bot:proxy` tasks.
+Production defaults in `envs/base.env` remain hourly / 24h.
+
+> [!NOTE]
+> A sweep that finds nothing logs `No expired bot downloads found to reap`.
+> A silent sweep would be indistinguishable from a broken one.
 
 ---
 *Last updated at: 2026-06-10T14:01:59+05:30*

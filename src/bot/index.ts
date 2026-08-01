@@ -91,6 +91,7 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     retentionHours: config.bot.retentionHours,
     saveLocation: config.saveLocation,
     chunkSize: config.chunkSize,
+    largeFileWarnBytes: config.bot.largeFileWarnBytes,
   });
 
   let started = false;

@@ -53,7 +53,9 @@ export type BotCommand =
   | { kind: "get"; url: string }
   | { kind: "link"; url: string }
   | { kind: "keep"; id: string }
-  | { kind: "watch"; url: string; monitoringType: string }
+  /** Catalogue only. `monitoringType` null means index into "None". */
+  | { kind: "index"; url: string; monitoringType: string | null }
+  | { kind: "search"; query: string; limit: number }
   | { kind: "remove"; id: string }
   | { kind: "status" }
   | { kind: "history"; limit: number }

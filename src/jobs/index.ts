@@ -9,6 +9,7 @@ import {
   VideoMetadata,
 } from "../db/models.ts";
 import { logger } from "../logger.ts";
+import { reapExpiredSubmissions } from "../bot/retention.ts";
 
 import {
   type CleanupStaleProcesses,
@@ -23,7 +24,14 @@ interface JobDependencies {
   listItemsConcurrently: ListItemsConcurrently;
 }
 
-export type AppJobs = Record<"cleanup" | "update" | "prune", CronJob>;
+/**
+ * botRetention is optional: it is only constructed when the bot is enabled, so
+ * a disabled bot registers no reaper. startJobs iterates Object.entries and
+ * needs no change.
+ */
+export type AppJobs = Record<"cleanup" | "update" | "prune", CronJob> & {
+  botRetention?: CronJob;
+};
 
 function formatNextRun(job: CronJob) {
   return job.nextDate().toLocaleString(
@@ -271,6 +279,42 @@ export function createJobs({
     true,
     config.timeZone,
   );
+
+  // Only registered when the bot is on; nothing else creates BotSubmission rows.
+  if (config.bot.enabled) {
+    jobs.botRetention = new CronJob(
+      config.bot.reapInterval,
+      () => {
+        logger.debug("Starting bot retention sweep", {
+          time: new Date().toLocaleString("en-US", {
+            timeZone: config.timeZone,
+          }),
+          timeZone: config.timeZone,
+          nextRun: formatNextRun(jobs.botRetention!),
+        });
+
+        void (async () => {
+          try {
+            const summary = await reapExpiredSubmissions();
+            logger.info("Completed bot retention sweep", {
+              considered: summary.considered,
+              reaped: summary.reaped,
+              skipped: summary.skipped,
+              nextRun: formatNextRun(jobs.botRetention!),
+            });
+          } catch (error) {
+            logger.error("Bot retention sweep failed", {
+              error: (error as Error).message,
+              stack: (error as Error).stack,
+            });
+          }
+        })();
+      },
+      null,
+      true,
+      config.timeZone,
+    );
+  }
 
   return jobs;
 }

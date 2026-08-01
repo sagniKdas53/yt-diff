@@ -16,6 +16,8 @@ export interface VideoRecord {
   downloadStatus: boolean;
   fileName: string | null;
   saveDirectory: string | null;
+  /** yt-dlp's size estimate in bytes; 0 when unknown. */
+  approximateSize: number;
 }
 
 export interface SubmissionRecord {
@@ -41,6 +43,8 @@ export interface BotStore {
   findVideoByUrl(videoUrl: string): Promise<VideoRecord | null>;
   findVideosByVideoId(videoId: string): Promise<VideoRecord[]>;
   listSubmissions(chatId: string, limit: number): Promise<SubmissionRecord[]>;
+  /** Free-text search over indexed videos, by title or URL. */
+  searchVideos(query: string, limit: number): Promise<VideoRecord[]>;
   /** Resolves a short id prefix, but only to a unique match. */
   findSubmissionByPrefix(
     chatId: string,
@@ -62,6 +66,8 @@ function toVideoRecord(row: VideoMetadata): VideoRecord {
     downloadStatus: row.downloadStatus,
     fileName: row.fileName ?? null,
     saveDirectory: row.saveDirectory ?? null,
+    // BIGINT comes back as a string from pg.
+    approximateSize: Number(row.approximateSize ?? 0) || 0,
   };
 }
 
@@ -99,6 +105,21 @@ export function createSequelizeBotStore(): BotStore {
       const rows = await VideoMetadata.findAll({
         where: { videoId },
         limit: 25,
+      });
+      return rows.map(toVideoRecord);
+    },
+
+    async searchVideos(query, limit) {
+      const like = `%${query}%`;
+      const rows = await VideoMetadata.findAll({
+        where: {
+          [Op.or]: [
+            { title: { [Op.iLike]: like } },
+            { videoUrl: { [Op.iLike]: like } },
+          ],
+        },
+        order: [["updatedAt", "DESC"]],
+        limit,
       });
       return rows.map(toVideoRecord);
     },

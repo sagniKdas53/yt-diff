@@ -12,8 +12,16 @@ import type {
   MessageRef,
 } from "./types.ts";
 
-/** Progress edits are coalesced to at most one per this interval, per chat. */
-const PROGRESS_THROTTLE_MS = 5000;
+/**
+ * Progress is a heartbeat, not a progress bar.
+ *
+ * Small files finish in seconds, so reporting percentages immediately is pure
+ * churn (and Telegram rate-limits edits aggressively). Nothing is said until a
+ * download has been running for QUIET_MS, and only once per HEARTBEAT_MS after
+ * that.
+ */
+const PROGRESS_QUIET_MS = 45_000;
+const PROGRESS_HEARTBEAT_MS = 60_000;
 
 /**
  * How long a submission may sit with no bus event before it is failed.
@@ -68,6 +76,8 @@ export interface BotCoreDependencies {
   retentionHours: number;
   saveLocation: string;
   chunkSize: number;
+  /** Warn the user when a queued item's estimate exceeds this many bytes. */
+  largeFileWarnBytes: number;
 }
 
 /** In-flight state for one submission, keyed by canonical URL. */
@@ -77,6 +87,10 @@ interface PendingSubmission {
   target: DeliveryTarget;
   ack: MessageRef | null;
   forceLink: boolean;
+  /** When the download actually started, for the quiet period. */
+  startedAt: number;
+  /** yt-dlp's size estimate in bytes, 0 when unknown. */
+  estimatedSize: number;
   lastProgressAt: number;
   lastProgressText: string;
   watchdog: ReturnType<typeof setTimeout> | null;
@@ -229,6 +243,14 @@ export function createBotCore(deps: BotCoreDependencies) {
     );
   }
 
+  /** Human-readable size, for warnings. */
+  function formatBytes(bytes: number): string {
+    if (bytes >= 1024 ** 3) {
+      return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    }
+    return `${Math.round(bytes / 1024 ** 2)} MB`;
+  }
+
   function queuePositionFor(url: string, fallback: number): number {
     const snapshot = deps.getQueueSnapshot();
     return snapshot.find((entry) => entry.url === url)?.queuePosition ??
@@ -345,6 +367,8 @@ export function createBotCore(deps: BotCoreDependencies) {
       target,
       ack: null,
       forceLink,
+      startedAt: Date.now(),
+      estimatedSize: 0,
       lastProgressAt: 0,
       lastProgressText: "",
       watchdog: null,
@@ -398,6 +422,7 @@ export function createBotCore(deps: BotCoreDependencies) {
         canonicalUrl: known.videoUrl,
         status: "downloading",
       });
+      entry.estimatedSize = known.approximateSize;
       await enqueue(entry, canonicalUrl, known.videoUrl);
       return;
     }
@@ -469,6 +494,7 @@ export function createBotCore(deps: BotCoreDependencies) {
       canonicalUrl: indexed.videoUrl,
       status: "downloading",
     });
+    entry.estimatedSize = indexed.approximateSize;
     await enqueue(entry, canonicalUrl, indexed.videoUrl);
   }
 
@@ -507,9 +533,22 @@ export function createBotCore(deps: BotCoreDependencies) {
     }
 
     const fallback = enqueued.items[0]?.queuePosition ?? 1;
+    const position = queuePositionFor(videoUrl, fallback);
+    const size = entry.estimatedSize;
+    // Flag big files up front: they take a while and will very likely come back
+    // as a link rather than an upload.
+    const warning = size > deps.largeFileWarnBytes
+      ? `\nHeads up: this looks like ~${
+        formatBytes(size)
+      }, so it may take a while${
+        size > entry.adapter.maxUploadBytes
+          ? " and will arrive as a link rather than a file"
+          : ""
+      }.`
+      : "";
     await editAck(
       entry,
-      `Queued for download — position ${queuePositionFor(videoUrl, fallback)}`,
+      `Queued for download — position ${position}${warning}`,
     );
   }
 
@@ -538,11 +577,17 @@ export function createBotCore(deps: BotCoreDependencies) {
     }
 
     const lines = rows.map((row) =>
-      `${row.id.slice(0, 8)}  ${row.status}  ${
+      `${row.id.slice(0, 8)}  ${row.status}\n${
         row.canonicalUrl ?? row.requestedUrl
       }`
     );
-    await reply(adapter, target, lines.join("\n"));
+    await reply(
+      adapter,
+      target,
+      `${
+        lines.join("\n\n")
+      }\n\nThe code on each first line is the <id> for /keep and /rm.`,
+    );
   }
 
   async function handleKeep(
@@ -597,22 +642,48 @@ export function createBotCore(deps: BotCoreDependencies) {
     await reply(adapter, target, "Removed.");
   }
 
-  async function handleWatch(
+  /**
+   * Catalogues a link without downloading it.
+   *
+   * With no monitoring type this is a plain index into the "None" pseudo
+   * playlist — the item becomes searchable and can be fetched later with /get.
+   * With Start/End/Full it is also registered for scheduled updates.
+   */
+  async function handleIndex(
     adapter: BotAdapter,
     target: DeliveryTarget,
     url: string,
-    monitoringType: string,
+    monitoringType: string | null,
   ) {
     const canonicalUrl = deps.normalizeUrl(url);
-    const ack = await reply(adapter, target, "Indexing playlist…");
+    const isPlaylist = deps.isPlaylistUrl(canonicalUrl);
+    const ack = await reply(
+      adapter,
+      target,
+      monitoringType ? "Indexing and setting up monitoring…" : "Indexing…",
+    );
+
+    const say = async (text: string) => {
+      if (ack) {
+        try {
+          await adapter.editText(ack, text);
+          return;
+        } catch {
+          // Fall through to a fresh message if the edit is rejected.
+        }
+      }
+      await reply(adapter, target, text);
+    };
 
     try {
       const results = await deps.listItemsConcurrently(
         [{
           url: canonicalUrl,
-          type: "playlist",
-          currentMonitoringType: monitoringType,
-          reason: "Chat bot /watch",
+          // Let executeListing classify unless the user asked for monitoring,
+          // which only makes sense for a playlist.
+          type: monitoringType ? "playlist" : "undetermined",
+          currentMonitoringType: monitoringType ?? "None",
+          reason: "Chat bot /index",
         }],
         deps.chunkSize,
         false,
@@ -622,28 +693,56 @@ export function createBotCore(deps: BotCoreDependencies) {
         !result ||
         (result.status !== "completed" && result.status !== "success")
       ) {
-        const text = `Couldn't index that playlist: ${
-          result?.error ?? result?.status ?? "no result"
-        }`;
-        ack
-          ? await adapter.editText(ack, text)
-          : await reply(adapter, target, text);
+        await say(
+          `Couldn't index that link: ${
+            result?.error ?? result?.status ?? "no result"
+          }`,
+        );
         return;
       }
 
-      await deps.setPlaylistMonitoring(canonicalUrl, monitoringType);
-      const text = `Watching that playlist (${monitoringType}).`;
-      ack
-        ? await adapter.editText(ack, text)
-        : await reply(adapter, target, text);
+      if (monitoringType) {
+        await deps.setPlaylistMonitoring(canonicalUrl, monitoringType);
+        await say(
+          `Indexed, and now monitoring it (${monitoringType}).`,
+        );
+        return;
+      }
+
+      const indexed = isPlaylist
+        ? null
+        : await resolveIndexedVideo(canonicalUrl);
+      await say(
+        indexed
+          ? `Indexed: ${indexed.title}\nUse /get to download it.`
+          : "Indexed. Use /get to download it.",
+      );
     } catch (error) {
-      const text = `Couldn't watch that playlist: ${
-        error instanceof Error ? error.message : "unknown error"
-      }`;
-      ack
-        ? await adapter.editText(ack, text)
-        : await reply(adapter, target, text);
+      await say(
+        `Couldn't index that link: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
     }
+  }
+
+  async function handleSearch(
+    adapter: BotAdapter,
+    target: DeliveryTarget,
+    query: string,
+    limit: number,
+  ) {
+    const rows = await deps.store.searchVideos(query, limit);
+    if (rows.length === 0) {
+      await reply(adapter, target, `Nothing indexed matching "${query}".`);
+      return;
+    }
+
+    const lines = rows.map((row) => {
+      const mark = row.downloadStatus ? "[saved]" : "[not downloaded]";
+      return `${mark} ${row.title}\n${row.videoUrl}`;
+    });
+    await reply(adapter, target, lines.join("\n\n"));
   }
 
   /**
@@ -691,13 +790,16 @@ export function createBotCore(deps: BotCoreDependencies) {
         case "remove":
           await handleRemove(adapter, target, command.id);
           return;
-        case "watch":
-          await handleWatch(
+        case "index":
+          await handleIndex(
             adapter,
             target,
             command.url,
             command.monitoringType,
           );
+          return;
+        case "search":
+          await handleSearch(adapter, target, command.query, command.limit);
           return;
         case "get":
           await handleSubmission(adapter, message, command.url, false);
@@ -730,11 +832,15 @@ export function createBotCore(deps: BotCoreDependencies) {
     }
 
     const now = Date.now();
-    if (now - entry.lastProgressAt < PROGRESS_THROTTLE_MS) {
+    // Stay quiet while the download is still plausibly about to finish.
+    if (now - entry.startedAt < PROGRESS_QUIET_MS) {
+      return;
+    }
+    if (now - entry.lastProgressAt < PROGRESS_HEARTBEAT_MS) {
       return;
     }
 
-    const text = `Downloading… ${Math.floor(payload.percentage)}%`;
+    const text = `Still downloading… ${Math.floor(payload.percentage)}%`;
     if (text === entry.lastProgressText) {
       return;
     }
@@ -742,6 +848,14 @@ export function createBotCore(deps: BotCoreDependencies) {
     entry.lastProgressAt = now;
     entry.lastProgressText = text;
     void editAck(entry, text);
+  }
+
+  function onStarted(payload: { url: string }) {
+    const entry = pending.get(payload.url);
+    if (entry && !entry.settled) {
+      // Reset the clock: queue wait should not count toward the quiet period.
+      entry.startedAt = Date.now();
+    }
   }
 
   function onDone(payload: {
@@ -778,6 +892,7 @@ export function createBotCore(deps: BotCoreDependencies) {
   }
 
   function subscribe() {
+    deps.events.on("download-started", onStarted);
     deps.events.on("downloading-percent-update", onPercent);
     deps.events.on("download-done", onDone);
     deps.events.on("download-failed", onFailed);
@@ -785,6 +900,7 @@ export function createBotCore(deps: BotCoreDependencies) {
   }
 
   function unsubscribe() {
+    deps.events.off("download-started", onStarted);
     deps.events.off("downloading-percent-update", onPercent);
     deps.events.off("download-done", onDone);
     deps.events.off("download-failed", onFailed);

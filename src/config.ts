@@ -88,6 +88,7 @@ export function resolveBotConfig(
     signedUrlTtl: +(getEnv("BOT_SIGNED_URL_TTL") || 21600),
     telegramMaxUpload: +(getEnv("BOT_TELEGRAM_MAX_UPLOAD") || 50000000),
     maxPendingPerChat: +(getEnv("BOT_MAX_PENDING_PER_CHAT") || 5),
+    largeFileWarnBytes: +(getEnv("BOT_LARGE_FILE_WARN") || 104857600),
     _configError: configError,
   };
 }
@@ -184,6 +185,8 @@ export interface AppConfig {
     signedUrlTtl: number;
     telegramMaxUpload: number;
     maxPendingPerChat: number;
+    /** Warn in chat when a queued item's size estimate exceeds this. */
+    largeFileWarnBytes: number;
     /** Why the bot refused to enable itself; logged once during bootstrap. */
     _configError: Error | null;
   };

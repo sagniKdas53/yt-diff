@@ -161,4 +161,31 @@ preserved under the "None" bucket where the user can find and manage it.
 | `TZ_PREFERRED`   | `Asia/Kolkata` | Timezone for scheduling             |
 
 ---
+---
+
+## Chat bot retention (the reaper)
+
+When the chat bot is enabled it registers a fourth cron job that deletes the
+files of expired *ephemeral* bot downloads. Full detail lives in
+[`AUTOMATED_JOBS.md`](./AUTOMATED_JOBS.md#4-bot-retention-job-reaper); the rule
+that matters here is:
+
+> **The reaper never deletes a file the bot did not download.**
+
+When the bot is asked for something already on disk it delivers the existing
+file and records `downloadedByBot = false, expiresAt = null`, which makes that
+rule enforceable in SQL rather than by convention. Web-UI downloads are
+therefore untouchable by the reaper, as is anything the bot merely re-delivered.
+
+The reaper shares `removeVideoFiles()` (`src/handlers/videoFiles.ts`) with the
+delete-with-cleanup path above, and resets exactly the same columns, so the two
+flows cannot drift apart. It never hard-deletes: the `VideoMetadata` row and its
+playlist mapping always survive, leaving the video marked "not downloaded" and
+re-fetchable.
+
+Signed download links are **not** part of this flow — they live in Redis and
+self-evict on their own TTL. See the comparison table in `AUTOMATED_JOBS.md`.
+
+---
+
 *Last updated at: 2026-06-10T14:01:59+05:30*
