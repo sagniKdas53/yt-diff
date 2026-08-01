@@ -23,8 +23,12 @@ secrets:
   #   file: secrets/youtube_refresh_token.txt
   youtube_api_key:
     file: secrets/youtube_api_key.txt
-  bot_token:
-    file: secrets/bot_token.txt
+  # Chat bot (optional). A missing secret file makes `docker compose up` fail
+  # outright, so this stays commented until you actually enable the bot.
+  # Uncomment this AND the `- bot_token` service reference AND
+  # BOT_TELEGRAM_TOKEN_FILE below. See docs/BOT.md.
+  # bot_token:
+  #   file: secrets/bot_token.txt
   pg_admin_email:
     file: secrets/pg_admin_email.txt
   pg_admin_password:
@@ -104,7 +108,7 @@ services:
       # - youtube_client_secret
       # - youtube_refresh_token
       - youtube_api_key
-      - bot_token
+      # - bot_token   # uncomment together with the secret definition above
 
     environment:
       - PROTOCOL=${PROTOCOL}
@@ -163,18 +167,18 @@ services:
       # BOT_ALLOWED_CHAT_IDS the bot logs an error and starts nothing.
       # x.com cookies reach the bot through X_COOKIES_FILE above, since every
       # download and listing goes through the same buildSiteArgs.
-      - BOT_ENABLED=${BOT_ENABLED}
-      - BOT_TELEGRAM_TOKEN_FILE=/run/secrets/bot_token
-      - BOT_ALLOWED_CHAT_IDS=${BOT_ALLOWED_CHAT_IDS}
+      - BOT_ENABLED=${BOT_ENABLED:-false}
+      # - BOT_TELEGRAM_TOKEN_FILE=/run/secrets/bot_token
+      - BOT_ALLOWED_CHAT_IDS=${BOT_ALLOWED_CHAT_IDS:-}
       # Must be the externally reachable origin — HOSTNAME is container-internal.
-      - BOT_PUBLIC_BASE_URL=${BOT_PUBLIC_BASE_URL}
-      - BOT_RETENTION_MODE=${BOT_RETENTION_MODE}
-      - BOT_RETENTION_HOURS=${BOT_RETENTION_HOURS}
-      - BOT_REAP_INTERVAL=${BOT_REAP_INTERVAL}
-      - BOT_SIGNED_URL_TTL=${BOT_SIGNED_URL_TTL}
-      - BOT_TELEGRAM_MAX_UPLOAD=${BOT_TELEGRAM_MAX_UPLOAD}
-      - BOT_MAX_PENDING_PER_CHAT=${BOT_MAX_PENDING_PER_CHAT}
-      - BOT_LARGE_FILE_WARN=${BOT_LARGE_FILE_WARN}
+      - BOT_PUBLIC_BASE_URL=${BOT_PUBLIC_BASE_URL:-}
+      - BOT_RETENTION_MODE=${BOT_RETENTION_MODE:-ephemeral}
+      - BOT_RETENTION_HOURS=${BOT_RETENTION_HOURS:-24}
+      - BOT_REAP_INTERVAL=${BOT_REAP_INTERVAL:-0 * * * *}
+      - BOT_SIGNED_URL_TTL=${BOT_SIGNED_URL_TTL:-21600}
+      - BOT_TELEGRAM_MAX_UPLOAD=${BOT_TELEGRAM_MAX_UPLOAD:-50000000}
+      - BOT_MAX_PENDING_PER_CHAT=${BOT_MAX_PENDING_PER_CHAT:-5}
+      - BOT_LARGE_FILE_WARN=${BOT_LARGE_FILE_WARN:-104857600}
 
     labels:
       - "traefik.enable=true"

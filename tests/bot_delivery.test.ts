@@ -86,6 +86,7 @@ Deno.test("delivery - a file exactly at the cap is uploaded", async () => {
     });
 
     assertEquals(outcome.mode, "upload");
+    assertEquals(outcome.sizeBytes, 100);
     assertEquals(calls.sendFile.length, 1);
     assertEquals(signed.length, 0);
   });
@@ -106,6 +107,9 @@ Deno.test("delivery - one byte over the cap is signed instead", async () => {
 
     assertEquals(outcome.mode, "signed_url");
     assertEquals(outcome.url, "https://yt.example.com/ytdiff/file?fileId=sig-1");
+    // The measured size and reason drive the in-chat explanation.
+    assertEquals(outcome.sizeBytes, 101);
+    assertEquals(outcome.reason, "too_large");
     // No upload should even be attempted.
     assertEquals(calls.sendFile.length, 0);
     assertEquals(signed.length, 1);
@@ -129,6 +133,7 @@ Deno.test("delivery - a failed upload degrades to a signed URL", async () => {
     // The upload was tried first, then fell back rather than erroring.
     assertEquals(calls.sendFile.length, 1);
     assertEquals(outcome.mode, "signed_url");
+    assertEquals(outcome.reason, "upload_failed");
     assertEquals(signed.length, 1);
   });
 });
@@ -148,6 +153,9 @@ Deno.test("delivery - /link signs without stat-ing or uploading", async () => {
     });
 
     assertEquals(outcome.mode, "signed_url");
+    assertEquals(outcome.reason, "requested");
+    // /link still measures the file so the reply can state its size.
+    assertEquals(outcome.sizeBytes, 10);
     assertEquals(calls.sendFile.length, 0);
     assertEquals(signed.length, 1);
   });
@@ -185,4 +193,13 @@ Deno.test("delivery - buildSignedUrl composes base and urlBase", () => {
     delivery.buildSignedUrl("abc"),
     "https://yt.example.com/ytdiff/file?fileId=abc",
   );
+});
+
+Deno.test("delivery - an unknown (-1) estimate never triggers a size warning", () => {
+  // yt-dlp writes -1 when it has no estimate, which is the norm for x.com.
+  // The store normalises that to 0 so `size > threshold` cannot fire on it.
+  const normalise = (raw: number) => Math.max(0, Number(raw ?? 0) || 0);
+  assertEquals(normalise(-1), 0);
+  assertEquals(normalise(0), 0);
+  assertEquals(normalise(68645179), 68645179);
 });

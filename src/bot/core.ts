@@ -302,7 +302,20 @@ export function createBotCore(deps: BotCoreDependencies) {
       });
 
       if (outcome.mode === "signed_url") {
-        await editAck(entry, `Ready: ${outcome.url}`);
+        // Always say why a link came back instead of a file. The pre-download
+        // estimate is frequently unavailable (yt-dlp reports -1 for x.com), so
+        // this measured size is the only reliable warning the user ever gets.
+        const size = outcome.sizeBytes > 0
+          ? formatBytes(outcome.sizeBytes)
+          : "unknown size";
+        const why = outcome.reason === "too_large"
+          ? `That's ${size} — too big to upload here (limit ${
+            formatBytes(entry.adapter.maxUploadBytes)
+          }), so here's a download link instead.`
+          : outcome.reason === "upload_failed"
+          ? `Upload failed, so here's a download link instead (${size}).`
+          : `Download link (${size}).`;
+        await editAck(entry, `${why}\n${outcome.url}`);
       } else {
         await editAck(entry, video.title || "Done");
       }

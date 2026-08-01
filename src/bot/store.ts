@@ -66,8 +66,9 @@ function toVideoRecord(row: VideoMetadata): VideoRecord {
     downloadStatus: row.downloadStatus,
     fileName: row.fileName ?? null,
     saveDirectory: row.saveDirectory ?? null,
-    // BIGINT comes back as a string from pg.
-    approximateSize: Number(row.approximateSize ?? 0) || 0,
+    // BIGINT comes back as a string from pg, and yt-dlp writes -1 when it has
+    // no estimate (which is the norm for x.com). Normalise both to 0 = unknown.
+    approximateSize: Math.max(0, Number(row.approximateSize ?? 0) || 0),
   };
 }
 

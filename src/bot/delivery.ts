@@ -28,6 +28,15 @@ export interface DeliveryOutcome {
   mode: "upload" | "signed_url";
   /** Present when mode is "signed_url". */
   url?: string;
+  /** Actual size on disk, when it was measured. 0 when not stat-ed. */
+  sizeBytes: number;
+  /**
+   * Why a link was sent instead of a file:
+   * - "too_large"     exceeded the platform upload ceiling
+   * - "upload_failed" the upload was attempted and threw
+   * - "requested"     the user asked with /link
+   */
+  reason?: "too_large" | "upload_failed" | "requested";
 }
 
 export function createDelivery(deps: DeliveryDependencies) {
@@ -43,12 +52,21 @@ export function createDelivery(deps: DeliveryDependencies) {
     return `${deps.publicBaseUrl}${deps.urlBase}/file?fileId=${signedUrlId}`;
   }
 
-  async function signAndReturn(absPath: string): Promise<DeliveryOutcome> {
+  async function signAndReturn(
+    absPath: string,
+    reason: DeliveryOutcome["reason"],
+    sizeBytes: number,
+  ): Promise<DeliveryOutcome> {
     const { signedUrlId } = await deps.createSignedUrlForPath(
       absPath,
       deps.signedUrlTtl,
     );
-    return { mode: "signed_url", url: buildSignedUrl(signedUrlId) };
+    return {
+      mode: "signed_url",
+      url: buildSignedUrl(signedUrlId),
+      sizeBytes,
+      reason,
+    };
   }
 
   /**
@@ -67,7 +85,9 @@ export function createDelivery(deps: DeliveryDependencies) {
     );
 
     if (request.forceLink) {
-      return await signAndReturn(absPath);
+      // Still stat it so the caller can report the size either way.
+      const { size } = await stat(absPath);
+      return await signAndReturn(absPath, "requested", size);
     }
 
     const { size } = await stat(absPath);
@@ -79,12 +99,12 @@ export function createDelivery(deps: DeliveryDependencies) {
         size,
         maxUploadBytes: request.adapter.maxUploadBytes,
       });
-      return await signAndReturn(absPath);
+      return await signAndReturn(absPath, "too_large", size);
     }
 
     try {
       await request.adapter.sendFile(request.to, absPath, request.caption);
-      return { mode: "upload" };
+      return { mode: "upload", sizeBytes: size };
     } catch (error) {
       // An upload failure is not a user-visible failure — it degrades to a link.
       logger.warn("Upload failed, falling back to a signed URL", {
@@ -92,7 +112,7 @@ export function createDelivery(deps: DeliveryDependencies) {
         size,
         error: error instanceof Error ? error.message : "Unknown error",
       });
-      return await signAndReturn(absPath);
+      return await signAndReturn(absPath, "upload_failed", size);
     }
   }
 

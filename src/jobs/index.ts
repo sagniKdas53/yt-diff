@@ -280,8 +280,10 @@ export function createJobs({
     config.timeZone,
   );
 
-  // Only registered when the bot is on; nothing else creates BotSubmission rows.
-  if (config.bot.enabled) {
+  // Registered only when the bot is on AND retention is ephemeral. In
+  // persistent mode nothing is ever eligible for reaping, so the job would be a
+  // no-op that still wakes up on schedule — better not to exist at all.
+  if (config.bot.enabled && config.bot.retentionMode === "ephemeral") {
     jobs.botRetention = new CronJob(
       config.bot.reapInterval,
       () => {
