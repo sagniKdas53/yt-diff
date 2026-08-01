@@ -284,38 +284,53 @@ export function createJobs({
   // persistent mode nothing is ever eligible for reaping, so the job would be a
   // no-op that still wakes up on schedule — better not to exist at all.
   if (config.bot.enabled && config.bot.retentionMode === "ephemeral") {
-    jobs.botRetention = new CronJob(
-      config.bot.reapInterval,
-      () => {
-        logger.debug("Starting bot retention sweep", {
-          time: new Date().toLocaleString("en-US", {
+    // config.ts already shape-checks the expression, but the CronJob parser is
+    // the real authority and throws on anything it dislikes. Uncaught, that
+    // would take the whole server down over a bot typo.
+    try {
+      jobs.botRetention = new CronJob(
+        config.bot.reapInterval,
+        () => {
+          logger.debug("Starting bot retention sweep", {
+            time: new Date().toLocaleString("en-US", {
+              timeZone: config.timeZone,
+            }),
             timeZone: config.timeZone,
-          }),
-          timeZone: config.timeZone,
-          nextRun: formatNextRun(jobs.botRetention!),
-        });
+            nextRun: formatNextRun(jobs.botRetention!),
+          });
 
-        void (async () => {
-          try {
-            const summary = await reapExpiredSubmissions();
-            logger.info("Completed bot retention sweep", {
-              considered: summary.considered,
-              reaped: summary.reaped,
-              skipped: summary.skipped,
-              nextRun: formatNextRun(jobs.botRetention!),
-            });
-          } catch (error) {
-            logger.error("Bot retention sweep failed", {
-              error: (error as Error).message,
-              stack: (error as Error).stack,
-            });
-          }
-        })();
-      },
-      null,
-      true,
-      config.timeZone,
-    );
+          void (async () => {
+            try {
+              const summary = await reapExpiredSubmissions();
+              logger.info("Completed bot retention sweep", {
+                considered: summary.considered,
+                reaped: summary.reaped,
+                skipped: summary.skipped,
+                nextRun: formatNextRun(jobs.botRetention!),
+              });
+            } catch (error) {
+              logger.error("Bot retention sweep failed", {
+                error: (error as Error).message,
+                stack: (error as Error).stack,
+              });
+            }
+          })();
+        },
+        null,
+        true,
+        config.timeZone,
+      );
+    } catch (error) {
+      // The bot itself keeps working; only automatic reaping is lost, and the
+      // reason is stated loudly rather than crashing the process.
+      logger.error(
+        "Invalid BOT_REAP_INTERVAL; bot retention job not registered",
+        {
+          reapInterval: config.bot.reapInterval,
+          error: (error as Error).message,
+        },
+      );
+    }
   }
 
   return jobs;

@@ -17,6 +17,21 @@ function fileExists(filePath: string): boolean {
 export type BotConfig = AppConfig["bot"];
 
 /**
+ * Cheap structural check for a cron expression.
+ *
+ * Not a full parser — the CronJob constructor is the real authority — but it
+ * catches the common typo before it can throw during job construction, where an
+ * uncaught error would take the whole server down rather than just the bot.
+ */
+function looksLikeCron(expression: string): boolean {
+  const fields = expression.trim().split(/\s+/);
+  if (fields.length !== 5 && fields.length !== 6) {
+    return false;
+  }
+  return fields.every((field) => /^[0-9*/,\-?A-Za-z]+$/.test(field));
+}
+
+/**
  * Builds the bot configuration and decides whether it is safe to enable.
  *
  * Fails closed: an open bot on a yt-dlp box lets anyone who can message it make
@@ -48,6 +63,9 @@ export function resolveBotConfig(
     ? "persistent" as const
     : "ephemeral" as const;
 
+  const reapInterval = getEnv("BOT_REAP_INTERVAL") || "0 * * * *";
+  const retentionHours = +(getEnv("BOT_RETENTION_HOURS") ?? 24);
+
   let telegramToken = "";
   let configError: Error | null = null;
   const tokenFile = getEnv("BOT_TELEGRAM_TOKEN_FILE");
@@ -74,6 +92,17 @@ export function resolveBotConfig(
       configError = new Error(
         `BOT_RETENTION_MODE must be "ephemeral" or "persistent", got "${rawRetentionMode}"`,
       );
+    } else if (!Number.isFinite(retentionHours) || retentionHours < 0) {
+      configError = new Error(
+        `BOT_RETENTION_HOURS must be a non-negative number, got "${
+          getEnv("BOT_RETENTION_HOURS")
+        }"`,
+      );
+    } else if (retentionMode === "ephemeral" && !looksLikeCron(reapInterval)) {
+      // Only relevant in ephemeral mode; persistent never builds the job.
+      configError = new Error(
+        `BOT_REAP_INTERVAL must be a cron expression, got "${reapInterval}"`,
+      );
     }
   }
 
@@ -83,8 +112,8 @@ export function resolveBotConfig(
     allowedChatIds,
     publicBaseUrl: (getEnv("BOT_PUBLIC_BASE_URL") || "").replace(/\/+$/, ""),
     retentionMode,
-    retentionHours: +(getEnv("BOT_RETENTION_HOURS") ?? 24),
-    reapInterval: getEnv("BOT_REAP_INTERVAL") || "0 * * * *",
+    retentionHours,
+    reapInterval,
     signedUrlTtl: +(getEnv("BOT_SIGNED_URL_TTL") || 21600),
     telegramMaxUpload: +(getEnv("BOT_TELEGRAM_MAX_UPLOAD") || 50000000),
     maxPendingPerChat: +(getEnv("BOT_MAX_PENDING_PER_CHAT") || 5),

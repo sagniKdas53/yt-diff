@@ -145,3 +145,57 @@ Deno.test("botConfig - retention hours of 0 is honoured, not defaulted", () => {
   );
   assertEquals(bot.retentionHours, 0);
 });
+
+Deno.test("botConfig - rejects a non-cron reap interval", () => {
+  // An invalid expression used to throw inside the CronJob constructor and take
+  // the whole server down; it must fail closed at config time instead.
+  const bot = resolveBotConfig(
+    env({ ...VALID, BOT_REAP_INTERVAL: "not a cron" }),
+    unreadableFile,
+  );
+  assertEquals(bot.enabled, false);
+  assertStringIncludes(bot._configError?.message ?? "", "BOT_REAP_INTERVAL");
+});
+
+Deno.test("botConfig - accepts 5- and 6-field cron expressions", () => {
+  for (const expr of ["*/15 * * * *", "0 2 * * *", "*/30 * * * * *"]) {
+    const bot = resolveBotConfig(
+      env({ ...VALID, BOT_REAP_INTERVAL: expr }),
+      unreadableFile,
+    );
+    assertEquals(bot.enabled, true, `should accept ${expr}`);
+    assertEquals(bot.reapInterval, expr);
+  }
+});
+
+Deno.test("botConfig - a bad cron is ignored in persistent mode", () => {
+  // Persistent mode never builds the job, so the expression cannot break it.
+  const bot = resolveBotConfig(
+    env({
+      ...VALID,
+      BOT_RETENTION_MODE: "persistent",
+      BOT_REAP_INTERVAL: "nonsense",
+    }),
+    unreadableFile,
+  );
+  assertEquals(bot.enabled, true);
+  assertEquals(bot._configError, null);
+});
+
+Deno.test("botConfig - rejects non-numeric retention hours", () => {
+  // NaN would make expiresAt an Invalid Date and silently break reaping.
+  const bot = resolveBotConfig(
+    env({ ...VALID, BOT_RETENTION_HOURS: "soon" }),
+    unreadableFile,
+  );
+  assertEquals(bot.enabled, false);
+  assertStringIncludes(bot._configError?.message ?? "", "BOT_RETENTION_HOURS");
+});
+
+Deno.test("botConfig - rejects negative retention hours", () => {
+  const bot = resolveBotConfig(
+    env({ ...VALID, BOT_RETENTION_HOURS: "-5" }),
+    unreadableFile,
+  );
+  assertEquals(bot.enabled, false);
+});
