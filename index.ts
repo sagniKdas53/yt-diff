@@ -945,15 +945,7 @@ function handleRequest(
 }
 
 async function bootstrapRuntime() {
-  if (config.hidePorts) {
-    logger.info(
-      `Server listening on ${config.protocol}://${config.host}${config.urlBase}`,
-    );
-  } else {
-    logger.info(
-      `Server listening on ${config.protocol}://${config.host}:${config.port}${config.urlBase}`,
-    );
-  }
+  logger.info(`Server listening on ${config.publicOrigin}${config.urlBase}`);
   // I do not really know if calling these here is a good idea, but how else can I even do it?
   const start = Date.now();
   await sleep();

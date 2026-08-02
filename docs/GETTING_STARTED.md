@@ -168,7 +168,7 @@ configures it is unaffected. Full setup guide in [`BOT.md`](./BOT.md).
 | `BOT_ENABLED` | `false` | Master switch. Nothing is constructed when false. |
 | `BOT_TELEGRAM_TOKEN_FILE` | — | Path to the bot token (or `BOT_TELEGRAM_TOKEN` inline). |
 | `BOT_ALLOWED_CHAT_IDS` | — | Comma-separated. **Empty ⇒ the bot refuses to start.** |
-| `BOT_PUBLIC_BASE_URL` | — | Externally reachable origin for download links. |
+| `BOT_PUBLIC_BASE_URL` | server origin | Override for the download-link origin. Defaults to `PROTOCOL://HOSTNAME[:PORT]` — the origin logged at startup. |
 | `BOT_RETENTION_MODE` | `ephemeral` | `ephemeral` \| `persistent`. Persistent registers no reaper. |
 | `BOT_RETENTION_HOURS` | `24` | Fractional allowed (`0.25` = 15 min). |
 | `BOT_REAP_INTERVAL` | `0 * * * *` | Reaper cron; ephemeral mode only. |

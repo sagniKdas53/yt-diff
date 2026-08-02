@@ -33,6 +33,8 @@ secrets:
     file: secrets/pg_admin_email.txt
   pg_admin_password:
     file: secrets/pg_admin_password.txt
+  bot_token:
+    file: secrets/bot_token.txt
 
 volumes:
   pgadmin-data:
@@ -43,9 +45,11 @@ services:
     container_name: yt-db
     # Published on a non-default host port so it cannot collide with another
     # project's postgres. Containers on revProxy-net still talk to 5432.
-    # Host-side runs need DB_PORT to match the left-hand side.
+    # Host-side runs need DB_PORT to match the middle field.
+    # Loopback-bound: this publish exists only so a host-side `deno task dev` on
+    # the same machine can reach it. Nothing off-box should see the database.
     ports:
-      - ${DB_HOST_PORT:-5433}:5432
+      - 127.0.0.1:${DB_HOST_PORT:-5433}:5432
     expose:
       - 5432
     restart: always
@@ -108,7 +112,7 @@ services:
       # - youtube_client_secret
       # - youtube_refresh_token
       - youtube_api_key
-      # - bot_token   # uncomment together with the secret definition above
+      - bot_token
 
     environment:
       - PROTOCOL=${PROTOCOL}
@@ -170,11 +174,12 @@ services:
       - BOT_ENABLED=${BOT_ENABLED:-false}
       # - BOT_TELEGRAM_TOKEN_FILE=/run/secrets/bot_token
       - BOT_ALLOWED_CHAT_IDS=${BOT_ALLOWED_CHAT_IDS:-}
-      # Must be the externally reachable origin — HOSTNAME is container-internal.
-      - BOT_PUBLIC_BASE_URL=${BOT_PUBLIC_BASE_URL:-}
+      # Optional. Empty means "use the origin the server logs at startup".
+      # Set it only when HOSTNAME is not reachable from a chat client.
+      # - BOT_PUBLIC_BASE_URL=${BOT_PUBLIC_BASE_URL:-}
       - BOT_RETENTION_MODE=${BOT_RETENTION_MODE:-ephemeral}
-      - BOT_RETENTION_HOURS=${BOT_RETENTION_HOURS:-24}
-      - BOT_REAP_INTERVAL=${BOT_REAP_INTERVAL:-0 * * * *}
+      # - BOT_RETENTION_HOURS=${BOT_RETENTION_HOURS:-24}
+      # - BOT_REAP_INTERVAL=${BOT_REAP_INTERVAL:-0 * * * *}
       - BOT_SIGNED_URL_TTL=${BOT_SIGNED_URL_TTL:-21600}
       - BOT_TELEGRAM_MAX_UPLOAD=${BOT_TELEGRAM_MAX_UPLOAD:-50000000}
       - BOT_MAX_PENDING_PER_CHAT=${BOT_MAX_PENDING_PER_CHAT:-5}
@@ -208,9 +213,11 @@ services:
     networks:
       - revProxy-net
     # Non-default host port for the same reason as yt-db; host-side runs need
-    # REDIS_PORT to match the left-hand side.
+    # REDIS_PORT to match the middle field. Loopback-bound and not optional:
+    # valkey runs with no password, so publishing it on 0.0.0.0 would hand
+    # anyone on the LAN or tailnet the signed-URL store.
     ports:
-      - ${REDIS_HOST_PORT:-6380}:6379
+      - 127.0.0.1:${REDIS_HOST_PORT:-6380}:6379
     expose:
       - 6379
     labels:

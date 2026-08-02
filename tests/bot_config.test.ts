@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "std/assert/mod.ts";
-import { resolveBotConfig } from "../src/config.ts";
+import { buildPublicOrigin, resolveBotConfig } from "../src/config.ts";
 
 /** Builds an env lookup over a plain object. */
 function env(vars: Record<string, string>) {
@@ -198,4 +198,58 @@ Deno.test("botConfig - rejects negative retention hours", () => {
     unreadableFile,
   );
   assertEquals(bot.enabled, false);
+});
+
+// ---------------------------------------------------------------------------
+// Public origin — shared by the startup log line and the bot's download links.
+// ---------------------------------------------------------------------------
+
+Deno.test("publicOrigin - omits the port when hidePorts is set", () => {
+  // The pi5/local deployments sit behind traefik on 443, so the port must not
+  // appear in a link handed to a phone.
+  assertEquals(
+    buildPublicOrigin({
+      protocol: "https",
+      host: "pi5.tail9ece4.ts.net",
+      port: 8888,
+      hidePorts: true,
+    }),
+    "https://pi5.tail9ece4.ts.net",
+  );
+});
+
+Deno.test("publicOrigin - includes the port when hidePorts is false", () => {
+  assertEquals(
+    buildPublicOrigin({
+      protocol: "http",
+      host: "localhost",
+      port: 8888,
+      hidePorts: false,
+    }),
+    "http://localhost:8888",
+  );
+});
+
+Deno.test("publicOrigin - carries no trailing slash and no urlBase", () => {
+  // Callers append urlBase themselves; a trailing slash here would produce
+  // "//ytdiff" in every signed link.
+  const origin = buildPublicOrigin({
+    protocol: "https",
+    host: "yt.example.com",
+    port: 443,
+    hidePorts: true,
+  });
+  assertEquals(origin.endsWith("/"), false);
+  assertEquals(origin.includes("/ytdiff"), false);
+});
+
+Deno.test("publicOrigin - an unset BOT_PUBLIC_BASE_URL falls back to it", () => {
+  // resolveBotConfig leaves publicBaseUrl empty; createBotService reads that as
+  // "use the server origin". Empty must stay falsy for that || to fire.
+  const bot = resolveBotConfig(env(VALID), unreadableFile);
+  assertEquals(bot.publicBaseUrl, "");
+  assertEquals(
+    bot.publicBaseUrl || "fallback-would-apply",
+    "fallback-would-apply",
+  );
 });

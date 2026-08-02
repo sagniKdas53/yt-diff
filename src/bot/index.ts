@@ -60,16 +60,17 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     }),
   ];
 
+  // BOT_PUBLIC_BASE_URL is an override, not a requirement: unset, links are
+  // built from the same origin the server logs at startup. It only needs
+  // setting when that origin is not what a chat client can reach — a
+  // container-internal HOSTNAME, or a reverse proxy on a different name.
+  const publicBaseUrl = config.bot.publicBaseUrl || config.publicOrigin;
+
   const delivery = createDelivery({
     createSignedUrlForPath: deps.createSignedUrlForPath,
     saveLocation: config.saveLocation,
     signedUrlTtl: config.bot.signedUrlTtl,
-    // Falls back to the configured origin so a missing BOT_PUBLIC_BASE_URL
-    // yields a wrong-but-obvious link rather than a malformed one.
-    publicBaseUrl: config.bot.publicBaseUrl ||
-      `${config.protocol}://${config.host}${
-        config.hidePorts ? "" : `:${config.port}`
-      }`,
+    publicBaseUrl,
     urlBase: config.urlBase,
   });
 
@@ -119,6 +120,12 @@ export function createBotService(deps: BotServiceDependencies): BotService {
         platforms: adapters.map((a) => a.platform).join(","),
         allowedChats: config.bot.allowedChatIds.length,
         retention: config.bot.retentionMode,
+        // Logged because a link to an unreachable origin looks fine in chat and
+        // only fails on the device that taps it.
+        linkBase: `${publicBaseUrl}${config.urlBase}`,
+        linkBaseFrom: config.bot.publicBaseUrl
+          ? "BOT_PUBLIC_BASE_URL"
+          : "server origin",
       });
     },
 

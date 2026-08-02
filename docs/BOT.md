@@ -79,16 +79,33 @@ and fill the disk.
    ```
    BOT_ENABLED=true
    BOT_ALLOWED_CHAT_IDS=123456789
-   BOT_PUBLIC_BASE_URL=https://your.host/   # externally reachable origin
    ```
 
 6. `docker compose up -d`
 
 Locally, `deno task bot` does all of this from `secrets/` with no compose edits.
 
-`BOT_PUBLIC_BASE_URL` matters: `HOSTNAME` is usually container-internal, and
-download links are built from this value. Get it wrong and links resolve to an
-address your phone cannot reach.
+### Download link origin
+
+`BOT_PUBLIC_BASE_URL` is an **override, not a requirement**. Left empty, links
+are built from the same origin the server logs at startup:
+
+```
+Server listening on https://pi5.tail9ece4.ts.net/ytdiff
+Chat bot started  linkBase="https://pi5.tail9ece4.ts.net/ytdiff" linkBaseFrom="server origin"
+```
+
+That is `PROTOCOL://HOSTNAME`, plus `:PORT` unless `HIDE_PORTS=true` — the same
+`buildPublicOrigin()` both call, so the two lines cannot drift.
+
+Set it only when that origin is not reachable from a phone:
+
+- `HOSTNAME` is a container-internal name rather than the external one
+- a reverse proxy answers on a different hostname than the app is configured with
+
+The `Chat bot started` line reports which source was used (`server origin` vs
+`BOT_PUBLIC_BASE_URL`), so a wrong link is visible at boot rather than at the
+moment someone taps it.
 
 ---
 

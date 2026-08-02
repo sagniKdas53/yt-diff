@@ -122,6 +122,21 @@ export function resolveBotConfig(
   };
 }
 
+/**
+ * The origin this server tells the outside world it answers on.
+ *
+ * Single source of truth for the startup "Server listening on ..." line and for
+ * the chat bot's download links, which must agree — a link built from a
+ * different origin than the one being logged is the kind of bug you only notice
+ * on a phone that cannot resolve it.
+ */
+export function buildPublicOrigin(
+  parts: { protocol: string; host: string; port: number; hidePorts: boolean },
+): string {
+  const port = parts.hidePorts ? "" : `:${parts.port}`;
+  return `${parts.protocol}://${parts.host}${port}`;
+}
+
 export interface AppConfig {
   protocol: string;
   host: string;
@@ -130,6 +145,8 @@ export interface AppConfig {
   hidePorts: boolean;
   defaultCORSMaxAge: number;
   urlBase: string;
+  /** protocol://host[:port], no trailing slash and no urlBase. */
+  publicOrigin: string;
   ssl: {
     key: string | null;
     cert: string | null;
@@ -228,14 +245,22 @@ interface IwaraConfigInput {
   password?: string;
 }
 
+// Lifted out of the object literal so publicOrigin can be derived from them
+// rather than repeating the same four env reads.
+const protocol = Deno.env.get("PROTOCOL") || "http";
+const host = Deno.env.get("HOSTNAME") || "localhost";
+const port = +(Deno.env.get("PORT") || 8888);
+const hidePorts = Deno.env.get("HIDE_PORTS") === "true";
+
 export const config: AppConfig = {
-  protocol: Deno.env.get("PROTOCOL") || "http",
-  host: Deno.env.get("HOSTNAME") || "localhost",
-  port: +(Deno.env.get("PORT") || 8888),
+  protocol,
+  host,
+  port,
   nativeHttps: Deno.env.get("USE_NATIVE_HTTPS") === "true" || false,
-  hidePorts: Deno.env.get("HIDE_PORTS") === "true",
+  hidePorts,
   defaultCORSMaxAge: 2592000,
   urlBase: Deno.env.get("BASE_URL") || "/ytdiff",
+  publicOrigin: buildPublicOrigin({ protocol, host, port, hidePorts }),
   ssl: {
     key: Deno.env.get("SSL_KEY") || null,
     cert: Deno.env.get("SSL_CERT") || null,
