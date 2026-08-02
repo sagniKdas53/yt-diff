@@ -132,7 +132,6 @@ Deno.test("botConfig - applies documented defaults", () => {
   assertEquals(bot.retentionMode, "ephemeral");
   assertEquals(bot.retentionHours, 24);
   assertEquals(bot.reapInterval, "0 * * * *");
-  assertEquals(bot.signedUrlTtl, 21600);
   assertEquals(bot.telegramMaxUpload, 50000000);
   assertEquals(bot.maxPendingPerChat, 5);
 });

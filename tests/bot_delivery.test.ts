@@ -1,6 +1,10 @@
 import { assertEquals } from "std/assert/mod.ts";
 import { createDelivery } from "../src/bot/delivery.ts";
-import type { BotAdapter, DeliveryTarget, MessageRef } from "../src/bot/types.ts";
+import type {
+  BotAdapter,
+  DeliveryTarget,
+  MessageRef,
+} from "../src/bot/types.ts";
 
 const TARGET: DeliveryTarget = { platform: "telegram", chatId: "42" };
 
@@ -58,14 +62,13 @@ async function withFile(
 }
 
 function deliveryFor(saveLocation: string) {
-  const signed: { absPath: string; ttl?: number }[] = [];
+  const signed: { absPath: string }[] = [];
   const delivery = createDelivery({
-    createSignedUrlForPath: (absPath, ttlSeconds) => {
-      signed.push({ absPath, ttl: ttlSeconds });
+    createSignedUrlForPath: (absPath) => {
+      signed.push({ absPath });
       return Promise.resolve({ signedUrlId: "sig-1", expiry: 0 });
     },
     saveLocation,
-    signedUrlTtl: 21600,
     publicBaseUrl: "https://yt.example.com",
     urlBase: "/ytdiff",
   });
@@ -106,14 +109,16 @@ Deno.test("delivery - one byte over the cap is signed instead", async () => {
     });
 
     assertEquals(outcome.mode, "signed_url");
-    assertEquals(outcome.url, "https://yt.example.com/ytdiff/file?fileId=sig-1");
+    assertEquals(
+      outcome.url,
+      "https://yt.example.com/ytdiff/file?fileId=sig-1",
+    );
     // The measured size and reason drive the in-chat explanation.
     assertEquals(outcome.sizeBytes, 101);
     assertEquals(outcome.reason, "too_large");
     // No upload should even be attempted.
     assertEquals(calls.sendFile.length, 0);
     assertEquals(signed.length, 1);
-    assertEquals(signed[0].ttl, 21600);
   });
 });
 

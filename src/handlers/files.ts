@@ -54,19 +54,17 @@ export function createFileHandlers({
    * Mints a signed-URL entry in Redis for an already-validated absolute path.
    *
    * Callers are responsible for path-traversal and existence checks; this only
-   * writes the entry. The `ttl` is stored alongside the payload so that
-   * `getSignedFileMetadata` can slide the expiry by the entry's own lifetime
-   * rather than the global default.
+   * writes the entry. Every entry gets the same lifetime — web UI and chat bot
+   * alike — so the three renewal paths (`?fileId=` access, refreshSignedUrl,
+   * refreshSignedUrls) cannot disagree about how long a link should live.
    *
    * @param absPath - Absolute, already-validated path to the file
-   * @param ttlSeconds - Lifetime of the signed entry; defaults to the cache max age
    */
   async function createSignedUrlForPath(
     absPath: string,
-    ttlSeconds: number = config.cache.maxAge,
   ): Promise<BulkSignedFileResponseEntry> {
     const signedUrlId = crypto.randomUUID();
-    const expiry = Date.now() + ttlSeconds * 1000;
+    const expiry = Date.now() + config.cache.maxAge * 1000;
 
     await redis.set(
       `signed:${signedUrlId}`,
@@ -74,10 +72,9 @@ export function createFileHandlers({
         filePath: absPath,
         mimeType: mimeTypes.get(extname(absPath)) || "application/octet-stream",
         expiry,
-        ttl: ttlSeconds,
       }),
       "EX",
-      ttlSeconds,
+      config.cache.maxAge,
     );
 
     return { signedUrlId, expiry };

@@ -158,9 +158,9 @@ testing.
 
 ## 4. Regenerating a download link
 
-Links live in Redis and self-evict on their own TTL (`BOT_SIGNED_URL_TTL`,
-default 6h). The file on disk is a separate matter. So "my link stopped working"
-has two different answers:
+Links live in Redis and self-evict on `CACHE_MAX_AGE` (default 1h), the same
+lifetime web-UI links get, sliding forward on every access. The file on disk is
+a separate matter. So "my link stopped working" has two different answers:
 
 ### The file is still on disk (persistent mode, or before the reaper ran)
 

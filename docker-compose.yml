@@ -23,16 +23,15 @@ secrets:
   #   file: secrets/youtube_refresh_token.txt
   youtube_api_key:
     file: secrets/youtube_api_key.txt
-  # Chat bot (optional). A missing secret file makes `docker compose up` fail
-  # outright, so this stays commented until you actually enable the bot.
-  # Uncomment this AND the `- bot_token` service reference AND
-  # BOT_TELEGRAM_TOKEN_FILE below. See docs/BOT.md.
-  # bot_token:
-  #   file: secrets/bot_token.txt
   pg_admin_email:
     file: secrets/pg_admin_email.txt
   pg_admin_password:
     file: secrets/pg_admin_password.txt
+  # Chat bot. All three of these must agree or the bot fails closed: this
+  # definition, the `- bot_token` service reference, and BOT_TELEGRAM_TOKEN_FILE.
+  # Mounting the secret is not enough — nothing reads it without the env var.
+  # Comment all three out to run without a bot; a secret whose `file:` does not
+  # exist makes `docker compose up` fail for the whole stack. See docs/BOT.md.
   bot_token:
     file: secrets/bot_token.txt
 
@@ -172,7 +171,7 @@ services:
       # x.com cookies reach the bot through X_COOKIES_FILE above, since every
       # download and listing goes through the same buildSiteArgs.
       - BOT_ENABLED=${BOT_ENABLED:-false}
-      # - BOT_TELEGRAM_TOKEN_FILE=/run/secrets/bot_token
+      - BOT_TELEGRAM_TOKEN_FILE=/run/secrets/bot_token
       - BOT_ALLOWED_CHAT_IDS=${BOT_ALLOWED_CHAT_IDS:-}
       # Optional. Empty means "use the origin the server logs at startup".
       # Set it only when HOSTNAME is not reachable from a chat client.
@@ -180,7 +179,6 @@ services:
       - BOT_RETENTION_MODE=${BOT_RETENTION_MODE:-ephemeral}
       # - BOT_RETENTION_HOURS=${BOT_RETENTION_HOURS:-24}
       # - BOT_REAP_INTERVAL=${BOT_REAP_INTERVAL:-0 * * * *}
-      - BOT_SIGNED_URL_TTL=${BOT_SIGNED_URL_TTL:-21600}
       - BOT_TELEGRAM_MAX_UPLOAD=${BOT_TELEGRAM_MAX_UPLOAD:-50000000}
       - BOT_MAX_PENDING_PER_CHAT=${BOT_MAX_PENDING_PER_CHAT:-5}
       - BOT_LARGE_FILE_WARN=${BOT_LARGE_FILE_WARN:-104857600}

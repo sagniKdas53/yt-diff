@@ -1,7 +1,11 @@
 import { assertEquals } from "std/assert/mod.ts";
 import { createBotCore } from "../src/bot/core.ts";
 import type { BotStore, VideoRecord } from "../src/bot/store.ts";
-import type { BotAdapter, IncomingMessage, MessageRef } from "../src/bot/types.ts";
+import type {
+  BotAdapter,
+  IncomingMessage,
+  MessageRef,
+} from "../src/bot/types.ts";
 import { createEventBus } from "../src/events.ts";
 
 const CHAT = "1391594622";
@@ -30,7 +34,11 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
   const submissionUpdates: Record<string, unknown>[] = [];
   const sent: string[] = [];
 
-  const ref: MessageRef = { platform: "telegram", chatId: CHAT, messageId: "1" };
+  const ref: MessageRef = {
+    platform: "telegram",
+    chatId: CHAT,
+    messageId: "1",
+  };
   const adapter: BotAdapter = {
     platform: "telegram",
     maxUploadBytes: 50_000_000,

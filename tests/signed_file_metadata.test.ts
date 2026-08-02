@@ -36,12 +36,11 @@ function request(fileId: string, inline = false): Request {
   );
 }
 
-Deno.test("getSignedFileMetadata - slides by the entry's own ttl", async () => {
+Deno.test("getSignedFileMetadata - slides every entry by cacheMaxAge", async () => {
   const redis = new MockRedis();
   redis.seed("signed:abc", {
     filePath: "/save/video.mp4",
     mimeType: "video/mp4",
-    ttl: 21600,
   });
 
   const metadata = await getSignedFileMetadata(
@@ -52,16 +51,21 @@ Deno.test("getSignedFileMetadata - slides by the entry's own ttl", async () => {
 
   assertEquals(metadata?.filePath, "/save/video.mp4");
   assertEquals(metadata?.mimeType, "video/mp4");
-  // A 6h bot link must not collapse to the 1h global default on first open.
-  assertEquals(redis.expireCalls, [{ key: "signed:abc", seconds: 21600 }]);
+  assertEquals(redis.expireCalls, [{
+    key: "signed:abc",
+    seconds: CACHE_MAX_AGE,
+  }]);
 });
 
-Deno.test("getSignedFileMetadata - falls back to cacheMaxAge when ttl absent", async () => {
+Deno.test("getSignedFileMetadata - a stale ttl field is ignored", async () => {
   const redis = new MockRedis();
-  // Entries written before `ttl` was recorded keep the previous behaviour.
+  // Entries minted before BOT_SIGNED_URL_TTL was removed still carry a `ttl`.
+  // They are live in Redis right now and must not be honoured, or a link from
+  // before the upgrade would keep renewing itself for six hours at a time.
   redis.seed("signed:legacy", {
     filePath: "/save/old.mp4",
     mimeType: "video/mp4",
+    ttl: 21600,
   });
 
   const metadata = await getSignedFileMetadata(
@@ -77,25 +81,9 @@ Deno.test("getSignedFileMetadata - falls back to cacheMaxAge when ttl absent", a
   }]);
 });
 
-Deno.test("getSignedFileMetadata - ignores a non-positive ttl", async () => {
-  const redis = new MockRedis();
-  redis.seed("signed:zero", { filePath: "/save/z.mp4", ttl: 0 });
-
-  await getSignedFileMetadata(
-    request("zero"),
-    redis as unknown as Redis,
-    CACHE_MAX_AGE,
-  );
-
-  assertEquals(redis.expireCalls, [{
-    key: "signed:zero",
-    seconds: CACHE_MAX_AGE,
-  }]);
-});
-
 Deno.test("getSignedFileMetadata - defaults the mime type when absent", async () => {
   const redis = new MockRedis();
-  redis.seed("signed:nomime", { filePath: "/save/thing.bin", ttl: 60 });
+  redis.seed("signed:nomime", { filePath: "/save/thing.bin" });
 
   const metadata = await getSignedFileMetadata(
     request("nomime"),
@@ -108,7 +96,7 @@ Deno.test("getSignedFileMetadata - defaults the mime type when absent", async ()
 
 Deno.test("getSignedFileMetadata - propagates the inline flag", async () => {
   const redis = new MockRedis();
-  redis.seed("signed:inline", { filePath: "/save/v.mp4", ttl: 60 });
+  redis.seed("signed:inline", { filePath: "/save/v.mp4" });
 
   const metadata = await getSignedFileMetadata(
     request("inline", true),

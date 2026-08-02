@@ -69,7 +69,6 @@ export function createBotService(deps: BotServiceDependencies): BotService {
   const delivery = createDelivery({
     createSignedUrlForPath: deps.createSignedUrlForPath,
     saveLocation: config.saveLocation,
-    signedUrlTtl: config.bot.signedUrlTtl,
     publicBaseUrl,
     urlBase: config.urlBase,
   });

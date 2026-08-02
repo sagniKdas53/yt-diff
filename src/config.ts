@@ -114,7 +114,6 @@ export function resolveBotConfig(
     retentionMode,
     retentionHours,
     reapInterval,
-    signedUrlTtl: +(getEnv("BOT_SIGNED_URL_TTL") || 21600),
     telegramMaxUpload: +(getEnv("BOT_TELEGRAM_MAX_UPLOAD") || 50000000),
     maxPendingPerChat: +(getEnv("BOT_MAX_PENDING_PER_CHAT") || 5),
     largeFileWarnBytes: +(getEnv("BOT_LARGE_FILE_WARN") || 104857600),
@@ -228,7 +227,6 @@ export interface AppConfig {
     retentionMode: "ephemeral" | "persistent";
     retentionHours: number;
     reapInterval: string;
-    signedUrlTtl: number;
     telegramMaxUpload: number;
     maxPendingPerChat: number;
     /** Warn in chat when a queued item's size estimate exceeds this. */
@@ -247,6 +245,12 @@ interface IwaraConfigInput {
 
 // Lifted out of the object literal so publicOrigin can be derived from them
 // rather than repeating the same four env reads.
+//
+// Note `protocol` here is PROTOCOL as configured. index.ts later rewrites
+// `config.protocol` to match the listener (HTTP unless USE_NATIVE_HTTPS), which
+// behind a TLS-terminating proxy is not what the outside world sees. publicOrigin
+// is deliberately computed before that rewrite: it describes the origin a browser
+// or phone connects to, not the socket the process opened.
 const protocol = Deno.env.get("PROTOCOL") || "http";
 const host = Deno.env.get("HOSTNAME") || "localhost";
 const port = +(Deno.env.get("PORT") || 8888);

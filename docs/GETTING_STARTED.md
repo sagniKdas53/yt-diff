@@ -172,7 +172,6 @@ configures it is unaffected. Full setup guide in [`BOT.md`](./BOT.md).
 | `BOT_RETENTION_MODE` | `ephemeral` | `ephemeral` \| `persistent`. Persistent registers no reaper. |
 | `BOT_RETENTION_HOURS` | `24` | Fractional allowed (`0.25` = 15 min). |
 | `BOT_REAP_INTERVAL` | `0 * * * *` | Reaper cron; ephemeral mode only. |
-| `BOT_SIGNED_URL_TTL` | `21600` | 6h. Links self-evict from Redis on this TTL. |
 | `BOT_TELEGRAM_MAX_UPLOAD` | `50000000` | Above this a link is sent instead of the file. |
 | `BOT_MAX_PENDING_PER_CHAT` | `5` | Backpressure per chat. |
 | `BOT_LARGE_FILE_WARN` | `104857600` | Warn before downloading if the estimate exceeds 100 MB. |

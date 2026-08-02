@@ -225,21 +225,25 @@ These are often confused. They are unrelated and both correct:
 | :-- | :-- | :-- |
 | Stored in | Redis (`signed:<uuid>`) | `SAVE_PATH` on disk |
 | Expires via | Redis key TTL — **self-evicting** | Bot Retention job |
-| Controlled by | `BOT_SIGNED_URL_TTL` (default 6h) | `BOT_RETENTION_HOURS` (default 24h) |
+| Controlled by | `CACHE_MAX_AGE` (default 1h) | `BOT_RETENTION_HOURS` (default 24h) |
 | On expiry | the link 404s | the file is deleted, row reset |
 
 **Signed URLs need no cleanup code.** Redis evicts the key on its own when the
-TTL lapses; nothing scans for stale links. The TTL *slides* on each access, and
-since the `getSignedFileMetadata` fix it slides by the entry's **own** stored
-`ttl` rather than the global `CACHE_MAX_AGE` — so a 6-hour bot link stays a
-6-hour link instead of collapsing to 1 hour the first time it is opened.
+TTL lapses; nothing scans for stale links. The TTL *slides* on each access, so a
+link that is being used stays alive.
+
+Bot links and web-UI links share one lifetime. There used to be a separate
+`BOT_SIGNED_URL_TTL`, removed because an expired bot link costs one `/link
+<url>` to regenerate — and because two of the three renewal paths
+(`refreshSignedUrl`, `refreshSignedUrls`) ignored the per-entry TTL anyway, so
+the longer lifetime was never reliably honoured.
 
 The two combine predictably:
 
 - **Persistent submission** — file kept forever; the link still expires after
-  `BOT_SIGNED_URL_TTL`. Ask the bot again to get a fresh link; no re-download
-  happens because dedupe tier 1 sees the file on disk.
-- **Ephemeral submission** — the link expires first (6h), then the file is
+  `CACHE_MAX_AGE`. Ask the bot again, or send `/link <url>`, for a fresh one; no
+  re-download happens because dedupe tier 1 sees the file on disk.
+- **Ephemeral submission** — the link expires first (1h), then the file is
   reaped (24h). After that, asking again re-downloads it.
 
 ### Testing retention quickly

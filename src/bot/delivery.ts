@@ -6,10 +6,8 @@ import type { BotAdapter, DeliveryTarget } from "./types.ts";
 export interface DeliveryDependencies {
   createSignedUrlForPath: (
     absPath: string,
-    ttlSeconds?: number,
   ) => Promise<{ signedUrlId: string; expiry: number }>;
   saveLocation: string;
-  signedUrlTtl: number;
   publicBaseUrl: string;
   urlBase: string;
 }
@@ -43,24 +41,24 @@ export function createDelivery(deps: DeliveryDependencies) {
   /**
    * Builds the externally reachable URL for a signed file.
    *
-   * `config.host` is frequently container-internal, so BOT_PUBLIC_BASE_URL is
-   * what makes the link work outside the compose network. No new route is
-   * needed — the server intercepts any request carrying `?fileId=` before route
-   * dispatch.
+   * No new route is needed — the server intercepts any request carrying
+   * `?fileId=` before route dispatch.
    */
   function buildSignedUrl(signedUrlId: string): string {
     return `${deps.publicBaseUrl}${deps.urlBase}/file?fileId=${signedUrlId}`;
   }
 
+  /**
+   * Links live for CACHE_MAX_AGE and slide forward on every access, same as the
+   * web UI's. An expired link is not a dead end: `/link <url>` mints a new one
+   * straight from the file on disk, with no re-download.
+   */
   async function signAndReturn(
     absPath: string,
     reason: DeliveryOutcome["reason"],
     sizeBytes: number,
   ): Promise<DeliveryOutcome> {
-    const { signedUrlId } = await deps.createSignedUrlForPath(
-      absPath,
-      deps.signedUrlTtl,
-    );
+    const { signedUrlId } = await deps.createSignedUrlForPath(absPath);
     return {
       mode: "signed_url",
       url: buildSignedUrl(signedUrlId),
