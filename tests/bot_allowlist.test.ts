@@ -73,7 +73,7 @@ function coreWith(allowedChatIds: string[], spy: SpyAdapter) {
     listItemsConcurrently: explode("listItemsConcurrently"),
     resolveAndEnqueue: explode("resolveAndEnqueue"),
     getQueueSnapshot: explode("getQueueSnapshot"),
-    listProcesses: new Map(),
+    getListingQueueDepth: () => 0,
     setPlaylistMonitoring: explode("setPlaylistMonitoring"),
     // Every store method throws too, so a rejected message touching the
     // database at all would surface as a failure rather than passing quietly.

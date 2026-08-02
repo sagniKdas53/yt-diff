@@ -92,7 +92,7 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
       });
     },
     getQueueSnapshot: () => [],
-    listProcesses: new Map(),
+    getListingQueueDepth: () => 0,
     setPlaylistMonitoring: () => Promise.resolve(),
     store,
     normalizeUrl: (url: string) => url,

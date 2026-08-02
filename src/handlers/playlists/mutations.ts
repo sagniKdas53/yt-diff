@@ -24,7 +24,8 @@ import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 import { removeVideoFiles } from "../videoFiles.ts";
 
 export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
-  const { listItemsConcurrently, resetPendingPlaylistSortCounter } = deps;
+  const { listItemsConcurrently, resetPendingPlaylistSortCounter, safeEmit } =
+    deps;
   const jsonMimeType = MIME_TYPES[".json"];
 
   async function updatePlaylistMonitoring(
@@ -344,8 +345,14 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         type: "playlist",
         currentMonitoringType: "Full",
         isScheduledUpdate: true,
+        // User initiated, so opt back into per-playlist progress emits that
+        // isScheduledUpdate would otherwise suppress.
+        emitProgress: true,
         reason: "Batch re-index",
       }));
+
+      // Correlates every event in this batch so the UI can ignore stale ones.
+      const batchId = crypto.randomUUID();
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
       response.end(
@@ -358,16 +365,28 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
           stop: stopIndex ?? totalCount,
           siteFilter: siteFilter || undefined,
           chunkSize: chunkSizeOverride,
+          batchId,
         }),
       );
 
       void (async () => {
+        const startedAt = Date.now();
         try {
           logger.info("Starting batch re-index of playlists", {
+            batchId,
             count: items.length,
             start: startIndex,
             stop: stopIndex ?? totalCount,
             siteFilter: siteFilter || "none",
+            chunkSize: chunkSizeOverride,
+          });
+          safeEmit("reindex-batch-started", {
+            batchId,
+            queued: items.length,
+            total: totalCount,
+            start: startIndex,
+            stop: stopIndex ?? totalCount,
+            siteFilter: siteFilter || undefined,
             chunkSize: chunkSizeOverride,
           });
           const results = await listItemsConcurrently(
@@ -380,13 +399,28 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
               r && (r.status === "completed" || r.status === "success"),
           ).length;
           logger.info("Batch re-index completed", {
+            batchId,
             total: items.length,
             completedCount,
           });
+          safeEmit("reindex-batch-complete", {
+            batchId,
+            total: items.length,
+            completed: completedCount,
+            failed: items.length - completedCount,
+            durationMs: Date.now() - startedAt,
+          });
         } catch (err) {
           logger.error("Batch re-index failed", {
+            batchId,
             error: (err as Error).message,
             stack: (err as Error).stack,
+          });
+          safeEmit("reindex-batch-failed", {
+            batchId,
+            total: items.length,
+            error: (err as Error).message,
+            durationMs: Date.now() - startedAt,
           });
         }
       })();

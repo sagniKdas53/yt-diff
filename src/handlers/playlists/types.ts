@@ -109,7 +109,10 @@ export type ListItemsConcurrently = (
   sleep: boolean,
 ) => Promise<Array<{ status?: string }>>;
 
+export type SafeEmit = (event: string, payload: unknown) => void;
+
 export interface PlaylistHandlerDependencies {
   listItemsConcurrently: ListItemsConcurrently;
   resetPendingPlaylistSortCounter: ResetPendingPlaylistSortCounter;
+  safeEmit: SafeEmit;
 }

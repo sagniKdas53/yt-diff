@@ -361,10 +361,15 @@ export function createListingFlow(
         uniqueUrls.add(normalizedUrl);
       }
 
+      // Read the backlog before enqueuing so the client can tell the user how
+      // many items are already ahead of the ones it just submitted.
+      const queueDepthBefore = getListingQueueDepth();
+
       void listItemsConcurrently(itemsToList, chunkSize, false);
 
       logger.debug("Listing processes started", {
         itemCount: itemsToList.length,
+        queueDepthBefore,
       });
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
@@ -372,6 +377,7 @@ export function createListingFlow(
         status: "success",
         message: "Listing initiated",
         items: itemsToList,
+        queueDepthBefore,
       }));
     } catch (error) {
       logger.error("Failed to process URL list", {
@@ -384,6 +390,16 @@ export function createListingFlow(
         message: he.escape((error as Error).message),
       }));
     }
+  }
+
+  /**
+   * True listing backlog: items holding a semaphore slot plus those parked in
+   * the FIFO queue. listProcesses alone undercounts badly, because entries are
+   * only registered after acquire() succeeds — during a batch re-index with
+   * MAX_LISTINGS=1 that would report 1 regardless of how many are waiting.
+   */
+  function getListingQueueDepth(): number {
+    return listProcesses.size + ListingSemaphore.pendingCount;
   }
 
   async function listItemsConcurrently(
@@ -488,6 +504,11 @@ export function createListingFlow(
   ): Promise<ListingResult> {
     const resolvedIsScheduledUpdate = isScheduledUpdate ||
       item.isScheduledUpdate === true;
+    // Per-playlist progress: on for interactive listings, and for scheduled
+    // ones that explicitly opt in (batch re-index). Chunk-level emits stay
+    // gated on isScheduledUpdate alone so a batch stays per-playlist only.
+    const shouldEmitProgress = !resolvedIsScheduledUpdate ||
+      item.emitProgress === true;
     logger.debug(`isScheduledUpdate: ${resolvedIsScheduledUpdate}`, {
       item: JSON.stringify(item),
       isScheduledUpdate,
@@ -496,7 +517,7 @@ export function createListingFlow(
     let itemType = item.type;
 
     try {
-      if (!resolvedIsScheduledUpdate) {
+      if (shouldEmitProgress) {
         safeEmit("listing-started", {
           url: videoUrl,
           type: itemType,
@@ -570,6 +591,7 @@ export function createListingFlow(
           videoUrl,
           chunkSize,
           isScheduledUpdate: resolvedIsScheduledUpdate,
+          shouldEmitProgress,
           playlistTitle,
           seekPlaylistListTo,
           processKey,
@@ -593,6 +615,7 @@ export function createListingFlow(
       videoUrl: string;
       chunkSize: number;
       isScheduledUpdate: boolean;
+      shouldEmitProgress: boolean;
       playlistTitle: string;
       seekPlaylistListTo: number;
       processKey: string;
@@ -603,6 +626,7 @@ export function createListingFlow(
       videoUrl,
       chunkSize,
       isScheduledUpdate,
+      shouldEmitProgress,
       playlistTitle,
       seekPlaylistListTo,
       processKey,
@@ -770,7 +794,7 @@ export function createListingFlow(
       processedChunks,
       playlistTitle,
       seekPlaylistListTo,
-      isScheduledUpdate,
+      shouldEmitProgress,
     );
   }
 
@@ -779,6 +803,7 @@ export function createListingFlow(
       videoUrl: string;
       chunkSize: number;
       isScheduledUpdate: boolean;
+      shouldEmitProgress: boolean;
       playlistTitle: string;
       seekPlaylistListTo: number;
       processKey: string;
@@ -790,6 +815,7 @@ export function createListingFlow(
       videoUrl,
       chunkSize,
       isScheduledUpdate,
+      shouldEmitProgress,
       playlistTitle,
       seekPlaylistListTo,
       processKey,
@@ -900,7 +926,7 @@ export function createListingFlow(
         processedChunks,
         playlistTitle,
         seekPlaylistListTo,
-        isScheduledUpdate,
+        shouldEmitProgress,
       );
     } catch (error) {
       logger.error("YouTube API listing failed", {
@@ -1438,7 +1464,7 @@ export function createListingFlow(
     processedChunks: number,
     playlistTitle: string,
     seekPlaylistListTo: number,
-    isScheduledUpdate: boolean,
+    shouldEmitProgress: boolean,
   ) {
     logger.info("Playlist listing completed", {
       url: videoUrl,
@@ -1447,7 +1473,7 @@ export function createListingFlow(
       seekPlaylistListTo,
     });
 
-    if (!isScheduledUpdate) {
+    if (shouldEmitProgress) {
       safeEmit("listing-playlist-complete", {
         url: videoUrl,
         type: "playlist",
@@ -1653,5 +1679,6 @@ export function createListingFlow(
     processListingRequest,
     listItemsConcurrently,
     resetPendingPlaylistSortCounter,
+    getListingQueueDepth,
   };
 }

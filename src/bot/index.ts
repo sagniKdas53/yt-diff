@@ -14,7 +14,7 @@ export interface BotServiceDependencies {
   listItemsConcurrently: BotCoreDependencies["listItemsConcurrently"];
   resolveAndEnqueue: BotCoreDependencies["resolveAndEnqueue"];
   getQueueSnapshot: BotCoreDependencies["getQueueSnapshot"];
-  listProcesses: Map<string, unknown>;
+  getListingQueueDepth: BotCoreDependencies["getListingQueueDepth"];
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;
   /** Defaults to the Sequelize-backed store; injectable for tests. */
   store?: BotStore;
@@ -80,7 +80,7 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     listItemsConcurrently: deps.listItemsConcurrently,
     resolveAndEnqueue: deps.resolveAndEnqueue,
     getQueueSnapshot: deps.getQueueSnapshot,
-    listProcesses: deps.listProcesses,
+    getListingQueueDepth: deps.getListingQueueDepth,
     setPlaylistMonitoring: deps.setPlaylistMonitoring,
     store: deps.store ?? createSequelizeBotStore(),
     normalizeUrl: deps.normalizeUrl,

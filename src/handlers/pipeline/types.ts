@@ -80,6 +80,13 @@ export interface ListingItem {
   previousMonitoringType?: string;
   reason: string;
   isScheduledUpdate?: boolean;
+  /**
+   * Opt back into per-playlist progress emits even when isScheduledUpdate is
+   * set. Batch re-index reuses the scheduled-update listing path but is user
+   * initiated, so it still wants the UI to follow along; the nightly cron
+   * leaves this unset and stays silent.
+   */
+  emitProgress?: boolean;
 }
 
 export interface ListingResult {

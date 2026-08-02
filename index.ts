@@ -495,6 +495,7 @@ const {
   resolveAndEnqueue,
   getQueueSnapshot,
   resetPendingPlaylistSortCounter,
+  getListingQueueDepth,
 } = createPipelineHandlers({
   safeEmit,
   buildSiteArgs,
@@ -569,6 +570,7 @@ const {
 } = createPlaylistHandlers({
   listItemsConcurrently,
   resetPendingPlaylistSortCounter,
+  safeEmit,
 });
 /**
  * Handles deletion of playlists and their associated data
@@ -871,7 +873,7 @@ const botService = createBotService({
   listItemsConcurrently,
   resolveAndEnqueue,
   getQueueSnapshot,
-  listProcesses: listProcesses as Map<string, unknown>,
+  getListingQueueDepth,
   setPlaylistMonitoring,
   createSignedUrlForPath,
   normalizeUrl,

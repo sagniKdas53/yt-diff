@@ -35,5 +35,6 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
     getQueueSnapshot: downloadFlow.getQueueSnapshot,
     resetPendingPlaylistSortCounter:
       listingFlow.resetPendingPlaylistSortCounter,
+    getListingQueueDepth: listingFlow.getListingQueueDepth,
   };
 }

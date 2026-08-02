@@ -11,6 +11,15 @@ export class Semaphore {
     this.name = name;
   }
 
+  /**
+   * Number of callers parked in the FIFO queue waiting for a slot. Callers that
+   * have already acquired are not counted here — combine with the caller's own
+   * in-flight tracking for a true backlog figure.
+   */
+  get pendingCount(): number {
+    return this.queue.length;
+  }
+
   acquire(): Promise<unknown> {
     return new Promise((resolve) => {
       if (this.currentConcurrent < this.maxConcurrent) {

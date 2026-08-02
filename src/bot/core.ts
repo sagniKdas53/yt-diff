@@ -65,7 +65,8 @@ export interface BotCoreDependencies {
     status: string;
     queuePosition: number;
   }[];
-  listProcesses: Map<string, unknown>;
+  /** True listing backlog: in-flight plus queued. See getListingQueueDepth. */
+  getListingQueueDepth: () => number;
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;
   store: BotStore;
   normalizeUrl: (url: string) => string;
@@ -441,7 +442,7 @@ export function createBotCore(deps: BotCoreDependencies) {
     }
 
     // Tier 3: unknown — index first.
-    const listingQueueDepth = deps.listProcesses.size;
+    const listingQueueDepth = deps.getListingQueueDepth();
     entry.ack = await reply(
       adapter,
       target,
