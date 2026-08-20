@@ -196,12 +196,17 @@ nothing to refresh.
 
 | Input | Behaviour |
 | :-- | :-- |
-| `<link>` | index → download → send the file back |
-| `/get <link>` | same, spelled out |
+| `<video-link>` | index → download → send the file back |
+| `<playlist-link>` | index the playlist — see §5.1; nothing is downloaded |
+| `/get <link>` | same as pasting the link, spelled out |
 | `/link <link>` | always reply with a download link, never upload |
+| `/download <link>` | download it to the server and send **nothing** back |
 | `/index <link>` | catalogue only — searchable, **not** downloaded |
-| `/index <link> Start\|End\|Full` | also monitor the playlist for updates |
+| `/index <playlist-link> Start\|End\|Full` | also monitor it for updates |
+| `/index <playlist-link> N/A` | stop monitoring it |
 | `/search <text>` | search indexed videos by title or link |
+| `/list` | the playlists the bot knows about |
+| `/list <playlist-link> [start] [count]` | one page of a playlist's entries |
 | `/history [n]` | recent submissions; the short code is the `<id>` |
 | `/status` | current download queue |
 | `/keep <id>` | make an ephemeral submission persistent |
@@ -211,8 +216,62 @@ nothing to refresh.
 `<id>` values come from `/history` — the eight-character code at the start of
 each entry.
 
+Monitoring types are matched **case-insensitively**: `end`, `End` and `END` are
+the same request, and the canonical spelling is what reaches the pipeline.
+
 Messages from a chat not in `BOT_ALLOWED_CHAT_IDS` are **silently ignored**. No
 "unauthorized" reply, which would confirm the bot exists to anyone probing.
+
+### 5.1 Playlists
+
+**A playlist link is never a download.** Listing one produces hundreds of
+videos, so pasting a playlist link — or `/get`, `/download` or `/index` on one —
+catalogues it and stops there:
+
+```
+That's a playlist — indexing it. Nothing gets downloaded; browse it with
+/list when it finishes.
+Indexing Some Playlist — about 60 entries so far…
+Indexed: Some Playlist
+137 entries · watch mode: N/A
+
+Browse it:  /list https://www.youtube.com/playlist?list=PL…
+Then /get <video-link> for anything you want downloaded.
+```
+
+The progress line is driven by the pipeline's per-chunk listing events, at most
+one message per 20 seconds. Before this the bot went quiet for the whole
+listing and then failed with "produced no video entry", because a playlist has
+no single video row to hand to the download queue.
+
+A playlist the bot indexes gets **watch mode `N/A`** — the same value the web UI
+shows for a playlist nobody is watching. `Start`/`End`/`Full` are only ever set
+by asking for them explicitly with `/index <playlist-link> <mode>`, and `N/A`
+takes it back off.
+
+Browsing an indexed playlist:
+
+```
+/list                                        the playlists, with entry counts
+/list <playlist-link>                        entries 1-10
+/list <playlist-link> 10 10                  entries 11-20
+```
+
+Each entry shows its playlist position, whether the file is on disk, its title
+and its link — so `/get <video-link>` on any line downloads just that one.
+`count` is capped at 25, and a page that would exceed Telegram's message limit
+is truncated rather than rejected.
+
+### 5.2 Downloading without receiving
+
+`/download <video-link>` runs the full download and leaves the file on the
+server. Nothing is uploaded and no link is sent — the reply is just
+`Downloaded: <title>`.
+
+Those submissions are recorded as `downloaded` rather than `delivered`, with
+`retention=persistent` and `expiresAt=NULL`, so **the reaper never touches
+them** even in ephemeral mode: it only ever selects delivered submissions. Use
+`/get` on the same link afterwards to have it sent to the chat.
 
 ---
 
@@ -276,4 +335,4 @@ If a link works in the web UI it works in the bot, and vice versa.
   [`TODO.md`](./TODO.md) item 23.
 
 ---
-*Last updated at: 2026-08-02*
+*Last updated at: 2026-08-20*

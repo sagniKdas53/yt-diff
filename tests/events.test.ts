@@ -91,6 +91,7 @@ Deno.test("events - isAppEventName gates the safeEmit fan-out", () => {
     "download-done",
     "download-failed",
     "listing-error",
+    "listing-playlist-chunk-complete",
   ];
 
   for (const event of known) {

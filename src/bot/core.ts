@@ -2,7 +2,7 @@ import type { AppEventBus } from "../events.ts";
 import { logger } from "../logger.ts";
 import { exists } from "../utils/fs.ts";
 import { join } from "../utils/path.ts";
-import { HELP_TEXT, parseCommand } from "./commands.ts";
+import { HELP_TEXT, NO_MONITORING, parseCommand } from "./commands.ts";
 import type { Delivery } from "./delivery.ts";
 import type { BotStore, VideoRecord } from "./store.ts";
 import type {
@@ -30,6 +30,24 @@ const PROGRESS_HEARTBEAT_MS = 60_000;
  * a terminal event.
  */
 const WATCHDOG_MS = 30 * 60 * 1000;
+
+/**
+ * How often a running playlist listing reports in.
+ *
+ * Listing a large playlist takes minutes and emits nothing else the user can
+ * see, so unlike a download it says something straight away and keeps saying
+ * it — silence here reads as a hung bot.
+ */
+const LISTING_HEARTBEAT_MS = 20_000;
+
+/**
+ * Longest reply the bot will send.
+ *
+ * Telegram rejects anything past 4096 characters outright, and a full /list or
+ * /search page can get there. Truncating is strictly better than the whole
+ * reply failing to send.
+ */
+const MAX_REPLY_CHARS = 3800;
 
 export interface ListingResultLike {
   url: string;
@@ -81,13 +99,22 @@ export interface BotCoreDependencies {
   largeFileWarnBytes: number;
 }
 
+/**
+ * What the user wants done with the file once it exists.
+ *
+ * - "file"  upload it into the chat, falling back to a link when it is too big
+ * - "link"  always answer with a signed URL  (/link)
+ * - "store" leave it on the server and send nothing back  (/download)
+ */
+type DeliveryMode = "file" | "link" | "store";
+
 /** In-flight state for one submission, keyed by canonical URL. */
 interface PendingSubmission {
   submissionId: string;
   adapter: BotAdapter;
   target: DeliveryTarget;
   ack: MessageRef | null;
-  forceLink: boolean;
+  mode: DeliveryMode;
   /** When the download actually started, for the quiet period. */
   startedAt: number;
   /** yt-dlp's size estimate in bytes, 0 when unknown. */
@@ -98,17 +125,35 @@ interface PendingSubmission {
   settled: boolean;
 }
 
+/**
+ * In-flight state for one playlist listing, keyed by canonical playlist URL.
+ *
+ * Deliberately not a `PendingSubmission`: a listing has no download to watch,
+ * no watchdog and no file to deliver, and folding it into that map would make
+ * every download-event handler check which kind of entry it just found.
+ */
+interface PendingListing {
+  adapter: BotAdapter;
+  target: DeliveryTarget;
+  ack: MessageRef | null;
+  lastProgressAt: number;
+  lastProgressText: string;
+}
+
 export function createBotCore(deps: BotCoreDependencies) {
   const adaptersByPlatform = new Map(
     deps.adapters.map((adapter) => [adapter.platform, adapter]),
   );
   /** Canonical URL -> in-flight submission. */
   const pending = new Map<string, PendingSubmission>();
+  /** Canonical playlist URL -> in-flight listing. */
+  const listings = new Map<string, PendingListing>();
 
   function isAllowed(chatId: string): boolean {
     return deps.allowedChatIds.includes(chatId);
   }
 
+  /** Downloads and playlist listings both count against the per-chat cap. */
   function pendingCountForChat(chatId: string): number {
     let count = 0;
     for (const entry of pending.values()) {
@@ -116,14 +161,27 @@ export function createBotCore(deps: BotCoreDependencies) {
         count++;
       }
     }
+    for (const entry of listings.values()) {
+      if (entry.target.chatId === chatId) {
+        count++;
+      }
+    }
     return count;
+  }
+
+  /** Keeps a reply inside the platform's message ceiling. */
+  function clip(text: string): string {
+    return text.length <= MAX_REPLY_CHARS
+      ? text
+      : `${text.slice(0, MAX_REPLY_CHARS)}\n…(truncated)`;
   }
 
   async function reply(
     adapter: BotAdapter,
     target: DeliveryTarget,
-    text: string,
+    rawText: string,
   ): Promise<MessageRef | null> {
+    const text = clip(rawText);
     try {
       return await adapter.sendText(target, text);
     } catch (error) {
@@ -135,12 +193,12 @@ export function createBotCore(deps: BotCoreDependencies) {
     }
   }
 
-  async function editAck(entry: PendingSubmission, text: string) {
+  async function editAck(entry: PendingSubmission, rawText: string) {
     if (!entry.ack) {
       return;
     }
     try {
-      await entry.adapter.editText(entry.ack, text);
+      await entry.adapter.editText(entry.ack, clip(rawText));
     } catch (error) {
       // Editing is best-effort: a rate-limited or already-identical edit must
       // never fail the submission itself.
@@ -149,6 +207,31 @@ export function createBotCore(deps: BotCoreDependencies) {
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  }
+
+  /**
+   * Builds a "keep updating one message" writer.
+   *
+   * Editing keeps a long-running command to a single message in the chat; if
+   * the edit is rejected (deleted message, rate limit) it falls back to a new
+   * one rather than losing the reply altogether.
+   */
+  function speaker(
+    adapter: BotAdapter,
+    target: DeliveryTarget,
+    ack: MessageRef | null,
+  ): (text: string) => Promise<void> {
+    return async (text: string) => {
+      if (ack) {
+        try {
+          await adapter.editText(ack, clip(text));
+          return;
+        } catch {
+          // Fall through to a fresh message if the edit is rejected.
+        }
+      }
+      await reply(adapter, target, text);
+    };
   }
 
   async function settle(
@@ -277,6 +360,27 @@ export function createBotCore(deps: BotCoreDependencies) {
       return;
     }
 
+    if (entry.mode === "store") {
+      // /download puts the file in the library and stops there. It is recorded
+      // as "downloaded" rather than "delivered", which is also what keeps the
+      // reaper away from it: the reaper only ever looks at delivered
+      // submissions, and expiresAt stays null to say the same thing twice.
+      await settle(entry, canonicalUrl, {
+        status: "downloaded",
+        deliveryMode: "none",
+        downloadedByBot,
+        retention: "persistent",
+        expiresAt: null,
+      });
+      await editAck(
+        entry,
+        `Downloaded: ${
+          video.title || video.fileName
+        }\nIt's on the server — /get sends it here.`,
+      );
+      return;
+    }
+
     try {
       const outcome = await deps.delivery.deliver({
         adapter: entry.adapter,
@@ -284,7 +388,7 @@ export function createBotCore(deps: BotCoreDependencies) {
         saveDirectory: video.saveDirectory || "",
         fileName: video.fileName,
         caption: video.title || video.fileName,
-        forceLink: entry.forceLink,
+        forceLink: entry.mode === "link",
       });
 
       // Only files the bot actually fetched are ever eligible for reaping, and
@@ -345,11 +449,18 @@ export function createBotCore(deps: BotCoreDependencies) {
     }, WATCHDOG_MS);
   }
 
+  /**
+   * Handles a link the user wants fetched.
+   *
+   * A playlist link never reaches the download tiers: listing one produces
+   * hundreds of videos, so it is catalogued instead and the user pulls
+   * individual entries out of it with /list and /get.
+   */
   async function handleSubmission(
     adapter: BotAdapter,
     message: IncomingMessage,
     rawUrl: string,
-    forceLink: boolean,
+    mode: DeliveryMode,
   ) {
     const target: DeliveryTarget = {
       platform: adapter.platform,
@@ -367,7 +478,10 @@ export function createBotCore(deps: BotCoreDependencies) {
 
     const canonicalUrl = deps.normalizeUrl(rawUrl);
 
-    if (pending.has(canonicalUrl)) {
+    // Checked before the submission row is opened, so a duplicate leaves no
+    // half-finished row behind. A playlist is tracked in `listings`, not
+    // `pending`, so both maps have to be consulted.
+    if (pending.has(canonicalUrl) || listings.has(canonicalUrl)) {
       await reply(adapter, target, "That one is already in progress.");
       return;
     }
@@ -380,7 +494,7 @@ export function createBotCore(deps: BotCoreDependencies) {
       adapter,
       target,
       ack: null,
-      forceLink,
+      mode,
       startedAt: Date.now(),
       estimatedSize: 0,
       lastProgressAt: 0,
@@ -409,11 +523,39 @@ export function createBotCore(deps: BotCoreDependencies) {
     }
     entry.submissionId = submission.id;
 
+    if (isPlaylist) {
+      // Release the download reservation — runPlaylistIndex tracks its own
+      // progress, and nothing here is going to emit a download event.
+      pending.delete(canonicalUrl);
+      await runPlaylistIndex({
+        adapter,
+        target,
+        canonicalUrl,
+        monitoringType: null,
+        submissionId: submission.id,
+      });
+      return;
+    }
+
     // Tier 1: already downloaded and the file is still on disk. No listing, no
     // download, no yt-dlp process — and downloadedByBot stays false so the
     // reaper never touches a file the bot did not fetch.
     const known = await resolveIndexedVideo(canonicalUrl);
     if (known && await hasFileOnDisk(known)) {
+      if (mode === "store") {
+        // Nothing to do: /download asked for it on the server, and it is.
+        entry.ack = await reply(
+          adapter,
+          target,
+          `Already downloaded: ${known.title}`,
+        );
+        await settle(entry, canonicalUrl, {
+          canonicalUrl: known.videoUrl,
+          status: "downloaded",
+          deliveryMode: "none",
+        });
+        return;
+      }
       entry.ack = await reply(
         adapter,
         target,
@@ -461,7 +603,12 @@ export function createBotCore(deps: BotCoreDependencies) {
           // executeListing decides playlist vs single item itself, including
           // the x.com exception, so "undetermined" is deliberate.
           type: "undetermined",
-          currentMonitoringType: "None",
+          // Nothing submitted for download is monitored. If executeListing does
+          // classify this as a playlist after all, "N/A" is the watch mode the
+          // web UI shows for one nobody is watching — "None" is the pseudo
+          // playlist's URL, not a monitoring type, and storing it there leaves
+          // the row with a watch mode the UI does not recognise.
+          currentMonitoringType: NO_MONITORING,
           reason: "Chat bot submission",
         }],
         deps.chunkSize,
@@ -550,8 +697,11 @@ export function createBotCore(deps: BotCoreDependencies) {
     const position = queuePositionFor(videoUrl, fallback);
     const size = entry.estimatedSize;
     // Flag big files up front: they take a while and will very likely come back
-    // as a link rather than an upload.
-    const warning = size > deps.largeFileWarnBytes
+    // as a link rather than an upload. Neither half applies to /download, which
+    // uploads nothing and is expected to take as long as it takes.
+    const warning = entry.mode === "store"
+      ? "\nIt stays on the server; nothing will be sent here."
+      : size > deps.largeFileWarnBytes
       ? `\nHeads up: this looks like ~${
         formatBytes(size)
       }, so it may take a while${
@@ -657,11 +807,145 @@ export function createBotCore(deps: BotCoreDependencies) {
   }
 
   /**
+   * Indexes a playlist, saying so while it runs.
+   *
+   * Listing a playlist can take minutes and emits nothing a chat user can see,
+   * so this is the one command that reports progress from the first message
+   * rather than after a quiet period — silence here reads as a hung bot.
+   *
+   * @param monitoringType - Start/End/Full to also schedule updates, or null to
+   *                         index once and leave the watch mode at "N/A"
+   * @param submissionId - Submission row to settle, when the caller opened one
+   */
+  async function runPlaylistIndex(opts: {
+    adapter: BotAdapter;
+    target: DeliveryTarget;
+    canonicalUrl: string;
+    monitoringType: string | null;
+    submissionId: string | null;
+  }): Promise<void> {
+    const { adapter, target, canonicalUrl, monitoringType, submissionId } =
+      opts;
+
+    if (listings.has(canonicalUrl)) {
+      await reply(adapter, target, "That playlist is already being indexed.");
+      return;
+    }
+
+    const queueDepth = deps.getListingQueueDepth();
+    const ahead = queueDepth > 0
+      ? ` (${queueDepth} ahead in the listing queue)`
+      : "";
+    const ack = await reply(
+      adapter,
+      target,
+      monitoringType
+        ? `That's a playlist — indexing it and setting its watch mode to ${monitoringType}${ahead}. Nothing gets downloaded.`
+        : `That's a playlist — indexing it${ahead}. Nothing gets downloaded; browse it with /list when it finishes.`,
+    );
+    const say = speaker(adapter, target, ack);
+
+    listings.set(canonicalUrl, {
+      adapter,
+      target,
+      ack,
+      // 0, not now: the first chunk to land is the first concrete sign that
+      // anything is happening, so it is reported immediately and only the
+      // chunks after it are throttled.
+      lastProgressAt: 0,
+      lastProgressText: "",
+    });
+
+    if (submissionId) {
+      await deps.store.updateSubmission(submissionId, {
+        canonicalUrl,
+        playlistUrl: canonicalUrl,
+        status: "indexing",
+      });
+    }
+
+    try {
+      const results = await deps.listItemsConcurrently(
+        [{
+          url: canonicalUrl,
+          type: "playlist",
+          currentMonitoringType: monitoringType ?? NO_MONITORING,
+          reason: "Chat bot playlist index",
+        }],
+        deps.chunkSize,
+        false,
+      );
+      const result = results[0];
+      const listed = result !== undefined &&
+        (result.status === "completed" || result.status === "success");
+
+      // A playlist that is already indexed at this watch mode lists nothing and
+      // comes back as "No items found". That is not a failure worth reporting
+      // as one when the playlist is sitting right there in the database, so the
+      // row decides, not the listing result.
+      const playlist = await deps.store.findPlaylistByUrl(canonicalUrl);
+      if (!listed && !playlist) {
+        const detail = result?.error ?? result?.status ?? "no result";
+        if (submissionId) {
+          await deps.store.updateSubmission(submissionId, {
+            status: "failed",
+            errorMessage: detail,
+          });
+        }
+        await say(`Couldn't index that playlist: ${detail}`);
+        return;
+      }
+
+      if (monitoringType) {
+        try {
+          await deps.setPlaylistMonitoring(canonicalUrl, monitoringType);
+        } catch (error) {
+          logger.warn("Bot failed to set playlist monitoring", {
+            url: canonicalUrl,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+
+      // Re-read: the count and title only exist once listing has written them,
+      // and setPlaylistMonitoring may just have changed the watch mode.
+      const summary = await deps.store.findPlaylistByUrl(canonicalUrl) ??
+        playlist;
+      const count = summary?.videoCount ?? 0;
+
+      if (submissionId) {
+        await deps.store.updateSubmission(submissionId, { status: "indexed" });
+      }
+
+      await say([
+        `Indexed: ${summary?.title || "playlist"}`,
+        `${count} ${count === 1 ? "entry" : "entries"} · watch mode: ${
+          monitoringType ?? summary?.monitoringType ?? NO_MONITORING
+        }`,
+        "",
+        `Browse it:  /list ${canonicalUrl}`,
+        "Then /get <video-link> for anything you want downloaded.",
+      ].join("\n"));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      if (submissionId) {
+        await deps.store.updateSubmission(submissionId, {
+          status: "failed",
+          errorMessage: detail,
+        });
+      }
+      await say(`Couldn't index that playlist: ${detail}`);
+    } finally {
+      listings.delete(canonicalUrl);
+    }
+  }
+
+  /**
    * Catalogues a link without downloading it.
    *
-   * With no monitoring type this is a plain index into the "None" pseudo
-   * playlist — the item becomes searchable and can be fetched later with /get.
-   * With Start/End/Full it is also registered for scheduled updates.
+   * A playlist goes through runPlaylistIndex, with or without monitoring. A
+   * single video is indexed into the "None" pseudo playlist — it becomes
+   * searchable and can be fetched later with /get.
    */
   async function handleIndex(
     adapter: BotAdapter,
@@ -670,33 +954,30 @@ export function createBotCore(deps: BotCoreDependencies) {
     monitoringType: string | null,
   ) {
     const canonicalUrl = deps.normalizeUrl(url);
-    const isPlaylist = deps.isPlaylistUrl(canonicalUrl);
-    const ack = await reply(
-      adapter,
-      target,
-      monitoringType ? "Indexing and setting up monitoring…" : "Indexing…",
-    );
+    // Asking for monitoring is itself a claim that the link is a playlist —
+    // that is the only thing monitoring applies to — so it is honoured even
+    // when the URL does not match the playlist pattern.
+    if (deps.isPlaylistUrl(canonicalUrl) || monitoringType) {
+      await runPlaylistIndex({
+        adapter,
+        target,
+        canonicalUrl,
+        monitoringType,
+        submissionId: null,
+      });
+      return;
+    }
 
-    const say = async (text: string) => {
-      if (ack) {
-        try {
-          await adapter.editText(ack, text);
-          return;
-        } catch {
-          // Fall through to a fresh message if the edit is rejected.
-        }
-      }
-      await reply(adapter, target, text);
-    };
+    const ack = await reply(adapter, target, "Indexing…");
+    const say = speaker(adapter, target, ack);
 
     try {
       const results = await deps.listItemsConcurrently(
         [{
           url: canonicalUrl,
-          // Let executeListing classify unless the user asked for monitoring,
-          // which only makes sense for a playlist.
-          type: monitoringType ? "playlist" : "undetermined",
-          currentMonitoringType: monitoringType ?? "None",
+          // Let executeListing classify it, including the x.com exception.
+          type: "undetermined",
+          currentMonitoringType: NO_MONITORING,
           reason: "Chat bot /index",
         }],
         deps.chunkSize,
@@ -715,17 +996,7 @@ export function createBotCore(deps: BotCoreDependencies) {
         return;
       }
 
-      if (monitoringType) {
-        await deps.setPlaylistMonitoring(canonicalUrl, monitoringType);
-        await say(
-          `Indexed, and now monitoring it (${monitoringType}).`,
-        );
-        return;
-      }
-
-      const indexed = isPlaylist
-        ? null
-        : await resolveIndexedVideo(canonicalUrl);
+      const indexed = await resolveIndexedVideo(canonicalUrl);
       await say(
         indexed
           ? `Indexed: ${indexed.title}\nUse /get to download it.`
@@ -738,6 +1009,100 @@ export function createBotCore(deps: BotCoreDependencies) {
         }`,
       );
     }
+  }
+
+  /**
+   * Shows one page of a playlist's entries, in playlist order.
+   *
+   * Indexing a playlist otherwise leaves the user with no way to see what it
+   * produced from chat, which makes /get on an individual entry unusable.
+   */
+  async function handleList(
+    adapter: BotAdapter,
+    target: DeliveryTarget,
+    url: string,
+    start: number,
+    limit: number,
+  ) {
+    const playlistUrl = deps.normalizeUrl(url);
+    const playlist = await deps.store.findPlaylistByUrl(playlistUrl);
+    if (!playlist) {
+      await reply(
+        adapter,
+        target,
+        `I haven't indexed that playlist. Send me the link, or /index it, first.`,
+      );
+      return;
+    }
+
+    const { total, items } = await deps.store.listPlaylistVideos(
+      playlistUrl,
+      start,
+      limit,
+    );
+
+    if (items.length === 0) {
+      await reply(
+        adapter,
+        target,
+        total === 0
+          ? `${playlist.title} has no entries yet.`
+          : `Nothing at ${start} — ${playlist.title} has ${total} ${
+            total === 1 ? "entry" : "entries"
+          }, so start has to be below ${total}.`,
+      );
+      return;
+    }
+
+    const lines = items.map((item) =>
+      `${item.position}. ${
+        item.downloadStatus ? "[saved]" : "[not downloaded]"
+      } ${item.title}\n${item.videoUrl}`
+    );
+    const shownTo = start + items.length;
+    const more = shownTo < total
+      ? `\n\nNext: /list ${playlistUrl} ${shownTo} ${limit}`
+      : "";
+
+    await reply(
+      adapter,
+      target,
+      `${playlist.title} — showing ${
+        start + 1
+      }-${shownTo} of ${total} (watch: ${playlist.monitoringType})\n\n${
+        lines.join("\n\n")
+      }${more}`,
+    );
+  }
+
+  /** Lists the playlists the bot knows about, so /list has a starting point. */
+  async function handlePlaylists(
+    adapter: BotAdapter,
+    target: DeliveryTarget,
+    limit: number,
+  ) {
+    const rows = await deps.store.listPlaylists(limit);
+    if (rows.length === 0) {
+      await reply(
+        adapter,
+        target,
+        "No playlists indexed yet. Send me a playlist link to index one.",
+      );
+      return;
+    }
+
+    const lines = rows.map((row) =>
+      `${row.title} — ${row.videoCount} ${
+        row.videoCount === 1 ? "entry" : "entries"
+      } (watch: ${row.monitoringType})\n${row.playlistUrl}`
+    );
+    await reply(
+      adapter,
+      target,
+      `${
+        lines.join("\n\n")
+      }\n\nBrowse one with /list <playlist-link> [start] [count].`,
+    );
   }
 
   async function handleSearch(
@@ -812,14 +1177,29 @@ export function createBotCore(deps: BotCoreDependencies) {
             command.monitoringType,
           );
           return;
+        case "list":
+          await handleList(
+            adapter,
+            target,
+            command.url,
+            command.start,
+            command.limit,
+          );
+          return;
+        case "playlists":
+          await handlePlaylists(adapter, target, command.limit);
+          return;
         case "search":
           await handleSearch(adapter, target, command.query, command.limit);
           return;
         case "get":
-          await handleSubmission(adapter, message, command.url, false);
+          await handleSubmission(adapter, message, command.url, "file");
           return;
         case "link":
-          await handleSubmission(adapter, message, command.url, true);
+          await handleSubmission(adapter, message, command.url, "link");
+          return;
+        case "download":
+          await handleSubmission(adapter, message, command.url, "store");
           return;
         case "unknown":
           await reply(adapter, target, "I didn't understand that. Try /help.");
@@ -862,6 +1242,41 @@ export function createBotCore(deps: BotCoreDependencies) {
     entry.lastProgressAt = now;
     entry.lastProgressText = text;
     void editAck(entry, text);
+  }
+
+  /**
+   * Reports progress while a playlist is being listed.
+   *
+   * `processedChunks * chunkSize` is an upper bound on how far the listing has
+   * read — the last chunk is usually partial — so the count is reported as
+   * approximate rather than pretending to be exact.
+   */
+  function onListingChunk(payload: {
+    url: string;
+    processedChunks: number;
+    playlistTitle: string;
+  }) {
+    const entry = listings.get(payload.url);
+    if (!entry) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - entry.lastProgressAt < LISTING_HEARTBEAT_MS) {
+      return;
+    }
+
+    const seen = payload.processedChunks * deps.chunkSize;
+    const text = `Indexing ${
+      payload.playlistTitle || "playlist"
+    } — about ${seen} entries so far…`;
+    if (text === entry.lastProgressText) {
+      return;
+    }
+
+    entry.lastProgressAt = now;
+    entry.lastProgressText = text;
+    void speaker(entry.adapter, entry.target, entry.ack)(text);
   }
 
   function onStarted(payload: { url: string }) {
@@ -911,6 +1326,7 @@ export function createBotCore(deps: BotCoreDependencies) {
     deps.events.on("download-done", onDone);
     deps.events.on("download-failed", onFailed);
     deps.events.on("listing-error", onListingError);
+    deps.events.on("listing-playlist-chunk-complete", onListingChunk);
   }
 
   function unsubscribe() {
@@ -919,6 +1335,8 @@ export function createBotCore(deps: BotCoreDependencies) {
     deps.events.off("download-done", onDone);
     deps.events.off("download-failed", onFailed);
     deps.events.off("listing-error", onListingError);
+    deps.events.off("listing-playlist-chunk-complete", onListingChunk);
+    listings.clear();
     for (const entry of pending.values()) {
       if (entry.watchdog !== null) {
         clearTimeout(entry.watchdog);

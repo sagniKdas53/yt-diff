@@ -55,12 +55,30 @@ export interface ListingErrorPayload {
   error: string;
 }
 
+/**
+ * Emitted after every chunk of a playlist listing is persisted (`listing.ts`).
+ *
+ * Playlist listing is the one pipeline stage that can run for minutes with no
+ * other signal, so this is what lets the bot say something while it waits
+ * instead of going silent until the whole playlist is done.
+ */
+export interface ListingPlaylistChunkCompletePayload {
+  url: string;
+  type: string;
+  status: string;
+  /** Chunks persisted so far; multiply by the chunk size for a rough count. */
+  processedChunks: number;
+  playlistTitle: string;
+  seekPlaylistListTo: number;
+}
+
 export interface AppEventMap {
   "download-started": DownloadStartedPayload;
   "downloading-percent-update": DownloadingPercentUpdatePayload;
   "download-done": DownloadDonePayload;
   "download-failed": DownloadFailedPayload;
   "listing-error": ListingErrorPayload;
+  "listing-playlist-chunk-complete": ListingPlaylistChunkCompletePayload;
 }
 
 export type AppEventName = keyof AppEventMap;
@@ -81,6 +99,7 @@ const APP_EVENT_NAMES: ReadonlySet<string> = new Set<AppEventName>([
   "download-done",
   "download-failed",
   "listing-error",
+  "listing-playlist-chunk-complete",
 ]);
 
 /**
