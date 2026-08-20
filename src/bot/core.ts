@@ -856,15 +856,17 @@ export function createBotCore(deps: BotCoreDependencies) {
       lastProgressText: "",
     });
 
-    if (submissionId) {
-      await deps.store.updateSubmission(submissionId, {
-        canonicalUrl,
-        playlistUrl: canonicalUrl,
-        status: "indexing",
-      });
-    }
-
     try {
+      if (submissionId) {
+        // playlistUrl only, never canonicalUrl: canonicalUrl is a foreign key
+        // into video_metadata, and a playlist URL is never a row there, so
+        // writing it violates the constraint and wedges the whole request.
+        await deps.store.updateSubmission(submissionId, {
+          playlistUrl: canonicalUrl,
+          status: "indexing",
+        });
+      }
+
       const results = await deps.listItemsConcurrently(
         [{
           url: canonicalUrl,

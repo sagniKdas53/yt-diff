@@ -50,6 +50,11 @@ interface HarnessOptions {
    * and it finishing, which is exactly this window.
    */
   duringListing?: (events: AppEventBus) => void;
+  /**
+   * Makes the first updateSubmission call reject, the way a constraint
+   * violation does, so the recovery path can be asserted.
+   */
+  failFirstSubmissionUpdate?: boolean;
 }
 
 /**
@@ -91,6 +96,13 @@ function harness(options: HarnessOptions = {}): Harness {
     createSubmission: () => Promise.resolve({ id: "sub-1" }),
     updateSubmission: (_id, fields) => {
       submissionUpdates.push(fields);
+      if (options.failFirstSubmissionUpdate && submissionUpdates.length === 1) {
+        return Promise.reject(
+          new Error(
+            'insert or update on table "bot_submissions" violates foreign key constraint "bot_submissions_canonicalUrl_fkey"',
+          ),
+        );
+      }
       return Promise.resolve();
     },
     findVideoByUrl: (videoUrl) =>
@@ -220,6 +232,45 @@ Deno.test("bare playlist link - indexes with the watch mode set to N/A", async (
   assertEquals(h.listings[0].type, "playlist");
   assertEquals(h.listings[0].currentMonitoringType, "N/A");
   assertEquals(h.monitoringSet, []);
+});
+
+Deno.test("bare playlist link - never writes canonicalUrl on the submission", async () => {
+  // canonicalUrl is a foreign key into video_metadata. A playlist URL is never
+  // a row there, so writing it made the update fail with
+  // bot_submissions_canonicalUrl_fkey and the whole request blew up.
+  const h = harness({ playlist: playlistRow() });
+
+  await h.handle(PLAYLIST);
+
+  assert(h.submissionUpdates.length > 0);
+  for (const update of h.submissionUpdates) {
+    assertEquals(
+      Object.hasOwn(update, "canonicalUrl"),
+      false,
+      `submission update wrote canonicalUrl: ${JSON.stringify(update)}`,
+    );
+  }
+  // The playlist is still recorded, just in the column that has no foreign key.
+  assertEquals(h.submissionUpdates[0].playlistUrl, PLAYLIST);
+  assertEquals(h.submissionUpdates[0].status, "indexing");
+});
+
+Deno.test("bare playlist link - a failed submission update does not wedge the URL", async () => {
+  // The reservation used to be taken before the update and only released in
+  // the listing's finally, so an update that threw left the playlist stuck on
+  // "already being indexed" until the process restarted.
+  const h = harness({
+    playlist: playlistRow(),
+    failFirstSubmissionUpdate: true,
+  });
+
+  await h.handle(PLAYLIST);
+  await h.handle(PLAYLIST);
+
+  const stuck = h.sent.some((text) => text.includes("already being indexed"));
+  assertEquals(stuck, false, "the playlist stayed reserved after a failure");
+  // Both attempts got past the reservation; the second one actually listed.
+  assertEquals(h.listings.length, 1);
 });
 
 Deno.test("bare playlist link - reports the count and how to browse it", async () => {
