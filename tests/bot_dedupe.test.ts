@@ -23,6 +23,16 @@ interface Harness {
 }
 
 /**
+ * Cores built by harness() inside the current withSaveDir block.
+ *
+ * Tests that leave a submission unresolved leave its watchdog timer armed, and
+ * Deno's leak detector fails the test for it. unsubscribe() is what the service
+ * calls on shutdown and is what clears them, so every core is torn down that
+ * same way once its test is done.
+ */
+const liveCores: { unsubscribe: () => void }[] = [];
+
+/**
  * Builds a core with a fake store, so the dedupe tiers can be asserted without
  * a database.
  *
@@ -113,6 +123,8 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     text,
   });
 
+  liveCores.push(core);
+
   return {
     handle: (text: string) => core.handleMessage(message(text)),
     calls,
@@ -132,6 +144,11 @@ async function withSaveDir(
   try {
     await fn(dir);
   } finally {
+    let core = liveCores.pop();
+    while (core) {
+      core.unsubscribe();
+      core = liveCores.pop();
+    }
     await Deno.remove(dir, { recursive: true });
   }
 }
