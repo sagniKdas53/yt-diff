@@ -61,13 +61,103 @@ Deno.test("parseCommand - /index with no mode is catalogue-only", () => {
 });
 
 Deno.test("parseCommand - /index accepts a mode case-insensitively", () => {
+  // Whatever the user types, the canonical spelling is what reaches the
+  // pipeline — it compares monitoringType by exact string.
+  const cases: [string, string][] = [
+    ["start", "Start"],
+    ["Start", "Start"],
+    ["end", "End"],
+    ["End", "End"],
+    ["END", "End"],
+    ["full", "Full"],
+    ["FuLl", "Full"],
+  ];
+
+  for (const [typed, canonical] of cases) {
+    assertEquals(
+      parseCommand(`/index https://youtube.com/playlist?list=PL1 ${typed}`),
+      {
+        kind: "index",
+        url: "https://youtube.com/playlist?list=PL1",
+        monitoringType: canonical,
+      },
+      `"${typed}" should parse as ${canonical}`,
+    );
+  }
+});
+
+Deno.test("parseCommand - /index N/A means no monitoring", () => {
+  // Spelling out the default is how an already-monitored playlist is
+  // un-monitored, so it collapses to the same command as omitting the mode.
+  for (const typed of ["N/A", "n/a"]) {
+    assertEquals(
+      parseCommand(`/index https://youtube.com/playlist?list=PL1 ${typed}`),
+      {
+        kind: "index",
+        url: "https://youtube.com/playlist?list=PL1",
+        monitoringType: null,
+      },
+    );
+  }
+});
+
+Deno.test("parseCommand - /download fetches without sending", () => {
   assertEquals(
-    parseCommand("/index https://youtube.com/playlist?list=PL1 start"),
+    parseCommand("/download https://x.com/i/status/1"),
+    { kind: "download", url: "https://x.com/i/status/1" },
+  );
+  assertEquals(
+    parseCommand("/download"),
+    { kind: "unknown", text: "/download" },
+  );
+});
+
+Deno.test("parseCommand - /list pages through one playlist", () => {
+  assertEquals(
+    parseCommand("/list https://youtube.com/playlist?list=PL1"),
     {
-      kind: "index",
+      kind: "list",
       url: "https://youtube.com/playlist?list=PL1",
-      monitoringType: "Start",
+      start: 0,
+      limit: 10,
     },
+  );
+  assertEquals(
+    parseCommand("/list https://youtube.com/playlist?list=PL1 20 5"),
+    {
+      kind: "list",
+      url: "https://youtube.com/playlist?list=PL1",
+      start: 20,
+      limit: 5,
+    },
+  );
+  // One message cannot be made to dump a whole playlist.
+  assertEquals(
+    parseCommand("/list https://youtube.com/playlist?list=PL1 0 9999"),
+    {
+      kind: "list",
+      url: "https://youtube.com/playlist?list=PL1",
+      start: 0,
+      limit: 25,
+    },
+  );
+  // Nonsense paging arguments fall back to the defaults rather than erroring.
+  assertEquals(
+    parseCommand("/list https://youtube.com/playlist?list=PL1 x y"),
+    {
+      kind: "list",
+      url: "https://youtube.com/playlist?list=PL1",
+      start: 0,
+      limit: 10,
+    },
+  );
+});
+
+Deno.test("parseCommand - a bare /list is the playlist index", () => {
+  assertEquals(parseCommand("/list"), { kind: "playlists", limit: 10 });
+  assertEquals(
+    parseCommand("/list not-a-url"),
+    { kind: "unknown", text: "/list not-a-url" },
   );
 });
 

@@ -1,6 +1,11 @@
 import { Op } from "sequelize";
 
-import { BotSubmission, VideoMetadata } from "../db/models.ts";
+import {
+  BotSubmission,
+  PlaylistMetadata,
+  PlaylistVideoMapping,
+  VideoMetadata,
+} from "../db/models.ts";
 import { removeVideoFiles } from "../handlers/videoFiles.ts";
 
 /**
@@ -27,6 +32,23 @@ export interface SubmissionRecord {
   canonicalUrl: string | null;
 }
 
+/** One entry of a playlist, in playlist order. */
+export interface PlaylistEntryRecord {
+  /** 1-based position as stored by the pipeline. */
+  position: number;
+  title: string;
+  videoUrl: string;
+  downloadStatus: boolean;
+}
+
+/** A playlist row, plus how many entries it currently holds. */
+export interface PlaylistRecord {
+  playlistUrl: string;
+  title: string;
+  monitoringType: string;
+  videoCount: number;
+}
+
 export interface CreateSubmissionFields {
   platform: string;
   chatId: string;
@@ -45,6 +67,20 @@ export interface BotStore {
   listSubmissions(chatId: string, limit: number): Promise<SubmissionRecord[]>;
   /** Free-text search over indexed videos, by title or URL. */
   searchVideos(query: string, limit: number): Promise<VideoRecord[]>;
+  /** The playlist row and its entry count, or null when it is not indexed. */
+  findPlaylistByUrl(playlistUrl: string): Promise<PlaylistRecord | null>;
+  /** Known playlists, most recently updated first. */
+  listPlaylists(limit: number): Promise<PlaylistRecord[]>;
+  /**
+   * One page of a playlist's entries, in playlist order.
+   *
+   * @returns The page plus the playlist's total entry count, for paging hints
+   */
+  listPlaylistVideos(
+    playlistUrl: string,
+    start: number,
+    limit: number,
+  ): Promise<{ total: number; items: PlaylistEntryRecord[] }>;
   /** Resolves a short id prefix, but only to a unique match. */
   findSubmissionByPrefix(
     chatId: string,
@@ -69,6 +105,20 @@ function toVideoRecord(row: VideoMetadata): VideoRecord {
     // BIGINT comes back as a string from pg, and yt-dlp writes -1 when it has
     // no estimate (which is the norm for x.com). Normalise both to 0 = unknown.
     approximateSize: Math.max(0, Number(row.approximateSize ?? 0) || 0),
+  };
+}
+
+function toPlaylistRecord(
+  row: PlaylistMetadata,
+  videoCount: number,
+): PlaylistRecord {
+  return {
+    playlistUrl: row.playlistUrl,
+    title: row.title,
+    // A playlist written before monitoring existed can have this empty; the
+    // web UI reads an empty value as "not monitored" too.
+    monitoringType: row.monitoringType || "N/A",
+    videoCount,
   };
 }
 
@@ -123,6 +173,64 @@ export function createSequelizeBotStore(): BotStore {
         limit,
       });
       return rows.map(toVideoRecord);
+    },
+
+    async findPlaylistByUrl(playlistUrl) {
+      const row = await PlaylistMetadata.findOne({ where: { playlistUrl } });
+      if (!row) {
+        return null;
+      }
+      const videoCount = await PlaylistVideoMapping.count({
+        where: { playlistUrl },
+      });
+      return toPlaylistRecord(row, videoCount);
+    },
+
+    async listPlaylists(limit) {
+      const rows = await PlaylistMetadata.findAll({
+        // "None" and "init" are pseudo-playlists for unlisted videos, not
+        // something anyone asked the bot to index.
+        where: { playlistUrl: { [Op.notIn]: ["None", "init"] } },
+        order: [["updatedAt", "DESC"]],
+        limit,
+      });
+      return await Promise.all(rows.map(async (row) =>
+        toPlaylistRecord(
+          row,
+          await PlaylistVideoMapping.count({
+            where: { playlistUrl: row.playlistUrl },
+          }),
+        )
+      ));
+    },
+
+    async listPlaylistVideos(playlistUrl, start, limit) {
+      // Mirrors the web UI's sub-list query: playlist order, joined to the
+      // video row so a page can show titles rather than bare URLs.
+      const { count, rows } = await PlaylistVideoMapping.findAndCountAll({
+        attributes: ["positionInPlaylist", "videoUrl"],
+        include: [{
+          model: VideoMetadata,
+          attributes: ["title", "videoUrl", "downloadStatus"],
+          required: false,
+        }],
+        where: { playlistUrl },
+        order: [["positionInPlaylist", "ASC"]],
+        offset: start,
+        limit,
+      });
+
+      return {
+        total: count,
+        items: rows.map((row) => ({
+          position: row.positionInPlaylist,
+          // The join is optional so a mapping whose video row is missing still
+          // shows up as a numbered line rather than vanishing from the page.
+          title: row.video_metadatum?.title ?? row.videoUrl,
+          videoUrl: row.videoUrl,
+          downloadStatus: row.video_metadatum?.downloadStatus ?? false,
+        })),
+      };
     },
 
     async listSubmissions(chatId, limit) {
