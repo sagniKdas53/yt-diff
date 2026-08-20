@@ -1,3 +1,6 @@
+// deno-lint-ignore-file no-explicit-any
+// The response mock is cast to the real http type so the validators run against
+// their true signatures. Same convention as src/transport/http.ts.
 import { assertEquals } from "std/assert/mod.ts";
 import {
   BulkRefreshSignedUrlsRequestBodySchema,

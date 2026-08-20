@@ -15,6 +15,9 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
 - **Powerful Search** — Regex and partial-match search across video titles and URLs, with a `global:` prefix for cross-playlist searches.
 - **Signed File URLs** — Secure, time-limited download tokens prevent unauthenticated file access.
 - **Site-Specific Support** — Built-in handling for Iwara credentials, browser cookie injection, and HTTP proxy routing through Gluetun VPN.
+- **Telegram Bot** — Submit links, browse playlists, and pull downloads straight from Telegram. Locked to an explicit chat allowlist (it refuses to start unrestricted), with `ephemeral` or `persistent` retention for submitted media.
+- **Batch Re-index** — Re-list every monitored playlist in one pass to repair drifted metadata, with per-playlist progress streamed to the UI and a determinate progress bar.
+- **Built-in Video Player** — Range-request streaming with a custom React player: queue management, continuous playback, and network resiliency.
 - **Automated Background Jobs** — Process cleanup, scheduled playlist updates, and orphan video pruning all run on configurable cron schedules.
 - **URL Deduplication** — Incoming URLs are canonicalized before storage: YouTube video IDs are extracted from any URL form (`youtu.be`, `m.youtube.com`, `watch?v=&list=...`), iwara.tv title slugs are stripped, and tracking parameters (`utm_*`, `si=`, `pp=`) are removed globally. A `/dedup` endpoint lets you scan and merge any existing duplicate records in one shot.
 
@@ -48,7 +51,7 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
 | **PostgreSQL** | Stores video metadata, playlist info, user accounts, and playlist-video mappings |
 | **Valkey** | Rate limiting and request caching |
 | **pgbackups** | Automated daily database backups (7-day retention) |
-| **pgAdmin** | Optional web UI for direct database management |
+| **pgAdmin** | Web UI for direct database management — starts by default on port `8686` and is routed at `/pgadmin`; comment the service out if you don't want it |
 | **Gluetun** | Optional VPN gateway (routes yt-dlp traffic through OpenVPN) |
 
 ## Quick Start
@@ -62,12 +65,12 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
    cd yt-diff
    ```
 
-2. **Configure environment** — edit `base.env` for shared defaults and the deployment env file for host-specific values:
+2. **Configure environment** — edit `envs/base.env` for shared defaults and the deployment env file for host-specific values:
 
    ```ini
-   # base.env holds shared defaults
+   # envs/base.env holds shared defaults
 
-   # local.env / pi5.env / pi4.env hold deployment-specific values
+   # envs/local.env / envs/pi5.env / envs/pi4.env hold deployment-specific values
    HOSTNAME=your.hostname.here
    HOST_SAVE_PATH=/path/to/video/storage
    DB_LOCATION=/path/to/postgres/data
@@ -82,6 +85,7 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
    | `secrets/secret_key.txt` | JWT signing key (any random string) |
    | `secrets/proxy_string.txt` | *(optional)* HTTP proxy URL |
    | `secrets/iwara.json` | *(optional)* `{"username": "...", "password": "..."}` |
+   | `secrets/bot_token.txt` | *(optional)* Telegram bot token — see [docs/BOT.md](docs/BOT.md) |
 
 4. **Generate `.env` for your deployment**
 
@@ -153,10 +157,12 @@ All configuration is done through environment variables. Key settings:
 | `PORT` | `8888` | HTTP listen port |
 | `BASE_URL` | `/ytdiff` | URL prefix for all routes |
 | `SAVE_PATH` | — | Root directory for downloaded files |
-| `UPDATE_SCHEDULED` | `*/30 * * * *` | Cron schedule for playlist monitoring |
-| `PRUNE_INTERVAL` | `*/30 * * * *` | Cron schedule for orphan cleanup |
-| `MAX_DOWNLOADS` | `2` | Max concurrent download processes |
+| `UPDATE_SCHEDULED` | `*/10 * * * *` | Cron schedule for playlist monitoring |
+| `PRUNE_INTERVAL` | `*/10 * * * *` | Cron schedule for orphan cleanup |
+| `MAX_DOWNLOADS` | `1` | Max concurrent download processes |
+| `MAX_LISTINGS` | `1` | Max concurrent listing processes (the listing queue is strict FIFO, so a large batch delays later submissions) |
 | `RESTRICT_FILENAMES` | `true` | Sanitize filenames for filesystem safety |
+| `BOT_ENABLED` | `false` | Enable the Telegram bot (requires a token and a non-empty chat allowlist) |
 
 > For the full list of 30+ environment variables, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md#environment-variable-reference).
 
@@ -188,17 +194,20 @@ Both the playlist panel and video panel support search with special prefixes:
 | `title:` | Title (regex) | `title:^My\|vlog` |
 | `global:` | All playlists (regex) | `global:mmd` |
 
-> See [docs/search.md](docs/search.md) for the full search syntax reference.
+> See [docs/SEARCH_SCOPED_AND_GLOBAL.md](docs/SEARCH_SCOPED_AND_GLOBAL.md) for the full search syntax reference.
 
 ### Monitoring & Background Jobs
 
-Three automated cron jobs run in the background:
+Three automated cron jobs always run in the background, plus a fourth when the bot is enabled:
 
 | Job | Default Schedule | Purpose |
 | :-- | :--------------- | :------ |
 | **Cleanup** | Every 10 min | Kills stale yt-dlp processes |
-| **Update** | Every 30 min | Re-scans monitored playlists for new videos |
-| **Prune** | Every 30 min | Handles orphaned videos (move to "None" or delete) |
+| **Update** | Every 10 min | Re-scans monitored playlists for new videos |
+| **Prune** | Every 10 min | Handles orphaned videos (move to "None" or delete) |
+| **Bot retention** | Hourly *(bot only)* | Reaps expired bot submissions in `ephemeral` mode |
+
+Scheduled updates run silently by design — they do not push per-playlist progress to connected clients, unlike a user-initiated batch re-index.
 
 > See [docs/AUTOMATED_JOBS.md](docs/AUTOMATED_JOBS.md) for detailed behavior.
 
@@ -213,7 +222,10 @@ Three automated cron jobs run in the background:
 | [Download Behavior](docs/DOWNLOAD_BEHAVIOR.md) | Concurrency control and download pipeline |
 | [Deletion Behavior](docs/DELETION_BEHAVIOR.md) | Playlist/video deletion and pruning flows |
 | [Automated Jobs](docs/AUTOMATED_JOBS.md) | Background cron job details |
-| [Search](docs/search.md) | Search syntax for the UI |
+| [Search](docs/SEARCH_SCOPED_AND_GLOBAL.md) | Search syntax for the UI |
+| [Telegram Bot](docs/BOT.md) | Bot setup, commands, retention modes |
+| [Video Player](docs/VIDEO_PLAYER.md) | Streaming backend and player UI |
+| [YouTube Auth & Scraping](docs/YOUTUBE_AUTH_AND_SCRAPING.md) | Cookie auth and API-assisted listing |
 
 ## Makefile Commands
 

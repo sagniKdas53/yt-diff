@@ -1,9 +1,14 @@
+// deno-lint-ignore-file no-explicit-any
+// The mocks below stand in for ioredis and the node http request/response
+// objects; casting them to the real types is what keeps the middleware under
+// test unchanged. Same convention as src/transport/http.ts.
 import { assertEquals } from "std/assert/mod.ts";
 import { createRateLimit } from "../src/middleware/rateLimit.ts";
 
 class MockRedis {
   private store = new Map<string, { value: string; expireAt?: number }>();
 
+  // deno-lint-ignore require-await
   async get(key: string): Promise<string | null> {
     const entry = this.store.get(key);
     if (!entry) return null;
@@ -14,6 +19,7 @@ class MockRedis {
     return entry.value;
   }
 
+  // deno-lint-ignore require-await
   async set(
     key: string,
     value: string,
@@ -35,6 +41,7 @@ class MockRedis {
     return newVal;
   }
 
+  // deno-lint-ignore require-await
   async expire(key: string, seconds: number): Promise<number> {
     const entry = this.store.get(key);
     if (entry) {
