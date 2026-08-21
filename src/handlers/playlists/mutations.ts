@@ -10,7 +10,7 @@ import {
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { rm } from "../../utils/fs.ts";
-import { join } from "../../utils/path.ts";
+import { resolve, resolveWithin } from "../../utils/path.ts";
 import type {
   DeletePlaylistRequestBody,
   DeleteVideosRequestBody,
@@ -178,10 +178,25 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
 
         if (cleanUp) {
           try {
-            const playListDir = join(
-              config.saveLocation,
-              playlist.saveDirectory,
-            );
+            // A recursive delete built from yt-dlp-derived metadata gets the
+            // containment check the read path has always run, plus one the
+            // read path does not need: an empty saveDirectory resolves to the
+            // save root itself, which is *within* the root and would take the
+            // whole library with it. The "None" pseudo-playlist ships with
+            // exactly that value.
+            const playListDir = playlist.saveDirectory
+              ? resolveWithin(config.saveLocation, playlist.saveDirectory)
+              : null;
+            if (
+              playListDir === null ||
+              playListDir === resolve(config.saveLocation)
+            ) {
+              throw new Error(
+                `Refusing to clean up ${
+                  JSON.stringify(playlist.saveDirectory)
+                }: not a directory inside the save location`,
+              );
+            }
             logger.debug("Cleaning up playlist directory", {
               saveDirectory: playlist.saveDirectory,
               absolutePath: playListDir,
