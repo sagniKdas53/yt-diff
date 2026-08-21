@@ -14,6 +14,35 @@ permissions:
   pull-requests: write
 
 jobs:
+  # The signals the repo already had and nothing gated. Cheapest job in the
+  # file and the first to fail, so a type error or a lint hit does not wait
+  # out the container build behind it.
+  static-checks:
+    name: Static Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Each runs even when an earlier one fails: one push should surface every
+      # problem, not the first alphabetically.
+      - name: Type Check
+        run: deno task check
+
+      - name: Lint
+        if: always()
+        run: deno task lint
+
+      - name: Format Check
+        if: always()
+        run: deno task fmt:check
+
   # Runs before the E2E suite because it is the cheap half: no Docker, no
   # database, seconds rather than minutes.
   unit-tests:
@@ -47,6 +76,58 @@ jobs:
         with:
           name: unit-test-results
           path: unit_test_results.xml
+
+  # The frontend submodule carries its own eslint config and vitest suite;
+  # both were advisory until now.
+  frontend-tests:
+    name: Frontend Lint and Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        id: install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      # Runs whichever way lint went -- same reason as Static Checks -- but not
+      # when the install itself failed, where there is nothing to test.
+      # Reported through the same JUnit path as the other two suites.
+      - name: Run Unit Tests
+        if: steps.install.outcome == 'success'
+        working-directory: frontend
+        run: npx vitest run --reporter=junit --outputFile=frontend_test_results.xml
+
+      - name: Parse Test Results
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Frontend Test Results
+          path: frontend/frontend_test_results.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-test-results
+          path: frontend/frontend_test_results.xml
 
   e2e-tests:
     name: E2E Integration Tests
