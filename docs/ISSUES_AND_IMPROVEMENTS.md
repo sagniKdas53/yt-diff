@@ -3,6 +3,10 @@
 This document highlights unchecked edge cases, security considerations, and code
 improvements identified through an analysis of the codebase.
 
+For the full-tree audit that produced the current security and structural
+findings — including severities, evidence, and the suggested fix order — see
+[`SECURITY_AND_QUALITY_AUDIT.md`](./SECURITY_AND_QUALITY_AUDIT.md).
+
 *Note: Following recent extensive refactoring phases, major architecture, routing, rate-limiting, and input validation issues have been successfully addressed. The remaining items represent long-term goals.*
 
 ## Future Milestones
@@ -25,36 +29,48 @@ The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSO
 
 ---
 
-### 4. Rate Limiting Defaults to Off When Unset
+### 4. Rate Limiting Defaults to Off When Unset (resolved)
 
-`config.cache.reqPerIP` is built as:
+Rate limiting used to default to off. `config.cache.reqPerIP` was built as
+`parseInt(Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0", 10)` and
+`rateLimit` treated `0` as "disabled", so an instance that never set the
+variable had no throttling at all. `envs/base.env` set the *global* limit to
+`10`, but shipped `RATE_LIMIT_ACTION_MAX_REQUESTS=0` — meaning the limiter in
+front of `/list` and `/download` was off in every stock deployment.
 
-```ts
-reqPerIP: parseInt(Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0", 10)
-```
+Two further problems surfaced while fixing it:
 
-and `rateLimit` treats `0` as "disabled" (`src/middleware/rateLimit.ts:57`):
+- **All limiters shared one Redis key.** `rateLimit` keyed on `ip:<addr>` with
+  no scope while being called with two different budgets, so login attempts and
+  listing requests drained the same counter and whichever limit was lowest
+  silently governed both. `/isregallowed` runs on every page load and spent the
+  login budget.
+- **`incr` + conditional `expire` was not atomic.** A process that died between
+  the two commands left a key with no TTL, locking that address out until Redis
+  was flushed by hand.
 
-```ts
-if (maxRequestsPerWindow === 0) {
-  logger.debug("Rate limiting disabled (maxRequestsPerWindow is 0)");
-```
+All three are fixed. Throttling now runs in two tiers:
 
-So **an instance that never sets `RATE_LIMIT_GLOBAL_MAX_REQUESTS` has no rate
-limiting at all.** A security control that silently defaults to off when unset
-is backwards: forgetting a variable should not quietly remove a protection.
+- **Admission** (`auth`, `public`, `action` buckets) runs before authentication,
+  keyed per client address, counting requests. It stops unauthenticated floods.
+- **Work** runs after the body is parsed and the user is verified, charging in
+  units of queued work rather than requests, keyed per user.
 
-`envs/base.env` does set it to `10`, so the shipped compose deployments are
-fine. The exposure is a deployment that builds its own env file and omits the
-row — nothing warns.
+The work tier is the one that matters here. `MAX_LISTINGS`/`MAX_DOWNLOADS`
+already cap concurrency at 1, so the risk a request counter cannot see is not
+load — it is unbounded queue depth. A single `/list` carrying 200 URLs with
+`monitoringType: "Full"` is now priced as 200 full playlist re-scans instead of
+as one request.
 
-- **Suggested Improvement**: default to a sane non-zero value (say `100`) and
-  keep an explicit `0` as the opt-out. The disable path stays available for
-  anyone who genuinely wants it, but it has to be chosen rather than inherited
-  from an omission. Logging once at startup when rate limiting is disabled would
-  also make the state obvious.
-- **Status**: documented only, no code change — altering the default changes
-  behaviour for existing deployments and deserves its own commit.
+The algorithm is GCRA (the approach behind `redis-cell` and `throttled`): one
+timestamp per key, budget that refills smoothly instead of resetting on a
+window edge, per-request cost as a first-class input, and a single atomic Lua
+call. Rejections carry `Retry-After`.
+
+Defaults are set well above realistic interactive use and above what the E2E
+suite generates. `0` remains an explicit opt-out, but it is no longer what an
+operator gets by omitting a variable. See `docs/GETTING_STARTED.md` for the
+full variable list and weights.
 
 ---
 
@@ -77,4 +93,4 @@ replaced with `gitsubmodule`.
 > `deno outdated` to review them.
 
 ---
-*Last updated at: 2026-08-02*
+*Last updated at: 2026-08-21*

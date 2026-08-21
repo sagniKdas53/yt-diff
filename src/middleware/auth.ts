@@ -30,7 +30,12 @@ import {
   parseRequestJson,
 } from "../utils/http.ts";
 import { IsRegistrationAllowedSchema, UserAuthSchema } from "./validator.ts";
-type NextHandler = (data: unknown, res: HttpResponseLike) => unknown;
+import type { RequestContext } from "./rateLimit.ts";
+type NextHandler = (
+  data: unknown,
+  res: HttpResponseLike,
+  context?: RequestContext,
+) => unknown;
 type TokenExpiredEmitter = (payload: { error: string }) => void;
 type GenerateAuthToken = (
   user: { id: string; updatedAt: Date },
@@ -287,7 +292,15 @@ export function createAuthMiddleware({
         }));
       }
 
-      next(requestData, response);
+      // Forward who this is alongside the body. This is the only point in the
+      // chain where the verified user and the parsed request exist together,
+      // which is what lets a downstream handler charge cost against an account
+      // rather than an IP. Handlers that take two arguments simply ignore it.
+      next(requestData, response, {
+        userId: String(user.id),
+        userName: user.username,
+        clientIp: request.socket.remoteAddress,
+      });
     } catch (error) {
       logger.error("Token verification failed", {
         error: (error as Error).message,

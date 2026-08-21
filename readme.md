@@ -242,6 +242,7 @@ Scheduled updates run silently by design — they do not push per-playlist progr
 | [Telegram Bot](docs/BOT.md) | Bot setup, commands, retention modes |
 | [Video Player](docs/VIDEO_PLAYER.md) | Streaming backend and player UI |
 | [YouTube Auth & Scraping](docs/YOUTUBE_AUTH_AND_SCRAPING.md) | Cookie auth and API-assisted listing |
+| [Security & Quality Audit](docs/SECURITY_AND_QUALITY_AUDIT.md) | Full-tree audit findings, severities, and fix order |
 
 ## Makefile Commands
 

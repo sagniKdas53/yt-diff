@@ -1,12 +1,19 @@
 import { config } from "../config.ts";
 import type {
   RateLimitFunction,
+  RequestContext,
   RequestHandler,
 } from "../middleware/rateLimit.ts";
+import type { GcraPolicy } from "../middleware/gcra.ts";
+import { downloadCost, listingCost } from "../middleware/requestCost.ts";
 import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 import type { RouteDefinition } from "./http.ts";
 
-type BodyHandler = (data: unknown, res: HttpResponseLike) => unknown;
+type BodyHandler = (
+  data: unknown,
+  res: HttpResponseLike,
+  context?: RequestContext,
+) => unknown;
 type AuthenticatedMiddleware = (
   req: HttpRequestLike,
   res: HttpResponseLike,
@@ -17,7 +24,13 @@ interface ApiRouteDependencies {
   authenticateRequest: AuthenticatedMiddleware;
   authenticateUser: RequestHandler;
   isRegistrationAllowed: RequestHandler;
-  rateLimit: RateLimitFunction;
+  rateLimit: RateLimitFunction & {
+    withCost: (
+      policy: GcraPolicy,
+      costOf: (body: never) => number,
+      handler: BodyHandler,
+    ) => BodyHandler;
+  };
   registerUser: RequestHandler;
   processListingRequest: BodyHandler;
   processDownloadRequest: BodyHandler;
@@ -58,6 +71,21 @@ export function createApiRoutes({
   processDedupPlaylistsRequest,
   processQueueStatusRequest,
 }: ApiRouteDependencies): RouteDefinition[] {
+  // Each bucket is a separate Redis key namespace. Before this, every limiter
+  // shared one `ip:<addr>` counter, so login attempts and listing requests
+  // drained the same budget and whichever limit was lowest silently governed
+  // both.
+  const authPolicy: GcraPolicy = { bucket: "auth", ...config.rateLimit.auth };
+  const publicPolicy: GcraPolicy = {
+    bucket: "public",
+    ...config.rateLimit.publicRead,
+  };
+  const actionPolicy: GcraPolicy = {
+    bucket: "action",
+    ...config.rateLimit.action,
+  };
+  const workPolicy: GcraPolicy = { bucket: "work", ...config.rateLimit.work };
+
   return [
     {
       method: "POST",
@@ -67,9 +95,8 @@ export function createApiRoutes({
           req,
           res,
           authenticateRequest,
-          processListingRequest,
-          config.cache.actionReqPerIP,
-          config.cache.actionWindowSec,
+          rateLimit.withCost(workPolicy, listingCost, processListingRequest),
+          actionPolicy,
         ),
     },
     {
@@ -80,9 +107,8 @@ export function createApiRoutes({
           req,
           res,
           authenticateRequest,
-          processDownloadRequest,
-          config.cache.actionReqPerIP,
-          config.cache.actionWindowSec,
+          rateLimit.withCost(workPolicy, downloadCost, processDownloadRequest),
+          actionPolicy,
         ),
     },
     {
@@ -160,8 +186,7 @@ export function createApiRoutes({
           res,
           registerUser,
           isRegistrationAllowed,
-          config.cache.reqPerIP,
-          config.cache.maxAge,
+          authPolicy,
         ),
     },
     {
@@ -173,8 +198,7 @@ export function createApiRoutes({
           res,
           authenticateUser,
           authenticateUser,
-          config.cache.reqPerIP,
-          config.cache.maxAge,
+          authPolicy,
         ),
     },
     {
@@ -186,8 +210,7 @@ export function createApiRoutes({
           res,
           isRegistrationAllowed,
           isRegistrationAllowed,
-          config.cache.reqPerIP,
-          config.cache.maxAge,
+          publicPolicy,
         ),
     },
     {

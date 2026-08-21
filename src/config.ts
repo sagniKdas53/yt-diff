@@ -136,6 +136,64 @@ export function buildPublicOrigin(
   return `${parts.protocol}://${parts.host}${port}`;
 }
 
+/** Reads an integer env var, falling back when unset, empty, or unparseable. */
+function envInt(name: string, fallback: number): number {
+  const raw = Deno.env.get(name);
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Throttling configuration.
+ *
+ * Two tiers, because they can see different things:
+ *
+ *   - `auth` / `publicRead` / `action` are *admission* budgets. They run before
+ *     authentication, so they can only key on the client address and count
+ *     requests. They exist to stop unauthenticated floods.
+ *   - `work` is the budget that does the real job. It is charged after the body
+ *     is parsed and the user is verified, in units of queued work, so a single
+ *     request that queues two hundred playlist re-scans is priced as two
+ *     hundred re-scans rather than as one request.
+ *
+ * Defaults are set well above realistic interactive use and above what the E2E
+ * suite generates, so a normal session or a test run never sees a 429. Any
+ * budget set to 0 disables that tier, which stays available as an explicit
+ * opt-out but is no longer what an operator gets by omitting a variable.
+ */
+function buildRateLimitConfig(): AppConfig["rateLimit"] {
+  const hour = 3600;
+  return {
+    auth: {
+      burst: envInt("RATE_LIMIT_AUTH_BURST", 30),
+      refill: envInt("RATE_LIMIT_AUTH_REFILL", 30),
+      periodSec: envInt("RATE_LIMIT_AUTH_PERIOD_SEC", hour),
+    },
+    publicRead: {
+      burst: envInt("RATE_LIMIT_PUBLIC_BURST", 240),
+      refill: envInt("RATE_LIMIT_PUBLIC_REFILL", 240),
+      periodSec: envInt("RATE_LIMIT_PUBLIC_PERIOD_SEC", hour),
+    },
+    action: {
+      burst: envInt("RATE_LIMIT_ACTION_BURST", 600),
+      refill: envInt("RATE_LIMIT_ACTION_REFILL", 600),
+      periodSec: envInt("RATE_LIMIT_ACTION_PERIOD_SEC", hour),
+    },
+    work: {
+      burst: envInt("RATE_LIMIT_WORK_BURST", 3000),
+      refill: envInt("RATE_LIMIT_WORK_REFILL", 3000),
+      periodSec: envInt("RATE_LIMIT_WORK_PERIOD_SEC", hour),
+    },
+    weights: {
+      requestBase: envInt("RATE_LIMIT_WEIGHT_BASE", 1),
+      listFullScan: envInt("RATE_LIMIT_WEIGHT_LIST_FULL", 10),
+      listIncremental: envInt("RATE_LIMIT_WEIGHT_LIST_INCREMENTAL", 2),
+      download: envInt("RATE_LIMIT_WEIGHT_DOWNLOAD", 1),
+    },
+  };
+}
+
 export interface AppConfig {
   protocol: string;
   host: string;
@@ -166,9 +224,22 @@ export interface AppConfig {
   cache: {
     maxItems: number;
     maxAge: number;
-    reqPerIP: number;
-    actionReqPerIP: number;
-    actionWindowSec: number;
+  };
+  rateLimit: {
+    /** Login and registration. Kept tight — this is the brute-force surface. */
+    auth: { burst: number; refill: number; periodSec: number };
+    /** Unauthenticated reads such as `/isregallowed`. */
+    publicRead: { burst: number; refill: number; periodSec: number };
+    /** Pre-auth admission for `/list` and `/download`. Counts requests only. */
+    action: { burst: number; refill: number; periodSec: number };
+    /** Post-auth budget, charged in units of queued work per user. */
+    work: { burst: number; refill: number; periodSec: number };
+    weights: {
+      requestBase: number;
+      listFullScan: number;
+      listIncremental: number;
+      download: number;
+    };
   };
   queue: {
     maxListings: number;
@@ -299,16 +370,8 @@ export const config: AppConfig = {
   cache: {
     maxItems: +(Deno.env.get("CACHE_MAX_ITEMS") || 500),
     maxAge: +(Deno.env.get("CACHE_MAX_AGE") || 3600),
-    reqPerIP: parseInt(
-      Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0",
-      10,
-    ),
-    actionReqPerIP: parseInt(
-      Deno.env.get("RATE_LIMIT_ACTION_MAX_REQUESTS") ?? "0",
-      10,
-    ),
-    actionWindowSec: +(Deno.env.get("ACTION_WINDOW_SEC") || 3600),
   },
+  rateLimit: buildRateLimitConfig(),
   queue: {
     // Parallelims be damned, I don't care.
     maxListings: +(Deno.env.get("MAX_LISTINGS") || 1),

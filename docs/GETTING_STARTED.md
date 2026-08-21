@@ -361,11 +361,54 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | `SECRET_KEY`                     | —       | Direct JWT key (fallback)                                                        |
 | `ALLOW_REGISTRATION`             | `true`  | Allow new user sign-ups                                                          |
 | `MAX_USERS`                      | `15`    | Maximum number of allowed user accounts                                          |
-| `RATE_LIMIT_GLOBAL_MAX_REQUESTS` | `10`    | Rate limit: max requests per IP per window. Set to 0 to disable throttling.      |
-| `RATE_LIMIT_ACTION_MAX_REQUESTS` | `10`    | Rate limit: max requests for actions per window. Set to 0 to disable throttling. |
-| `CACHE_MAX_AGE`                  | `3600`  | Rate limit window in seconds                                                     |
-| `CACHE_MAX_ITEMS`                | `100`   | Max entries in the rate limit cache in memory                                    |
-| `ACTION_WINDOW_SEC`              | `3600`  | Rate limit window for specific actions in seconds                                |
+| `CACHE_MAX_AGE`                  | `3600`  | User/session cache TTL in seconds                                                |
+| `CACHE_MAX_ITEMS`                | `100`   | Max entries in the in-memory cache                                               |
+
+### Rate limiting
+
+Throttling runs in two tiers.
+
+The **admission** tier runs before authentication, so it can only key on the
+client address and count requests. Its job is to stop an unauthenticated flood.
+
+The **work** tier runs after the request body is parsed and the user is
+verified, and charges in units of *queued work* rather than requests — so one
+`/list` call carrying 200 URLs is priced as 200 listings, not as one request.
+This is the tier that matters, because `MAX_LISTINGS`/`MAX_DOWNLOADS` already
+cap concurrency: the risk a request counter cannot see is unbounded queue
+depth.
+
+Every budget is *units per period*. Set any `*_BURST` to `0` to disable that
+tier. Defaults sit well above realistic interactive use and above what the E2E
+suite generates, so normal sessions and test runs never see a `429`.
+
+| Variable                             | Default | Description                                                       |
+| :----------------------------------- | :------ | :---------------------------------------------------------------- |
+| `RATE_LIMIT_AUTH_BURST`              | `30`    | Admission budget for `/login` and `/register` (brute-force surface) |
+| `RATE_LIMIT_AUTH_REFILL`             | `30`    | Units restored per auth period                                     |
+| `RATE_LIMIT_AUTH_PERIOD_SEC`         | `3600`  | Auth refill period in seconds                                      |
+| `RATE_LIMIT_PUBLIC_BURST`            | `240`   | Admission budget for `/isregallowed`, called on every page load    |
+| `RATE_LIMIT_PUBLIC_REFILL`           | `240`   | Units restored per public period                                   |
+| `RATE_LIMIT_PUBLIC_PERIOD_SEC`       | `3600`  | Public refill period in seconds                                    |
+| `RATE_LIMIT_ACTION_BURST`            | `600`   | Admission budget for `/list` and `/download`                       |
+| `RATE_LIMIT_ACTION_REFILL`           | `600`   | Units restored per action period                                   |
+| `RATE_LIMIT_ACTION_PERIOD_SEC`       | `3600`  | Action refill period in seconds                                    |
+| `RATE_LIMIT_WORK_BURST`              | `3000`  | Per-user budget in units of queued work                            |
+| `RATE_LIMIT_WORK_REFILL`             | `3000`  | Work units restored per period                                     |
+| `RATE_LIMIT_WORK_PERIOD_SEC`         | `3600`  | Work refill period in seconds                                      |
+| `RATE_LIMIT_WEIGHT_BASE`             | `1`     | Flat cost charged per request                                      |
+| `RATE_LIMIT_WEIGHT_LIST_FULL`        | `10`    | Cost per URL for a `Full`/`Refresh` listing (walks a whole playlist) |
+| `RATE_LIMIT_WEIGHT_LIST_INCREMENTAL` | `2`     | Cost per URL for a `Start`/`End` listing (head or tail only)        |
+| `RATE_LIMIT_WEIGHT_DOWNLOAD`         | `1`     | Cost per URL for a download (bounded per video, explicitly requested) |
+
+At the defaults, a user can queue roughly 3000 downloads, or 300 full playlist
+re-scans, per hour before being throttled. Budget refills smoothly rather than
+resetting on a window edge, and a rejected request returns `429` with a
+`Retry-After` header.
+
+The work budget is keyed on the **authenticated user**, not the address, so a
+reverse proxy collapsing every client onto one source IP does not make users
+share a budget.
 
 ### Iwara (Optional)
 
