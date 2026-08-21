@@ -7,12 +7,6 @@ name: Release
 # there is no second copy of the version to drift out of step. The git tag is the single source
 # of truth and the image tags are derived from it.
 #
-# The repo has no git tags yet, though GHCR already carries `1.2.0` and `1` from a hand-built
-# push. Seed the history to match before the first automated bump, or the first `feat:` will
-# cut v0.1.0 and publish an image that looks older than what is already there:
-#
-#   git tag v1.2.0 <the commit that built it> && git push origin v1.2.0
-#
 # Note the image build is *called*, not triggered. A tag pushed with GITHUB_TOKEN does not
 # start another workflow run, so `on: push: tags` in docker-build-and-push.yml would never fire.
 
