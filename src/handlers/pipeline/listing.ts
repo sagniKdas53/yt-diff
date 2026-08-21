@@ -35,15 +35,14 @@ import type {
   VideoUpsertData,
 } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { truncateText, urlToTitle } from "./process-manager.ts";
+import { join } from "../../utils/path.ts";
 import {
+  appendUrlArg,
   hasEphemeralThumbnails,
   isSiteXDotCom,
   normalizeUrl,
-  truncateText,
-  urlToTitle,
-} from "./process-manager.ts";
-import { join } from "../../utils/path.ts";
-import { appendUrlArg } from "../../utils/url.ts";
+} from "../../utils/url.ts";
 
 export function createListingFlow(
   deps: PipelineHandlerDependencies,

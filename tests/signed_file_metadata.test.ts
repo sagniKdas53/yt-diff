@@ -1,5 +1,5 @@
 import { assertEquals } from "std/assert/mod.ts";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 import { getSignedFileMetadata } from "../src/routes/helpers/getSignedFileMetadata.ts";
 
 const CACHE_MAX_AGE = 3600;

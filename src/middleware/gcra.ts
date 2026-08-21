@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 /**
  * Generic Cell Rate Algorithm (GCRA) rate limiting.

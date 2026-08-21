@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 import jwt from "jsonwebtoken";
 import type { Socket } from "socket.io";
 import { Server } from "socket.io";

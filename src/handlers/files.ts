@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
