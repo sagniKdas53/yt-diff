@@ -70,7 +70,10 @@ export function createFileHandlers({
       `signed:${signedUrlId}`,
       JSON.stringify({
         filePath: absPath,
-        mimeType: mimeTypes.get(extname(absPath)) || "application/octet-stream",
+        // Lowercased: extname preserves the case on disk, and a file named
+        // "Clip.MP4" is still video/mp4.
+        mimeType: mimeTypes.get(extname(absPath).toLowerCase()) ||
+          "application/octet-stream",
         expiry,
       }),
       "EX",

@@ -24,6 +24,80 @@ export function isHttpUrl(text: string): boolean {
 }
 
 /**
+ * True when a hostname is worth handing to yt-dlp.
+ *
+ * Only used on the scheme-less path, to tell `youtube.com/watch?v=…` (a URL a
+ * person pasted without typing the scheme) from `notaurl` (a typo). A dot, the
+ * literal `localhost`, or a bracketed IPv6 literal is the same bar a browser
+ * omnibox applies.
+ */
+function isPlausibleHost(hostname: string): boolean {
+  return hostname.length > 0 &&
+    (hostname.includes(".") || hostname === "localhost" ||
+      hostname.startsWith("["));
+}
+
+/**
+ * Normalizes submitted text into a serialized http(s) URL, or returns null.
+ *
+ * People paste `youtube.com/watch?v=…` far more often than they type the
+ * scheme, and yt-dlp accepts that across its ~2,500 supported sites, so
+ * demanding an explicit scheme would be a usability regression for no security
+ * gain. What C1 actually needs is the *output* invariant: whatever comes back
+ * from here is a URL serialization beginning with `http://` or `https://`, so
+ * it can never be read as an option no matter which argv it lands in.
+ *
+ * Rejected: anything starting with `-`, any other scheme (`file:`, `data:`,
+ * `javascript:`), and yt-dlp's own non-URL prefix forms (`ytsearch:`,
+ * `:ytfav`, `gvsearch:` and the ~20 others). Those last ones are deliberate —
+ * this app keys playlists by URL, and the account-scoped ones (`:ytfav`,
+ * `:ytsubs`, `:ythistory`) would read the operator's cookies on behalf of
+ * whoever submitted them.
+ *
+ * The bot path keeps the stricter `isHttpUrl` instead: in a chat stream a bare
+ * word has to stay chatter rather than silently become a submission.
+ */
+export function toHttpUrl(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  // An argv element must never begin with a hyphen. This is also what stops
+  // `--config-location=/tmp/x` from being laundered by the scheme-prefixing
+  // branch below, where it would otherwise parse with `--config-location=` as
+  // its hostname.
+  if (trimmed.startsWith("-")) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+  } catch {
+    // Falls through: no scheme at all.
+  }
+
+  // A parse that succeeded with some other protocol still lands here, because
+  // `example.com:8443/v` parses as scheme `example.com:` rather than as a
+  // host and a port. Prefixing sorts the two apart — a real scheme like
+  // `file:` ends up as a dot-less hostname and fails isPlausibleHost, while
+  // `ytsearch:cats` fails to parse at all because `cats` is not a port.
+  try {
+    const parsed = new URL(`https://${trimmed}`);
+    if (parsed.protocol === "https:" && isPlausibleHost(parsed.hostname)) {
+      return parsed.href;
+    }
+  } catch {
+    // Not recoverable as a URL.
+  }
+
+  return null;
+}
+
+/**
  * Appends `url` to a `yt-dlp` argv behind a literal `--` terminator.
  *
  * `--` closes option parsing, so everything after it is positional no matter

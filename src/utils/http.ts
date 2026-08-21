@@ -21,6 +21,30 @@ export const MIME_TYPES: Record<string, string> = {
   ".webm": "video/webm",
   ".mkv": "video/x-matroska",
   ".avi": "video/x-msvideo",
+  // The rest of what yt-dlp actually writes. Without these an audio-only
+  // download or a thumbnail is served as application/octet-stream, which the
+  // player cannot use and which forces a download instead of inline playback.
+  ".mov": "video/quicktime",
+  ".flv": "video/x-flv",
+  ".m4v": "video/x-m4v",
+  ".3gp": "video/3gpp",
+  ".mpg": "video/mpeg",
+  ".mpeg": "video/mpeg",
+  ".m4a": "audio/mp4",
+  ".mp3": "audio/mpeg",
+  ".opus": "audio/opus",
+  ".ogg": "audio/ogg",
+  ".oga": "audio/ogg",
+  ".flac": "audio/flac",
+  ".wav": "audio/wav",
+  ".aac": "audio/aac",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".avif": "image/avif",
+  ".ass": "text/plain; charset=utf-8",
+  ".lrc": "text/plain; charset=utf-8",
 };
 
 export const CORS_ALLOWED_ORIGINS = [

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { HttpResponseLike } from "../transport/http.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
-import { isHttpUrl } from "../utils/url.ts";
+import { toHttpUrl } from "../utils/url.ts";
 import { logger } from "../logger.ts";
 
 type BodyHandler<T> = (data: T, res: HttpResponseLike) => unknown;
@@ -38,11 +38,23 @@ export function validateBody<T>(
  * yt-dlp parses any argument starting with `-` as an option, so a plain
  * `z.string()` here let a body like `{"urlList":["--config-location=/tmp/x"]}`
  * reach the subprocess argv as a flag. The argv builders now also pass `--`
- * before the URL; this is the other half of that fix, and it is the same
- * check the bot path has always run.
+ * before the URL; this is the other half of that fix.
+ *
+ * This parses rather than merely validates: scheme-less input is accepted and
+ * comes out with a scheme attached, so `youtube.com/watch?v=…` still works
+ * while the value reaching argv is always a serialized http(s) URL. See
+ * `toHttpUrl` for what stays rejected and why.
  */
-const HttpUrlSchema = z.string().refine(isHttpUrl, {
-  message: "Must be an http(s) URL",
+const HttpUrlSchema = z.string().transform((value, ctx) => {
+  const normalized = toHttpUrl(value);
+  if (normalized === null) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Must be an http(s) URL",
+    });
+    return z.NEVER;
+  }
+  return normalized;
 });
 
 /**
@@ -111,10 +123,21 @@ export const ReindexAllRequestBodySchema = z.object({
 
 export const SignedFileRequestBodySchema = z.object({
   saveDirectory: z.string().optional(),
-  fileName: z.string().regex(
-    /^[^\\/]+$/,
-    "File name must not contain directory traversal segments",
-  ),
+  // Deliberately permissive about the name itself: yt-dlp writes spaces,
+  // unicode, emoji and multi-dot extensions, and every one of those has to
+  // keep resolving. What is excluded is only what cannot name a real file
+  // here — path separators, control characters (which would also forge log
+  // lines), and the two path-segment references, which `basename` preserves
+  // and which resolve to a directory rather than to a file.
+  fileName: z.string()
+    .regex(
+      /^[^\\/\p{Cc}]+$/u,
+      "File name must not contain path separators or control characters",
+    )
+    .refine(
+      (name) => name !== "." && name !== "..",
+      "File name must not be a path-segment reference",
+    ),
 });
 
 export const RefreshSignedUrlRequestBodySchema = z.object({

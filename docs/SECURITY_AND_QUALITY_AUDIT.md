@@ -94,12 +94,13 @@ no URL to fire on.
 
 **Fix — both layers, not one.** Both shipped together:
 
-- `looksLikeUrl` moved out of `src/bot/commands.ts` into `src/utils/url.ts` as
-  `isHttpUrl`, so the bot and the HTTP boundary now run the same check rather
-  than only the bot having one.
-- `urlList` on `/list` and `/download` is `z.array(HttpUrlSchema)` — every
-  element must parse as a URL with an `http:`/`https:` protocol, which rejects
-  anything starting with `-` before it reaches a handler.
+- `looksLikeUrl` moved out of `src/bot/commands.ts` into `src/utils/url.ts`,
+  which is now the one place URL admissibility is decided for both paths.
+- `urlList` on `/list` and `/download` is `z.array(HttpUrlSchema)`, a schema
+  that **parses rather than validates**: `toHttpUrl` returns a serialized
+  `http(s)` URL or nothing. The invariant it establishes is about the output,
+  not the input — every value that leaves the boundary begins with a scheme,
+  so nothing downstream can read it as an option.
 - All three argv builders go through `appendUrlArg`, which appends the URL
   behind a literal `"--"`. `--` closes yt-dlp's option parsing, so a URL that
   already sits in the database from before this fix still cannot become a flag.
@@ -107,6 +108,21 @@ no URL to fire on.
 The second layer matters on its own: the scheduled updater and the download
 path read URLs from the database, not from the request, so the schema alone
 would not have covered a row poisoned by an earlier exploit.
+
+**What stays accepted.** Scheme-less input is normalized rather than refused —
+`youtube.com/watch?v=…` is how people paste URLs, and yt-dlp accepts it across
+its ~2,500 supported sites. Host-and-port forms (`example.com:8443/v`),
+IP literals, IPv6 brackets and internationalized domains all survive; the
+`bot/commands.ts` path deliberately keeps the stricter `isHttpUrl`, because in
+a chat stream a bare word has to stay chatter rather than become a submission.
+
+**What stays rejected.** Anything beginning with `-`, any other scheme
+(`file:`, `data:`, `javascript:`), text that is not a URL at all, and yt-dlp's
+own non-URL prefix forms — `ytsearch:`, `scsearch:`, `:ytfav`, `:ytsubs`,
+`:ythistory` and the roughly twenty others. That last exclusion is a choice,
+not an oversight: this app keys playlists by URL, and the account-scoped
+keywords would spend the operator's cookies on behalf of whoever submitted
+them.
 
 ---
 
@@ -370,7 +386,13 @@ Two boundary behaviours changed as a result, both at endpoints that already
 rejected the input, only later and with a different message:
 
 - A `/makesignedurls` entry with no `fileName` used to be skipped silently;
-  the whole request is now a 400, matching the single-file endpoint.
+  the whole request is now a 400, matching the single-file endpoint. The name
+  rule itself stayed deliberately permissive — spaces, unicode, emoji,
+  multi-dot extensions, a leading dot and no extension at all are all names
+  yt-dlp writes, and all still resolve. It gained only what cannot name a file
+  here: control characters, and the `.`/`..` segment references, which
+  `basename` preserves and which resolved to a *directory* inside the save
+  root rather than failing.
 - Fields that handlers rejected by hand now fail in `validateBody`, so the
   response body is the generic `Invalid payload` shape rather than a
   per-field message.
