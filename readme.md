@@ -108,9 +108,25 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
 
 ### Pre-built Image
 
+Published to both registries on every merge to `master`, and public — no login needed to pull.
+
+```bash
+docker pull ghcr.io/sagnikdas53/yt-diff:latest
+docker pull purevert/yt-diff:latest
 ```
-ghcr.io/sagnikdas53/yt-diff:master
-```
+
+| Tag | Points at | Use it for |
+| --- | --- | --- |
+| `latest` | current `master` | Deployments. This is the tag Watchtower follows, and what `docker-compose.yml` references. |
+| `master`, `main` | current `master` | Aliases of `latest`. Both exist so neither branch-name guess fails. |
+| `1.3.0` | that release | Pinning to an exact version. Note there is **no** leading `v`; the git tag is `v1.3.0` but `docker/metadata-action` strips it. |
+| `1.3` / `1` | newest 1.3.x / 1.x | Auto-updating within a minor or major line. |
+| `sha-a1b2c3d` | one commit | Rollback to a specific build. Kept for 7 days. |
+
+Both images are `linux/amd64` and `linux/arm64`. Version tags are cut automatically from
+[Conventional Commits](https://www.conventionalcommits.org/): a `feat:` on `master` bumps the
+minor, a `fix:` bumps the patch, `BREAKING CHANGE:` bumps the major, and a merge with no
+conventional prefix does not cut a release.
 
 ### Local Development
 

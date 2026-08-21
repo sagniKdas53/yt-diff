@@ -1,16 +1,46 @@
 name: Build and Push Docker Image
 
+# Two entry points, deliberately:
+#
+#   push        — every merge to master, moving `latest`/`master`/`main`.
+#   workflow_call — invoked by release.yml after it cuts a vX.Y.Z tag, to publish the semver
+#                 tags for that release.
+#
+# The `on: push: tags: ["v*"]` this used to carry could not work with an automated release: a
+# tag pushed by a workflow using GITHUB_TOKEN never triggers another workflow (GitHub's
+# recursion guard), so the release tag would silently publish nothing. Being called directly
+# sidesteps that without needing a PAT.
+#
+# Pruning used to live in this job. It now has its own scheduled workflow — see
+# prune-images.yml — because pruning before the build meant a failed build still deleted
+# images, and `keep-last` counted the set before the new push rather than after it.
+
 on:
   push:
     branches:
       - master
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      version:
+        description: "Semver with no leading v (e.g. 1.3.0). When set, publishes X.Y.Z, X.Y and X alongside latest."
+        type: string
+        required: true
+  workflow_dispatch:
 
 env:
   GHCR_REGISTRY: ghcr.io
   DOCKERHUB_USERNAME: purevert
   IMAGE_NAME: ${{ github.repository }}
+
+# A release commit fires this twice: once from `push` (it touched the image) and once from
+# release.yml's call, for the semver tags. One shared group with no cancellation serialises
+# them, so they cannot race for the `latest` pointer. Cancelling is deliberately off: with
+# cancel-in-progress a later merge would kill an in-flight release build, which is the one
+# build that must not be lost. Both runs build the same commit and the second simply re-points
+# the same tags, so the cost is cache-warm CI minutes, not correctness.
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
@@ -50,71 +80,36 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            latest=true
+          # `main` is published alongside `master` on purpose. This repo's default branch is
+          # `master` while manga-tl's is `main`; publishing both aliases in both projects means
+          # neither name can be the wrong guess. A tag is a pointer, so it costs no storage.
+          #
+          # The old `type=schedule` and `type=ref,event=pr` entries are gone: this workflow has
+          # no schedule trigger and no longer runs on pull_request (docker-build-pr.yml does
+          # that, without pushing), so neither ever produced a tag. The stale `pr-1`…`pr-13`
+          # tags in GHCR predate that split and are reclaimed by prune-images.yml.
           tags: |
-            type=schedule,pattern={{date 'YYYYMMDD-HHmmss' tz='UTC'}}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{major}}.{{minor}}.{{patch}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=master,enable={{is_default_branch}}
+            type=raw,value=main,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=semver,pattern={{major}}.{{minor}}.{{patch}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
       - name: Extract metadata for Docker Hub
         id: meta-dockerhub
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.DOCKERHUB_USERNAME }}/yt-diff
-          flavor: |
-            latest=true
           tags: |
-            type=schedule,pattern={{date 'YYYYMMDD-HHmmss' tz='UTC'}}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{major}}.{{minor}}.{{patch}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}
-
-      - name: Prune Old Images from GHCR
-        uses: vlaurin/action-ghcr-prune@v0.6.0
-        with:
-          token: ${{ secrets.PRUNE_TOKEN }}
-          user: ${{ github.repository_owner }}
-          container: yt-diff
-          dry-run: false
-          keep-younger-than: 7
-          keep-last: 10
-          prune-untagged: true
-          keep-tags-regexes: |
-            ^v[0-9]+\.[0-9]+\.[0-9]+
-            ^master$
-            ^dev$
-          prune-tags-regexes: |
-            ^sha-
-
-      - name: Prune Old Images from Docker Hub
-        uses: lostlink/docker-cleanup@v1.0.1
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          # If this is a personal repo, 'organization' is your username
-          organization: ${{ github.repository_owner }}
-          repositories: "yt-diff"
-          # 1. Global retention for anything not matched by patterns below
-          # (Matches your 'keep-younger-than: 7')
-          sha-retention-days: 7
-          # 2. Protected tags (Never delete)
-          # (Matches your '^master$' and '^dev$')
-          protected-tags: "master,dev,latest"
-          # 3. Custom regex patterns with retention days
-          # (Matches your '^v[0-9]+...' and '^sha-')
-          custom-patterns: |
-            {
-              "^v[0-9]+\\.[0-9]+\\.[0-9]+$": 365,
-              "^sha-.*": 7
-            }
-          dry-run: true
-          verbose: true
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=master,enable={{is_default_branch}}
+            type=raw,value=main,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=semver,pattern={{major}}.{{minor}}.{{patch}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
       - name: Build and push to both registries
         uses: docker/build-push-action@v7
@@ -125,7 +120,13 @@ jobs:
           tags: |
             ${{ steps.meta-ghcr.outputs.tags }}
             ${{ steps.meta-dockerhub.outputs.tags }}
+          # Was missing entirely, so the GHCR package carried no
+          # org.opencontainers.image.source and was not linked back to this repository.
+          labels: ${{ steps.meta-ghcr.outputs.labels }}
           platforms: linux/amd64,linux/arm64
+          # Every push otherwise minted two `unknown/unknown` attestation manifests that no tag
+          # references and nothing reclaims. Drop this line to get SLSA provenance back.
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |

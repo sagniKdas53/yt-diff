@@ -1,0 +1,79 @@
+name: Prune old images
+
+# Extracted from docker-build-and-push.yml, where it ran *before* the build in the same job:
+# a failed build still deleted images, and `keep-last` counted the set before the new push.
+#
+# Requires a PRUNE_TOKEN secret: a classic PAT with `delete:packages`. GITHUB_TOKEN cannot
+# delete user-scoped packages.
+
+on:
+  schedule:
+    # Sundays, 04:00 UTC.
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted without deleting it"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune old images from GHCR
+        uses: vlaurin/action-ghcr-prune@v0.6.0
+        with:
+          token: ${{ secrets.PRUNE_TOKEN }}
+          user: ${{ github.repository_owner }}
+          container: yt-diff
+          # Scheduled runs prune for real; a manual run defaults to a dry run so the delete
+          # list can be read first. The `&&` short-circuits to false on the schedule event,
+          # where `inputs` is empty.
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          keep-younger-than: 7
+          keep-last: 10
+          # Multi-arch pushes leave manifests behind that no tag references.
+          prune-untagged: true
+          # This list used to read `^v[0-9]+\.[0-9]+\.[0-9]+` and so protected nothing:
+          # docker/metadata-action strips the leading v, so the published tag is `1.2.0`, never
+          # `v1.2.0`. Release images survived only incidentally, via keep-last.
+          keep-tags-regexes: |
+            ^latest$
+            ^master$
+            ^main$
+            ^dev$
+            ^[0-9]+$
+            ^[0-9]+\.[0-9]+$
+            ^[0-9]+\.[0-9]+\.[0-9]+$
+          # `^pr-` reclaims the stale pr-1…pr-13 tags left from when this workflow still ran on
+          # pull_request. Nothing matched them before, so they were immortal.
+          prune-tags-regexes: |
+            ^sha-
+            ^pr-
+            ^[0-9a-f]{40}$
+
+      - name: Prune old images from Docker Hub
+        uses: lostlink/docker-cleanup@v1.0.1
+        with:
+          # Was `${{ secrets.DOCKERHUB_USERNAME }}` / `organization: ${{ github.repository_owner }}`,
+          # i.e. `sagniKdas53` — but the Docker Hub repository is `purevert/yt-diff`. The step
+          # addressed an account that does not exist, so it would have 404'd even with dry-run
+          # off. Both fields now match the login in docker-build-and-push.yml.
+          username: purevert
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          organization: purevert
+          repositories: "yt-diff"
+          sha-retention-days: 7
+          protected-tags: "master,main,dev,latest"
+          custom-patterns: |
+            {
+              "^[0-9]+\\.[0-9]+\\.[0-9]+$": 365,
+              "^sha-.*": 7
+            }
+          # Was hardcoded `true`, so this step had never actually deleted anything.
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          verbose: true
