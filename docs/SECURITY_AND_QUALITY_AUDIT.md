@@ -21,6 +21,10 @@ review rubrics — `thermo-nuclear-review` (correctness and security) and
 Findings marked **Verified** were independently re-traced end-to-end against
 the source after the review passes reported them.
 
+Line references are valid at the commits above. `master` has advanced since the
+snapshot — where a finding has been addressed in the meantime, the status table
+says so.
+
 ## Status
 
 | ID | Finding | Severity | Status |
@@ -308,10 +312,10 @@ advisory. `deno.json` additionally scoped `check`/`lint`/`fmt` to
 `index.ts src/`, so `scripts/` (1,318 lines) and `tests/` were never
 type-checked even locally.
 
-**Partly fixed.** Commits on the review branch add a unit-test CI job and widen
-the `check`/`lint`/`fmt` globs to include `tests/`. Still outstanding: the
-frontend suite and `npm run lint` are not run by CI, and `scripts/` remains
-outside the globs.
+**Partly fixed on `master` since the audit snapshot.** `run-tests.yml` now has a
+Unit Tests job, and `deno.json` widens the `check`/`lint`/`fmt` globs to
+`index.ts src/ tests/`. Still outstanding: the frontend vitest suite and
+`npm run lint` are not run by CI, and `scripts/` remains outside the globs.
 
 ### Q6 — No shared API contract
 
