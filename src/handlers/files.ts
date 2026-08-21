@@ -3,7 +3,7 @@ import type Redis from "ioredis";
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { HttpResponseLike } from "../transport/http.ts";
-import { exists } from "../utils/fs.ts";
+import { isFile } from "../utils/fs.ts";
 import {
   basename,
   extname,
@@ -23,6 +23,19 @@ export interface SignedFileRequestBody {
   fileName: string;
 }
 
+/**
+ * One entry of a bulk request.
+ *
+ * `fileName` is optional here and required on the single-file endpoint on
+ * purpose: the caller batches one entry per row on screen, including videos it
+ * has not downloaded yet and so cannot name. Those are skipped, not fatal to
+ * the batch — the same contract as the null entries in the response.
+ */
+export interface BulkSignedFileRequest {
+  saveDirectory?: string;
+  fileName?: string;
+}
+
 export interface RefreshSignedUrlRequestBody {
   fileId: string;
 }
@@ -32,7 +45,7 @@ export interface BulkRefreshSignedUrlsRequestBody {
 }
 
 export interface BulkSignedFilesRequestBody {
-  files: SignedFileRequestBody[];
+  files: BulkSignedFileRequest[];
 }
 
 export interface BulkSignedFileResponseEntry {
@@ -113,7 +126,7 @@ export function createFileHandlers({
       resolved: resolvedPath,
       saveRoot,
     });
-    if (!(await exists(resolvedPath))) {
+    if (!(await isFile(resolvedPath))) {
       response.writeHead(400, generateCorsHeaders(jsonMimeType));
       return response.end(
         JSON.stringify({
@@ -207,6 +220,7 @@ export function createFileHandlers({
 
     for (const file of requestBody.files) {
       const { saveDirectory, fileName } = file;
+      if (!fileName) continue;
 
       const joined = join(
         config.saveLocation,
@@ -217,7 +231,7 @@ export function createFileHandlers({
       const saveRoot = resolve(config.saveLocation);
 
       if (
-        !isWithinPath(saveRoot, resolvedPath) || !(await exists(resolvedPath))
+        !isWithinPath(saveRoot, resolvedPath) || !(await isFile(resolvedPath))
       ) {
         results.set(fileName, null);
         continue;

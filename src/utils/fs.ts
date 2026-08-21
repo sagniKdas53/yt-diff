@@ -69,6 +69,25 @@ export async function exists(filePath: string): Promise<boolean> {
   }
 }
 
+/**
+ * True when the path exists *and* is a regular file.
+ *
+ * `exists` is not enough for anything that will later be opened and streamed:
+ * `Deno.stat` succeeds on a directory, so a signed URL could be minted for one
+ * and the serve path would then send a Content-Length taken from the directory
+ * entry before failing EISDIR partway through the body.
+ */
+export async function isFile(targetPath: string): Promise<boolean> {
+  try {
+    return (await Deno.stat(targetPath)).isFile;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export async function readdir(dirPath: string): Promise<string[]> {
   const files: string[] = [];
   for await (const entry of Deno.readDir(dirPath)) {

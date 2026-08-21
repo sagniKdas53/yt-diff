@@ -334,11 +334,27 @@ Deno.test("validator - signed-file schemas require their identifiers", () => {
     false,
   );
   assertEquals(BulkSignedFilesRequestBodySchema.safeParse({}).success, false);
+});
 
-  // Entries inside a bulk request carry the same requirement as a single one.
+Deno.test("validator - bulk signed files stay partial-success", () => {
+  // The caller batches one entry per row on screen, including videos it has
+  // not downloaded and so cannot name. Those entries are skipped by the
+  // handler, not fatal to the batch — the response already carries a null per
+  // entry it could not resolve.
   assertEquals(
     BulkSignedFilesRequestBodySchema.safeParse({
-      files: [{ saveDirectory: "dir" }],
+      files: [
+        { saveDirectory: "dir", fileName: "downloaded.mp4" },
+        { saveDirectory: "dir" },
+      ],
+    }).success,
+    true,
+  );
+
+  // The name rules still apply to entries that do carry a name.
+  assertEquals(
+    BulkSignedFilesRequestBodySchema.safeParse({
+      files: [{ fileName: "../escape.mp4" }],
     }).success,
     false,
   );
@@ -407,5 +423,13 @@ Deno.test("validator - bulk signed files carry the same name rules", () => {
       files: [{ fileName: "ok.mp4" }, { fileName: "../escape.mp4" }],
     }).success,
     false,
+  );
+
+  // A bare directory name clears every rule here — nothing in a string can
+  // say "this is a file". That is what the isFile stat in the handler is for.
+  assertEquals(
+    SignedFileRequestBodySchema.safeParse({ fileName: "Some Playlist" })
+      .success,
+    true,
   );
 });

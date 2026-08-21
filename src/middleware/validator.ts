@@ -63,6 +63,27 @@ const HttpUrlSchema = z.string().transform((value, ctx) => {
  */
 const PlaylistKeySchema = z.string().min(1, "Playlist URL is required");
 
+/**
+ * A single path segment naming a file inside the save root.
+ *
+ * Deliberately permissive about the name itself: yt-dlp writes spaces,
+ * unicode, emoji and multi-dot extensions, and every one of those has to keep
+ * resolving. What is excluded is only what cannot name a file here — path
+ * separators, control characters (which would also forge log lines), and the
+ * two path-segment references, which `basename` preserves. The handlers still
+ * stat the result with `isFile`, since a plain directory name passes all of
+ * this and must not be servable either.
+ */
+const FileNameSchema = z.string()
+  .regex(
+    /^[^\\/\p{Cc}]+$/u,
+    "File name must not contain path separators or control characters",
+  )
+  .refine(
+    (name) => name !== "." && name !== "..",
+    "File name must not be a path-segment reference",
+  );
+
 // Specific Schemas
 
 export const ListingRequestBodySchema = z.object({
@@ -123,21 +144,7 @@ export const ReindexAllRequestBodySchema = z.object({
 
 export const SignedFileRequestBodySchema = z.object({
   saveDirectory: z.string().optional(),
-  // Deliberately permissive about the name itself: yt-dlp writes spaces,
-  // unicode, emoji and multi-dot extensions, and every one of those has to
-  // keep resolving. What is excluded is only what cannot name a real file
-  // here — path separators, control characters (which would also forge log
-  // lines), and the two path-segment references, which `basename` preserves
-  // and which resolve to a directory rather than to a file.
-  fileName: z.string()
-    .regex(
-      /^[^\\/\p{Cc}]+$/u,
-      "File name must not contain path separators or control characters",
-    )
-    .refine(
-      (name) => name !== "." && name !== "..",
-      "File name must not be a path-segment reference",
-    ),
+  fileName: FileNameSchema,
 });
 
 export const RefreshSignedUrlRequestBodySchema = z.object({
@@ -149,7 +156,16 @@ export const BulkRefreshSignedUrlsRequestBodySchema = z.object({
 });
 
 export const BulkSignedFilesRequestBodySchema = z.object({
-  files: z.array(SignedFileRequestBodySchema),
+  // The bulk endpoint is partial-success by design — its response already
+  // carries a null per entry it could not resolve — and the caller batches one
+  // entry per row on screen, including videos it has not downloaded yet and so
+  // cannot name. Requiring `fileName` per entry would fail a whole batch over
+  // one such row, so unnamed entries stay skippable. The name rules are
+  // shared, so the two endpoints cannot drift.
+  files: z.array(z.object({
+    saveDirectory: z.string().optional(),
+    fileName: FileNameSchema.optional(),
+  })),
 });
 
 export const UserAuthSchema = z.object({

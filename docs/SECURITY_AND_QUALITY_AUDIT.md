@@ -124,6 +124,16 @@ not an oversight: this app keys playlists by URL, and the account-scoped
 keywords would spend the operator's cookies on behalf of whoever submitted
 them.
 
+**One migration consideration.** `playlistUrl` is a primary key, and before
+this change a scheme-less submission was stored verbatim — `normalizeUrl`
+passed unparseable input straight through, and `playlistRegex` matches without
+a scheme. Such rows keep working, because the scheduled updater reads them from
+the database and yt-dlp accepts them. But re-submitting the same scheme-less
+text now normalizes it, so `findOrCreate` inserts a second row alongside the
+old one. The existing `/dedup` tooling is the remedy; this is a further
+argument for **Q2**, which is about the two canonicalizers disagreeing in
+exactly this way.
+
 ---
 
 ### S1 — Action rate limiting ships disabled
@@ -382,20 +392,29 @@ request interfaces were narrowed to match, so a dozen downstream
 presence-guards deleted themselves. C1's scheme refinement landed on the same
 schemas.
 
-Two boundary behaviours changed as a result, both at endpoints that already
-rejected the input, only later and with a different message:
+One boundary behaviour changed as a result, at endpoints that already rejected
+the input, only later: checks the handlers ran by hand now fail in
+`validateBody`, so the response body is the generic `Invalid payload` shape
+rather than a per-field message.
 
-- A `/makesignedurls` entry with no `fileName` used to be skipped silently;
-  the whole request is now a 400, matching the single-file endpoint. The name
-  rule itself stayed deliberately permissive — spaces, unicode, emoji,
-  multi-dot extensions, a leading dot and no extension at all are all names
-  yt-dlp writes, and all still resolve. It gained only what cannot name a file
-  here: control characters, and the `.`/`..` segment references, which
-  `basename` preserves and which resolved to a *directory* inside the save
-  root rather than failing.
-- Fields that handlers rejected by hand now fail in `validateBody`, so the
-  response body is the generic `Invalid payload` shape rather than a
-  per-field message.
+The signed-file endpoints needed care rather than a blanket tightening.
+`fileName` is required on `/makesignedurl` but stays optional per entry on the
+bulk endpoint, which is partial-success by design — its response already
+carries a null per entry it could not resolve, and the caller batches one row
+per video on screen, including ones it has not downloaded and so cannot name.
+The name rules themselves are shared between the two, and stayed deliberately
+permissive: spaces, unicode, emoji, multi-dot extensions, a leading dot and no
+extension at all are all names yt-dlp writes. They gained only what cannot name
+a file here — control characters, and the `.`/`..` segment references.
+
+That last one exposed a separate pre-existing bug. `exists()` is a `Deno.stat`
+wrapper, so it is true for **directories**: any bare directory name — `..`, or
+simply a playlist folder listed by `/getplay` — minted a signed URL inside the
+containment check, and the serve path then sent a `Content-Length` taken from
+the directory entry before failing `EISDIR` partway through the body. No string
+rule can fix that, since a directory name is a perfectly valid file name; both
+minting paths now stat with `isFile`.
+
 
 ### Q8 — Non-atomic triple write and raw interpolated SQL in the hot ingest path
 
