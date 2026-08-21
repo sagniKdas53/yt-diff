@@ -211,3 +211,118 @@ Deno.test("validator - QueueStatusRequestBodySchema parsing", () => {
   const result = QueueStatusRequestBodySchema.safeParse({});
   assertEquals(result.success, true);
 });
+
+// --- C1 / Q7: the /list and /download boundary ------------------------------
+//
+// Every element of urlList reaches a yt-dlp argv as a positional argument, and
+// normalizeUrl hands unparseable strings straight through. These cases pin the
+// schema half of that fix; tests/url.test.ts pins the "--" half.
+
+Deno.test("validator - ListingRequestBodySchema requires urlList", () => {
+  assertEquals(ListingRequestBodySchema.safeParse({}).success, false);
+  assertEquals(
+    ListingRequestBodySchema.safeParse({ chunkSize: 5 }).success,
+    false,
+  );
+});
+
+Deno.test("validator - ListingRequestBodySchema rejects argument injection", () => {
+  const payloads = [
+    "--config-location=/tmp/planted.conf",
+    "--exec=touch /tmp/pwned",
+    "-o/tmp/out.%(ext)s",
+    "file:///etc/passwd",
+    "not a url",
+  ];
+
+  for (const payload of payloads) {
+    const result = ListingRequestBodySchema.safeParse({ urlList: [payload] });
+    assertEquals(result.success, false, `accepted ${payload}`);
+  }
+
+  // A flag hidden behind a legitimate URL is rejected just the same.
+  assertEquals(
+    ListingRequestBodySchema.safeParse({
+      urlList: ["https://example.com/playlist", "--config-location=/tmp/x"],
+    }).success,
+    false,
+  );
+});
+
+Deno.test("validator - DownloadRequestBodySchema rejects argument injection", () => {
+  assertEquals(
+    DownloadRequestBodySchema.safeParse({
+      urlList: ["--config-location=/tmp/planted.conf"],
+    }).success,
+    false,
+  );
+  assertEquals(
+    DownloadRequestBodySchema.safeParse({
+      urlList: ["https://example.com/video"],
+      playListUrl: "None",
+    }).success,
+    true,
+  );
+});
+
+Deno.test("validator - UpdatePlaylistMonitoringRequestSchema requires both fields", () => {
+  assertEquals(
+    UpdatePlaylistMonitoringRequestSchema.safeParse({
+      url: "https://example.com",
+    }).success,
+    false,
+  );
+  assertEquals(
+    UpdatePlaylistMonitoringRequestSchema.safeParse({ watch: "Full" }).success,
+    false,
+  );
+  assertEquals(
+    UpdatePlaylistMonitoringRequestSchema.safeParse({
+      url: "https://example.com",
+      watch: "",
+    }).success,
+    false,
+  );
+});
+
+Deno.test("validator - delete schemas require a playlist key", () => {
+  assertEquals(
+    DeletePlaylistRequestBodySchema.safeParse({ deletePlaylist: true }).success,
+    false,
+  );
+  assertEquals(
+    DeleteVideosRequestBodySchema.safeParse({ cleanUp: true }).success,
+    false,
+  );
+
+  // "None" is the pseudo-playlist for unlisted videos, not a URL — it has to
+  // keep parsing, which is why these are plain non-empty strings.
+  assertEquals(
+    DeleteVideosRequestBodySchema.safeParse({
+      playListUrl: "None",
+      mappingIds: ["m1"],
+    }).success,
+    true,
+  );
+});
+
+Deno.test("validator - signed-file schemas require their identifiers", () => {
+  assertEquals(
+    SignedFileRequestBodySchema.safeParse({ saveDirectory: "dir" }).success,
+    false,
+  );
+  assertEquals(RefreshSignedUrlRequestBodySchema.safeParse({}).success, false);
+  assertEquals(
+    BulkRefreshSignedUrlsRequestBodySchema.safeParse({}).success,
+    false,
+  );
+  assertEquals(BulkSignedFilesRequestBodySchema.safeParse({}).success, false);
+
+  // Entries inside a bulk request carry the same requirement as a single one.
+  assertEquals(
+    BulkSignedFilesRequestBodySchema.safeParse({
+      files: [{ saveDirectory: "dir" }],
+    }).success,
+    false,
+  );
+});

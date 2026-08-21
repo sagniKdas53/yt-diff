@@ -62,7 +62,7 @@ export interface ProcessLike {
 }
 
 export interface ListingRequestBody {
-  urlList?: string[];
+  urlList: string[];
   chunkSize?: number | string;
   sleep?: boolean;
   monitoringType?: string;

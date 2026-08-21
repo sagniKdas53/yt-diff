@@ -17,12 +17,12 @@ export interface SubListRequest {
 }
 
 export interface UpdatePlaylistMonitoringRequest {
-  url?: string;
-  watch?: string;
+  url: string;
+  watch: string;
 }
 
 export interface DeletePlaylistRequestBody {
-  playListUrl?: string;
+  playListUrl: string;
   deleteAllVideosInPlaylist?: boolean;
   deletePlaylist?: boolean;
   cleanUp?: boolean;
@@ -36,7 +36,7 @@ export interface ReindexAllRequestBody {
 }
 
 export interface DeleteVideosRequestBody {
-  playListUrl?: string;
+  playListUrl: string;
   mappingIds?: string[];
   videoUrls?: string[];
   cleanUp?: boolean;

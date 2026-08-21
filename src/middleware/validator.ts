@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { HttpResponseLike } from "../transport/http.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
+import { isHttpUrl } from "../utils/url.ts";
 import { logger } from "../logger.ts";
 
 type BodyHandler<T> = (data: T, res: HttpResponseLike) => unknown;
@@ -29,23 +30,44 @@ export function validateBody<T>(
   };
 }
 
+// Shared field schemas
+
+/**
+ * A URL that the pipeline may hand to `yt-dlp` as a positional argument.
+ *
+ * yt-dlp parses any argument starting with `-` as an option, so a plain
+ * `z.string()` here let a body like `{"urlList":["--config-location=/tmp/x"]}`
+ * reach the subprocess argv as a flag. The argv builders now also pass `--`
+ * before the URL; this is the other half of that fix, and it is the same
+ * check the bot path has always run.
+ */
+const HttpUrlSchema = z.string().refine(isHttpUrl, {
+  message: "Must be an http(s) URL",
+});
+
+/**
+ * A playlist key: either a real URL or one of the `None`/`init`
+ * pseudo-playlists, which is why this is a non-empty string rather than a URL.
+ */
+const PlaylistKeySchema = z.string().min(1, "Playlist URL is required");
+
 // Specific Schemas
 
 export const ListingRequestBodySchema = z.object({
-  urlList: z.array(z.string()).optional(),
+  urlList: z.array(HttpUrlSchema),
   chunkSize: z.union([z.string(), z.number()]).optional(),
   sleep: z.boolean().optional(),
   monitoringType: z.string().optional(),
 });
 
 export const DownloadRequestBodySchema = z.object({
-  urlList: z.array(z.string()),
-  playListUrl: z.string().optional(),
+  urlList: z.array(HttpUrlSchema),
+  playListUrl: PlaylistKeySchema.optional(),
 });
 
 export const UpdatePlaylistMonitoringRequestSchema = z.object({
-  url: z.string().optional(),
-  watch: z.string().optional(),
+  url: PlaylistKeySchema,
+  watch: z.string().min(1, "Monitoring type is required"),
 });
 
 export const PlaylistDisplayRequestSchema = z.object({
@@ -57,7 +79,7 @@ export const PlaylistDisplayRequestSchema = z.object({
 });
 
 export const DeletePlaylistRequestBodySchema = z.object({
-  playListUrl: z.string().optional(),
+  playListUrl: PlaylistKeySchema,
   deleteAllVideosInPlaylist: z.boolean().optional(),
   deletePlaylist: z.boolean().optional(),
   cleanUp: z.boolean().optional(),
@@ -72,7 +94,7 @@ export const SubListRequestSchema = z.object({
 });
 
 export const DeleteVideosRequestBodySchema = z.object({
-  playListUrl: z.string().optional(),
+  playListUrl: PlaylistKeySchema,
   mappingIds: z.array(z.string()).optional(),
   videoUrls: z.array(z.string()).optional(),
   cleanUp: z.boolean().optional(),
@@ -92,19 +114,19 @@ export const SignedFileRequestBodySchema = z.object({
   fileName: z.string().regex(
     /^[^\\/]+$/,
     "File name must not contain directory traversal segments",
-  ).optional(),
+  ),
 });
 
 export const RefreshSignedUrlRequestBodySchema = z.object({
-  fileId: z.string().optional(),
+  fileId: z.string().min(1, "File id is required"),
 });
 
 export const BulkRefreshSignedUrlsRequestBodySchema = z.object({
-  fileIds: z.array(z.string()).optional(),
+  fileIds: z.array(z.string()),
 });
 
 export const BulkSignedFilesRequestBodySchema = z.object({
-  files: z.array(SignedFileRequestBodySchema).optional(),
+  files: z.array(SignedFileRequestBodySchema),
 });
 
 export const UserAuthSchema = z.object({

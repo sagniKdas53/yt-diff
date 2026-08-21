@@ -32,6 +32,7 @@ import type {
 } from "./types.ts";
 import { downloadOptions, ProcessExitCodes } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { appendUrlArg } from "../../utils/url.ts";
 
 export function createDownloadFlow(
   deps: PipelineHandlerDependencies,
@@ -305,7 +306,10 @@ export function createDownloadFlow(
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
-        const processArgs = ["-P", "home:" + savePath, videoUrl];
+        const processArgs = appendUrlArg(
+          ["-P", "home:" + savePath],
+          videoUrl,
+        );
 
         safeEmit("download-started", {
           url: videoUrl,

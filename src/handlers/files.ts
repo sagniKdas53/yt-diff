@@ -20,19 +20,19 @@ interface FileHandlerDependencies {
 
 export interface SignedFileRequestBody {
   saveDirectory?: string;
-  fileName?: string;
+  fileName: string;
 }
 
 export interface RefreshSignedUrlRequestBody {
-  fileId?: string;
+  fileId: string;
 }
 
 export interface BulkRefreshSignedUrlsRequestBody {
-  fileIds?: string[];
+  fileIds: string[];
 }
 
 export interface BulkSignedFilesRequestBody {
-  files?: SignedFileRequestBody[];
+  files: SignedFileRequestBody[];
 }
 
 export interface BulkSignedFileResponseEntry {
@@ -84,69 +84,43 @@ export function createFileHandlers({
     requestBody: SignedFileRequestBody,
     response: HttpResponseLike,
   ) {
-    let absolutePath = null;
-    if (requestBody && (requestBody.saveDirectory || requestBody.fileName)) {
-      const saveDirectory = requestBody.saveDirectory || "";
-      const fileName = requestBody.fileName;
-      if (!fileName || typeof fileName !== "string") {
-        logger.warn("serveFileByPath invalid fileName", {
-          saveDirectory,
-          fileName,
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({ status: "error", message: "fileName is required" }),
-        );
-      }
+    const saveDirectory = requestBody.saveDirectory || "";
+    const fileName = requestBody.fileName;
 
-      const joined = join(
-        config.saveLocation,
-        saveDirectory || "",
-        basename(fileName),
-      );
-      const resolvedPath = resolve(joined);
-      const saveRoot = resolve(config.saveLocation);
-      if (!isWithinPath(saveRoot, resolvedPath)) {
-        logger.warn("serveFileByPath attempted path traversal", {
-          saveDirectory,
-          fileName,
-          resolved: resolvedPath,
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({ status: "error", message: "Invalid file path" }),
-        );
-      }
-      logger.debug(`Resolved Path ${resolvedPath}`, {
-        joined,
+    const joined = join(
+      config.saveLocation,
+      saveDirectory,
+      basename(fileName),
+    );
+    const resolvedPath = resolve(joined);
+    const saveRoot = resolve(config.saveLocation);
+    if (!isWithinPath(saveRoot, resolvedPath)) {
+      logger.warn("serveFileByPath attempted path traversal", {
+        saveDirectory,
+        fileName,
         resolved: resolvedPath,
-        saveRoot,
       });
-      if (await exists(resolvedPath)) {
-        absolutePath = resolvedPath;
-      } else {
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            status: "error",
-            message: "File could not be found",
-          }),
-        );
-      }
-    } else {
-      logger.warn("makeSignedUrl missing parameters", {
-        requestBody: JSON.stringify(requestBody),
-      });
+      response.writeHead(400, generateCorsHeaders(jsonMimeType));
+      return response.end(
+        JSON.stringify({ status: "error", message: "Invalid file path" }),
+      );
+    }
+    logger.debug(`Resolved Path ${resolvedPath}`, {
+      joined,
+      resolved: resolvedPath,
+      saveRoot,
+    });
+    if (!(await exists(resolvedPath))) {
       response.writeHead(400, generateCorsHeaders(jsonMimeType));
       return response.end(
         JSON.stringify({
           status: "error",
-          message: "saveDirectory and fileName are required",
+          message: "File could not be found",
         }),
       );
     }
 
-    const { signedUrlId, expiry } = await createSignedUrlForPath(absolutePath);
+    const { signedUrlId, expiry } = await createSignedUrlForPath(resolvedPath);
 
     response.writeHead(200, generateCorsHeaders(jsonMimeType));
     response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
@@ -156,16 +130,6 @@ export function createFileHandlers({
     requestBody: RefreshSignedUrlRequestBody,
     response: HttpResponseLike,
   ) {
-    if (
-      !requestBody || !requestBody.fileId ||
-      typeof requestBody.fileId !== "string"
-    ) {
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({ status: "error", message: "fileId is required" }),
-      );
-    }
-
     const cachedEntry = await redis.get(`signed:${requestBody.fileId}`);
     if (cachedEntry) {
       await redis.expire(`signed:${requestBody.fileId}`, config.cache.maxAge);
@@ -198,24 +162,11 @@ export function createFileHandlers({
     requestBody: BulkRefreshSignedUrlsRequestBody,
     response: HttpResponseLike,
   ) {
-    if (
-      !requestBody || !requestBody.fileIds ||
-      !Array.isArray(requestBody.fileIds)
-    ) {
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({
-          status: "error",
-          message: "fileIds array is required",
-        }),
-      );
-    }
-
     const results = new Map<string, RefreshedSignedFileResponseEntry | null>();
     const now = Date.now();
 
     for (const fileId of requestBody.fileIds) {
-      if (!fileId || typeof fileId !== "string") {
+      if (fileId.length === 0) {
         continue;
       }
 
@@ -249,23 +200,10 @@ export function createFileHandlers({
     requestBody: BulkSignedFilesRequestBody,
     response: HttpResponseLike,
   ) {
-    if (
-      !requestBody || !requestBody.files || !Array.isArray(requestBody.files)
-    ) {
-      logger.warn("makeSignedUrls missing or invalid parameters", {
-        requestBody: JSON.stringify(requestBody),
-      });
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({ status: "error", message: "files array is required" }),
-      );
-    }
-
     const results = new Map<string, BulkSignedFileResponseEntry | null>();
 
     for (const file of requestBody.files) {
       const { saveDirectory, fileName } = file;
-      if (!fileName || typeof fileName !== "string") continue;
 
       const joined = join(
         config.saveLocation,

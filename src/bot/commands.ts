@@ -1,3 +1,4 @@
+import { isHttpUrl } from "../utils/url.ts";
 import type { BotCommand } from "./types.ts";
 
 /**
@@ -18,19 +19,6 @@ const MAX_HISTORY_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_LIST_LIMIT = 10;
 const MAX_LIST_LIMIT = 25;
-
-/**
- * A bare URL is the main path, so anything that parses as http(s) counts as a
- * submission even without a command prefix.
- */
-function looksLikeUrl(text: string): boolean {
-  try {
-    const url = new URL(text);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 /** Parses an optional numeric argument, floored at 0. */
 function clampNonNegative(raw: string | undefined, fallback: number): number {
@@ -65,8 +53,10 @@ export function parseCommand(raw: string): BotCommand {
     return { kind: "ignore" };
   }
 
+  // A bare URL is the main path, so anything that parses as http(s) counts as
+  // a submission even without a command prefix.
   if (!text.startsWith("/")) {
-    return looksLikeUrl(text) ? { kind: "get", url: text } : { kind: "ignore" };
+    return isHttpUrl(text) ? { kind: "get", url: text } : { kind: "ignore" };
   }
 
   const [rawCommand, ...args] = text.split(/\s+/);
@@ -78,7 +68,7 @@ export function parseCommand(raw: string): BotCommand {
     case "link":
     case "download": {
       const url = args[0];
-      if (!url || !looksLikeUrl(url)) {
+      if (!url || !isHttpUrl(url)) {
         return { kind: "unknown", text };
       }
       if (command === "get") {
@@ -91,7 +81,7 @@ export function parseCommand(raw: string): BotCommand {
 
     case "index": {
       const url = args[0];
-      if (!url || !looksLikeUrl(url)) {
+      if (!url || !isHttpUrl(url)) {
         return { kind: "unknown", text };
       }
       // No mode means a plain index into the "None" pseudo-playlist: catalogue
@@ -124,7 +114,7 @@ export function parseCommand(raw: string): BotCommand {
       if (!url) {
         return { kind: "playlists", limit: DEFAULT_LIST_LIMIT };
       }
-      if (!looksLikeUrl(url)) {
+      if (!isHttpUrl(url)) {
         return { kind: "unknown", text };
       }
       const start = clampNonNegative(args[1], 0);
