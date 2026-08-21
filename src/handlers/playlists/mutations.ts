@@ -33,10 +33,6 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
     response: HttpResponseLike,
   ): Promise<void> {
     try {
-      if (!requestBody.url || !requestBody.watch) {
-        throw new Error("URL and monitoring type are required");
-      }
-
       const playlistUrl = requestBody.url;
       const monitoringType = requestBody.watch;
 
@@ -93,24 +89,12 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         "requestBody": JSON.stringify(requestBody),
       });
 
-      const playListUrl = requestBody.playListUrl || "";
+      const playListUrl = requestBody.playListUrl;
       const deleteAllVideosInPlaylist = requestBody.deleteAllVideosInPlaylist ||
         false;
       const deletePlaylist = requestBody.deletePlaylist || false;
       const cleanUp = requestBody.cleanUp || false;
 
-      if (!playListUrl) {
-        logger.error("Need a playListUrl", {
-          "requestBody": JSON.stringify(requestBody),
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "Need a playListUrl",
-          }),
-        );
-      }
       if (playListUrl === "None") {
         logger.error("Cannot delete the default playlist", {
           "requestBody": JSON.stringify(requestBody),
@@ -447,51 +431,12 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         "requestBody": JSON.stringify(requestBody),
       });
 
-      const playListUrl = requestBody.playListUrl || "";
+      const playListUrl = requestBody.playListUrl;
       const mappingIds = requestBody.mappingIds || [];
       const videoUrls = requestBody.videoUrls || [];
       const cleanUp = requestBody.cleanUp || false;
       const deleteVideoMappings = requestBody.deleteVideoMappings || false;
       const deleteVideosInDB = requestBody.deleteVideosInDB || false;
-
-      if (!playListUrl) {
-        logger.error("Need a playListUrl", {
-          "requestBody": JSON.stringify(requestBody),
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "Need a playListUrl",
-          }),
-        );
-      }
-
-      if (!Array.isArray(mappingIds)) {
-        logger.error("mappingIds must be an array", {
-          "requestBody": JSON.stringify(requestBody),
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "mappingIds must be an array",
-          }),
-        );
-      }
-
-      if (!Array.isArray(videoUrls)) {
-        logger.error("videoUrls must be an array", {
-          "requestBody": JSON.stringify(requestBody),
-        });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "videoUrls must be an array",
-          }),
-        );
-      }
 
       if (mappingIds.length === 0 && videoUrls.length === 0) {
         logger.error("mappingIds or videoUrls array cannot be empty", {

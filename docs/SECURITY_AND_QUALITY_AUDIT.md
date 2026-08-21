@@ -29,7 +29,7 @@ says so.
 
 | ID | Finding | Severity | Status |
 | :--- | :--- | :--- | :--- |
-| C1 | Argument injection into `yt-dlp` via `POST /list` | Critical | Deferred — with Q7 |
+| C1 | Argument injection into `yt-dlp` via `POST /list` | Critical | **Fixed** — with Q7 |
 | S1 | Action rate limiting ships disabled | Medium | **Fixed** |
 | S2 | Rate limiter keys on the socket peer | Medium | Partly fixed with S1 |
 | S3 | Deletion paths skip the containment check | Medium | Open |
@@ -40,15 +40,15 @@ says so.
 | Q4 | Failure classification by error-string equality | Correctness | Open |
 | Q5 | CI gates none of the quality signals | Blocker | Partly fixed |
 | Q6 | No shared API contract | Structural | Open |
-| Q7 | Validation schemas are optional-everything | Structural | Deferred — with C1 |
+| Q7 | Validation schemas are optional-everything | Structural | **Fixed** — with C1 |
 | Q8 | Non-atomic triple write in the ingest path | Structural | Open |
 | Q9 | Duplication with a canonical answer already present | Structural | Open |
 | Q10 | Files past the 1k-line bar | Structural | Open |
 
-**C1 and Q7 are deliberately paired and deferred to their own PR.** They are the
-same boundary reached from two directions — see
+**C1 and Q7 were deliberately paired and fixed in one PR.** They are the same
+boundary reached from two directions — see
 [Where the two passes converge](#where-the-two-passes-converge) — and fixing
-either alone would leave the other half of the hole open.
+either alone would have left the other half of the hole open.
 
 ---
 
@@ -56,7 +56,7 @@ either alone would leave the other half of the hole open.
 
 ### C1 — Argument injection into `yt-dlp` via `POST /list`
 
-**Critical · Verified · Deferred to its own PR, paired with Q7**
+**Critical · Verified · Fixed, paired with Q7**
 
 Every element of `urlList` reaches the `yt-dlp` argv as a positional argument
 with no `--` separator anywhere in the tree, so any element starting with `-` is
@@ -92,11 +92,47 @@ pass additionally reports reaching self-contained execution via
 pipeline, since one `urlList` element yields one process and `--exec` alone has
 no URL to fire on.
 
-**Fix — both layers, not one.** Insert a literal `"--"` immediately before
-`videoUrl` in all three argv builders, *and* reject any element whose parsed
-`protocol` is not `http:`/`https:` at the schema boundary. The correct check
-already exists in this codebase — `looksLikeUrl` at `src/bot/commands.ts:14-21`
-— and the bot path uses it. The HTTP path does not.
+**Fix — both layers, not one.** Both shipped together:
+
+- `looksLikeUrl` moved out of `src/bot/commands.ts` into `src/utils/url.ts`,
+  which is now the one place URL admissibility is decided for both paths.
+- `urlList` on `/list` and `/download` is `z.array(HttpUrlSchema)`, a schema
+  that **parses rather than validates**: `toHttpUrl` returns a serialized
+  `http(s)` URL or nothing. The invariant it establishes is about the output,
+  not the input — every value that leaves the boundary begins with a scheme,
+  so nothing downstream can read it as an option.
+- All three argv builders go through `appendUrlArg`, which appends the URL
+  behind a literal `"--"`. `--` closes yt-dlp's option parsing, so a URL that
+  already sits in the database from before this fix still cannot become a flag.
+
+The second layer matters on its own: the scheduled updater and the download
+path read URLs from the database, not from the request, so the schema alone
+would not have covered a row poisoned by an earlier exploit.
+
+**What stays accepted.** Scheme-less input is normalized rather than refused —
+`youtube.com/watch?v=…` is how people paste URLs, and yt-dlp accepts it across
+its ~2,500 supported sites. Host-and-port forms (`example.com:8443/v`),
+IP literals, IPv6 brackets and internationalized domains all survive; the
+`bot/commands.ts` path deliberately keeps the stricter `isHttpUrl`, because in
+a chat stream a bare word has to stay chatter rather than become a submission.
+
+**What stays rejected.** Anything beginning with `-`, any other scheme
+(`file:`, `data:`, `javascript:`), text that is not a URL at all, and yt-dlp's
+own non-URL prefix forms — `ytsearch:`, `scsearch:`, `:ytfav`, `:ytsubs`,
+`:ythistory` and the roughly twenty others. That last exclusion is a choice,
+not an oversight: this app keys playlists by URL, and the account-scoped
+keywords would spend the operator's cookies on behalf of whoever submitted
+them.
+
+**One migration consideration.** `playlistUrl` is a primary key, and before
+this change a scheme-less submission was stored verbatim — `normalizeUrl`
+passed unparseable input straight through, and `playlistRegex` matches without
+a scheme. Such rows keep working, because the scheduled updater reads them from
+the database and yt-dlp accepts them. But re-submitting the same scheme-less
+text now normalizes it, so `findOrCreate` inserts a second row alongside the
+old one. The existing `/dedup` tooling is the remedy; this is a further
+argument for **Q2**, which is about the two canonicalizers disagreeing in
+exactly this way.
 
 ---
 
@@ -340,7 +376,7 @@ On the frontend, one `api/client.js` normalizing each response once.
 
 ### Q7 — Validation schemas are optional-everything
 
-**Structural · Deferred to its own PR, paired with C1**
+**Structural · Fixed, paired with C1**
 
 `validator.ts:33-38` marks `urlList` optional on `/list` — and
 `listing.ts:182-184` then throws `"URL list is required"` at runtime. `:45-48`
@@ -350,9 +386,35 @@ goes", the handler re-checks by hand, and the type system learns nothing.
 **This is the same boundary C1 walks through.** The security and quality passes
 reached it from opposite directions.
 
-**Fix.** Make required fields required — roughly a dozen downstream
-presence-guards then delete themselves — and add C1's scheme refinement at the
-same time.
+**Fix.** Required fields are required now — on `/list`, `/download`, `/watch`,
+both delete endpoints and the four signed-file endpoints — and the hand-written
+request interfaces were narrowed to match, so a dozen downstream
+presence-guards deleted themselves. C1's scheme refinement landed on the same
+schemas.
+
+One boundary behaviour changed as a result, at endpoints that already rejected
+the input, only later: checks the handlers ran by hand now fail in
+`validateBody`, so the response body is the generic `Invalid payload` shape
+rather than a per-field message.
+
+The signed-file endpoints needed care rather than a blanket tightening.
+`fileName` is required on `/makesignedurl` but stays optional per entry on the
+bulk endpoint, which is partial-success by design — its response already
+carries a null per entry it could not resolve, and the caller batches one row
+per video on screen, including ones it has not downloaded and so cannot name.
+The name rules themselves are shared between the two, and stayed deliberately
+permissive: spaces, unicode, emoji, multi-dot extensions, a leading dot and no
+extension at all are all names yt-dlp writes. They gained only what cannot name
+a file here — control characters, and the `.`/`..` segment references.
+
+That last one exposed a separate pre-existing bug. `exists()` is a `Deno.stat`
+wrapper, so it is true for **directories**: any bare directory name — `..`, or
+simply a playlist folder listed by `/getplay` — minted a signed URL inside the
+containment check, and the serve path then sent a `Content-Length` taken from
+the directory entry before failing `EISDIR` partway through the body. No string
+rule can fix that, since a directory name is a perfectly valid file name; both
+minting paths now stat with `isFile`.
+
 
 ### Q8 — Non-atomic triple write and raw interpolated SQL in the hot ingest path
 
@@ -431,8 +493,8 @@ the other side and found **C1**: it is the reason unvalidated strings reach
 `yt-dlp`'s argv.
 
 Two reviewers, two rubrics, one line of code. That convergence is why C1 is
-rated Critical rather than High, and why the two are being fixed together in one
-PR rather than separately.
+rated Critical rather than High, and why the two were fixed together in one PR
+rather than separately.
 
 ### One failure mode, repeated
 
@@ -441,7 +503,7 @@ exists in the tree, and the path that actually runs goes around it.**
 
 | Canonical thing that exists | What bypasses it |
 | :--- | :--- |
-| `looksLikeUrl` (`bot/commands.ts:14`) | the HTTP `/list` path → **C1** |
+| `isHttpUrl` (`utils/url.ts`, hoisted out of `bot/commands.ts`) | ~~the HTTP `/list` path~~ → **C1**, fixed |
 | `isWithinPath` (`files.ts:107`) | the file deletion path (`videoFiles.ts:46`) → **S3** |
 | Four context providers + `useApi` | `main.jsx` renders around them → **Q1** |
 | `SITE_CANONICALIZERS` registry | `dedup.ts:63` re-implements it, disagreeing → **Q2** |
@@ -498,10 +560,10 @@ which is what makes the findings above meaningful.
 
 Sequenced so each step makes the next cheaper, not by severity alone.
 
-1. **C1 + Q7 together** — the `--` separator in all three argv builders, plus
-   required fields and an http/https refinement at the schema boundary. One
-   change closes the critical finding and the boundary flaw that produced it.
-   *Deferred to its own PR.*
+1. ~~**C1 + Q7 together** — the `--` separator in all three argv builders, plus
+   required fields and an http/https refinement at the schema boundary.~~
+   **Done**, as a shared `isHttpUrl` predicate, `appendUrlArg` on every argv
+   builder, and required fields across nine request schemas.
 2. ~~**S1** — ship a non-zero action budget.~~ **Done**, as cost-weighted GCRA
    with per-user work accounting.
 3. **Q5** — finish the CI gate: add the frontend suite and `npm run lint`, and

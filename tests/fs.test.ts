@@ -1,5 +1,5 @@
 import { assertEquals } from "std/assert/mod.ts";
-import { exists, mkdir, readdir, rm, unlink } from "../src/utils/fs.ts";
+import { exists, isFile, mkdir, readdir, rm, unlink } from "../src/utils/fs.ts";
 import { join } from "../src/utils/path.ts";
 
 Deno.test("fs - exists detects files and directories", async () => {
@@ -62,5 +62,26 @@ Deno.test("fs - rm deletes directories recursively", async () => {
     assertEquals(await exists(join(tempDir, "a")), false);
   } finally {
     await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("fs - isFile separates files from directories", async () => {
+  const root = await Deno.makeTempDir();
+  const filePath = `${root}/clip.mp4`;
+  const dirPath = `${root}/Some Playlist`;
+
+  await Deno.writeTextFile(filePath, "data");
+  await Deno.mkdir(dirPath);
+
+  try {
+    assertEquals(await isFile(filePath), true);
+    // exists() is true here too, which is exactly why the signed-URL paths
+    // cannot use it: minting a link for a directory sends a Content-Length
+    // taken from the directory entry and then fails EISDIR mid-body.
+    assertEquals(await exists(dirPath), true);
+    assertEquals(await isFile(dirPath), false);
+    assertEquals(await isFile(`${root}/absent.mp4`), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
   }
 });

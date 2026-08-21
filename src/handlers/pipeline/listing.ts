@@ -43,6 +43,7 @@ import {
   urlToTitle,
 } from "./process-manager.ts";
 import { join } from "../../utils/path.ts";
+import { appendUrlArg } from "../../utils/url.ts";
 
 export function createListingFlow(
   deps: PipelineHandlerDependencies,
@@ -180,10 +181,6 @@ export function createListingFlow(
     response: HttpResponseLike,
   ): Promise<void> {
     try {
-      if (!requestBody.urlList) {
-        throw new Error("URL list is required");
-      }
-
       const chunkSize = Math.max(
         config.chunkSize,
         +(requestBody.chunkSize ?? config.chunkSize),
@@ -1056,13 +1053,12 @@ export function createListingFlow(
       startIndex,
     });
 
-    const processArgs = [
+    const processArgs = appendUrlArg([
       "--playlist-start",
       startIndex.toString(),
       "--dump-json",
       "--no-download",
-      videoUrl,
-    ];
+    ], videoUrl);
 
     const siteArgs = buildSiteArgs(videoUrl, config);
     if (siteArgs.length > 0) {
@@ -1500,14 +1496,13 @@ export function createListingFlow(
   ): Promise<PlaylistMetadata> {
     let playlistTitle = "";
 
-    const processArgs = [
+    const processArgs = appendUrlArg([
       "--playlist-items",
       "1:5",
       "--ignore-errors",
       "--dump-json",
       "--no-download",
-      playlistUrl,
-    ];
+    ], playlistUrl);
 
     const siteArgs = buildSiteArgs(playlistUrl, config);
     if (siteArgs.length > 0) {
