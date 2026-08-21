@@ -4,60 +4,78 @@
 // test unchanged. Same convention as src/transport/http.ts.
 import { assertEquals } from "std/assert/mod.ts";
 import { createRateLimit } from "../src/middleware/rateLimit.ts";
+import { gcraDecide, type GcraPolicy } from "../src/middleware/gcra.ts";
 
+/**
+ * Redis double with just enough behaviour to run the GCRA Lua script.
+ *
+ * `eval` here executes `gcraDecide` — the TypeScript reference the Lua script
+ * mirrors — against the same stored value, so these tests exercise the real
+ * key naming, TTL handling and decision plumbing without a Redis server. The
+ * arithmetic itself is covered directly further down.
+ */
 class MockRedis {
-  private store = new Map<string, { value: string; expireAt?: number }>();
+  store = new Map<string, { value: string; expireAt?: number }>();
+  /** Every key touched, in order — used to assert bucket isolation. */
+  seenKeys: string[] = [];
 
-  // deno-lint-ignore require-await
-  async get(key: string): Promise<string | null> {
+  get(key: string): Promise<string | null> {
     const entry = this.store.get(key);
-    if (!entry) return null;
+    if (!entry) return Promise.resolve(null);
     if (entry.expireAt && Date.now() > entry.expireAt) {
       this.store.delete(key);
-      return null;
+      return Promise.resolve(null);
     }
-    return entry.value;
+    return Promise.resolve(entry.value);
   }
 
-  // deno-lint-ignore require-await
-  async set(
+  eval(
+    _script: string,
+    _numKeys: number,
     key: string,
-    value: string,
-    mode?: string,
-    duration?: number,
-  ): Promise<"OK"> {
-    let expireAt: number | undefined;
-    if (mode === "EX" && duration) {
-      expireAt = Date.now() + duration * 1000;
-    }
-    this.store.set(key, { value, expireAt });
-    return "OK";
-  }
+    now: string,
+    burst: string,
+    refill: string,
+    periodSec: string,
+    cost: string,
+  ): Promise<[number, number, number, number]> {
+    this.seenKeys.push(key);
 
-  async incr(key: string): Promise<number> {
-    const entry = await this.get(key);
-    const newVal = entry ? Number(entry) + 1 : 1;
-    this.store.set(key, { value: String(newVal) });
-    return newVal;
-  }
-
-  // deno-lint-ignore require-await
-  async expire(key: string, seconds: number): Promise<number> {
     const entry = this.store.get(key);
-    if (entry) {
-      entry.expireAt = Date.now() + seconds * 1000;
-      return 1;
+    const expired = entry?.expireAt !== undefined &&
+      Date.now() > entry.expireAt;
+    const tat = entry && !expired ? Number(entry.value) : null;
+
+    const policy: GcraPolicy = {
+      bucket: "",
+      burst: Number(burst),
+      refill: Number(refill),
+      periodSec: Number(periodSec),
+    };
+    const decision = gcraDecide(tat, Number(now), policy, Number(cost));
+
+    if (decision.allowed) {
+      this.store.set(key, {
+        value: String(decision.newTat),
+        expireAt: Date.now() + (decision.resetAfterSec + 1) * 1000,
+      });
     }
-    return 0;
+
+    return Promise.resolve([
+      decision.allowed ? 1 : 0,
+      decision.remaining,
+      decision.retryAfterSec,
+      decision.resetAfterSec,
+    ]);
   }
 }
 
 class MockResponse {
   statusCode = 200;
-  headers: Record<string, string> = {};
+  headers: Record<string, string | number> = {};
   body = "";
 
-  writeHead(statusCode: number, headers: Record<string, string>) {
+  writeHead(statusCode: number, headers: Record<string, string | number>) {
     this.statusCode = statusCode;
     this.headers = headers;
   }
@@ -67,101 +85,240 @@ class MockResponse {
   }
 }
 
-Deno.test("rateLimit - runs handlers when maxRequestsPerWindow is 0 (disabled)", async () => {
-  const mockRedis = new MockRedis();
-  const rateLimit = createRateLimit({ redis: mockRedis as any });
+const policy = (over: Partial<GcraPolicy> = {}): GcraPolicy => ({
+  bucket: "test",
+  burst: 5,
+  refill: 5,
+  periodSec: 60,
+  ...over,
+});
+
+const req = () => ({ socket: { remoteAddress: "127.0.0.1" } }) as any;
+
+Deno.test("rateLimit - a disabled policy (burst 0) always admits", async () => {
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({ redis: redis as any });
   let nextCalled = false;
 
-  const req = { socket: { remoteAddress: "127.0.0.1" } } as any;
   const res = new MockResponse() as any;
-
   await rateLimit(
-    req,
+    req(),
     res,
     () => {
       nextCalled = true;
     },
     () => {},
-    0, // maxRequestsPerWindow = 0
-    60,
+    policy({ burst: 0 }),
   );
 
   assertEquals(nextCalled, true);
   assertEquals(res.statusCode, 200);
 });
 
-Deno.test("rateLimit - increments counter and allows request within limit", async () => {
-  const mockRedis = new MockRedis();
-  const rateLimit = createRateLimit({ redis: mockRedis as any });
-  let nextCalls = 0;
+Deno.test("rateLimit - admits within burst, then rejects with 429 + Retry-After", async () => {
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({ redis: redis as any });
+  let calls = 0;
 
-  const req = { socket: { remoteAddress: "127.0.0.1" } } as any;
   const res = new MockResponse() as any;
+  const p = policy({ burst: 2, refill: 2, periodSec: 60 });
 
-  await rateLimit(
-    req,
-    res,
-    () => {
-      nextCalls++;
-    },
-    () => {},
-    5, // limit = 5
-    60,
-  );
-
-  assertEquals(nextCalls, 1);
-  assertEquals(res.statusCode, 200);
-  assertEquals(await mockRedis.get("ip:127.0.0.1"), "1");
-});
-
-Deno.test("rateLimit - blocks requests with 429 when limit is exceeded", async () => {
-  const mockRedis = new MockRedis();
-  const rateLimit = createRateLimit({ redis: mockRedis as any });
-  let nextCalls = 0;
-
-  const req = { socket: { remoteAddress: "127.0.0.1" } } as any;
-  const res = new MockResponse() as any;
-
-  // Execute 2 requests under a limit of 2
-  await rateLimit(
-    req,
-    res,
-    () => {
-      nextCalls++;
-    },
-    () => {},
-    2,
-    60,
-  );
-  await rateLimit(
-    req,
-    res,
-    () => {
-      nextCalls++;
-    },
-    () => {},
-    2,
-    60,
-  );
-
-  assertEquals(nextCalls, 2);
+  for (let i = 0; i < 2; i++) {
+    await rateLimit(
+      req(),
+      res,
+      () => {
+        calls++;
+      },
+      () => {},
+      p,
+    );
+  }
+  assertEquals(calls, 2);
   assertEquals(res.statusCode, 200);
 
-  // Third request should exceed the limit
   await rateLimit(
-    req,
+    req(),
     res,
     () => {
-      nextCalls++;
+      calls++;
     },
     () => {},
-    2,
-    60,
+    p,
   );
-  assertEquals(nextCalls, 2); // next should not be called
+
+  assertEquals(calls, 2, "handler must not run once the burst is spent");
   assertEquals(res.statusCode, 429);
 
   const payload = JSON.parse(res.body);
   assertEquals(payload.status, "error");
-  assertEquals(payload.message, "Too many requests");
+  // A 429 without Retry-After leaves a client with nothing to back off against.
+  assertEquals(typeof payload.retryAfter, "number");
+  assertEquals(payload.retryAfter >= 1, true);
+  assertEquals(typeof res.headers["Retry-After"], "string");
+});
+
+Deno.test("rateLimit - separate buckets do not share budget", async () => {
+  // Regression test. Every limiter previously keyed on `ip:<addr>` with no
+  // scope, so the login limiter and the listing limiter drained one counter
+  // and whichever budget was smallest silently governed both.
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({ redis: redis as any });
+
+  const authPolicy = policy({ bucket: "auth", burst: 1, refill: 1 });
+  const actionPolicy = policy({ bucket: "action", burst: 1, refill: 1 });
+
+  let authCalls = 0;
+  let actionCalls = 0;
+
+  const res = new MockResponse() as any;
+
+  // Spend the whole auth budget from this address.
+  await rateLimit(
+    req(),
+    res,
+    () => {
+      authCalls++;
+    },
+    () => {},
+    authPolicy,
+  );
+  assertEquals(authCalls, 1);
+
+  // The action bucket must still be untouched for the same address.
+  await rateLimit(
+    req(),
+    res,
+    () => {
+      actionCalls++;
+    },
+    () => {},
+    actionPolicy,
+  );
+
+  assertEquals(actionCalls, 1, "action budget must survive auth exhaustion");
+  assertEquals(res.statusCode, 200);
+  assertEquals(redis.seenKeys[0], "rl:auth:127.0.0.1");
+  assertEquals(redis.seenKeys[1], "rl:action:127.0.0.1");
+});
+
+Deno.test("withCost - charges by request cost, not request count", async () => {
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({ redis: redis as any });
+
+  let handled = 0;
+  const workPolicy = policy({ bucket: "work", burst: 20, refill: 20 });
+
+  // Cost mirrors the real model: one unit per URL in the list.
+  const costOf = (body: never) =>
+    ((body as { urlList?: unknown[] }).urlList ?? []).length;
+
+  const limited = rateLimit.withCost(workPolicy, costOf, () => {
+    handled++;
+  });
+
+  const res = new MockResponse() as any;
+  const ctx = { userId: "user-1" };
+
+  // A cheap request barely dents the budget.
+  await limited({ urlList: ["a"] }, res, ctx);
+  assertEquals(handled, 1);
+
+  // A single expensive request consumes far more than one "request" worth.
+  await limited({ urlList: Array(15).fill("x") }, res, ctx);
+  assertEquals(handled, 2);
+
+  // Budget is now nearly spent, so the next expensive request is refused even
+  // though only three requests have been made in total.
+  await limited({ urlList: Array(15).fill("x") }, res, ctx);
+  assertEquals(handled, 2, "expensive request must be refused on cost");
+  assertEquals(res.statusCode, 429);
+});
+
+Deno.test("withCost - budget follows the user, not the address", async () => {
+  // Behind a reverse proxy every client shares one source address, so an
+  // IP-keyed budget would let one user throttle everyone else.
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({ redis: redis as any });
+
+  let handled = 0;
+  const workPolicy = policy({ bucket: "work", burst: 2, refill: 2 });
+  const limited = rateLimit.withCost(workPolicy, () => 2, () => {
+    handled++;
+  });
+
+  const res = new MockResponse() as any;
+
+  await limited({}, res, { userId: "alice", clientIp: "10.0.0.1" });
+  assertEquals(handled, 1);
+
+  // Alice is now out of budget.
+  await limited({}, res, { userId: "alice", clientIp: "10.0.0.1" });
+  assertEquals(handled, 1);
+  assertEquals(res.statusCode, 429);
+
+  // Bob arrives from the same proxy address and is unaffected.
+  const res2 = new MockResponse() as any;
+  await limited({}, res2, { userId: "bob", clientIp: "10.0.0.1" });
+  assertEquals(handled, 2, "a second user must not inherit the first's budget");
+  assertEquals(res2.statusCode, 200);
+});
+
+Deno.test("withCost - a request costlier than the whole burst is refused, not stalled", async () => {
+  // Admitting it would push the TAT so far out that the bucket could never
+  // catch up, turning a permanent failure into an endlessly retried 429.
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({ redis: redis as any });
+
+  let handled = 0;
+  const limited = rateLimit.withCost(
+    policy({ bucket: "work", burst: 10, refill: 10 }),
+    () => 50,
+    () => {
+      handled++;
+    },
+  );
+
+  const res = new MockResponse() as any;
+  await limited({}, res, { userId: "alice" });
+
+  assertEquals(handled, 0);
+  assertEquals(res.statusCode, 429);
+});
+
+Deno.test("gcraDecide - budget refills smoothly rather than on a window edge", () => {
+  // The fixed-window counter this replaced allowed 2x the limit across a
+  // boundary: spend the budget at the end of one window, spend it again at the
+  // start of the next. GCRA has no boundary to straddle.
+  const p = policy({ burst: 10, refill: 10, periodSec: 100 });
+  const start = 1_000_000;
+
+  // Spend the entire burst at once.
+  const spent = gcraDecide(null, start, p, 10);
+  assertEquals(spent.allowed, true);
+  assertEquals(spent.remaining, 0);
+
+  // Immediately after, nothing is available.
+  assertEquals(gcraDecide(spent.newTat, start, p, 1).allowed, false);
+
+  // One emission interval is 10s here, so 10s later exactly one unit is back —
+  // not the whole allowance.
+  const oneUnitLater = gcraDecide(spent.newTat, start + 10_000, p, 1);
+  assertEquals(oneUnitLater.allowed, true);
+
+  const twoAtOnce = gcraDecide(spent.newTat, start + 10_000, p, 2);
+  assertEquals(twoAtOnce.allowed, false, "only one unit has refilled");
+});
+
+Deno.test("gcraDecide - reports a usable retryAfter when refused", () => {
+  const p = policy({ burst: 5, refill: 5, periodSec: 50 });
+  const now = 2_000_000;
+
+  const spent = gcraDecide(null, now, p, 5);
+  const refused = gcraDecide(spent.newTat, now, p, 1);
+
+  assertEquals(refused.allowed, false);
+  // Emission interval is 10s, so one unit is available 10s out.
+  assertEquals(refused.retryAfterSec, 10);
+  assertEquals(refused.remaining, 0);
 });
