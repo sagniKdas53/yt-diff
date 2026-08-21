@@ -3,6 +3,10 @@
 This document highlights unchecked edge cases, security considerations, and code
 improvements identified through an analysis of the codebase.
 
+For the full-tree audit that produced the current security and structural
+findings — including severities, evidence, and the suggested fix order — see
+[`SECURITY_AND_QUALITY_AUDIT.md`](./SECURITY_AND_QUALITY_AUDIT.md).
+
 *Note: Following recent extensive refactoring phases, major architecture, routing, rate-limiting, and input validation issues have been successfully addressed. The remaining items represent long-term goals.*
 
 ## Future Milestones
