@@ -108,10 +108,13 @@ jobs:
       # Runs whichever way lint went -- same reason as Static Checks -- but not
       # when the install itself failed, where there is nothing to test.
       # Reported through the same JUnit path as the other two suites.
+      #
+      # --coverage is what makes the thresholds in vitest.config.js a gate:
+      # without it the floor is configured and never checked.
       - name: Run Unit Tests
         if: steps.install.outcome == 'success'
         working-directory: frontend
-        run: npx vitest run --reporter=junit --outputFile=frontend_test_results.xml
+        run: npx vitest run --coverage --reporter=junit --outputFile=frontend_test_results.xml
 
       - name: Parse Test Results
         if: always()

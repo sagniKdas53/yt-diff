@@ -251,3 +251,33 @@ export enum ProcessExitCodes {
   PARTIAL_ERROR = 1, // Often generated when only partial list/data is scraped, or minor warning
   SIGTERM = 143, // Process was killed (e.g. by user/timeout sending SIGTERM)
 }
+
+/**
+ * A listing subprocess that ended on a non-success exit code.
+ *
+ * The exit code is carried as a field so consumers can tell a cancellation
+ * (`null`, `SIGTERM`) from a genuine failure without parsing `message`. The
+ * message keeps its historical `Process exited with code <n>[: reason]` shape
+ * for logs and for the `listing-error` event the frontend renders.
+ */
+export class ListingProcessError extends Error {
+  constructor(
+    readonly exitCode: number | null,
+    readonly reason: string = "",
+  ) {
+    super(
+      reason
+        ? `Process exited with code ${exitCode}: ${reason}`
+        : `Process exited with code ${exitCode}`,
+    );
+    this.name = "ListingProcessError";
+  }
+
+  /**
+   * True when the exit means "we stopped this ourselves" rather than
+   * "this listing failed": no code at all, or a SIGTERM we sent.
+   */
+  get isDeliberateTermination(): boolean {
+    return this.exitCode === null || this.exitCode === ProcessExitCodes.SIGTERM;
+  }
+}

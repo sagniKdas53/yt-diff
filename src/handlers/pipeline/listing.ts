@@ -19,7 +19,11 @@ import {
   resolveChannelUploadsPlaylistId,
 } from "../youtube-api.ts";
 import { Semaphore } from "./semaphore.ts";
-import { playlistRegex, ProcessExitCodes } from "./types.ts";
+import {
+  ListingProcessError,
+  playlistRegex,
+  ProcessExitCodes,
+} from "./types.ts";
 import type {
   ListingItem,
   ListingProcessEntry,
@@ -45,6 +49,88 @@ import {
 import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
 import { chunkPlaylistLines, type PlaylistChunk } from "./chunks.ts";
 import { createYtDlpLauncher } from "./ytdlp.ts";
+
+/**
+ * The three writes one ingested chunk produces, committed together.
+ *
+ * They used to run unwrapped, back to back: a failure between them left videos
+ * upserted with their mappings missing, or positions half-shifted. This runs
+ * once per chunk, per playlist, on every scheduled update, so "rare" was doing
+ * a lot of work in that sentence.
+ *
+ * The renumber also used to be a hand-built
+ * `SET "positionInPlaylist" = CASE WHEN "id" = '<uuid>' THEN <n> … END` — the
+ * one place in the pipeline that left the ORM. Every row in `mappingsToUpdate`
+ * already exists, so an upsert keyed on the primary key lands on the
+ * `DO UPDATE` branch for all of them; the untouched columns are carried
+ * through so the insert half of the statement stays well-formed.
+ */
+export async function persistStreamingChunk(
+  writes: {
+    videosToUpsert: VideoUpsertData[];
+    mappingsToCreate: PlaylistMappingCreate[];
+    mappingsToUpdate: PlaylistMappingUpdate[];
+  },
+): Promise<void> {
+  const { videosToUpsert, mappingsToCreate, mappingsToUpdate } = writes;
+
+  if (
+    videosToUpsert.length === 0 && mappingsToCreate.length === 0 &&
+    mappingsToUpdate.length === 0
+  ) {
+    return;
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    if (videosToUpsert.length > 0) {
+      const deduplicatedVideos = [
+        ...new Map(
+          videosToUpsert.map((video) => [video.videoUrl, video]),
+        ).values(),
+      ];
+      await VideoMetadata.unscoped().bulkCreate(
+        deduplicatedVideos as any,
+        {
+          updateOnDuplicate: [
+            "videoId",
+            "title",
+            "approximateSize",
+            "isAvailable",
+            "updatedAt",
+            "onlineThumbnail",
+            "raw_metadata",
+          ],
+          transaction,
+        },
+      );
+    }
+
+    if (mappingsToCreate.length > 0) {
+      await PlaylistVideoMapping.bulkCreate(
+        mappingsToCreate as any,
+        { transaction },
+      );
+    }
+
+    if (mappingsToUpdate.length > 0) {
+      await PlaylistVideoMapping.bulkCreate(
+        mappingsToUpdate.map((m) => ({
+          id: m.instance.getDataValue("id"),
+          videoUrl: m.instance.getDataValue("videoUrl"),
+          playlistUrl: m.instance.getDataValue("playlistUrl"),
+          positionInPlaylist: m.position,
+          createdAt: m.instance.getDataValue("createdAt"),
+          updatedAt: new Date(),
+        })) as any,
+        {
+          updateOnDuplicate: ["positionInPlaylist", "updatedAt"],
+          conflictAttributes: ["id"],
+          transaction,
+        },
+      );
+    }
+  });
+}
 
 export function createListingFlow(
   deps: PipelineHandlerDependencies,
@@ -787,13 +873,14 @@ export function createListingFlow(
   /**
    * Errors that mean "we stopped this ourselves", not "this listing failed".
    *
-   * Matched on the message because that is all a process exit gives us today;
-   * `Q4` is the finding that says this should be a typed error with an
-   * `exitCode` field instead.
+   * Reads the exit code off the typed error rather than matching the message:
+   * the producer appends `: <reason>` whenever yt-dlp wrote to stderr, so a
+   * SIGTERM-with-stderr used to slip past a string comparison and surface to
+   * the user as a listing failure.
    */
   function isDeliberateTermination(error: Error): boolean {
-    return error.message === "Process exited with code null" ||
-      error.message === "Process exited with code 143";
+    return error instanceof ListingProcessError &&
+      error.isDeliberateTermination;
   }
 
   async function handlePlaylistStreaming(
@@ -1120,15 +1207,10 @@ export function createListingFlow(
           !isAllowedError
         ) {
           setProcessStatus(processKey, "failed");
-          // Keeps the original prefix so anything matching on it still works,
-          // and appends the reason when yt-dlp gave one.
+          // The exit code travels as a field; the message keeps its original
+          // shape and appends the reason when yt-dlp gave one.
           await stderrDrained;
-          const reason = stderrReason();
-          throw new Error(
-            reason
-              ? `Process exited with code ${exitCode}: ${reason}`
-              : `Process exited with code ${exitCode}`,
-          );
+          throw new ListingProcessError(exitCode, stderrReason());
         } else {
           setProcessStatus(processKey, "completed");
         }
@@ -1336,47 +1418,11 @@ export function createListingFlow(
       });
     }
 
-    if (videosToUpsert.length > 0) {
-      const deduplicatedVideos = [
-        ...new Map(
-          videosToUpsert.map((video) => [video.videoUrl, video]),
-        ).values(),
-      ];
-      await VideoMetadata.unscoped().bulkCreate(
-        deduplicatedVideos as any,
-        {
-          updateOnDuplicate: [
-            "videoId",
-            "title",
-            "approximateSize",
-            "isAvailable",
-            "updatedAt",
-            "onlineThumbnail",
-            "raw_metadata",
-          ],
-        },
-      );
-    }
-
-    if (mappingsToCreate.length > 0) {
-      await PlaylistVideoMapping.bulkCreate(
-        mappingsToCreate as any,
-      );
-    }
-
-    if (mappingsToUpdate.length > 0) {
-      const cases = mappingsToUpdate
-        .map((m) =>
-          `WHEN "id" = '${m.instance.getDataValue("id")}' THEN ${m.position}`
-        )
-        .join(" ");
-      const ids = mappingsToUpdate
-        .map((m) => `'${m.instance.getDataValue("id")}'`)
-        .join(", ");
-      await sequelize.query(
-        `UPDATE playlist_video_mappings SET "positionInPlaylist" = CASE ${cases} END WHERE "id" IN (${ids})`,
-      );
-    }
+    await persistStreamingChunk({
+      videosToUpsert,
+      mappingsToCreate,
+      mappingsToUpdate,
+    });
 
     return result;
   }
