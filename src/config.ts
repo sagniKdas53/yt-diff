@@ -252,6 +252,10 @@ export interface AppConfig {
     allowed: boolean;
     maxUsers: number;
   };
+  auth: {
+    /** JWT lifetime, as a `jsonwebtoken` duration string. */
+    tokenExpiry: string;
+  };
   saveLocation: string;
   cookiesFile: string | false | Error | undefined;
   proxy_string: string | Error;
@@ -384,8 +388,25 @@ export const config: AppConfig = {
     allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",
     maxUsers: +(Deno.env.get("MAX_USERS") || 15),
   },
-  saveLocation: Deno.env.get("SAVE_PATH") ||
-    "/home/sagnik/Documents/syncthing/pi5/yt-diff-data/",
+  auth: {
+    // Was 31 days, chosen so the app could skip renewal entirely. The client
+    // now renews on wake against POST /refresh, so the long lifetime is no
+    // longer buying anything — and a token in localStorage that stays valid
+    // for a month is a month of access for anyone who gets a copy of it.
+    //
+    // A day is long enough that a session used daily never sees a login
+    // prompt, and short enough that a leaked token expires on its own. Raise
+    // it with TOKEN_EXPIRY if a deployment wants the old behaviour back;
+    // anything `jsonwebtoken` accepts as `expiresIn` works ("12h", "7d").
+    tokenExpiry: Deno.env.get("TOKEN_EXPIRY") || "24h",
+  },
+  // No personal absolute path as a fallback: the previous default pointed at
+  // one machine's home directory, so a host-side `deno task dev` on any other
+  // machine silently created a download tree somewhere nobody would look for
+  // it. `./data/` is relative to the process's working directory, which is the
+  // repo in development and `/home/ytdiff` in the container, where
+  // `docker-compose.yml` mounts the real volume over SAVE_PATH anyway.
+  saveLocation: Deno.env.get("SAVE_PATH") || "./data/",
   cookiesFile: Deno.env.get("COOKIES_FILE")
     ? fileExists(Deno.env.get("COOKIES_FILE")!)
       ? Deno.env.get("COOKIES_FILE")

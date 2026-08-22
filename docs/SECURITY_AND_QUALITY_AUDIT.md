@@ -44,7 +44,7 @@ says so.
 | S1 | Action rate limiting ships disabled | Medium | **Fixed** |
 | S2 | Rate limiter keys on the socket peer | Medium | Partly fixed with S1 |
 | S3 | Deletion paths skip the containment check | Medium | **Fixed** |
-| S4–S9 | Assorted low-severity items | Low | Open |
+| S4–S9 | Assorted low-severity items | Low | **Fixed** — with F7 |
 | Q1 | Frontend context layer built then bypassed | Blocker | **Fixed** |
 | Q2 | Two divergent URL canonicalizers | Blocker | **Fixed** — with Q3 |
 | Q3 | Documented tracking-param stripping never implemented | Correctness | **Fixed** — with Q2 |
@@ -61,7 +61,7 @@ says so.
 | F4 | `App.jsx` still owns the socket layer | Medium | Partly fixed with Q1 |
 | F5 | No routing: no deep links, no Back button | Medium | Open |
 | F6 | No TypeScript, no generated API types | Medium | Open — half of Q6 |
-| F7 | 31-day tokens in `localStorage`, never renewed | Medium | Open — pairs with S4–S9 |
+| F7 | 31-day tokens in `localStorage`, never renewed | Medium | **Fixed** — with S4–S9 |
 | F8 | `"null"` as a `localStorage` sentinel | Low | Mostly closed with Q1 |
 | F9 | Thumbnails not lazily loaded | Low | Mostly closed |
 | F10 | No test coverage thresholds | Low | Open |
@@ -254,28 +254,55 @@ message, leaving the database deletion behaviour unchanged.
 
 ### S4–S9 — Lower-severity items
 
-**Low · Open**
+**Low · Fixed, paired with F7**
 
-- **No `nosniff`, CSP, or `X-Frame-Options` on any response**
-  (`src/utils/http.ts:139-169`). Signed files serve same-origin with
-  `Content-Disposition: inline` when `?inline=true`
-  (`serveNativeFile.ts:32-35`) and a Content-Type from the extension — a planted
-  `.svg` with a minted signed URL would render inline on the app origin.
-  Conditional on a plant, cheap to close.
-- **JWT in `localStorage`** — since the Q1 fix this lives at
-  `frontend/src/contexts/AuthContext.jsx:11,28`. Exfiltratable by any XSS, and
-  the missing CSP above compounds it. Its 31-day lifetime is
-  [F7](#f7--31-day-bearer-tokens-in-localstorage-never-renewed); fix the two
-  together.
-- **Login user enumeration** — `authenticateUser` only runs `bcrypt.compare`
-  when the username exists (`src/middleware/auth.ts:397-422`). Add a dummy
-  compare on the miss path.
-- **Committed proxy credential** — `HTTP_PROXY_PASSWORD` in `envs/base.env`.
-  Rotate it and move it under `secrets/`.
-- **Hardcoded personal `SAVE_PATH` default** (`src/config.ts:324`) — a host-side
-  `deno task dev` silently creates a tree under someone's home directory.
-- **`he.escape(token)` on a JWT** (`src/middleware/auth.ts:433`) is a no-op on
-  base64url today and a latent trap if the token format changes.
+- ~~**No `nosniff`, CSP, or `X-Frame-Options` on any response.**~~ **Done.**
+  `generateCorsHeaders` is the one builder all three response paths go through
+  — the JSON API, the static-asset server and the native file server — so the
+  headers went in there rather than at 71 `writeHead` call sites. Every
+  response now carries `nosniff`, `X-Frame-Options: DENY` and
+  `Referrer-Policy: no-referrer`, plus one of two policies: `APP_CSP` for the
+  app, or `SIGNED_FILE_CSP` (`default-src 'none'; sandbox`) for anything out of
+  the download tree.
+
+  The planted-`.svg` path is closed twice over. `sandbox` puts the response in
+  an opaque origin, so a document with script in it cannot reach this origin's
+  `localStorage`; and `serveNativeFile` now refuses `inline` outright for the
+  five types a browser will execute as a document, so the renderer never sees
+  it. Video, audio and image playback still get `inline`, which is what the
+  parameter exists for.
+
+  The app policy pins `script-src`, `connect-src` and `form-action` to this
+  origin — those are the directives that decide whether injected script can
+  post the token somewhere. Two are deliberately looser and are asserted as
+  such in `tests/security_headers.test.ts`, so a later tightening pass has to
+  notice it is breaking something: `style-src` allows `'unsafe-inline'`
+  because MUI injects inline `<style>` at runtime, and `img-src` allows
+  `https:` because thumbnails come from whatever site the video came from.
+- ~~**JWT in `localStorage`.**~~ **Addressed, not eliminated.** The token is
+  still in `localStorage` — moving it to an `HttpOnly` cookie trades XSS
+  exposure for CSRF exposure and is a bigger change than this finding
+  justifies. What changed is both things that made it worse: the CSP above
+  closes the exfiltration path, and `F7` cuts the window a stolen token is
+  worth anything from 31 days to one.
+- ~~**Login user enumeration.**~~ **Done.** The username-miss path now spends a
+  `bcrypt.compare` against a throwaway hash before answering, so a miss costs
+  what a hit costs. The hash is generated once at the configured
+  `saltRounds` rather than hardcoded — a dummy at a different cost than the
+  real ones would reintroduce the difference it exists to remove — and
+  `createAuthMiddleware` warms it at startup so the first miss after a restart
+  is not the odd one out.
+- ~~**Committed proxy credential.**~~ **Removed from the tree**, as
+  `secrets/http_proxy_password.txt` handed to gluetun via
+  `HTTPPROXY_PASSWORD_SECRETFILE`, mirroring the `openvpn_password` pair
+  already there. **It still needs rotating**: it was committed, so it is in the
+  history regardless of what the working tree says now.
+- ~~**Hardcoded personal `SAVE_PATH` default.**~~ **Done.** `./data/` instead of
+  one machine's home directory. The container mounts a volume over `SAVE_PATH`
+  anyway, so this only ever governed a host-side `deno task dev`, which is
+  exactly the case that was silently writing somewhere nobody would look.
+- ~~**`he.escape(token)` on a JWT.**~~ **Done** — deleted. It was a no-op on
+  base64url and a corruption bug waiting for the day the token format changed.
 
 ---
 
@@ -706,22 +733,42 @@ per route — so the document has a single source.
 
 ### F7 — 31-day bearer tokens in `localStorage`, never renewed
 
-**Medium · Verified · Open — pairs with `S4–S9`**
+**Medium · Verified · Fixed, paired with `S4–S9`**
 
-`src/middleware/auth.ts:407` defaults `expiry_time` to `"31d"` and the login
-form sends no override. There is no refresh endpoint and no renewal path on the
+`src/middleware/auth.ts:407` defaulted `expiry_time` to `"31d"` and the login
+form sent no override. There was no refresh endpoint and no renewal path on the
 client. `AuthContext.jsx:11` reads the token straight out of `localStorage`.
 
-The long lifetime exists precisely so the app can skip renewal, which is a
-defensible trade for a self-hosted tool. The costs are that an XSS-leaked token
-stays valid for a month — compounded by the missing CSP in `S4–S9` — and that
-there is no way to shorten one user's session without invalidating everyone's.
+The long lifetime existed precisely so the app could skip renewal, which is a
+defensible trade for a self-hosted tool. The costs were that an XSS-leaked
+token stayed valid for a month — compounded by the missing CSP in `S4–S9` —
+and that there was no way to shorten one user's session without invalidating
+everyone's.
 
-**Fix.** The server already pushes expiry the instant a token dies
-(`src/socket/index.ts:75-100`), which is what usually makes short tokens
-painful; here the client finds out immediately. That makes a much shorter
-lifetime practical, paired with a refresh call on wake. Do it with the `S4–S9`
-header work, not before it — the CSP is the cheaper half of the same exposure.
+**Done.** `TOKEN_EXPIRY` defaults to `24h`, and `POST /refresh` exchanges a
+still-valid token for a fresh one. On the client, `useTokenRefresh` renews on
+two triggers, because neither is sufficient alone: a timer at the halfway mark
+of the token's life, and `visibilitychange`, since timers do not survive
+suspend and browsers throttle them hard in background tabs — a tab woken after
+its timer should have fired must not wait for a timer that already missed.
+
+Three things fell out of it that are worth naming:
+
+- **The client no longer picks its own lifetime.** `expiry_time` was an
+  unbounded string on the login schema, so a caller could ask for a year and
+  get it. The field is gone; the server decides.
+- **`/refresh` sits behind `authenticateRequest`**, so an expired token gets
+  the ordinary 401 there too. This extends a live session, it cannot revive a
+  dead one — a sliding window, not an unlimited one. That is the trade the
+  short lifetime is buying, and a tab asleep longer than `TOKEN_EXPIRY` comes
+  back to a login form.
+- **The response carries `expiresAt`**, the server's own `exp` claim, so the
+  client schedules renewal off that rather than decoding a JWT it has no key
+  to verify.
+
+Refresh re-reads `updatedAt` from the row rather than carrying the old token's
+claim forward, so a token minted here cannot outlive a password change — the
+password-change check compares against exactly that value.
 
 ### F8 — The string `"null"` as a `localStorage` sentinel
 
@@ -936,10 +983,20 @@ tree, and nothing above them blocks either.
 12. **F5** — routing. After `F4`, for the reason `F5` gives: routing a component
     that also owns the socket layer is much harder than routing one that does
     not.
-13. **S2, S4–S9 and F7** — the security long tail, cheapest first: `nosniff` /
-    CSP / `X-Frame-Options` on every response, a dummy `bcrypt.compare` on the
-    login miss path, rotating the committed proxy credential, dropping the
-    hardcoded `SAVE_PATH` default. Then `F7`'s shorter token lifetime with a
-    refresh on wake — the CSP is the cheaper half of the same XSS exposure, and
-    the server-side expiry push means the client already learns of expiry
-    instantly, which is what usually makes short tokens painful.
+13. ~~**S2, S4–S9 and F7** — the security long tail, cheapest first.~~
+    **Done for S4–S9 and F7**, taken together as one change because they are
+    one exposure: the CSP closes the path a token is stolen through, and the
+    24-hour lifetime bounds what a stolen one is worth. Shipped as
+    `SECURITY_HEADERS` + two CSP profiles in `generateCorsHeaders`, an
+    `inline`-refusal list in `serveNativeFile`, a dummy `bcrypt.compare` on the
+    login miss path, `POST /refresh` with `useTokenRefresh` on the client, the
+    proxy credential moved to `secrets/`, and the personal `SAVE_PATH` default
+    dropped. Backend suite 209 → 224, frontend 73 → 89.
+
+    **S2 is what is left of this step** — the rate limiter still keys on the
+    socket peer, so every user behind one reverse proxy shares a bucket. It
+    needs a trusted-proxy allowlist before `X-Forwarded-For` can be believed,
+    which is why it did not ride along with the rest.
+
+    **The committed proxy password still needs rotating.** It is out of the
+    working tree, but it was committed, so it remains in the history.

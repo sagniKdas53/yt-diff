@@ -63,6 +63,96 @@ export const CORS_ALLOWED_HEADERS = [
 ];
 
 /**
+ * Headers every response carries, whatever the path that produced it.
+ *
+ * `nosniff` is the one that matters most here: the signed-file path serves a
+ * Content-Type derived from the file extension, so without it a browser is
+ * free to disagree with us about what a downloaded file is.
+ *
+ * `X-Frame-Options` duplicates `frame-ancestors` in the CSP below. Both are
+ * kept because they fail in opposite directions — `frame-ancestors` is
+ * ignored by browsers too old to know it, and `X-Frame-Options` is ignored by
+ * some newer ones when a CSP is present.
+ */
+export const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+} as const;
+
+/**
+ * The lockdown policy for anything served out of the download tree.
+ *
+ * `sandbox` is the operative directive. yt-dlp writes files whose names and
+ * types come from a remote site, `MIME_TYPES` maps `.svg`, `.html` and `.xml`
+ * to types a browser will execute, and `serveNativeFile` will serve any of
+ * them with `Content-Disposition: inline` on request. `sandbox` drops the
+ * response into an opaque origin, so even a planted document with script in it
+ * cannot read this origin's `localStorage` or call the API as the user.
+ *
+ * CSP is only enforced on documents, so this does not affect a file loaded as
+ * a subresource — `<video src>` and `<img src>` playback is untouched. It
+ * applies exactly when the file is navigated to, which is the case the finding
+ * is about.
+ */
+export const SIGNED_FILE_CSP = "default-src 'none'; sandbox";
+
+/**
+ * Content-Security-Policy for the app's own documents and API responses.
+ *
+ * Built once at module load from `config.publicOrigin`, which is the origin a
+ * browser actually connects to (see the note above it in `config.ts` — it is
+ * computed before `index.ts` rewrites `config.protocol` to match the listener,
+ * so it stays correct behind a TLS-terminating proxy).
+ *
+ * Two directives are looser than the rest, both because the app genuinely
+ * needs them:
+ *
+ * - `style-src` allows `'unsafe-inline'` because MUI's styling engine injects
+ *   inline `<style>` blocks at runtime. There is no nonce path through emotion
+ *   here, and inline *styles* are not the vector the token is exposed to.
+ * - `img-src` allows `https:` because thumbnails come straight from whatever
+ *   site the video came from (`meta.onlineThumbnail`), which is not an
+ *   enumerable set of origins.
+ *
+ * Everything that could exfiltrate a bearer token out of `localStorage` —
+ * `script-src`, `connect-src`, `form-action` — stays pinned to this origin.
+ * The socket origins are spelled out rather than left to `'self'`, which older
+ * browsers do not match against `ws:`/`wss:`.
+ */
+function buildAppCsp(): string {
+  // A deployment with HOSTNAME unset or wrong produces an origin that does not
+  // match what the browser sees. Rather than emit a malformed source and have
+  // the browser drop the whole directive, drop just this entry — `'self'` still
+  // covers same-origin sockets on every browser that matches it against ws:.
+  const socketOrigins: string[] = [];
+  try {
+    const origin = new URL(config.publicOrigin);
+    origin.protocol = origin.protocol === "https:" ? "wss:" : "ws:";
+    socketOrigins.push(origin.origin);
+  } catch {
+    // Leave it out; nothing here can log, since logger imports config.
+  }
+
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob:",
+    "font-src 'self' data:",
+    ["connect-src 'self'", ...socketOrigins].join(" "),
+    "worker-src 'self' blob:",
+  ].join("; ");
+}
+
+export const APP_CSP = buildAppCsp();
+
+/**
  * Extracts and parses JSON data from a request stream
  *
  * @param {HttpRequestLike} request - The HTTP request object
@@ -157,8 +247,16 @@ export function parseRequestJson(request: HttpRequestLike): Promise<unknown> {
  * Origin header, and without it a shared cache could serve one origin's
  * response to another.
  *
+ * Every response also carries `SECURITY_HEADERS` and a CSP. This function is
+ * the single chokepoint for all three response paths — the JSON API, the
+ * static-asset server and the native signed-file server all build their
+ * headers here — which is why the headers are added at this level rather than
+ * at each of the 71 `writeHead` call sites.
+ *
  * @param contentType - Value for the Content-Type header
  * @param requestOrigin - The request's Origin header, when available
+ * @param csp - Overrides the app policy; the signed-file path passes
+ *   `SIGNED_FILE_CSP` because it serves content this app did not author.
  */
 export function generateCorsHeaders(
   contentType: string,
@@ -167,11 +265,13 @@ export function generateCorsHeaders(
     allowedMethods = CORS_ALLOWED_HEADERS,
     maxAge = config.defaultCORSMaxAge,
     requestOrigin,
+    csp = APP_CSP,
   }: {
     allowedOrigins?: string[];
     allowedMethods?: string[];
     maxAge?: number;
     requestOrigin?: string | null;
+    csp?: string;
   } = {},
 ) {
   // A wildcard allowlist stays a wildcard; otherwise echo the caller's origin
@@ -189,6 +289,8 @@ export function generateCorsHeaders(
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": maxAge,
     "Vary": "Origin",
+    ...SECURITY_HEADERS,
+    "Content-Security-Policy": csp,
     "Content-Type": contentType,
   };
 }

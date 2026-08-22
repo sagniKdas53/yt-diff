@@ -84,6 +84,46 @@ async function getAuthenticatedUser(
   return { user, passwordChanged: false };
 }
 
+/**
+ * The `exp` claim of a token this server just minted, in epoch seconds.
+ *
+ * Returned alongside the token so the client can schedule its renewal without
+ * decoding a JWT it has no key to verify. `jwt.decode` is safe here for the
+ * same reason: the token came from `generateAuthToken` two lines earlier, so
+ * there is nothing to authenticate.
+ */
+export function expiryOf(token: string): number | null {
+  const decoded = jwt.decode(token);
+  if (
+    decoded && typeof decoded === "object" && typeof decoded.exp === "number"
+  ) {
+    return decoded.exp;
+  }
+  return null;
+}
+
+let dummyPasswordHash: Promise<string> | null = null;
+
+/**
+ * A bcrypt hash of a value no one can log in with, used to give the
+ * username-miss path in `authenticateUser` the same cost as a hit.
+ *
+ * Generated once at the configured cost rather than hardcoded, so it stays in
+ * step if `saltRounds` ever changes — a dummy hash at a different cost than
+ * the real ones would reintroduce the timing difference it exists to remove.
+ * `createAuthMiddleware` warms it at startup so that even the first miss after
+ * a restart pays the same price as every later one.
+ */
+export function getDummyPasswordHash(): Promise<string> {
+  if (!dummyPasswordHash) {
+    dummyPasswordHash = bcrypt.hash(
+      "yt-diff::no-such-user::placeholder",
+      config.saltRounds,
+    );
+  }
+  return dummyPasswordHash;
+}
+
 export function createAuthMiddleware({
   redis,
   generateAuthToken,
@@ -91,6 +131,9 @@ export function createAuthMiddleware({
   emitTokenExpired,
 }: AuthDependencies) {
   const jsonMimeType = MIME_TYPES[".json"];
+  // Warm the dummy hash so the first failed login after a restart is not
+  // measurably slower than the ones after it.
+  void getDummyPasswordHash();
   async function registerUser(
     request: HttpRequestLike,
     response: HttpResponseLike,
@@ -401,17 +444,20 @@ export function createAuthMiddleware({
           message: "Invalid credentials format",
         }));
       }
-      const {
-        username,
-        password,
-        expiry_time: expiryTime = "31d",
-      } = parsed.data;
+      const { username, password } = parsed.data;
 
       const user = await UserAccount.findOne({
         where: { username: username },
       });
 
       if (!user) {
+        // Spend a bcrypt round against a throwaway hash before answering.
+        // Without it a miss returns in about a millisecond and a hit takes as
+        // long as bcrypt does, which is a timing oracle for "does this
+        // username exist" — and registration is open by default, so the answer
+        // is worth something. The response body and status are already
+        // identical on both paths; this makes the timing identical too.
+        await bcrypt.compare(password, await getDummyPasswordHash());
         logger.warn(`Authentication failed for user ${username}`);
         response.writeHead(401, generateCorsHeaders(jsonMimeType));
         return response.end(JSON.stringify({
@@ -436,14 +482,17 @@ export function createAuthMiddleware({
 
       const token = generateAuthToken(
         user as unknown as { id: string; updatedAt: Date },
-        expiryTime,
+        config.auth.tokenExpiry,
       );
       logger.info(`Authentication successful for user ${username}`);
 
       response.writeHead(200, generateCorsHeaders(jsonMimeType));
       return response.end(JSON.stringify({
         status: "success",
-        token: he.escape(token),
+        token,
+        // The client schedules its own renewal off this rather than parsing
+        // the JWT, which would mean trusting a payload it cannot verify.
+        expiresAt: expiryOf(token),
       }));
     } catch (error) {
       logger.error("Authentication failed", {
@@ -457,11 +506,78 @@ export function createAuthMiddleware({
     }
   }
 
+  /**
+   * Mints a fresh token for the caller of an already-valid one.
+   *
+   * Shaped as an `authenticateRequest` continuation, so it only ever runs
+   * after the incoming token has been verified, the user has been loaded and
+   * the password-change check has passed. That is what makes this safe without
+   * a separate refresh-token type: this is not an offline-verifiable grant
+   * that outlives the session, it is the same session re-stamped.
+   *
+   * The consequence is a sliding window rather than an unlimited one — a tab
+   * asleep longer than `TOKEN_EXPIRY` comes back to a 401 and a login form,
+   * because `authenticateRequest` rejects the expired token before this runs.
+   * That is the trade the short lifetime is buying.
+   */
+  async function refreshAuthToken(
+    _data: unknown,
+    response: HttpResponseLike,
+    context?: RequestContext,
+  ): Promise<unknown> {
+    try {
+      if (!context?.userId) {
+        // Unreachable through the router — authenticateRequest always supplies
+        // a context — but this must never mint a token for nobody.
+        response.writeHead(401, generateCorsHeaders(jsonMimeType));
+        return response.end(JSON.stringify({
+          status: "error",
+          message: "Token required",
+        }));
+      }
+
+      const user = await UserAccount.findByPk(context.userId);
+      if (!user) {
+        response.writeHead(404, generateCorsHeaders(jsonMimeType));
+        return response.end(JSON.stringify({
+          status: "error",
+          message: "User not found",
+        }));
+      }
+
+      // Re-read updatedAt from the row rather than carrying the old token's
+      // claim forward: it is what the password-change check compares against,
+      // so a token minted from a stale value would survive a password change.
+      const token = generateAuthToken(
+        user.toJSON() as unknown as { id: string; updatedAt: Date },
+        config.auth.tokenExpiry,
+      );
+
+      logger.debug(`Refreshed token for user ${context.userName}`);
+      response.writeHead(200, generateCorsHeaders(jsonMimeType));
+      return response.end(JSON.stringify({
+        status: "success",
+        token,
+        expiresAt: expiryOf(token),
+      }));
+    } catch (error) {
+      logger.error("Token refresh failed", {
+        error: (error as Error).message,
+      });
+      response.writeHead(500, generateCorsHeaders(jsonMimeType));
+      return response.end(JSON.stringify({
+        status: "error",
+        message: "Token refresh failed",
+      }));
+    }
+  }
+
   return {
     authenticateRequest,
     authenticateSocket,
     authenticateUser,
     isRegistrationAllowed,
+    refreshAuthToken,
     registerUser,
   };
 }
