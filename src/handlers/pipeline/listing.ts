@@ -19,7 +19,11 @@ import {
   resolveChannelUploadsPlaylistId,
 } from "../youtube-api.ts";
 import { Semaphore } from "./semaphore.ts";
-import { playlistRegex, ProcessExitCodes } from "./types.ts";
+import {
+  ListingProcessError,
+  playlistRegex,
+  ProcessExitCodes,
+} from "./types.ts";
 import type {
   ListingItem,
   ListingProcessEntry,
@@ -787,13 +791,14 @@ export function createListingFlow(
   /**
    * Errors that mean "we stopped this ourselves", not "this listing failed".
    *
-   * Matched on the message because that is all a process exit gives us today;
-   * `Q4` is the finding that says this should be a typed error with an
-   * `exitCode` field instead.
+   * Reads the exit code off the typed error rather than matching the message:
+   * the producer appends `: <reason>` whenever yt-dlp wrote to stderr, so a
+   * SIGTERM-with-stderr used to slip past a string comparison and surface to
+   * the user as a listing failure.
    */
   function isDeliberateTermination(error: Error): boolean {
-    return error.message === "Process exited with code null" ||
-      error.message === "Process exited with code 143";
+    return error instanceof ListingProcessError &&
+      error.isDeliberateTermination;
   }
 
   async function handlePlaylistStreaming(
@@ -1120,15 +1125,10 @@ export function createListingFlow(
           !isAllowedError
         ) {
           setProcessStatus(processKey, "failed");
-          // Keeps the original prefix so anything matching on it still works,
-          // and appends the reason when yt-dlp gave one.
+          // The exit code travels as a field; the message keeps its original
+          // shape and appends the reason when yt-dlp gave one.
           await stderrDrained;
-          const reason = stderrReason();
-          throw new Error(
-            reason
-              ? `Process exited with code ${exitCode}: ${reason}`
-              : `Process exited with code ${exitCode}`,
-          );
+          throw new ListingProcessError(exitCode, stderrReason());
         } else {
           setProcessStatus(processKey, "completed");
         }
