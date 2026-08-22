@@ -34,7 +34,7 @@ says so.
 | S2 | Rate limiter keys on the socket peer | Medium | Partly fixed with S1 |
 | S3 | Deletion paths skip the containment check | Medium | **Fixed** |
 | S4–S9 | Assorted low-severity items | Low | Open |
-| Q1 | Frontend context layer built then bypassed | Blocker | Open |
+| Q1 | Frontend context layer built then bypassed | Blocker | **Fixed** |
 | Q2 | Two divergent URL canonicalizers | Blocker | **Fixed** — with Q3 |
 | Q3 | Documented tracking-param stripping never implemented | Correctness | **Fixed** — with Q2 |
 | Q4 | Failure classification by error-string equality | Correctness | Open |
@@ -262,7 +262,7 @@ rubric's approval-bar criteria.
 
 ### Q1 — The frontend's intended architecture is written, complete, and disconnected
 
-**Blocker · Verified · Open**
+**Blocker · Verified · Fixed**
 
 `AuthContext`, `SocketContext`, `DownloadContext`, `NotificationContext` and the
 `useApi` hook are imported by **nothing outside `contexts/` itself** — the only
@@ -279,6 +279,22 @@ cross-references are `useApi.js` importing two of the contexts.
 **Fix.** This is deletion, not construction: mount the providers in `main.jsx`
 and route the 18 hand-rolled `fetch` calls through the `useApi` that already
 exists. Roughly 400 lines leave `App.jsx` before any real refactoring begins.
+
+**Done.** `main.jsx` renders `AppProviders` (Auth → Notification → Socket →
+Download) and `App.jsx` lost 440 lines — the token state, the socket
+construction, the snackbar trio, the notification log, the download queue and
+the five drilled props. All 18 `fetch` calls go through `apiFetch`, which now
+owns the bearer token, the JSON headers and the eight verbatim copies of
+"401 → session expired → log out". A new `src/config.js` absorbed the three
+copies of the backend-location logic that `App.jsx`, `SocketContext.jsx` and
+the `baseUrl` in three components each kept separately.
+
+Two of the providers had to grow to become the real path rather than a
+parallel one: `DownloadContext` took over `App`'s more evolved queue logic
+along with the `/download` POST and the `/queuestatus` sync, and
+`NotificationContext` gained `setSnack` and `addNotification` as separate
+calls, because the snackbar and the log routinely carry different text for
+the same event.
 
 ### Q2 — Two divergent URL canonicalizers, one of which defines the primary key
 
@@ -524,9 +540,9 @@ statement with
 | File | Lines | What is actually wrong |
 | :--- | ---: | :--- |
 | `src/handlers/pipeline/listing.ts` | 1,684 | One function, `createListingFlow`, holding 20 nested functions over four pieces of mutable closure state. Nothing can be imported or tested in isolation. |
-| `frontend/src/components/App.jsx` | 1,478 | 24 `useState`, 16 `useRef` mirrors, and one **469-line `useEffect`** registering 17 socket handlers with a hand-maintained parallel `.off` block. |
-| `frontend/src/components/VideoPlayer.jsx` | 1,355 | Signed-URL fetching, playback state, fullscreen chrome and drawer navigation in one component — while `useSignedUrlRefresh.js` sits unused. |
-| `frontend/src/components/SubList.jsx` | 1,124 | 8 effects, two of them storing derived state that `useMemo` would compute. |
+| `frontend/src/components/App.jsx` | 1,038 | Was 1,478 before the Q1 fix took the contexts back. What remains is one **414-line `useEffect`** registering 17 socket handlers with a hand-maintained parallel `.off` block. |
+| `frontend/src/components/VideoPlayer.jsx` | 1,317 | Signed-URL fetching, playback state, fullscreen chrome and drawer navigation in one component — while `useSignedUrlRefresh.js` sits unused. |
+| `frontend/src/components/SubList.jsx` | 1,073 | 8 effects, two of them storing derived state that `useMemo` would compute. |
 | `scripts/scratch_*.ts` | 1,318 | Referenced by no task, doc or Makefile target, outside every lint/check glob, and importing production DB models to mutate the database. |
 
 The `listing.ts` split is mostly a *consequence* of Q2, Q4 and Q9 rather than
@@ -562,7 +578,7 @@ exists in the tree, and the path that actually runs goes around it.**
 | :--- | :--- |
 | `isHttpUrl` (`utils/url.ts`, hoisted out of `bot/commands.ts`) | ~~the HTTP `/list` path~~ → **C1**, fixed |
 | `isWithinPath` (`files.ts:107`) | ~~the file deletion path (`videoFiles.ts:46`)~~ → **S3**, fixed |
-| Four context providers + `useApi` | `main.jsx` renders around them → **Q1** |
+| Four context providers + `useApi` | ~~`main.jsx` renders around them~~ → **Q1**, fixed |
 | `SITE_CANONICALIZERS` registry | ~~`dedup.ts:63` re-implements it, disagreeing~~ → **Q2**, fixed |
 | `isHostOrSubdomain` (`dedup.ts:59`) | ~~four more copies, one two functions below it~~ → **Q9**, fixed |
 
@@ -638,8 +654,11 @@ Sequenced so each step makes the next cheaper, not by severity alone.
    canonical forms the ingest path will never produce.~~ **Done**, as one
    registry in `src/utils/url.ts` with idempotence pinned per site. Took the
    host-matcher half of **Q9** and **S3** with it.
-5. **Q1** — mount the providers in `main.jsx` and route the 18 `fetch` calls
-   through `useApi`. Deletion rather than construction.
+5. ~~**Q1** — mount the providers in `main.jsx` and route the 18 `fetch` calls
+   through `useApi`. Deletion rather than construction.~~ **Done**, as
+   `AppProviders` in `main.jsx` and one `apiFetch` behind every call, with the
+   backend-location logic collapsed into `src/config.js`. Net −466 lines of
+   `src/`, and the frontend suite went from 68 tests to 73.
 6. **Q4, Q8, then Q10** — typed process errors, a transaction around the triple
    write, and the decomposition, which by then is mostly a consequence of the
    steps above.
