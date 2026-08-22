@@ -21,9 +21,10 @@ review rubrics — `thermo-nuclear-review` (correctness and security) and
 Findings marked **Verified** were independently re-traced end-to-end against
 the source after the review passes reported them.
 
-Line references are valid at the commits above. `master` has advanced since the
-snapshot — where a finding has been addressed in the meantime, the status table
-says so.
+Line references are valid at the commits above. `master` has advanced well past
+the snapshot — where a finding has been addressed in the meantime, the status
+table and the finding itself say so, and the [fix order](#suggested-fix-order)
+records what each step actually shipped.
 
 > [!NOTE]
 > **2026-08-22 — `docs/FRONTEND_IMPROVEMENTS.md` was folded into this document.**
@@ -50,20 +51,20 @@ says so.
 | Q3 | Documented tracking-param stripping never implemented | Correctness | **Fixed** — with Q2 |
 | Q4 | Failure classification by error-string equality | Correctness | Open |
 | Q5 | CI gates none of the quality signals | Blocker | **Fixed** |
-| Q6 | No shared API contract | Structural | Open |
+| Q6 | No shared API contract | Structural | **Fixed** |
 | Q7 | Validation schemas are optional-everything | Structural | **Fixed** — with C1 |
 | Q8 | Non-atomic triple write in the ingest path | Structural | Open |
-| Q9 | Duplication with a canonical answer already present | Structural | Partly fixed with Q2 |
+| Q9 | Duplication with a canonical answer already present | Structural | **Fixed** |
 | Q10 | Files past the 1k-line bar | Structural | Open |
 | F1 | Context providers and `useApi` written but never mounted | High | **Closed** — is Q1 |
 | F2 | No error boundary behind five lazy routes | High | Open |
 | F3 | The socket is never closed on the client | High | Open |
-| F4 | `App.jsx` still owns the socket layer | Medium | Partly fixed with Q1 |
+| F4 | `App.jsx` still owns the socket layer | Medium | **Fixed** — bar the split, which is Q10 |
 | F5 | No routing: no deep links, no Back button | Medium | Open |
-| F6 | No TypeScript, no generated API types | Medium | Open — half of Q6 |
+| F6 | No TypeScript, no generated API types | Medium | Open — was ranked with Q6 |
 | F7 | 31-day tokens in `localStorage`, never renewed | Medium | **Fixed** — with S4–S9 |
-| F8 | `"null"` as a `localStorage` sentinel | Low | Mostly closed with Q1 |
-| F9 | Thumbnails not lazily loaded | Low | Mostly closed |
+| F8 | `"null"` as a `localStorage` sentinel | Low | **Fixed** |
+| F9 | Thumbnails not lazily loaded | Low | **Fixed** |
 | F10 | No test coverage thresholds | Low | Open |
 
 **C1 and Q7 were deliberately paired and fixed in one PR.** They are the same
@@ -487,24 +488,57 @@ the finding making its own case:
 
 ### Q6 — No shared API contract
 
-**Structural · Open**
+**Structural · Fixed**
 
-**Backend:** each endpoint is described in three places — path and auth in
+**Backend:** each endpoint was described in three places — path and auth in
 `src/routes/api.ts`, schema 200 lines away in `index.ts:756-812`, and handler via
 a 20-field `ApiRouteDependencies` interface destructured twice. Response shapes
-are hand-built at **79 `writeHead` call sites** with no `json()` helper.
+were hand-built at **79 `writeHead` call sites** with no `json()` helper.
 
 **Frontend:** 18 hand-rolled `fetch` calls, each restating method, `Accept`,
 `Content-Type`, `Authorization`, `mode: "cors"`, `JSON.stringify`,
 `response.ok` and its own 401 handling.
 
-The leak shows through: `SubList.jsx:585,633-655` reads
+The leak showed through: `SubList.jsx:585,633-655` read
 `item.video_metadatum.videoUrl` — a Sequelize association name reaching JSX
 untyped and undocumented.
 
-**Fix.** One record per endpoint (`{ method, path, schema, handler, auth, rateLimit }`)
-that `api.ts` maps over, plus `json(res, status, body)` in `src/utils/http.ts`.
-On the frontend, one `api/client.js` normalizing each response once.
+**Fixed, both halves.**
+
+`src/routes/endpoints.ts` is one record per endpoint — method, path, handler,
+schema, admission tier, work cost, and a line saying what it is for. `api.ts`
+maps over it, and one `buildRunner` composes every route in the same order:
+admission budget, authentication, work charge, schema, handler. No endpoint
+picks its own order any more, and `index.ts` no longer imports a schema at all.
+
+The pairing that used to be checked at each `validateBody` call site is not
+lost. `AuthenticatedHandlers` derives every handler's signature from that
+endpoint's own schema, so a handler that cannot accept what its schema produces
+fails to compile where the handler is supplied.
+
+Putting the records side by side made two things visible that were invisible
+spread across two files: `/register` was passing `isRegistrationAllowed` as a
+next-handler that could never run, and `/refresh` needed a hand-written adapter
+to reach the arity the limiter wanted. Both are gone.
+
+`json(res, status, body)` in `src/utils/http.ts` replaced the `writeHead` +
+`end(JSON.stringify(…))` pair at 59 JSON call sites. Seven files stopped
+needing `generateCorsHeaders` or a `jsonMimeType` local of their own.
+
+On the frontend, `src/api/client.js` owns the half `apiFetch` never did:
+encoding, `response.ok`, and parsing. `api.post()` returns the parsed body or
+throws `ApiError`, so the failure path cannot be skipped — the previous shape
+let a missing `if (!response.ok)` read an error body as data. `ApiError` also
+carries the one thing callers could not work out for themselves,
+`sessionExpired`: true only for a 401 that `apiFetch` has already reported and
+logged out on. That distinction was open-coded as `if (response.status !== 401)`
+at five call sites, right for the expiry case and wrong for a bad password at
+`/login`.
+
+**What is still open.** The typed client of [F6](#f6--no-typescript-no-generated-api-types).
+The two were ranked as one step because designing the contract twice would be
+waste — that risk is gone now: the contract exists, in one file, and an OpenAPI
+document can be emitted from those records rather than written beside them.
 
 ### Q7 — Validation schemas are optional-everything
 
@@ -570,7 +604,7 @@ statement with
 
 ### Q9 — Duplication that the tree already has a canonical answer for
 
-**Structural · Partly fixed**
+**Structural · Fixed**
 
 - ~~**Five host-matchers, one already canonical.**~~ **Fixed with Q2.**
   `isSiteXDotCom` existed *verbatim twice* — `index.ts:293-307` and
@@ -582,19 +616,48 @@ statement with
   count: the copies each decided for themselves whether an unparseable URL
   logged, threw or silently missed, so the same input could match on one path
   and not another. That agreement is now a test.
-- **Two copies of one listing algorithm.** `handlePlaylistStreaming`
-  (`listing.ts:613-799`) and `handlePlaylistViaApi` (`:801-948`) are
-  line-for-line duplicates apart from where chunks come from. A
-  `PlaylistChunkSource` async-iterable plus two ~40-line adapters collapses ~150
-  lines and one whole parallel flow.
-- **Three hand-rolled copies of "drive a `yt-dlp` subprocess."**
-  `listing.ts:1048`, `:1497` and `download.ts:304`. The `addPlaylist` instance
-  wraps three detached IIFEs in a `new Promise` where one writes
-  `firstValidLine` and another reads it — a race held together by yt-dlp's flush
-  timing.
-- **The process-status mutation, copy-pasted eight times**, each copy mutating an
-  entry it already holds by reference and *then* calling `map.set(key, entry)` —
-  a no-op, replicated eight times.
+- ~~**Two copies of one listing algorithm.**~~ **Fixed.**
+  `handlePlaylistStreaming` and `handlePlaylistViaApi` were line-for-line
+  duplicates apart from where chunks came from. Both now run
+  `consumePlaylistChunks` over a `PlaylistChunkSource`, and each states only
+  the four things that genuinely differ: the chunk source, what an empty run
+  means, what a failure means, and its own progress logging.
+
+  The copies had already drifted, which is what the finding was really about.
+  One compared the "everything in this chunk is already known" early stop
+  against the *configured* chunk size and the other against the chunk actually
+  received — they differ on a trailing partial chunk, so the same playlist
+  could stop early on one path and not the other. The driver compares against
+  the chunk it was handed. The early stop also marks the process completed now;
+  it used to leave the entry at `"running"` until the idle timeout noticed.
+
+  The offset arithmetic came out to `chunkPlaylistLines` in
+  `src/handlers/pipeline/chunks.ts`, where it is tested: it writes
+  `positionInPlaylist`, so an off-by-one silently renumbers a playlist, and it
+  was previously two separate expressions in the full-chunk and trailing-chunk
+  branches.
+- ~~**Three hand-rolled copies of "drive a `yt-dlp` subprocess."**~~ **Fixed.**
+  `createYtDlpLauncher` in `src/handlers/pipeline/ytdlp.ts` is the only place a
+  yt-dlp subprocess starts, which is what keeps [C1](#c1--argument-injection-into-yt-dlp-via-post-list)'s
+  `--` separator true for the next call site as well as these three. The
+  download path's log line also stopped disagreeing with what it ran: it
+  rendered its options unquoted, so a save path containing a space logged as a
+  command that would not run if pasted.
+
+  `addPlaylist`'s race went with it. It wrapped three detached IIFEs in a
+  `new Promise` where the one awaiting the exit status read a variable another
+  one wrote — correct only for as long as yt-dlp happened to flush stdout
+  before exiting, and silently falling back to a URL-derived title when it did
+  not. Both drains and the status are awaited together now.
+- ~~**The process-status mutation, copy-pasted eight times**~~ **Fixed**, as
+  `setProcessStatus` on the process manager. Each copy mutated an entry it
+  already held by reference and *then* called `map.set(key, entry)` — a no-op,
+  replicated eight times, reading as though the write were what made the change
+  stick. Worse, each copy chose for itself which of the three liveness clocks
+  to move, so a status change meant different things depending on which copy
+  you were reading. It also returns `false` rather than silently doing nothing
+  when the entry is gone, which the two callers that have just spawned a
+  subprocess check: for them it means a process nothing will ever reap.
 
 ### Q10 — Files past the 1k-line bar
 
@@ -686,28 +749,32 @@ swaps.
 
 ### F4 — `App.jsx` still owns the socket layer
 
-**Medium · Verified · Partly fixed**
+**Medium · Verified · Fixed, bar the split**
 
 Was 1,478 lines with twelve `xRef.current = x` mirror assignments. `Q1` took it
 to 1,038 lines and four mirrors (`playListUrl`, `disableProgress`,
 `toggleProgressCallBack`, `isMobile` — `:255-265`); the other ten ref writes are
-now genuine mutable state, not mirrors.
+genuine mutable state, not mirrors.
 
-What did not move is the reason the mirrors exist: **one `useEffect` at `:341`**
-registering 18 `socket.on` handlers against a hand-maintained parallel block of
-18 `socket.off` calls. Handlers registered once need some way to read current
+The reason the mirrors existed is **one `useEffect` at `:341`** registering 18
+`socket.on` handlers against a hand-maintained parallel block of 18
+`socket.off` calls. Handlers registered once need some way to read current
 state without re-subscribing, and mirroring into a ref is React 18's manual
 answer.
 
-**Fix, two independent steps.**
-1. A `useLatest(value)` hook collapses the four remaining mirrors. Available
-   today; no version bump.
-2. React 19's `useEffectEvent` replaces the pattern outright. `package.json`
-   pins `react@^18.2.0` — this is the concrete payoff of that upgrade, not a
-   reason to do it on its own.
+**Fixed.** A `useLatest(value)` hook is that box, named once instead of
+open-coded four times. The render-phase write is deliberate and kept — an
+effect commits after paint, so a handler firing in the gap would read the
+previous value — and that trade is now stated in one place with the single
+`react-hooks/refs` suppression it needs, rather than left implicit at four call
+sites that happened not to trip the rule.
 
-Splitting the socket layer into a `useSocketEvents` hook is the larger job, and
-it is the `App.jsx` row of [Q10](#q10--files-past-the-1k-line-bar).
+React 19's `useEffectEvent` still replaces the pattern outright, and is still
+the concrete payoff of that upgrade rather than a reason to do it.
+
+**What is left is the split**, not the mirrors: turning the 414-line socket
+effect into a `useSocketEvents` hook is the `App.jsx` row of
+[Q10](#q10--files-past-the-1k-line-bar), and is tracked there.
 
 ### F5 — No routing: no deep links, no working Back button
 
@@ -784,33 +851,36 @@ password-change check compares against exactly that value.
 
 ### F8 — The string `"null"` as a `localStorage` sentinel
 
-**Low · Verified · Mostly closed**
+**Low · Verified · Fixed**
 
 `App.jsx` used to write `localStorage.setItem("ytdiff_token", "null")` on
 expiry, with two readers guarding against that exact string. `Q1` replaced the
 write with `removeItem` (`AuthContext.jsx:30`) and deleted one guard. The
-remaining guard is `AuthContext.jsx:12` — `stored && stored !== "null"` — which
-is now migration code for tokens written by pre-`Q1` builds, not a workaround
-for anything the app still does.
+remaining guard was `AuthContext.jsx:12` — `stored && stored !== "null"` —
+migration code for tokens written by pre-`Q1` builds, sitting on the read path
+where it read as a live workaround.
 
-**Fix.** One line, on a comment saying why it is there, or deleted once no live
-browser can still be holding a pre-`Q1` value.
+**Fixed** by migrating rather than guarding: `AuthContext` deletes the key on
+mount, along with the orphaned expiry beside it — which the guard never did —
+and the read is a plain read again. The migration names itself, is confined to
+one function, and can be deleted outright once no live browser can still be
+holding a pre-`Q1` value.
 
 ### F9 — Thumbnails not lazily loaded
 
-**Low · Verified · Mostly closed**
+**Low · Verified · Fixed**
 
-The frontend now renders exactly two remote images. `SubListItemCard.jsx:104`
-already has `loading="lazy"`. The other is the MUI `Avatar` at
-`PlayerPlaylistDrawer.jsx:114`, which takes `src` but passes no `loading`.
+The frontend renders exactly two remote images. `SubListItemCard.jsx:104`
+already had `loading="lazy"`. The other was the MUI `Avatar` at
+`PlayerPlaylistDrawer.jsx:114`, which took `src` but passed no `loading`.
 
 The original finding assumed thumbnail grids of thousands of items — the
-playlist views turned out not to render images at all, so what is left is one
+playlist views turned out not to render images at all, so what was left was one
 attribute on one drawer list.
 
-**Fix.** `slotProps={{ img: { loading: "lazy" } }}` on that `Avatar`. Port a
-blob-fetching `LazyImage` only if thumbnails ever need authenticated fetches;
-they do not today.
+**Fixed** as `slotProps={{ img: { loading: "lazy" } }}`, since `img` is the slot
+MUI actually puts the URL on. The drawer lists a whole playlist, so most of
+those thumbnails start well below the fold.
 
 ### F10 — No test coverage thresholds
 
@@ -885,6 +955,13 @@ canonicalizer tests now sit in `tests/url.test.ts` beside the code, and
 `dedup.test.ts` is gone — so the ratio above got worse, not better. What Q5
 changed is that the tests which do exist, on either side of the tree, now fail
 a build.
+
+The Q9 work moved the ratio the other way for the first time, and by the same
+method as Q2: rather than trying to test `handlePlaylistStreaming` where it
+sits, the two pieces of it that are worth pinning came out to modules that can
+be. `chunks.ts` holds the offset arithmetic that writes `positionInPlaylist`,
+and `ytdlp.ts` holds the argv builder that carries C1's `--`. Both are now
+covered directly. What is still untested is the part that needs a database.
 
 ---
 
@@ -965,13 +1042,16 @@ keeping the frontend items on a list of their own. The frontend items do not que
 the backend ones: `F2` and `F3` are the highest impact-per-hour work left in the
 tree, and nothing above them blocks either.
 
-6. **F2 + F3 together, plus the F8 and F9 residue** — an error boundary that
-   handles stale chunks, moving socket construction into an effect that
-   disconnects on cleanup, one leftover sentinel guard and one `loading="lazy"`.
-   All four are localized, none depends on the others, and together they close
-   the blank-screen failure and the leaked signed-out connection. `F3` carries
-   the security half: today a logged-out tab keeps an authenticated socket open
-   for up to the token's full 31 days.
+6. **F2 + F3** — an error boundary that handles stale chunks, and moving socket
+   construction into an effect that disconnects on cleanup. Both are localized,
+   neither depends on the other, and together they close the blank-screen
+   failure and the leaked signed-out connection. `F3` carries the security
+   half: today a logged-out tab keeps an authenticated socket open for the rest
+   of the token's life.
+
+   ~~Plus the F8 and F9 residue.~~ **Those two are done** — the sentinel is
+   migrated rather than guarded, and the drawer `Avatar` lazy-loads. They came
+   off this step early because neither depended on `F2` or `F3` for anything.
 7. **Q4** — typed process errors. `ListingProcessError` with an `exitCode`
    field, branched on rather than string-compared, so a SIGTERM that also wrote
    to stderr stops surfacing to the user as a listing failure. Smallest
@@ -982,19 +1062,29 @@ tree, and nothing above them blocks either.
 9. **Q8** — one `sequelize.transaction()` around the triple write, and
     `bulkCreate` with `updateOnDuplicate` in place of the interpolated CASE.
     Bounded, and it runs once per chunk per playlist on every scheduled update.
-10. **Q6 + F6 as one piece of work** — the endpoint record and `json()` helper
-    on the backend, an OpenAPI document emitted from those records, and a
-    generated typed client consumed from JS via JSDoc + `checkJs`. Doing the two
-    halves separately means designing the contract twice.
-11. **Q10 + Q9 + F4** — the decomposition, by then mostly a consequence of the
-    steps above: `createListingFlow` has nothing left to close over once Q4 and
-    Q8 land, `Q9`'s two duplicated listing algorithms collapse into one chunk
-    source, and `App.jsx`'s 414-line socket effect becomes a `useSocketEvents`
-    hook. `F4`'s four ref mirrors go with a `useLatest` hook, or disappear
-    entirely on React 19's `useEffectEvent`.
-12. **F5** — routing. After `F4`, for the reason `F5` gives: routing a component
-    that also owns the socket layer is much harder than routing one that does
-    not.
+10. ~~**Q6 + F6 as one piece of work**~~ — **Q6 is done**, as
+    `src/routes/endpoints.ts` (one record per endpoint, which `api.ts` maps
+    over), `json()` in `src/utils/http.ts` across 59 call sites, and
+    `src/api/client.js` normalizing every response on the frontend. Backend
+    suite 256 → 267, frontend 91 → 102, and net −418 lines across the two
+    repositories.
+
+    **F6 is what is left.** The two were ranked together because designing the
+    contract twice would be waste — that risk is gone: the contract exists, in
+    one file, so the OpenAPI document can be emitted from those records and the
+    generated client consumed from JS via JSDoc + `checkJs`.
+11. **Q10** — the decomposition. `Q9` and the mirrors half of `F4` came off this
+    step early rather than waiting for it: the duplicated listing algorithms
+    were collapsing on their own terms, not as a consequence of `Q4` and `Q8`,
+    and the `useLatest` hook needed nothing from either.
+
+    What remains is the file-size work proper: `createListingFlow` has nothing
+    left to close over once `Q4` and `Q8` land, and `App.jsx`'s 414-line socket
+    effect becomes a `useSocketEvents` hook — which is also the rest of `F4`,
+    and what `F5` is waiting on.
+12. **F5** — routing. After the `App.jsx` split in step 11, for the reason `F5`
+    gives: routing a component that also owns the socket layer is much harder
+    than routing one that does not.
 13. ~~**S2, S4–S9 and F7** — the security long tail, cheapest first.~~
     **Done for S4–S9 and F7**, taken together as one change because they are
     one exposure: the CSP closes the path a token is stolen through, and the
