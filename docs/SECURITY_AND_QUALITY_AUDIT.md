@@ -9,7 +9,7 @@ review rubrics — `thermo-nuclear-review` (correctness and security) and
 | :--- | :--- |
 | **Scope** | `master` @ `3a06590`, `frontend` @ `bc22d7b` |
 | **Surface** | ~26.4k lines — 16.7k backend TypeScript, 9.7k frontend JSX |
-| **Date** | 2026-08-21 |
+| **Date** | 2026-08-21, frontend findings merged in 2026-08-22 |
 
 > [!NOTE]
 > Thermos is written for diff-scoped branch review — both rubrics say to report
@@ -24,6 +24,17 @@ the source after the review passes reported them.
 Line references are valid at the commits above. `master` has advanced since the
 snapshot — where a finding has been addressed in the meantime, the status table
 says so.
+
+> [!NOTE]
+> **2026-08-22 — `docs/FRONTEND_IMPROVEMENTS.md` was folded into this document.**
+> That was a separate 2026-08-04 review of `frontend/` alone, comparing it
+> against a sibling React + MUI app. It has been re-verified against `frontend`
+> @ `b4327d4` and merged in as [F1–F10](#frontend-architecture-and-ux); its
+> `YD-F*` IDs became `F*`, keeping their numbers. Three of the ten closed in the
+> meantime — `F1` is this audit's own `Q1`, and `F8` and `F9` closed as side
+> effects of that fix. The source document and its branch are gone; this is now
+> the only copy, and the [fix order](#suggested-fix-order) is ranked across both
+> sets rather than keeping the frontend on a separate list.
 
 ## Status
 
@@ -44,6 +55,16 @@ says so.
 | Q8 | Non-atomic triple write in the ingest path | Structural | Open |
 | Q9 | Duplication with a canonical answer already present | Structural | Partly fixed with Q2 |
 | Q10 | Files past the 1k-line bar | Structural | Open |
+| F1 | Context providers and `useApi` written but never mounted | High | **Closed** — is Q1 |
+| F2 | No error boundary behind five lazy routes | High | Open |
+| F3 | The socket is never closed on the client | High | Open |
+| F4 | `App.jsx` still owns the socket layer | Medium | Partly fixed with Q1 |
+| F5 | No routing: no deep links, no Back button | Medium | Open |
+| F6 | No TypeScript, no generated API types | Medium | Open — half of Q6 |
+| F7 | 31-day tokens in `localStorage`, never renewed | Medium | Open — pairs with S4–S9 |
+| F8 | `"null"` as a `localStorage` sentinel | Low | Mostly closed with Q1 |
+| F9 | Thumbnails not lazily loaded | Low | Mostly closed |
+| F10 | No test coverage thresholds | Low | Open |
 
 **C1 and Q7 were deliberately paired and fixed in one PR.** They are the same
 boundary reached from two directions — see
@@ -241,8 +262,11 @@ message, leaving the database deletion behaviour unchanged.
   (`serveNativeFile.ts:32-35`) and a Content-Type from the extension — a planted
   `.svg` with a minted signed URL would render inline on the app origin.
   Conditional on a plant, cheap to close.
-- **JWT in `localStorage`** (`frontend/src/components/App.jsx:159,668`) —
-  exfiltratable by any XSS, and the missing CSP above compounds it.
+- **JWT in `localStorage`** — since the Q1 fix this lives at
+  `frontend/src/contexts/AuthContext.jsx:11,28`. Exfiltratable by any XSS, and
+  the missing CSP above compounds it. Its 31-day lifetime is
+  [F7](#f7--31-day-bearer-tokens-in-localstorage-never-renewed); fix the two
+  together.
 - **Login user enumeration** — `authenticateUser` only runs `bcrypt.compare`
   when the username exists (`src/middleware/auth.ts:397-422`). Add a dummy
   compare on the miss path.
@@ -540,7 +564,7 @@ statement with
 | File | Lines | What is actually wrong |
 | :--- | ---: | :--- |
 | `src/handlers/pipeline/listing.ts` | 1,684 | One function, `createListingFlow`, holding 20 nested functions over four pieces of mutable closure state. Nothing can be imported or tested in isolation. |
-| `frontend/src/components/App.jsx` | 1,038 | Was 1,478 before the Q1 fix took the contexts back. What remains is one **414-line `useEffect`** registering 17 socket handlers with a hand-maintained parallel `.off` block. |
+| `frontend/src/components/App.jsx` | 1,038 | Was 1,478 before the Q1 fix took the contexts back. What remains is one **414-line `useEffect`** registering 18 socket handlers with a hand-maintained parallel `.off` block — see [F4](#f4--appjsx-still-owns-the-socket-layer). |
 | `frontend/src/components/VideoPlayer.jsx` | 1,317 | Signed-URL fetching, playback state, fullscreen chrome and drawer navigation in one component — while `useSignedUrlRefresh.js` sits unused. |
 | `frontend/src/components/SubList.jsx` | 1,073 | 8 effects, two of them storing derived state that `useMemo` would compute. |
 | `scripts/scratch_*.ts` | 1,318 | Referenced by no task, doc or Makefile target, outside every lint/check glob, and importing production DB models to mutate the database. |
@@ -549,6 +573,202 @@ The `listing.ts` split is mostly a *consequence* of Q2, Q4 and Q9 rather than
 extra work: once the `sortOrder` counter moves into the database,
 `createListingFlow` has nothing left to close over and the factory becomes plain
 exported functions.
+
+---
+
+## Frontend Architecture and UX
+
+Merged in from `docs/FRONTEND_IMPROVEMENTS.md` (written 2026-08-04, IDs `YD-F1`–
+`YD-F10`), which compared `frontend/` against a sibling React + MUI app solving
+the same shape of problem — an authenticated SPA with live server events, long
+media lists and MUI theming. That document lived only on the
+`worktree-steady-dancing-crane` branch and has been deleted; everything below is
+what survived re-verification against `frontend` @ `b4327d4` on **2026-08-22**.
+IDs are shortened to `F1`–`F10` but keep their original numbering.
+
+Three of the ten closed themselves between the two dates — `F1` as this audit's
+own `Q1` fix, `F8` and `F9` as side effects of it. What remains is re-verified,
+not carried over on trust.
+
+### F1 — Context providers and `useApi` written but never mounted
+
+**High · Closed — this is `Q1`**
+
+Same finding as [Q1](#q1--the-frontends-intended-architecture-is-written-complete-and-disconnected),
+reached from the frontend side. `main.jsx` now renders `AppProviders`, and all
+18 `fetch` calls go through `apiFetch`. No residue.
+
+### F2 — No error boundary, behind five lazy-loaded routes
+
+**High · Verified · Open**
+
+Zero uses of `componentDidCatch` or `getDerivedStateFromError` anywhere in
+`frontend/src`. `App.jsx:31-35` lazy-loads `Nav`, `PlayList`, `SubList`, `Login`
+and `Signup`; the `Suspense` boundaries at `:821` and `:920` have `fallback` but
+no `errorElement` equivalent.
+
+A throw during render unmounts the whole tree, leaving a blank `<div id="root">`
+with no message and no recovery but a reload. Lazy routes make this reachable
+**without a code bug**: every deploy rehashes the chunk filenames, so a tab left
+open across a deploy requests a chunk that no longer exists, the dynamic import
+rejects, and React caches that rejection for the life of the tab. To the user it
+reads as "the app went blank and I had to log out and back in."
+
+**Fix.** A dependency-free boundary — no MUI, no theme, inline styles — so it
+still renders when MUI is what broke. Detect chunk-load failures specifically,
+treat them as a stale build, and reload once, guarded through `sessionStorage`
+so a genuinely broken build cannot loop. Wrap `<App />` in `main.jsx` and the
+lazy `Suspense` blocks too.
+
+### F3 — The socket is never closed on the client
+
+**High · Verified · Open — and partly a security item**
+
+`SocketContext.jsx:20-27` builds the connection inside a `useMemo` keyed on
+`token`, with `forceNew: true`. There is no `disconnect()` or `.close()` call
+anywhere in `frontend/src`; the cleanup in `App.jsx`'s socket effect only calls
+the 18 `socket.off(...)` handlers.
+
+On logout `setToken(null)` makes the memo return `null` and the old socket
+object is simply dropped. Its listeners are gone — but the connection is still
+open and still authenticated, and the server has no reason to close it. It dies
+only when the expiry timer at `src/socket/index.ts:75-100` fires (up to 31 days
+out, see `F7`) or the process restarts. Each login/logout cycle leaks one live
+connection, and each leaked connection is a signed-out session still receiving
+events.
+
+The `Q1` fix moved this code from `App.jsx` into `SocketContext` without
+changing it, so the finding survived the refactor intact.
+
+**Fix.** Creating a connection is a side effect, not a computation: move it out
+of `useMemo` into a `useEffect` keyed on `token`, with the cleanup calling
+`sock.disconnect()`. Hold the socket in state so consumers re-render when it
+swaps.
+
+### F4 — `App.jsx` still owns the socket layer
+
+**Medium · Verified · Partly fixed**
+
+Was 1,478 lines with twelve `xRef.current = x` mirror assignments. `Q1` took it
+to 1,038 lines and four mirrors (`playListUrl`, `disableProgress`,
+`toggleProgressCallBack`, `isMobile` — `:255-265`); the other ten ref writes are
+now genuine mutable state, not mirrors.
+
+What did not move is the reason the mirrors exist: **one `useEffect` at `:341`**
+registering 18 `socket.on` handlers against a hand-maintained parallel block of
+18 `socket.off` calls. Handlers registered once need some way to read current
+state without re-subscribing, and mirroring into a ref is React 18's manual
+answer.
+
+**Fix, two independent steps.**
+1. A `useLatest(value)` hook collapses the four remaining mirrors. Available
+   today; no version bump.
+2. React 19's `useEffectEvent` replaces the pattern outright. `package.json`
+   pins `react@^18.2.0` — this is the concrete payoff of that upgrade, not a
+   reason to do it on its own.
+
+Splitting the socket layer into a `useSocketEvents` hook is the larger job, and
+it is the `App.jsx` row of [Q10](#q10--files-past-the-1k-line-bar).
+
+### F5 — No routing: no deep links, no working Back button
+
+**Medium · Verified · Open**
+
+`App.jsx:1007` is the whole navigation model:
+`{token === null ? renderAuth() : renderMain()}`. Which view is showing lives in
+component state; the URL never changes. `react-router` is not a dependency.
+
+So: no link to a specific playlist, no bookmark, no reopening where you left
+off, and the browser Back button exits the app rather than navigating inside it.
+On mobile, where Back is the primary gesture, that is the visible cost.
+
+**Fix.** Do it after `F4`. Adding routing to a component that also owns the
+socket layer is materially harder than adding it to one that has been split.
+
+### F6 — No TypeScript, no generated API types
+
+**Medium · Verified · Open — the frontend half of `Q6`**
+
+All of `frontend/src` is `.jsx` with `PropTypes`. The backend is already Deno +
+TypeScript with typed handlers, so the types exist — they just stop at the
+network boundary. `PropTypes` checks component props only, at runtime only, in
+dev only.
+
+This is [Q6](#q6--no-shared-api-contract) seen from the client: the same missing
+contract that lets `SubList.jsx` read `item.video_metadatum.videoUrl` — a
+Sequelize association name reaching JSX with nothing describing it.
+
+**Fix.** Not a TypeScript rewrite. Emit an OpenAPI document from the Deno
+handlers, generate a typed client module from it, and consume that from plain JS
+via JSDoc + `checkJs`. Typing just the API responses catches most of what
+`PropTypes` misses. Sequence it with `Q6`'s backend half — one endpoint record
+per route — so the document has a single source.
+
+### F7 — 31-day bearer tokens in `localStorage`, never renewed
+
+**Medium · Verified · Open — pairs with `S4–S9`**
+
+`src/middleware/auth.ts:407` defaults `expiry_time` to `"31d"` and the login
+form sends no override. There is no refresh endpoint and no renewal path on the
+client. `AuthContext.jsx:11` reads the token straight out of `localStorage`.
+
+The long lifetime exists precisely so the app can skip renewal, which is a
+defensible trade for a self-hosted tool. The costs are that an XSS-leaked token
+stays valid for a month — compounded by the missing CSP in `S4–S9` — and that
+there is no way to shorten one user's session without invalidating everyone's.
+
+**Fix.** The server already pushes expiry the instant a token dies
+(`src/socket/index.ts:75-100`), which is what usually makes short tokens
+painful; here the client finds out immediately. That makes a much shorter
+lifetime practical, paired with a refresh call on wake. Do it with the `S4–S9`
+header work, not before it — the CSP is the cheaper half of the same exposure.
+
+### F8 — The string `"null"` as a `localStorage` sentinel
+
+**Low · Verified · Mostly closed**
+
+`App.jsx` used to write `localStorage.setItem("ytdiff_token", "null")` on
+expiry, with two readers guarding against that exact string. `Q1` replaced the
+write with `removeItem` (`AuthContext.jsx:30`) and deleted one guard. The
+remaining guard is `AuthContext.jsx:12` — `stored && stored !== "null"` — which
+is now migration code for tokens written by pre-`Q1` builds, not a workaround
+for anything the app still does.
+
+**Fix.** One line, on a comment saying why it is there, or deleted once no live
+browser can still be holding a pre-`Q1` value.
+
+### F9 — Thumbnails not lazily loaded
+
+**Low · Verified · Mostly closed**
+
+The frontend now renders exactly two remote images. `SubListItemCard.jsx:104`
+already has `loading="lazy"`. The other is the MUI `Avatar` at
+`PlayerPlaylistDrawer.jsx:114`, which takes `src` but passes no `loading`.
+
+The original finding assumed thumbnail grids of thousands of items — the
+playlist views turned out not to render images at all, so what is left is one
+attribute on one drawer list.
+
+**Fix.** `slotProps={{ img: { loading: "lazy" } }}` on that `Avatar`. Port a
+blob-fetching `LazyImage` only if thumbnails ever need authenticated fetches;
+they do not today.
+
+### F10 — No test coverage thresholds
+
+**Low · Verified · Open**
+
+`vitest.config.js` composes the two viewport projects and sets no coverage
+provider and no threshold; `@vitest/coverage-v8` is not a dependency. 13 desktop
+and 5 mobile test files run with nothing asserting they keep covering anything.
+
+`Q5` changed what this is worth. Before it, the frontend suite was advisory and
+a coverage floor would have gated nothing. Now `npm run lint` and `vitest run`
+fail the build, so a threshold is a real gate for the first time.
+
+**Fix.** Add `@vitest/coverage-v8` and set the floor at wherever coverage
+already sits, so it can only rise. Do not exclude `App.jsx` or `VideoPlayer.jsx`
+to make the number look better — carving out the hard files leaves the gate
+measuring only the easy ones, which is how a coverage gate becomes decorative.
 
 ---
 
@@ -633,6 +853,25 @@ which is what makes the findings above meaningful.
 - **CORS** — single-origin allowlist echoed only on exact match, with
   `Vary: Origin`. Request bodies capped at 1 MB.
 
+From the frontend review, four things the sibling app was told to copy *from*
+this one. They are load-bearing — do not undo them while fixing F2–F10:
+
+- **Accessibility.** 56 `aria-label`s across 11 components; every icon button in
+  `Pagination.jsx`, `Nav.jsx` and `VideoPlayer.jsx` is labelled.
+- **Real responsive testing.** `vitest.config.js` runs the suite twice — 375×667
+  and 1280×720 — with per-viewport `matchMedia` shims that actually parse
+  min/max-width queries. Nine `useMediaQuery` branches depend on it, so this is
+  the thing `F10`'s coverage floor has to protect.
+- **Server-side pagination and debounced search.** 10/25/50 page sizes with
+  start/stop offsets sent to the server, search debounced at 1000 ms.
+- **Precompressed assets.** gzip + brotli at build time, plus an `/esm` alias
+  for `@mui/icons-material`.
+
+One note for a future MUI upgrade rather than a finding: the `themeObj(...)`
+factory in `App.jsx` is the correct pattern on MUI v5. On v9 it is superseded by
+`colorSchemes` + `cssVariables` — bundle that switch with the upgrade, do not
+treat it as a bug now.
+
 ---
 
 ## Suggested fix order
@@ -659,6 +898,48 @@ Sequenced so each step makes the next cheaper, not by severity alone.
    `AppProviders` in `main.jsx` and one `apiFetch` behind every call, with the
    backend-location logic collapsed into `src/config.js`. Net −466 lines of
    `src/`, and the frontend suite went from 68 tests to 73.
-6. **Q4, Q8, then Q10** — typed process errors, a transaction around the triple
-   write, and the decomposition, which by then is mostly a consequence of the
-   steps above.
+   Step 5 is also **F1** — the two are one finding, which is why F1 does not
+   appear again below.
+
+Steps 6 onward were re-ranked on 2026-08-22, across both sets rather than
+keeping the frontend items on a list of their own. The frontend items do not queue behind
+the backend ones: `F2` and `F3` are the highest impact-per-hour work left in the
+tree, and nothing above them blocks either.
+
+6. **F2 + F3 together, plus the F8 and F9 residue** — an error boundary that
+   handles stale chunks, moving socket construction into an effect that
+   disconnects on cleanup, one leftover sentinel guard and one `loading="lazy"`.
+   All four are localized, none depends on the others, and together they close
+   the blank-screen failure and the leaked signed-out connection. `F3` carries
+   the security half: today a logged-out tab keeps an authenticated socket open
+   for up to the token's full 31 days.
+7. **Q4** — typed process errors. `ListingProcessError` with an `exitCode`
+   field, branched on rather than string-compared, so a SIGTERM that also wrote
+   to stderr stops surfacing to the user as a listing failure. Smallest
+   remaining correctness bug, and it is user-visible.
+8. **F10** — the coverage floor, set at current coverage across everything. Do
+   it before the decomposition, not after: it is the only thing that will notice
+   if steps 10–11 quietly drop test coverage while moving code.
+9. **Q8** — one `sequelize.transaction()` around the triple write, and
+    `bulkCreate` with `updateOnDuplicate` in place of the interpolated CASE.
+    Bounded, and it runs once per chunk per playlist on every scheduled update.
+10. **Q6 + F6 as one piece of work** — the endpoint record and `json()` helper
+    on the backend, an OpenAPI document emitted from those records, and a
+    generated typed client consumed from JS via JSDoc + `checkJs`. Doing the two
+    halves separately means designing the contract twice.
+11. **Q10 + Q9 + F4** — the decomposition, by then mostly a consequence of the
+    steps above: `createListingFlow` has nothing left to close over once Q4 and
+    Q8 land, `Q9`'s two duplicated listing algorithms collapse into one chunk
+    source, and `App.jsx`'s 414-line socket effect becomes a `useSocketEvents`
+    hook. `F4`'s four ref mirrors go with a `useLatest` hook, or disappear
+    entirely on React 19's `useEffectEvent`.
+12. **F5** — routing. After `F4`, for the reason `F5` gives: routing a component
+    that also owns the socket layer is much harder than routing one that does
+    not.
+13. **S2, S4–S9 and F7** — the security long tail, cheapest first: `nosniff` /
+    CSP / `X-Frame-Options` on every response, a dummy `bcrypt.compare` on the
+    login miss path, rotating the committed proxy credential, dropping the
+    hardcoded `SAVE_PATH` default. Then `F7`'s shorter token lifetime with a
+    refresh on wake — the CSP is the cheaper half of the same XSS exposure, and
+    the server-side expiry push means the client already learns of expiry
+    instantly, which is what usually makes short tokens painful.
