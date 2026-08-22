@@ -5,6 +5,7 @@
 import { assertEquals } from "std/assert/mod.ts";
 import { createRateLimit } from "../src/middleware/rateLimit.ts";
 import { gcraDecide, type GcraPolicy } from "../src/middleware/gcra.ts";
+import { parseTrustedProxies } from "../src/utils/clientIp.ts";
 
 /**
  * Redis double with just enough behaviour to run the GCRA Lua script.
@@ -93,7 +94,14 @@ const policy = (over: Partial<GcraPolicy> = {}): GcraPolicy => ({
   ...over,
 });
 
-const req = () => ({ socket: { remoteAddress: "127.0.0.1" } }) as any;
+const req = (
+  peer = "127.0.0.1",
+  forwardedFor?: string,
+) =>
+  ({
+    socket: { remoteAddress: peer },
+    headers: forwardedFor ? { "x-forwarded-for": forwardedFor } : {},
+  }) as any;
 
 Deno.test("rateLimit - a disabled policy (burst 0) always admits", async () => {
   const redis = new MockRedis();
@@ -321,4 +329,62 @@ Deno.test("gcraDecide - reports a usable retryAfter when refused", () => {
   // Emission interval is 10s, so one unit is available 10s out.
   assertEquals(refused.retryAfterSec, 10);
   assertEquals(refused.remaining, 0);
+});
+
+Deno.test("rateLimit - a trusted proxy's clients get their own buckets", async () => {
+  // The finding: behind a TLS-terminating proxy every request arrives from the
+  // proxy's address, so all users shared one admission bucket and one noisy
+  // client could lock out everyone else. /login and /register never reach the
+  // per-user tier, so this is the only place they can be separated.
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({
+    redis: redis as any,
+    trustedProxies: parseTrustedProxies("10.0.0.0/8"),
+  });
+  const p = policy({ bucket: "auth", burst: 1, refill: 1 });
+
+  let calls = 0;
+  const bump = () => {
+    calls++;
+  };
+
+  const first = new MockResponse() as any;
+  await rateLimit(req("10.0.0.2", "198.51.100.9"), first, bump, () => {}, p);
+
+  const second = new MockResponse() as any;
+  await rateLimit(req("10.0.0.2", "198.51.100.10"), second, bump, () => {}, p);
+
+  assertEquals(calls, 2, "one client's burst must not spend another's");
+  assertEquals(second.statusCode, 200);
+
+  // The first client is out of budget on its own key, and only its own.
+  const third = new MockResponse() as any;
+  await rateLimit(req("10.0.0.2", "198.51.100.9"), third, bump, () => {}, p);
+  assertEquals(calls, 2);
+  assertEquals(third.statusCode, 429);
+});
+
+Deno.test("rateLimit - an unlisted peer's forwarding header is ignored", async () => {
+  // Without an allowlist X-Forwarded-For is client-controlled, so believing it
+  // would hand every attacker an unlimited supply of fresh buckets.
+  const redis = new MockRedis();
+  const rateLimit = createRateLimit({
+    redis: redis as any,
+    trustedProxies: [],
+  });
+  const p = policy({ bucket: "auth", burst: 1, refill: 1 });
+
+  let calls = 0;
+  const bump = () => {
+    calls++;
+  };
+
+  const first = new MockResponse() as any;
+  await rateLimit(req("203.0.113.7", "1.1.1.1"), first, bump, () => {}, p);
+
+  const second = new MockResponse() as any;
+  await rateLimit(req("203.0.113.7", "2.2.2.2"), second, bump, () => {}, p);
+
+  assertEquals(calls, 1, "same peer, same bucket, whatever it claims");
+  assertEquals(second.statusCode, 429);
 });

@@ -8,6 +8,7 @@ import { config } from "../config.ts";
 import { UserAccount } from "../db/models.ts";
 import { logger } from "../logger.ts";
 import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
+import { resolveClientIp } from "../utils/clientIp.ts";
 
 export interface CachedUser {
   id: string;
@@ -342,7 +343,7 @@ export function createAuthMiddleware({
       next(requestData, response, {
         userId: String(user.id),
         userName: user.username,
-        clientIp: request.socket.remoteAddress,
+        clientIp: resolveClientIp(request, config.rateLimit.trustedProxies),
       });
     } catch (error) {
       logger.error("Token verification failed", {

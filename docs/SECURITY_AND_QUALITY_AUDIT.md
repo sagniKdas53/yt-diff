@@ -42,7 +42,7 @@ says so.
 | :--- | :--- | :--- | :--- |
 | C1 | Argument injection into `yt-dlp` via `POST /list` | Critical | **Fixed** — with Q7 |
 | S1 | Action rate limiting ships disabled | Medium | **Fixed** |
-| S2 | Rate limiter keys on the socket peer | Medium | Partly fixed with S1 |
+| S2 | Rate limiter keys on the socket peer | Medium | **Fixed** |
 | S3 | Deletion paths skip the containment check | Medium | **Fixed** |
 | S4–S9 | Assorted low-severity items | Low | **Fixed** — with F7 |
 | Q1 | Frontend context layer built then bypassed | Blocker | **Fixed** |
@@ -205,14 +205,26 @@ intended deployment terminates TLS at a reverse proxy (`PROTOCOL=https`,
 `HIDE_PORTS=true`), where every client presents the proxy's address — so all
 users shared one bucket and one noisy client could lock out everyone.
 
-**Partly fixed with S1.** The work tier is now keyed on the authenticated user,
-so the expensive endpoints no longer share a budget behind a proxy. The
-admission tier still keys on the socket peer, because it runs before
+**Partly fixed with S1.** The work tier was keyed on the authenticated user,
+so the expensive endpoints no longer shared a budget behind a proxy. The
+admission tier still keyed on the socket peer, because it runs before
 authentication and has nothing else to key on.
 
-**Remaining fix.** Derive the client IP from `X-Forwarded-For` behind a
-configurable trusted-proxy setting. Until then, `/login` and `/register` still
-share one admission bucket per proxy address.
+**Fixed.** `src/utils/clientIp.ts` resolves the address the admission tier keys
+on. It reads `X-Forwarded-For` only when the socket peer matches
+`TRUSTED_PROXIES` — a list of addresses, CIDRs, or the shorthands `loopback`,
+`linklocal` and `private` — and walks the chain right to left, stopping at the
+first hop that is not itself a trusted proxy.
+
+The direction of the walk is the security property. The rightmost entry is the
+one our own proxy appended; anything a client prepends stays to its left and is
+never what the walk returns. Unset (the default) means the socket peer is the
+client, which is the previous behaviour and the correct one for a
+directly-exposed server, so no deployment changes meaning by upgrading.
+
+`/login` and `/register` are the endpoints this was actually for: they never
+reach the per-user tier, so the admission bucket is the only place their
+clients can be told apart.
 
 ---
 
@@ -993,10 +1005,10 @@ tree, and nothing above them blocks either.
     proxy credential moved to `secrets/`, and the personal `SAVE_PATH` default
     dropped. Backend suite 209 → 224, frontend 73 → 89.
 
-    **S2 is what is left of this step** — the rate limiter still keys on the
-    socket peer, so every user behind one reverse proxy shares a bucket. It
-    needs a trusted-proxy allowlist before `X-Forwarded-For` can be believed,
-    which is why it did not ride along with the rest.
+    **S2 has since closed too**, as `TRUSTED_PROXIES` plus a right-to-left
+    `X-Forwarded-For` walk in `src/utils/clientIp.ts`. It did not ride along
+    with the rest because believing that header at all needs the allowlist
+    first.
 
     **The committed proxy password still needs rotating.** It is out of the
     working tree, but it was committed, so it remains in the history.
