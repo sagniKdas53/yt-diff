@@ -1,16 +1,10 @@
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { HttpResponseLike } from "../transport/http.ts";
 import { isFile } from "../utils/fs.ts";
-import {
-  basename,
-  extname,
-  isWithinPath,
-  join,
-  resolve,
-} from "../utils/path.ts";
+import { basename, extname, resolveWithin } from "../utils/path.ts";
 
 import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
 
@@ -103,18 +97,15 @@ export function createFileHandlers({
     const saveDirectory = requestBody.saveDirectory || "";
     const fileName = requestBody.fileName;
 
-    const joined = join(
+    const resolvedPath = resolveWithin(
       config.saveLocation,
       saveDirectory,
       basename(fileName),
     );
-    const resolvedPath = resolve(joined);
-    const saveRoot = resolve(config.saveLocation);
-    if (!isWithinPath(saveRoot, resolvedPath)) {
+    if (resolvedPath === null) {
       logger.warn("serveFileByPath attempted path traversal", {
         saveDirectory,
         fileName,
-        resolved: resolvedPath,
       });
       response.writeHead(400, generateCorsHeaders(jsonMimeType));
       return response.end(
@@ -122,9 +113,8 @@ export function createFileHandlers({
       );
     }
     logger.debug(`Resolved Path ${resolvedPath}`, {
-      joined,
-      resolved: resolvedPath,
-      saveRoot,
+      saveDirectory,
+      fileName,
     });
     if (!(await isFile(resolvedPath))) {
       response.writeHead(400, generateCorsHeaders(jsonMimeType));
@@ -222,17 +212,13 @@ export function createFileHandlers({
       const { saveDirectory, fileName } = file;
       if (!fileName) continue;
 
-      const joined = join(
+      const resolvedPath = resolveWithin(
         config.saveLocation,
         saveDirectory || "",
         basename(fileName),
       );
-      const resolvedPath = resolve(joined);
-      const saveRoot = resolve(config.saveLocation);
 
-      if (
-        !isWithinPath(saveRoot, resolvedPath) || !(await isFile(resolvedPath))
-      ) {
+      if (resolvedPath === null || !(await isFile(resolvedPath))) {
         results.set(fileName, null);
         continue;
       }

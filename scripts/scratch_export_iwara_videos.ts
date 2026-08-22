@@ -78,7 +78,7 @@ async function run() {
 try {
   await run();
 } catch (err) {
-  logger.error("Failed:", err as any);
+  logger.error("Failed:", { error: (err as Error).message });
 } finally {
   await sequelize.close();
 }

@@ -32,17 +32,17 @@ says so.
 | C1 | Argument injection into `yt-dlp` via `POST /list` | Critical | **Fixed** — with Q7 |
 | S1 | Action rate limiting ships disabled | Medium | **Fixed** |
 | S2 | Rate limiter keys on the socket peer | Medium | Partly fixed with S1 |
-| S3 | Deletion paths skip the containment check | Medium | Open |
+| S3 | Deletion paths skip the containment check | Medium | **Fixed** |
 | S4–S9 | Assorted low-severity items | Low | Open |
 | Q1 | Frontend context layer built then bypassed | Blocker | Open |
-| Q2 | Two divergent URL canonicalizers | Blocker | Open |
-| Q3 | Documented tracking-param stripping never implemented | Correctness | Open |
+| Q2 | Two divergent URL canonicalizers | Blocker | **Fixed** — with Q3 |
+| Q3 | Documented tracking-param stripping never implemented | Correctness | **Fixed** — with Q2 |
 | Q4 | Failure classification by error-string equality | Correctness | Open |
-| Q5 | CI gates none of the quality signals | Blocker | Partly fixed |
+| Q5 | CI gates none of the quality signals | Blocker | **Fixed** |
 | Q6 | No shared API contract | Structural | Open |
 | Q7 | Validation schemas are optional-everything | Structural | **Fixed** — with C1 |
 | Q8 | Non-atomic triple write in the ingest path | Structural | Open |
-| Q9 | Duplication with a canonical answer already present | Structural | Open |
+| Q9 | Duplication with a canonical answer already present | Structural | Partly fixed with Q2 |
 | Q10 | Files past the 1k-line bar | Structural | Open |
 
 **C1 and Q7 were deliberately paired and fixed in one PR.** They are the same
@@ -197,7 +197,7 @@ share one admission bucket per proxy address.
 
 ### S3 — Deletion paths skip the containment check the read path performs
 
-**Medium · Open**
+**Medium · Fixed**
 
 `makeSignedUrl` guards correctly — `basename()`, then `join`, `resolve`, and
 `isWithinPath` at `src/handlers/files.ts:107-119`. The deletion paths do not:
@@ -213,8 +213,21 @@ at `listing.ts:1655` — and `join` collapses `..` segments.
 exploitable today, so this is defense-in-depth. It is still a real asymmetry:
 the read path is hardened and the destructive path is not.
 
-**Fix.** Apply the same `resolve` + `isWithinPath` pair before any `unlink` or
-`rm`. The helper already exists.
+**Fixed.** `resolveWithin` in `src/utils/path.ts` packages the `resolve` +
+`isWithinPath` pair the read path already ran, and all four call sites go
+through it — `removeVideoFiles`, the recursive playlist cleanup, and both
+signed-URL minting paths. The helper existed; what was missing was a shape that
+made it hard to skip.
+
+Writing it surfaced a second problem the read path does not have.
+`resolveWithin` counts the root as inside the root — correctly, since that is
+what containment means — and an empty `saveDirectory` resolves to exactly that.
+`rm(dir, { recursive: true })` on such a row would have taken the entire media
+library. The `"None"` pseudo-playlist ships with `saveDirectory: ""`
+(`models.ts:543`); it is rejected by name earlier in the handler, but nothing
+stopped a real row from holding `""`. Cleanup now refuses anything that is not
+*strictly* below the save root, logs why, and reports it in the response
+message, leaving the database deletion behaviour unchanged.
 
 ---
 
@@ -269,7 +282,7 @@ exists. Roughly 400 lines leave `App.jsx` before any real refactoring begins.
 
 ### Q2 — Two divergent URL canonicalizers, one of which defines the primary key
 
-**Blocker · Verified · Open**
+**Blocker · Verified · Fixed, paired with Q3**
 
 `normalizeUrl` (`process-manager.ts:149`) drives a `SITE_CANONICALIZERS` registry
 and is the **write path** — its output *is* the `videoUrl` primary key.
@@ -287,13 +300,27 @@ sites and drives the **dedup path**. They disagree:
 A deduplicator computing a different canonical form than the writer is a
 correctness trap with a code-smell cause.
 
-**Fix.** Move `SITE_CANONICALIZERS` and `normalizeUrl` to `src/utils/url.ts`,
-fold the pornhub/xhamster/x.com rules into the registry, and have dedup call it.
-Deletes `dedup.ts:59-168` and the divergence class outright.
+**Fixed.** `SITE_CANONICALIZERS` and `normalizeUrl` moved to `src/utils/url.ts`,
+alongside the C1 admissibility helpers, and dedup calls `normalizeUrl`.
+`canonicalizeVideoUrl` is gone; pornhub, xhamster and x.com are registry
+entries.
+
+The x.com rule resolves the disagreement by **stripping** the share params
+(`s`, `t`) rather than appending them. Stripping is the only direction that
+can converge: dedup's `?s=20` form was one ingest would never write, so
+`canonicalizeVideoUrlsInNonePlaylist` — which writes its canonical form back as
+`videoUrl` — was rewriting rows towards a spelling the next ingest immediately
+diverged from again. The invariant that failure violated is now pinned as a
+test: `normalizeUrl` is idempotent on every site it handles.
+
+`canonicalizePlaylistUrl` moved with it and stays a separate function on
+purpose — a playlist's identity is the `list=` that `normalizeUrl` throws
+away — but now shares the generic https/trailing-slash/tracking steps instead
+of restating them.
 
 ### Q3 — Documented tracking-parameter stripping was never implemented
 
-**Correctness · Verified · Open**
+**Correctness · Verified · Fixed, paired with Q2**
 
 The `normalizeUrl` docstring at `process-manager.ts:141-147` documents four
 steps, including *"3. Strips known tracking query parameters (utm_\*, fbclid, si,
@@ -307,8 +334,15 @@ which preserves all query parameters. Because `normalizeUrl`'s output is the
 values becomes a **distinct row** — a silent dedup failure on exactly the sites
 that have no canonicalizer rule.
 
-**Fix.** Implement the documented step. It is the registry's generic fallback and
-is what the comment already promises callers.
+**Fixed.** Step 3 runs, stripping exactly what the docstring named — `utm_*`
+by prefix, plus `fbclid`, `si` and `pp` — case-insensitively, before the site
+rule, which is the order the `SiteCanonicalizer` contract already documented to
+its own implementors. Parameters that merely look similar (`pp_id`, `site`) are
+left alone.
+
+Rows written before this keep their old spelling until `/dedup` runs, which is
+safe now that dedup groups by the same function ingest writes with — the point
+of pairing this with Q2.
 
 ### Q4 — Failure classification by error-message string equality
 
@@ -338,7 +372,7 @@ thrown at `:1160` and branched on by `exitCode` at `:785`.
 
 ### Q5 — CI gates none of the quality signals the repo already has
 
-**Blocker · Verified · Partly fixed**
+**Blocker · Verified · Fixed**
 
 At `master` @ `3a06590`, nothing across the three workflows referenced
 `deno task test:unit`, `check`, `lint`, `npm test`, or `npm run lint`.
@@ -348,10 +382,29 @@ advisory. `deno.json` additionally scoped `check`/`lint`/`fmt` to
 `index.ts src/`, so `scripts/` (1,318 lines) and `tests/` were never
 type-checked even locally.
 
-**Partly fixed on `master` since the audit snapshot.** `run-tests.yml` now has a
-Unit Tests job, and `deno.json` widens the `check`/`lint`/`fmt` globs to
-`index.ts src/ tests/`. Still outstanding: the frontend vitest suite and
-`npm run lint` are not run by CI, and `scripts/` remains outside the globs.
+**Partly fixed on `master` since the audit snapshot.** `run-tests.yml` gained a
+Unit Tests job, and `deno.json` widened the `check`/`lint`/`fmt` globs to
+`index.ts src/ tests/`.
+
+**Now closed.** `run-tests.yml` has two more jobs: **Static Checks**
+(`deno task check`, `lint`, `fmt:check`, each running even when an earlier one
+fails, so one push surfaces every problem) and **Frontend Lint and Unit Tests**
+(`npm ci`, `npm run lint`, `vitest run` reported through the same JUnit path as
+the other two suites). The globs now include `scripts/`, and a `fmt:check` task
+exists so CI can report rather than rewrite.
+
+Turning these on required fixing what they had never been run against, which is
+the finding making its own case:
+
+- **`deno task check` did not pass at all.** `import type Redis from "ioredis"`
+  resolved to a namespace rather than the class, giving TS2709 at fifteen sites
+  across `src/`, `index.ts` and `tests/`. The named import (`import type
+  { Redis }`) is what ioredis's `built/index.d.ts` actually exports.
+- **`scripts/scratch_canonicalize_db.ts` had never compiled.** It imports a
+  `deduplicateAll` that has never existed in `dedup.ts`; being outside every
+  glob is precisely what let that stand. It now calls `deduplicateUnlisted` and
+  `deduplicatePlaylists`.
+- Two `no-explicit-any` hits in `scripts/`.
 
 ### Q6 — No shared API contract
 
@@ -438,14 +491,18 @@ statement with
 
 ### Q9 — Duplication that the tree already has a canonical answer for
 
-**Structural · Open**
+**Structural · Partly fixed**
 
-- **Five host-matchers, one already canonical.** `isSiteXDotCom` exists
-  *verbatim twice* — `index.ts:293-307` and `process-manager.ts:218-230` —
-  alongside `isSiteIwaraDotTv`, `isSiteYouTube` and `hasEphemeralThumbnails`.
-  The canonical helper `isHostOrSubdomain` already exists at `dedup.ts:59`; two
-  functions below it, `canonicalizePlaylistUrl` ignores it and declares a *third*
-  inline copy.
+- ~~**Five host-matchers, one already canonical.**~~ **Fixed with Q2.**
+  `isSiteXDotCom` existed *verbatim twice* — `index.ts:293-307` and
+  `process-manager.ts:218-230` — alongside `isSiteIwaraDotTv`, `isSiteYouTube`
+  and `hasEphemeralThumbnails`, while `canonicalizePlaylistUrl` declared a
+  *third* inline copy of `isHostOrSubdomain` two functions below the canonical
+  one. All of them now live in `src/utils/url.ts` over a single
+  `isHostOrSubdomain` and a single `hostnameOf`, which matters beyond line
+  count: the copies each decided for themselves whether an unparseable URL
+  logged, threw or silently missed, so the same input could match on one path
+  and not another. That agreement is now a test.
 - **Two copies of one listing algorithm.** `handlePlaylistStreaming`
   (`listing.ts:613-799`) and `handlePlaylistViaApi` (`:801-948`) are
   line-for-line duplicates apart from where chunks come from. A
@@ -504,10 +561,10 @@ exists in the tree, and the path that actually runs goes around it.**
 | Canonical thing that exists | What bypasses it |
 | :--- | :--- |
 | `isHttpUrl` (`utils/url.ts`, hoisted out of `bot/commands.ts`) | ~~the HTTP `/list` path~~ → **C1**, fixed |
-| `isWithinPath` (`files.ts:107`) | the file deletion path (`videoFiles.ts:46`) → **S3** |
+| `isWithinPath` (`files.ts:107`) | ~~the file deletion path (`videoFiles.ts:46`)~~ → **S3**, fixed |
 | Four context providers + `useApi` | `main.jsx` renders around them → **Q1** |
-| `SITE_CANONICALIZERS` registry | `dedup.ts:63` re-implements it, disagreeing → **Q2** |
-| `isHostOrSubdomain` (`dedup.ts:59`) | four more copies, one two functions below it → **Q9** |
+| `SITE_CANONICALIZERS` registry | ~~`dedup.ts:63` re-implements it, disagreeing~~ → **Q2**, fixed |
+| `isHostOrSubdomain` (`dedup.ts:59`) | ~~four more copies, one two functions below it~~ → **Q9**, fixed |
 
 The design instincts are good — the registry pattern, the context split, the
 semaphore, dependency injection in `resolveBotConfig`, and strong comment
@@ -527,6 +584,12 @@ or `executeDownload`.
 That cuts both ways. Nothing is coupled to the internals these fixes would
 change, so the decomposition is unobstructed — but nothing catches a regression
 either.
+
+The Q2 fix moved both of those files' subjects *out* of `pipeline/` — the
+canonicalizer tests now sit in `tests/url.test.ts` beside the code, and
+`dedup.test.ts` is gone — so the ratio above got worse, not better. What Q5
+changed is that the tests which do exist, on either side of the tree, now fail
+a build.
 
 ---
 
@@ -566,13 +629,17 @@ Sequenced so each step makes the next cheaper, not by severity alone.
    builder, and required fields across nine request schemas.
 2. ~~**S1** — ship a non-zero action budget.~~ **Done**, as cost-weighted GCRA
    with per-user work accounting.
-3. **Q5** — finish the CI gate: add the frontend suite and `npm run lint`, and
-   bring `scripts/` under the globs.
-4. **Q1** — mount the providers in `main.jsx` and route the 18 `fetch` calls
-   through `useApi`. Deletion rather than construction.
-5. **Q2 + Q3** — unify the canonicalizers and implement the documented
+3. ~~**Q5** — finish the CI gate: add the frontend suite and `npm run lint`, and
+   bring `scripts/` under the globs.~~ **Done**, as a Static Checks job and a
+   Frontend job — after repairing the ioredis type imports and a scratch script
+   that had never compiled, both of which only the new gates would have caught.
+4. ~~**Q2 + Q3** — unify the canonicalizers and implement the documented
    tracking-parameter strip. Not cleanliness: the dedup path currently computes
-   canonical forms the ingest path will never produce.
+   canonical forms the ingest path will never produce.~~ **Done**, as one
+   registry in `src/utils/url.ts` with idempotence pinned per site. Took the
+   host-matcher half of **Q9** and **S3** with it.
+5. **Q1** — mount the providers in `main.jsx` and route the 18 `fetch` calls
+   through `useApi`. Deletion rather than construction.
 6. **Q4, Q8, then Q10** — typed process errors, a transaction around the triple
    write, and the decomposition, which by then is mostly a consequence of the
    steps above.

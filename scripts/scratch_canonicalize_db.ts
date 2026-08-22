@@ -4,20 +4,23 @@ import {
   VideoMetadata,
 } from "../src/db/models.ts";
 import {
-  canonicalizePlaylistUrl,
-  canonicalizeVideoUrl,
-  deduplicateAll,
+  deduplicatePlaylists,
+  deduplicateUnlisted,
 } from "../src/handlers/pipeline/dedup.ts";
 import { logger } from "../src/logger.ts";
+import { canonicalizePlaylistUrl, normalizeUrl } from "../src/utils/url.ts";
 
 async function run() {
   Deno.env.set("LOG_LEVELS", "info");
 
-  // 1. Run dedup to merge any duplicates safely
+  // 1. Run dedup to merge any duplicates safely.
+  // `deduplicateAll` never existed — this script has not compiled since it was
+  // written, which is what kept it out of every check glob from being noticed.
   logger.info(
     "Running deduplication first to ensure no primary key conflicts...",
   );
-  await deduplicateAll(false);
+  await deduplicateUnlisted(false);
+  await deduplicatePlaylists(false);
 
   // 2. Canonicalize Playlist URLs
   logger.info("Canonicalizing Playlist URLs...");
@@ -48,7 +51,7 @@ async function run() {
   let vCount = 0;
   for (const v of videos) {
     const url = v.getDataValue("videoUrl");
-    const canon = canonicalizeVideoUrl(url);
+    const canon = normalizeUrl(url);
     if (canon !== url) {
       vCount++;
       logger.info(`Updating video: ${url} -> ${canon}`);
@@ -67,7 +70,7 @@ try {
   await run();
   logger.info("Done!");
 } catch (err) {
-  logger.error("Failed:", err as any);
+  logger.error("Failed:", { error: (err as Error).message });
 } finally {
   await sequelize.close();
 }

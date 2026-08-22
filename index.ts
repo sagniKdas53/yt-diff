@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 
 import { type AppConfig, config, YT_DLP_PATCHED_CMD } from "./src/config.ts";
 import { initializeDatabase } from "./src/db/models.ts";
@@ -21,9 +21,11 @@ import {
   type SiteArgBuilder,
 } from "./src/handlers/pipeline/index.ts";
 import {
-  isSiteXDotCom as isPipelineSiteXDotCom,
+  isSiteIwaraDotTv,
+  isSiteXDotCom,
+  isSiteYouTube,
   normalizeUrl,
-} from "./src/handlers/pipeline/process-manager.ts";
+} from "./src/utils/url.ts";
 import { createBotService } from "./src/bot/index.ts";
 import {
   processDedupPlaylistsRequest,
@@ -284,73 +286,7 @@ async function sleep(seconds = Number(config.sleepTime)) {
 
   logger.trace(`Sleep completed after ${duration} seconds`);
 }
-/**
- * Checks if the given video URL belongs to x.com or any of its subdomains.
- *
- * @param {string} videoUrl - The URL of the video to check.
- * @returns {boolean} True if the URL's hostname is x.com or a subdomain of x.com, false otherwise.
- */
-function isSiteXDotCom(videoUrl: string): boolean {
-  let hostname = "";
-  try {
-    hostname = (new URL(videoUrl)).hostname;
-  } catch (e) {
-    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
-      error: (e as Error).message,
-    });
-  }
-  // Only match x.com or its subdomains (e.g. foo.x.com)
-  const allowedXHost = "x.com";
-  const isAllowedXCom = hostname === allowedXHost ||
-    hostname.endsWith("." + allowedXHost);
-  return isAllowedXCom;
-}
-
-/**
- * Checks if the given video URL belongs to iwara.tv or any of its subdomains.
- *
- * @param {string} videoUrl - The URL of the video to check.
- * @returns {boolean} True if the URL's hostname is iwara.tv or a subdomain of iwara.tv, false otherwise.
- */
-function isSiteIwaraDotTv(videoUrl: string): boolean {
-  let hostname = "";
-  try {
-    hostname = (new URL(videoUrl)).hostname;
-  } catch (e) {
-    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
-      error: (e as Error).message,
-    });
-  }
-  // Only match iwara.tv or its subdomains (e.g. foo.iwara.tv)
-  const allowedIwaraHost = "iwara.tv";
-  const isAllowedIwaraDotTv = hostname === allowedIwaraHost ||
-    hostname.endsWith("." + allowedIwaraHost);
-  return isAllowedIwaraDotTv;
-}
-
 // Site specific argument builders
-
-/**
- * Checks if the given URL belongs to youtube.com or any of its subdomains.
- * Used to apply cookies for private playlist access (Watch Later, Liked Videos).
- *
- * @param {string} videoUrl - The URL to check.
- * @returns {boolean} True if the URL is a YouTube URL.
- */
-function isSiteYouTube(videoUrl: string): boolean {
-  let hostname = "";
-  try {
-    hostname = (new URL(videoUrl)).hostname;
-  } catch (e) {
-    logger.warn(`Invalid videoUrl: ${videoUrl}`, {
-      error: (e as Error).message,
-    });
-  }
-  const youtubeHosts = ["youtube.com", "youtu.be"];
-  return youtubeHosts.some(
-    (h) => hostname === h || hostname.endsWith("." + h),
-  );
-}
 
 const siteArgBuilders: SiteArgBuilder[] = [
   // x.com
@@ -880,7 +816,7 @@ const botService = createBotService({
   // Mirrors executeListing's own classification, including the x.com
   // single-item exception.
   isPlaylistUrl: (url: string) =>
-    playlistRegex.test(url) && !isPipelineSiteXDotCom(url),
+    playlistRegex.test(url) && !isSiteXDotCom(url),
 });
 
 function handleRequest(

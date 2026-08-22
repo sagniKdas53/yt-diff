@@ -6,6 +6,7 @@ import {
   VideoMetadata,
 } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
+import { canonicalizePlaylistUrl, normalizeUrl } from "../../utils/url.ts";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -55,116 +56,6 @@ export interface DeduplicateResult {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function isHostOrSubdomain(hostname: string, domain: string): boolean {
-  return hostname === domain || hostname.endsWith(`.${domain}`);
-}
-
-export function canonicalizeVideoUrl(urlStr: string): string {
-  try {
-    const url = new URL(urlStr);
-
-    if (
-      isHostOrSubdomain(url.hostname, "youtube.com") ||
-      isHostOrSubdomain(url.hostname, "youtu.be")
-    ) {
-      const isYoutuBe = url.hostname === "youtu.be" ||
-        url.hostname === "www.youtu.be";
-      url.hostname = "www.youtube.com";
-      if (url.pathname.startsWith("/shorts/")) {
-        const id = url.pathname.split("/")[2];
-        url.pathname = "/watch";
-        url.searchParams.set("v", id);
-      } else if (isYoutuBe) {
-        const id = url.pathname.substring(1);
-        url.hostname = "www.youtube.com";
-        url.pathname = "/watch";
-        url.searchParams.set("v", id);
-      }
-      const v = url.searchParams.get("v");
-      url.search = "";
-      if (v) url.searchParams.set("v", v);
-    } else if (isHostOrSubdomain(url.hostname, "iwara.tv")) {
-      const parts = url.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2 && parts[0] === "video") {
-        url.pathname = `/video/${parts[1]}`;
-      }
-      url.search = "";
-    } else if (isHostOrSubdomain(url.hostname, "spankbang.com")) {
-      const parts = url.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2 && parts[1] === "video") {
-        url.pathname = `/${parts[0]}/video`;
-      }
-      url.search = "";
-    } else if (isHostOrSubdomain(url.hostname, "xhamster.com")) {
-      url.search = "";
-    } else if (isHostOrSubdomain(url.hostname, "pornhub.com")) {
-      const viewkey = url.searchParams.get("viewkey");
-      url.search = "";
-      if (viewkey) url.searchParams.set("viewkey", viewkey);
-    }
-
-    if (
-      isHostOrSubdomain(url.hostname, "x.com") ||
-      isHostOrSubdomain(url.hostname, "twitter.com")
-    ) {
-      url.searchParams.set("s", "20");
-    }
-
-    return url.toString();
-  } catch (_e) {
-    return urlStr;
-  }
-}
-
-export function canonicalizePlaylistUrl(urlStr: string): string {
-  try {
-    const url = new URL(urlStr);
-    const hostname = url.hostname.toLowerCase();
-    const hostMatches = (host: string, base: string): boolean =>
-      host === base || host.endsWith(`.${base}`);
-
-    if (
-      hostMatches(hostname, "youtube.com") || hostMatches(hostname, "youtu.be")
-    ) {
-      url.hostname = "www.youtube.com";
-      const list = url.searchParams.get("list");
-      if (list) {
-        url.pathname = "/playlist";
-        url.search = `?list=${list}`;
-      } else if (url.pathname === "/playlist") {
-        url.search = "";
-      }
-    } else if (hostMatches(hostname, "iwara.tv")) {
-      url.searchParams.delete("sort");
-      url.searchParams.delete("page");
-    } else if (hostMatches(hostname, "spankbang.com")) {
-      url.searchParams.delete("o");
-      url.searchParams.delete("p");
-      const parts = url.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2 && parts[1] === "playlist") {
-        let pid = parts[0];
-        if (pid.endsWith("-nohrcs")) pid = pid.replace("-nohrcs", "");
-        url.pathname = `/${pid}/playlist`;
-      }
-    } else if (hostMatches(hostname, "xhamster.com")) {
-      const parts = url.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2 && parts[0] === "creators") {
-        url.pathname = `/creators/${parts[1]}`;
-      }
-    }
-
-    if (
-      hostMatches(hostname, "x.com") || hostMatches(hostname, "twitter.com")
-    ) {
-      url.searchParams.set("s", "20");
-    }
-
-    return url.toString();
-  } catch (_e) {
-    return urlStr;
-  }
-}
 
 /** Return hostname without leading www./m. for domain-scoping comparisons. */
 function coreHostname(url: string): string {
@@ -245,7 +136,7 @@ export async function canonicalizeVideoUrlsInNonePlaylist(
 
   for (const mapping of mappings) {
     const originalUrl = mapping.getDataValue("videoUrl") as string;
-    const canonUrl = canonicalizeVideoUrl(originalUrl);
+    const canonUrl = normalizeUrl(originalUrl);
 
     if (canonUrl === originalUrl) {
       continue;
@@ -396,7 +287,7 @@ export async function findDuplicateVideos(
   const canonGroups = new Map<string, Set<string>>();
   for (const v of allVideos) {
     const url = v.getDataValue("videoUrl");
-    const canon = canonicalizeVideoUrl(url);
+    const canon = normalizeUrl(url);
     if (!canonGroups.has(canon)) canonGroups.set(canon, new Set());
     canonGroups.get(canon)!.add(url);
   }

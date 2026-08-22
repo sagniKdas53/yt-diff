@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 import { logger } from "../logger.ts";
 import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";

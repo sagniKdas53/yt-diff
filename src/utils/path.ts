@@ -110,3 +110,24 @@ export function isWithinPath(parent: string, child: string): boolean {
   return childResolved === parentResolved ||
     childResolved.startsWith(`${parentResolved}/`);
 }
+
+/**
+ * Resolves `parts` beneath `root`, or returns null when the result escapes it.
+ *
+ * `join` collapses `..` segments silently, so a path built from stored
+ * metadata can land anywhere on disk without the caller noticing. The read
+ * path has always paired `resolve` with `isWithinPath` before serving a file;
+ * this packages that pair so the destructive paths cannot forget it.
+ *
+ * Returns the resolved absolute path on success. `root` itself is *within*
+ * root, so a caller about to delete recursively has to reject that case
+ * separately — an empty `saveDirectory` otherwise names the whole library.
+ */
+export function resolveWithin(
+  root: string,
+  ...parts: string[]
+): string | null {
+  const resolvedRoot = resolve(root);
+  const resolved = resolve(join(root, ...parts));
+  return isWithinPath(resolvedRoot, resolved) ? resolved : null;
+}

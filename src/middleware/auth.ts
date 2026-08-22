@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import he from "he";
 import jwt from "jsonwebtoken";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 import type { Socket } from "socket.io";
 
 import { config } from "../config.ts";

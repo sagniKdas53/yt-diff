@@ -2,7 +2,7 @@ import { config } from "../config.ts";
 import type { VideoMetadata } from "../db/models.ts";
 import { logger } from "../logger.ts";
 import { exists, unlink } from "../utils/fs.ts";
-import { join } from "../utils/path.ts";
+import { resolveWithin } from "../utils/path.ts";
 
 /**
  * Removes a video's media file and all of its sidecars from disk.
@@ -43,11 +43,26 @@ export async function removeVideoFiles(
     }
 
     try {
-      const filePath = join(
+      // The read path has always resolved and containment-checked before
+      // serving a file; the delete path used to build the same string with a
+      // bare join, which collapses `..` without complaint. saveDirectory comes
+      // from yt-dlp metadata, so --restrict-filenames was the only thing
+      // keeping the asymmetry from mattering.
+      const filePath = resolveWithin(
         config.saveLocation,
         video.saveDirectory || "",
         value,
       );
+      if (filePath === null) {
+        logger.error("Refusing to remove a file outside the save location", {
+          videoUrl,
+          key,
+          value,
+          saveDirectory: video.saveDirectory,
+        });
+        allFilesRemoved = false;
+        continue;
+      }
       logger.debug("Removing file", { videoUrl, key, value, filePath });
       if (await exists(filePath)) {
         await unlink(filePath);
