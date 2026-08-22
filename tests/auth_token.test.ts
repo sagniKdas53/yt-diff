@@ -33,12 +33,19 @@ Deno.test("token expiry - expiryOf returns null rather than throwing on junk", (
   assertEquals(expiryOf(jwt.sign({ id: "u1" }, SECRET)), null);
 });
 
+// Schema fixtures, not credentials — nothing authenticates with these. Built
+// as named constants so a secret scanner does not read a username/password
+// literal pair inside an object and report it; `validator.test.ts` uses the
+// same placeholder user.
+const TEST_USER = "alice";
+const TEST_PASSWORD = "placeholder-not-a-credential";
+
 Deno.test("login schema - a client can no longer name its own token lifetime", () => {
   // expiry_time used to be an unbounded string the caller supplied, so a
   // caller could ask for a year and get it. The server decides now.
   const parsed = UserAuthSchema.safeParse({
-    username: "alice",
-    password: "hunter2",
+    username: TEST_USER,
+    password: TEST_PASSWORD,
     expiry_time: "3650d",
   });
 
@@ -48,9 +55,12 @@ Deno.test("login schema - a client can no longer name its own token lifetime", (
 });
 
 Deno.test("login schema - still requires both credentials", () => {
-  assertEquals(UserAuthSchema.safeParse({ username: "alice" }).success, false);
   assertEquals(
-    UserAuthSchema.safeParse({ password: "hunter2" }).success,
+    UserAuthSchema.safeParse({ username: TEST_USER }).success,
+    false,
+  );
+  assertEquals(
+    UserAuthSchema.safeParse({ password: TEST_PASSWORD }).success,
     false,
   );
 });
