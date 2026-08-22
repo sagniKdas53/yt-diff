@@ -113,6 +113,15 @@ Optional:
 | `secrets/cookie_secret.txt` | Netscape-format cookies for `yt-dlp` (used for x.com, YouTube WL/LL, etc.) |
 | `secrets/proxy_string.txt`  | HTTP proxy URL (e.g., `http://user:pass@host:port/`)                       |
 | `secrets/iwara.json`        | `{"username": "...", "password": "..."}` for Iwara credentials             |
+| `secrets/http_proxy_password.txt` | Password for gluetun's built-in HTTP proxy — required if you run the `gluetun` service |
+
+> [!IMPORTANT]
+> `secrets/http_proxy_password.txt` and `secrets/proxy_string.txt` carry the
+> same password, and both must agree: gluetun authenticates against the first,
+> and yt-diff dials the proxy using the second. A `secrets/` file that
+> `docker-compose.yml` references but which does not exist fails
+> `docker compose up` for the whole stack, so create the file (empty is fine
+> when the proxy is unused) or comment the service out.
 
 ### 6. Start the Server
 

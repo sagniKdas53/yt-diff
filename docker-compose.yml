@@ -11,6 +11,12 @@ secrets:
     file: secrets/openvpn_user.txt
   openvpn_password:
     file: secrets/openvpn_password.txt
+  # Gluetun's built-in HTTP proxy credential. It used to sit in envs/base.env,
+  # which is committed; the port is only published inside the compose network,
+  # but a password in git is a password in git. Same shape as the openvpn pair
+  # above — gluetun reads any HTTPPROXY_* setting from a *_SECRETFILE variant.
+  http_proxy_password:
+    file: secrets/http_proxy_password.txt
   proxy_string:
     file: secrets/proxy_string.txt
   iwara_config:
@@ -320,6 +326,7 @@ services:
     secrets:
       - openvpn_user
       - openvpn_password
+      - http_proxy_password
     environment:
       - VPN_SERVICE_PROVIDER=${SERVICE_PROVIDER_VPN}
       - VPN_TYPE=openvpn
@@ -332,9 +339,12 @@ services:
       - HTTPPROXY_LISTENING_ADDRESS=${HTTP_PROXY_LISTENING_ADDRESS}
       - HTTPPROXY_STEALTH=${HTTP_PROXY_STEALTH}
       - HTTPPROXY_USER=${HTTP_PROXY_USER}
-      - HTTPPROXY_PASSWORD=${HTTP_PROXY_PASSWORD}
+      - HTTPPROXY_PASSWORD_SECRETFILE=/run/secrets/http_proxy_password
       # The proxy string is basically
-      #- http://${HTTP_PROXY_USER}:${HTTP_PROXY_PASSWORD}@gluetun:3128
+      #- http://${HTTP_PROXY_USER}:<password>@gluetun:3128
+      # yt-diff reads that whole string from secrets/proxy_string.txt via
+      # PROXY_STRING_FILE, so the password is written in two places and they
+      # have to agree.
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:

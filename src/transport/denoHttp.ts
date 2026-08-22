@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import type { HttpRequestLike, HttpResponseLike } from "./http.ts";
 import { logger } from "../logger.ts";
+import { SECURITY_HEADERS } from "../utils/http.ts";
 
 type Listener = (...args: any[]) => void;
 
@@ -267,7 +268,23 @@ export async function proxyHttpRequest(
     init.body = await request.arrayBuffer();
   }
 
-  return await fetch(upstreamUrl, init);
+  const upstream = await fetch(upstreamUrl, init);
+
+  // This is the one response path that does not build its headers through
+  // `generateCorsHeaders` — socket.io's long-polling frames come back from the
+  // sidecar as-is. A `fetch` Response has immutable headers, so the only way
+  // to add to them is to rebuild it. No CSP: these are not documents, and the
+  // header that matters for a polling frame is `nosniff`.
+  const responseHeaders = new Headers(upstream.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    responseHeaders.set(name, value);
+  }
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders,
+  });
 }
 
 export function proxyWebSocketRequest(

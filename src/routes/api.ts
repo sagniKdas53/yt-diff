@@ -24,6 +24,7 @@ interface ApiRouteDependencies {
   authenticateRequest: AuthenticatedMiddleware;
   authenticateUser: RequestHandler;
   isRegistrationAllowed: RequestHandler;
+  refreshAuthToken: BodyHandler;
   rateLimit: RateLimitFunction & {
     withCost: (
       policy: GcraPolicy,
@@ -54,6 +55,7 @@ export function createApiRoutes({
   authenticateUser,
   isRegistrationAllowed,
   rateLimit,
+  refreshAuthToken,
   registerUser,
   processListingRequest,
   processDownloadRequest,
@@ -85,6 +87,11 @@ export function createApiRoutes({
     ...config.rateLimit.action,
   };
   const workPolicy: GcraPolicy = { bucket: "work", ...config.rateLimit.work };
+
+  // Two parameters, so `rateLimit` treats it as a plain RequestHandler and
+  // calls it with (req, res) — the same shape /login and /register use.
+  const runRefresh: RequestHandler = (req, res) =>
+    authenticateRequest(req, res, refreshAuthToken);
 
   return [
     {
@@ -200,6 +207,16 @@ export function createApiRoutes({
           authenticateUser,
           authPolicy,
         ),
+    },
+    {
+      method: "POST",
+      path: config.urlBase + "/refresh",
+      // Behind authenticateRequest, so an expired token gets a 401 here just
+      // like anywhere else — this extends a live session, it cannot revive a
+      // dead one. Charged against the auth budget rather than the public one:
+      // it mints a credential, so it belongs with login.
+      run: (req, res) =>
+        rateLimit(req, res, runRefresh, runRefresh, authPolicy),
     },
     {
       method: "POST",

@@ -99,9 +99,31 @@ dependencies minimal.
 
 - **`/login`**
   - **Description**: Authenticates a user and returns a JWT token.
-  - **Request body**: `{ username: string, password: string, expiry_time?: string }`
-  - **Response**: `{ status: "success", token: string }`
+  - **Request body**: `{ username: string, password: string }`
+  - **Response**: `{ status: "success", token: string, expiresAt: number | null }`
+  - **`expiresAt`** is the token's `exp` claim in epoch seconds. The client
+    schedules its renewal off this rather than decoding a JWT it cannot verify.
+  - **Token lifetime** is decided by the server (`TOKEN_EXPIRY`, default `24h`).
+    A caller used to be able to name its own via `expiry_time`, with nothing
+    bounding it; that field is gone and is ignored if sent.
   - **Frontend Usage**: `Login.jsx` calls this on form submission.
+
+- **`/refresh`**
+  - **Description**: Exchanges a still-valid token for a fresh one with a full
+    lifetime. This is what makes the 24-hour default workable — without it, a
+    short lifetime would mean a login prompt every day.
+  - **Request body**: `{}` — the handler reads nothing from it, but the body
+    must be a JSON object: `parseRequestJson` rejects an empty body with a 400
+    before any handler runs.
+  - **Response**: `{ status: "success", token: string, expiresAt: number | null }`
+  - **Authentication**: Required. It runs behind the same `authenticateRequest`
+    as every other authenticated route, so an **expired** token gets a 401 here
+    too: this extends a live session, it cannot revive a dead one. A tab asleep
+    longer than `TOKEN_EXPIRY` comes back to a login form.
+  - **Rate limit**: the `auth` budget, not the public one — it mints a
+    credential, so it is priced with `/login`.
+  - **Frontend Usage**: `useTokenRefresh` calls it at the halfway point of the
+    token's life and again whenever a hidden tab becomes visible.
 
 - **`/register`**
   - **Description**: Creates a new user account when registration is enabled and

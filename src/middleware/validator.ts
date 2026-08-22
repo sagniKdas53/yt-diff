@@ -174,7 +174,9 @@ export const UserAuthSchema = z.object({
     72,
     "Password too long",
   ),
-  expiry_time: z.string().optional(),
+  // No expiry_time. The client used to be able to name its own token lifetime
+  // and nothing bounded it, so a caller could ask for a year. The server picks
+  // it now, from config.auth.tokenExpiry.
 });
 
 export const IsRegistrationAllowedSchema = z.object({

@@ -83,6 +83,7 @@ import {
   CORS_ALLOWED_ORIGINS,
   generateCorsHeaders,
   MIME_TYPES,
+  SIGNED_FILE_CSP,
 } from "./src/utils/http.ts";
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
@@ -399,6 +400,7 @@ const {
   authenticateSocket,
   authenticateUser,
   isRegistrationAllowed,
+  refreshAuthToken,
   registerUser,
 } = createAuthMiddleware({
   redis,
@@ -688,6 +690,7 @@ const apiRoutes = createApiRoutes({
   authenticateUser,
   isRegistrationAllowed,
   rateLimit,
+  refreshAuthToken,
   registerUser,
   processListingRequest: validateBody(
     ListingRequestBodySchema,
@@ -952,6 +955,10 @@ Deno.serve(
         (contentType: string) =>
           generateCorsHeaders(contentType, {
             requestOrigin: request.headers.get("origin"),
+            // This path serves bytes fetched from a remote site, not anything
+            // this app authored, so it gets the lockdown policy instead of the
+            // app's own.
+            csp: SIGNED_FILE_CSP,
           }),
       );
       if (nativeResponse) {

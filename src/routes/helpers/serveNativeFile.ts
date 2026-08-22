@@ -4,6 +4,32 @@ import { basename } from "../../utils/path.ts";
 import type { SignedFileMetadata } from "./getSignedFileMetadata.ts";
 
 /**
+ * Content types a browser will execute script from when it renders them as a
+ * document. Nothing in the download tree is authored by this app — yt-dlp
+ * writes what a remote site handed it, and `MIME_TYPES` maps `.svg`, `.html`
+ * and `.xml` onto exactly these — so these never get `Content-Disposition:
+ * inline`, whatever the request asked for.
+ *
+ * This is the narrow half of the fix. The broad half is `SIGNED_FILE_CSP`,
+ * which sandboxes the response whatever its type. Either alone would close the
+ * planted-file path; the type list is here so that the file is never handed to
+ * the renderer in the first place, rather than being handed over and contained.
+ */
+const NEVER_INLINE_TYPES = [
+  "image/svg+xml",
+  "text/html",
+  "application/xhtml+xml",
+  "application/xml",
+  "text/xml",
+];
+
+function canRenderAsDocument(mimeType: string): boolean {
+  // Compare against the type alone; stored values may carry a charset.
+  const essence = mimeType.split(";")[0]!.trim().toLowerCase();
+  return NEVER_INLINE_TYPES.includes(essence);
+}
+
+/**
  * Serves a file using Deno's native Response and ReadableStream.
  * Supports HTTP Range requests for efficient seeking and reduced memory usage.
  */
@@ -29,7 +55,9 @@ export async function tryServeNativeFile(
     const headers = new Headers();
     Object.entries(cors).forEach(([k, v]) => headers.set(k, String(v)));
 
-    const dispositionType = inline ? "inline" : "attachment";
+    const dispositionType = inline && !canRenderAsDocument(mimeType)
+      ? "inline"
+      : "attachment";
     headers.set(
       "Content-Disposition",
       `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
