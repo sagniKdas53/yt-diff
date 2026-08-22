@@ -20,13 +20,12 @@ import type {
   ReindexAllRequestBody,
   UpdatePlaylistMonitoringRequest,
 } from "./types.ts";
-import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { json } from "../../utils/http.ts";
 import { removeVideoFiles } from "../videoFiles.ts";
 
 export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
   const { listItemsConcurrently, resetPendingPlaylistSortCounter, safeEmit } =
     deps;
-  const jsonMimeType = MIME_TYPES[".json"];
 
   async function updatePlaylistMonitoring(
     requestBody: UpdatePlaylistMonitoringRequest,
@@ -60,11 +59,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         newType: monitoringType,
       });
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 200, {
         status: "success",
         message: "Monitoring type updated successfully",
-      }));
+      });
     } catch (error) {
       logger.error("Failed to update monitoring type", {
         error: (error as Error).message,
@@ -72,11 +70,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
       });
 
       const statusCode = (error as HttpError).status || 500;
-      response.writeHead(statusCode, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, statusCode, {
         status: "error",
         message: he.escape((error as Error).message),
-      }));
+      });
     }
   }
 
@@ -99,13 +96,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         logger.error("Cannot delete the default playlist", {
           "requestBody": JSON.stringify(requestBody),
         });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "Cannot delete the default playlist",
-          }),
-        );
+        return json(response, 400, {
+          "status": "error",
+          "message": "Cannot delete the default playlist",
+        });
       }
 
       const playlist = await PlaylistMetadata.findByPk(playListUrl);
@@ -113,13 +107,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         logger.error("Playlist not found", {
           "requestBody": JSON.stringify(requestBody),
         });
-        response.writeHead(404, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "Playlist not found",
-          }),
-        );
+        return json(response, 404, {
+          "status": "error",
+          "message": "Playlist not found",
+        });
       }
 
       const transaction = await sequelize.transaction();
@@ -166,14 +157,13 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
 
         if (!deleteAllVideosInPlaylist && !deletePlaylist) {
           await transaction.commit();
-          response.writeHead(200, generateCorsHeaders(jsonMimeType));
-          return response.end(JSON.stringify({
+          return json(response, 200, {
             "status": "success",
             "message": `No deletion performed for playlist ${playlist.title}`,
             "cleanUp": false,
             "deletePlaylist": false,
             "deleteAllVideosInPlaylist": false,
-          }));
+          });
         }
 
         if (cleanUp) {
@@ -251,14 +241,13 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         }
 
         await transaction.commit();
-        response.writeHead(200, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 200, {
           "status": "success",
           "message": message,
           "cleanUp": cleanUp,
           "deletePlaylist": deletePlaylist,
           "deleteAllVideosInPlaylist": deleteAllVideosInPlaylist,
-        }));
+        });
       } catch (error) {
         await transaction.rollback();
         logger.error(
@@ -270,22 +259,16 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             cleanUp,
           },
         );
-        response.writeHead(500, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": (error as Error).message,
-          }),
-        );
-      }
-    } catch (error) {
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({
+        return json(response, 500, {
           "status": "error",
           "message": (error as Error).message,
-        }),
-      );
+        });
+      }
+    } catch (error) {
+      return json(response, 400, {
+        "status": "error",
+        "message": (error as Error).message,
+      });
     }
   }
 
@@ -322,21 +305,18 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         : subset;
 
       if (filtered.length === 0) {
-        response.writeHead(200, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            status: "success",
-            message: siteFilter
-              ? `No playlists matching "${siteFilter}" in range [${startIndex}, ${
-                stopIndex ?? totalCount
-              })`
-              : `No playlists in range [${startIndex}, ${
-                stopIndex ?? totalCount
-              })`,
-            queued: 0,
-            total: totalCount,
-          }),
-        );
+        return json(response, 200, {
+          status: "success",
+          message: siteFilter
+            ? `No playlists matching "${siteFilter}" in range [${startIndex}, ${
+              stopIndex ?? totalCount
+            })`
+            : `No playlists in range [${startIndex}, ${
+              stopIndex ?? totalCount
+            })`,
+          queued: 0,
+          total: totalCount,
+        });
       }
 
       const items: ListingItem[] = filtered.map((p: Model) => ({
@@ -353,20 +333,17 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
       // Correlates every event in this batch so the UI can ignore stale ones.
       const batchId = crypto.randomUUID();
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(
-        JSON.stringify({
-          status: "success",
-          message: `Queued ${items.length} playlist(s) for re-indexing`,
-          queued: items.length,
-          total: totalCount,
-          start: startIndex,
-          stop: stopIndex ?? totalCount,
-          siteFilter: siteFilter || undefined,
-          chunkSize: chunkSizeOverride,
-          batchId,
-        }),
-      );
+      json(response, 200, {
+        status: "success",
+        message: `Queued ${items.length} playlist(s) for re-indexing`,
+        queued: items.length,
+        total: totalCount,
+        start: startIndex,
+        stop: stopIndex ?? totalCount,
+        siteFilter: siteFilter || undefined,
+        chunkSize: chunkSizeOverride,
+        batchId,
+      });
 
       void (async () => {
         const startedAt = Date.now();
@@ -427,13 +404,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
       logger.error("processReindexAllRequest failed", {
         error: (error as Error).message,
       });
-      response.writeHead(500, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({
-          status: "error",
-          message: (error as Error).message,
-        }),
-      );
+      return json(response, 500, {
+        status: "error",
+        message: (error as Error).message,
+      });
     }
   }
 
@@ -457,13 +431,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         logger.error("mappingIds or videoUrls array cannot be empty", {
           "requestBody": JSON.stringify(requestBody),
         });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "mappingIds or videoUrls array cannot be empty",
-          }),
-        );
+        return json(response, 400, {
+          "status": "error",
+          "message": "mappingIds or videoUrls array cannot be empty",
+        });
       }
 
       const playlist = await PlaylistMetadata.findByPk(playListUrl);
@@ -471,13 +442,10 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
         logger.error("Playlist not found", {
           "requestBody": JSON.stringify(requestBody),
         });
-        response.writeHead(404, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": "Playlist not found",
-          }),
-        );
+        return json(response, 404, {
+          "status": "error",
+          "message": "Playlist not found",
+        });
       }
 
       const transaction = await sequelize.transaction();
@@ -636,8 +604,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
 
         await transaction.commit();
 
-        response.writeHead(200, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 200, {
           "message":
             `Processed ${deleted.length} video(s) from playlist ${playlist.title}`,
           "deleted": deleted,
@@ -645,7 +612,7 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
           "cleanUp": cleanUp,
           "deleteVideoMappings": deleteVideoMappings,
           "deleteVideosInDB": deleteVideosInDB,
-        }));
+        });
       } catch (error) {
         await transaction.rollback();
         logger.error(
@@ -658,22 +625,16 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             deleteVideosInDB,
           },
         );
-        response.writeHead(500, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({
-            "status": "error",
-            "message": (error as Error).message,
-          }),
-        );
-      }
-    } catch (error) {
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({
+        return json(response, 500, {
           "status": "error",
           "message": (error as Error).message,
-        }),
-      );
+        });
+      }
+    } catch (error) {
+      return json(response, 400, {
+        "status": "error",
+        "message": (error as Error).message,
+      });
     }
   }
 

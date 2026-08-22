@@ -147,6 +147,32 @@ export function cleanupStaleProcesses(
   return cleanedCount;
 }
 
+/**
+ * The statuses `cleanupStaleProcesses` branches on.
+ *
+ * "errored" is not one of them — it reads as terminal but is not reaped, so
+ * an entry left in it lingers until the idle timeout. Named here rather than
+ * left as loose strings so that stays visible.
+ */
+export type ProcessStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "errored";
+
+/** How a status change also moves the liveness clocks. */
+export interface ProcessStatusOptions {
+  /**
+   * The handle to attach. Marks the entry as freshly spawned: the age clock
+   * restarts and both liveness clocks are set, which is what the cleanup job
+   * measures a process's lifetime against.
+   */
+  spawnedProcess?: ProcessLike["spawnedProcess"];
+  /** Also records stdout liveness, without restarting the age clock. */
+  stdout?: boolean;
+}
+
 export function createProcessManager(
   downloadProcesses: Map<string, DownloadProcessEntry>,
   listProcesses: Map<string, ListingProcessEntry>,
@@ -171,6 +197,46 @@ export function createProcessManager(
     }
   }
 
+  /**
+   * Moves a tracked process to a new status, refreshing its clocks with it.
+   *
+   * This was open-coded eight times across the listing and download paths,
+   * each copy mutating an entry it already held by reference and then calling
+   * `map.set(key, entry)` — a no-op, replicated eight times, which read as if
+   * the write were what made the change stick. Worse, each copy chose for
+   * itself which of the three clocks to move, so a status change meant
+   * different things depending on which copy you were looking at.
+   *
+   * @returns `false` when no entry is tracked under `processKey`. Callers that
+   * spawned a process treat that as fatal — they have a running subprocess
+   * nothing will ever reap — so they check it; callers reporting the end of
+   * work do not, because an entry the cleanup job already removed is a race
+   * they are allowed to lose.
+   */
+  function setProcessStatus(
+    processKey: string,
+    status: ProcessStatus,
+    { spawnedProcess, stdout = false }: ProcessStatusOptions = {},
+  ): boolean {
+    const entry: ProcessLike | undefined = downloadProcesses.get(processKey) ??
+      listProcesses.get(processKey);
+    if (!entry) return false;
+
+    const now = Date.now();
+    entry.status = status;
+    entry.lastActivity = now;
+
+    if (spawnedProcess !== undefined) {
+      entry.spawnedProcess = spawnedProcess;
+      entry.spawnTimeStamp = now;
+      entry.lastStdoutActivity = now;
+    } else if (stdout) {
+      entry.lastStdoutActivity = now;
+    }
+
+    return true;
+  }
+
   function cleanupProcess(processKey: string, pid: number | undefined) {
     if (downloadProcesses.has(processKey)) {
       downloadProcesses.delete(processKey);
@@ -180,5 +246,5 @@ export function createProcessManager(
     }
   }
 
-  return { updateProcessActivity, cleanupProcess };
+  return { updateProcessActivity, setProcessStatus, cleanupProcess };
 }

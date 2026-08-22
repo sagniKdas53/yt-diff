@@ -1,13 +1,20 @@
 import { config } from "../config.ts";
+import type { GcraPolicy } from "../middleware/gcra.ts";
 import type {
   RateLimitFunction,
   RequestContext,
   RequestHandler,
 } from "../middleware/rateLimit.ts";
-import type { GcraPolicy } from "../middleware/gcra.ts";
-import { downloadCost, listingCost } from "../middleware/requestCost.ts";
+import { validateBody } from "../middleware/validator.ts";
 import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
-import type { RouteDefinition } from "./http.ts";
+import {
+  type AdmissionTier,
+  API_ENDPOINTS,
+  type ApiEndpoint,
+  type AuthenticatedHandlers,
+  type PublicHandlers,
+} from "./endpoints.ts";
+import type { RouteDefinition, RouteRunner } from "./http.ts";
 
 type BodyHandler = (
   data: unknown,
@@ -20,11 +27,15 @@ type AuthenticatedMiddleware = (
   next: BodyHandler,
 ) => unknown;
 
-interface ApiRouteDependencies {
+/**
+ * Everything the route table needs to be turned into runners.
+ *
+ * The two handler bags are keyed by the same names the endpoint records use,
+ * so a record naming a handler that does not exist is a type error rather than
+ * a route that 404s at runtime.
+ */
+export interface ApiRouteDependencies {
   authenticateRequest: AuthenticatedMiddleware;
-  authenticateUser: RequestHandler;
-  isRegistrationAllowed: RequestHandler;
-  refreshAuthToken: BodyHandler;
   rateLimit: RateLimitFunction & {
     withCost: (
       policy: GcraPolicy,
@@ -32,209 +43,81 @@ interface ApiRouteDependencies {
       handler: BodyHandler,
     ) => BodyHandler;
   };
-  registerUser: RequestHandler;
-  processListingRequest: BodyHandler;
-  processDownloadRequest: BodyHandler;
-  updatePlaylistMonitoring: BodyHandler;
-  getPlaylistsForDisplay: BodyHandler;
-  processDeletePlaylistRequest: BodyHandler;
-  getSubListVideos: BodyHandler;
-  processDeleteVideosRequest: BodyHandler;
-  makeSignedUrl: BodyHandler;
-  refreshSignedUrl: BodyHandler;
-  refreshSignedUrls: BodyHandler;
-  makeSignedUrls: BodyHandler;
-  processReindexAllRequest: BodyHandler;
-  processDedupUnlistedRequest: BodyHandler;
-  processDedupPlaylistsRequest: BodyHandler;
-  processQueueStatusRequest: BodyHandler;
+  /** Handlers behind `authenticateRequest`, receiving the parsed body. */
+  authenticated: AuthenticatedHandlers;
+  /** Handlers that take the raw request and read their own body. */
+  publicHandlers: PublicHandlers;
 }
 
-export function createApiRoutes({
-  authenticateRequest,
-  authenticateUser,
-  isRegistrationAllowed,
-  rateLimit,
-  refreshAuthToken,
-  registerUser,
-  processListingRequest,
-  processDownloadRequest,
-  updatePlaylistMonitoring,
-  getPlaylistsForDisplay,
-  processDeletePlaylistRequest,
-  getSubListVideos,
-  processDeleteVideosRequest,
-  makeSignedUrl,
-  refreshSignedUrl,
-  refreshSignedUrls,
-  makeSignedUrls,
-  processReindexAllRequest,
-  processDedupUnlistedRequest,
-  processDedupPlaylistsRequest,
-  processQueueStatusRequest,
-}: ApiRouteDependencies): RouteDefinition[] {
+/**
+ * Builds the runner for one endpoint record.
+ *
+ * The composition order is the contract, and it is the same for every
+ * endpoint: admission budget, then authentication, then the work charge, then
+ * schema validation, then the handler. Each endpoint's record says which of
+ * those apply; none of them chooses its own order.
+ *
+ * `costOf` deliberately sees the unvalidated body — it runs before the schema,
+ * because a request has to be priced before it is admitted, and a body that
+ * fails validation has already cost the parse.
+ */
+function buildRunner(
+  endpoint: ApiEndpoint,
+  deps: ApiRouteDependencies,
+  policies: Record<Exclude<AdmissionTier, "none">, GcraPolicy> & {
+    work: GcraPolicy;
+  },
+): RouteRunner {
+  const { authenticateRequest, rateLimit } = deps;
+
+  if (endpoint.kind === "public") {
+    const handler = deps.publicHandlers[endpoint.handler] as RequestHandler;
+    if (endpoint.admission === "none") {
+      return (req, res) => handler(req, res);
+    }
+    const policy = policies[endpoint.admission];
+    return (req, res) => rateLimit(req, res, handler, handler, policy);
+  }
+
+  // The table is heterogeneous — sixteen handlers, sixteen body types — so
+  // this one indexing step is untyped. What it is standing in for is checked
+  // where it matters: `AuthenticatedHandlers` derives each signature from that
+  // endpoint's schema, so a handler that cannot accept what its schema
+  // produces fails to compile at the point it is supplied.
+  let handler = deps.authenticated[endpoint.handler] as BodyHandler;
+  if (endpoint.schema) {
+    handler = validateBody(endpoint.schema, handler);
+  }
+  if (endpoint.cost) {
+    handler = rateLimit.withCost(policies.work, endpoint.cost, handler);
+  }
+
+  if (endpoint.admission === "none") {
+    return (req, res) => authenticateRequest(req, res, handler);
+  }
+
+  const policy = policies[endpoint.admission];
+  return (req, res) =>
+    rateLimit(req, res, authenticateRequest, handler, policy);
+}
+
+export function createApiRoutes(
+  deps: ApiRouteDependencies,
+): RouteDefinition[] {
   // Each bucket is a separate Redis key namespace. Before this, every limiter
   // shared one `ip:<addr>` counter, so login attempts and listing requests
   // drained the same budget and whichever limit was lowest silently governed
   // both.
-  const authPolicy: GcraPolicy = { bucket: "auth", ...config.rateLimit.auth };
-  const publicPolicy: GcraPolicy = {
-    bucket: "public",
-    ...config.rateLimit.publicRead,
+  const policies = {
+    auth: { bucket: "auth", ...config.rateLimit.auth },
+    publicRead: { bucket: "public", ...config.rateLimit.publicRead },
+    action: { bucket: "action", ...config.rateLimit.action },
+    work: { bucket: "work", ...config.rateLimit.work },
   };
-  const actionPolicy: GcraPolicy = {
-    bucket: "action",
-    ...config.rateLimit.action,
-  };
-  const workPolicy: GcraPolicy = { bucket: "work", ...config.rateLimit.work };
 
-  // Two parameters, so `rateLimit` treats it as a plain RequestHandler and
-  // calls it with (req, res) — the same shape /login and /register use.
-  const runRefresh: RequestHandler = (req, res) =>
-    authenticateRequest(req, res, refreshAuthToken);
-
-  return [
-    {
-      method: "POST",
-      path: config.urlBase + "/list",
-      run: (req, res) =>
-        rateLimit(
-          req,
-          res,
-          authenticateRequest,
-          rateLimit.withCost(workPolicy, listingCost, processListingRequest),
-          actionPolicy,
-        ),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/download",
-      run: (req, res) =>
-        rateLimit(
-          req,
-          res,
-          authenticateRequest,
-          rateLimit.withCost(workPolicy, downloadCost, processDownloadRequest),
-          actionPolicy,
-        ),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/watch",
-      run: (req, res) =>
-        authenticateRequest(req, res, updatePlaylistMonitoring),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/getplay",
-      run: (req, res) => authenticateRequest(req, res, getPlaylistsForDisplay),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/delplay",
-      run: (req, res) =>
-        authenticateRequest(req, res, processDeletePlaylistRequest),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/getsub",
-      run: (req, res) => authenticateRequest(req, res, getSubListVideos),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/delsub",
-      run: (req, res) =>
-        authenticateRequest(req, res, processDeleteVideosRequest),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/getfile",
-      run: (req, res) => authenticateRequest(req, res, makeSignedUrl),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/refreshfile",
-      run: (req, res) => authenticateRequest(req, res, refreshSignedUrl),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/refreshfiles",
-      run: (req, res) => authenticateRequest(req, res, refreshSignedUrls),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/getfiles",
-      run: (req, res) => authenticateRequest(req, res, makeSignedUrls),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/reindexall",
-      run: (req, res) =>
-        authenticateRequest(req, res, processReindexAllRequest),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/dedup-unlisted",
-      run: (req, res) =>
-        authenticateRequest(req, res, processDedupUnlistedRequest),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/dedup-playlists",
-      run: (req, res) =>
-        authenticateRequest(req, res, processDedupPlaylistsRequest),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/register",
-      run: (req, res) =>
-        rateLimit(
-          req,
-          res,
-          registerUser,
-          isRegistrationAllowed,
-          authPolicy,
-        ),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/login",
-      run: (req, res) =>
-        rateLimit(
-          req,
-          res,
-          authenticateUser,
-          authenticateUser,
-          authPolicy,
-        ),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/refresh",
-      // Behind authenticateRequest, so an expired token gets a 401 here just
-      // like anywhere else — this extends a live session, it cannot revive a
-      // dead one. Charged against the auth budget rather than the public one:
-      // it mints a credential, so it belongs with login.
-      run: (req, res) =>
-        rateLimit(req, res, runRefresh, runRefresh, authPolicy),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/isregallowed",
-      run: (req, res) =>
-        rateLimit(
-          req,
-          res,
-          isRegistrationAllowed,
-          isRegistrationAllowed,
-          publicPolicy,
-        ),
-    },
-    {
-      method: "POST",
-      path: config.urlBase + "/queuestatus",
-      run: (req, res) =>
-        authenticateRequest(req, res, processQueueStatusRequest),
-    },
-  ];
+  return API_ENDPOINTS.map((endpoint) => ({
+    method: endpoint.method,
+    path: config.urlBase + endpoint.path,
+    run: buildRunner(endpoint, deps, policies),
+  }));
 }

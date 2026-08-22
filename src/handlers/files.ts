@@ -6,7 +6,7 @@ import type { HttpResponseLike } from "../transport/http.ts";
 import { isFile } from "../utils/fs.ts";
 import { basename, extname, resolveWithin } from "../utils/path.ts";
 
-import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
+import { json, MIME_TYPES } from "../utils/http.ts";
 
 interface FileHandlerDependencies {
   redis: Redis;
@@ -54,7 +54,6 @@ export interface RefreshedSignedFileResponseEntry {
 export function createFileHandlers({
   redis,
 }: FileHandlerDependencies) {
-  const jsonMimeType = MIME_TYPES[".json"];
   const mimeTypes = new Map<string, string>(Object.entries(MIME_TYPES));
 
   /**
@@ -107,29 +106,25 @@ export function createFileHandlers({
         saveDirectory,
         fileName,
       });
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({ status: "error", message: "Invalid file path" }),
-      );
+      return json(response, 400, {
+        status: "error",
+        message: "Invalid file path",
+      });
     }
     logger.debug(`Resolved Path ${resolvedPath}`, {
       saveDirectory,
       fileName,
     });
     if (!(await isFile(resolvedPath))) {
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(
-        JSON.stringify({
-          status: "error",
-          message: "File could not be found",
-        }),
-      );
+      return json(response, 400, {
+        status: "error",
+        message: "File could not be found",
+      });
     }
 
     const { signedUrlId, expiry } = await createSignedUrlForPath(resolvedPath);
 
-    response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({ status: "success", signedUrlId, expiry }));
+    json(response, 200, { status: "success", signedUrlId, expiry });
   }
 
   async function refreshSignedUrl(
@@ -151,17 +146,13 @@ export function createFileHandlers({
         config.cache.maxAge,
       );
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      return response.end(JSON.stringify({ status: "success", expiry }));
+      return json(response, 200, { status: "success", expiry });
     }
 
-    response.writeHead(404, generateCorsHeaders(jsonMimeType));
-    return response.end(
-      JSON.stringify({
-        status: "error",
-        message: "fileId not found or expired",
-      }),
-    );
+    return json(response, 404, {
+      status: "error",
+      message: "fileId not found or expired",
+    });
   }
 
   async function refreshSignedUrls(
@@ -196,10 +187,10 @@ export function createFileHandlers({
       results.set(fileId, { expiry });
     }
 
-    response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    return response.end(
-      JSON.stringify({ status: "success", files: Object.fromEntries(results) }),
-    );
+    return json(response, 200, {
+      status: "success",
+      files: Object.fromEntries(results),
+    });
   }
 
   async function makeSignedUrls(
@@ -229,10 +220,10 @@ export function createFileHandlers({
       results.set(fileName, await createSignedUrlForPath(resolvedPath));
     }
 
-    response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    response.end(
-      JSON.stringify({ status: "success", files: Object.fromEntries(results) }),
-    );
+    json(response, 200, {
+      status: "success",
+      files: Object.fromEntries(results),
+    });
   }
 
   return {

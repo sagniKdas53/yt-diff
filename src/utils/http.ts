@@ -1,6 +1,6 @@
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
-import type { HttpRequestLike } from "../transport/http.ts";
+import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 
 export const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -293,4 +293,38 @@ export function generateCorsHeaders(
     "Content-Security-Policy": csp,
     "Content-Type": contentType,
   };
+}
+
+/**
+ * Writes a JSON response.
+ *
+ * Every JSON endpoint used to spell this out for itself — `writeHead(status,
+ * generateCorsHeaders(jsonMimeType))` on one line and `end(JSON.stringify(…))`
+ * on the next, across some sixty call sites. Two lines that always travel
+ * together and can only be got wrong: a status written without a body leaves
+ * the connection open, a body written without the headers goes out as
+ * `text/plain` with no CORS, and a `return` on the wrong one of the two lets
+ * the handler keep running after it has answered.
+ *
+ * `requestOrigin` is threaded through to `generateCorsHeaders` for the
+ * multi-origin case; `headers` merges in anything endpoint-specific, which
+ * today is only the rate limiter's `Retry-After`.
+ */
+export function json(
+  response: HttpResponseLike,
+  status: number,
+  body: unknown,
+  {
+    requestOrigin,
+    headers = {},
+  }: {
+    requestOrigin?: string | null;
+    headers?: Record<string, string | number>;
+  } = {},
+) {
+  response.writeHead(status, {
+    ...generateCorsHeaders(MIME_TYPES[".json"], { requestOrigin }),
+    ...headers,
+  });
+  return response.end(JSON.stringify(body));
 }

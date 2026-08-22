@@ -793,7 +793,7 @@ export async function deduplicatePlaylists(
 // ---------------------------------------------------------------------------
 
 import he from "he";
-import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { json } from "../../utils/http.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 
 export interface DedupRequestBody {
@@ -805,7 +805,6 @@ export async function processDedupUnlistedRequest(
   requestBody: DedupRequestBody,
   response: HttpResponseLike,
 ): Promise<void> {
-  const jsonMimeType = MIME_TYPES[".json"];
   try {
     const dryRun = requestBody.dryRun !== false; // default true
     const siteFilter = requestBody.siteFilter?.trim() || undefined;
@@ -814,18 +813,16 @@ export async function processDedupUnlistedRequest(
 
     const result = await deduplicateUnlisted(dryRun, siteFilter);
 
-    response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({ status: "success", ...result }));
+    json(response, 200, { status: "success", ...result });
   } catch (error) {
     logger.error("dedup-unlisted: request failed", {
       error: (error as Error).message,
       stack: (error as Error).stack,
     });
-    response.writeHead(500, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({
+    json(response, 500, {
       status: "error",
       message: he.escape((error as Error).message),
-    }));
+    });
   }
 }
 
@@ -833,7 +830,6 @@ export async function processDedupPlaylistsRequest(
   requestBody: DedupRequestBody,
   response: HttpResponseLike,
 ): Promise<void> {
-  const jsonMimeType = MIME_TYPES[".json"];
   try {
     const dryRun = requestBody.dryRun !== false; // default true
     const siteFilter = requestBody.siteFilter?.trim() || undefined;
@@ -842,17 +838,15 @@ export async function processDedupPlaylistsRequest(
 
     const result = await deduplicatePlaylists(dryRun, siteFilter);
 
-    response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({ status: "success", ...result }));
+    json(response, 200, { status: "success", ...result });
   } catch (error) {
     logger.error("dedup-playlists: request failed", {
       error: (error as Error).message,
       stack: (error as Error).stack,
     });
-    response.writeHead(500, generateCorsHeaders(jsonMimeType));
-    response.end(JSON.stringify({
+    json(response, 500, {
       status: "error",
       message: he.escape((error as Error).message),
-    }));
+    });
   }
 }

@@ -1,9 +1,11 @@
 import type { Redis } from "ioredis";
 
+import { config } from "../config.ts";
 import { logger } from "../logger.ts";
+import { resolveClientIp, type TrustedProxyRange } from "../utils/clientIp.ts";
 import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 
-import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
+import { json } from "../utils/http.ts";
 import { createGcraLimiter, type GcraPolicy } from "./gcra.ts";
 
 export type MiddlewareNext = (
@@ -62,10 +64,14 @@ export type CostCharger = (
 
 interface RateLimitDependencies {
   redis: Redis;
+  /** Injected by tests; production reads the configured allowlist. */
+  trustedProxies?: TrustedProxyRange[];
 }
 
-export function createRateLimit({ redis }: RateLimitDependencies) {
-  const jsonMimeType = MIME_TYPES[".json"];
+export function createRateLimit(
+  { redis, trustedProxies = config.rateLimit.trustedProxies }:
+    RateLimitDependencies,
+) {
   const consume = createGcraLimiter(redis);
 
   function reject(
@@ -73,18 +79,14 @@ export function createRateLimit({ redis }: RateLimitDependencies) {
     retryAfterSec: number,
     message: string,
   ) {
-    const headers: Record<string, string | number> = {
-      ...generateCorsHeaders(jsonMimeType),
-    };
+    const retryAfter = Math.max(1, retryAfterSec);
     // Without Retry-After a client has no way to back off correctly, and the
     // frontend cannot tell a throttle apart from a transient failure.
-    headers["Retry-After"] = String(Math.max(1, retryAfterSec));
-    response.writeHead(429, headers);
-    return response.end(JSON.stringify({
+    return json(response, 429, {
       status: "error",
       message,
-      retryAfter: Math.max(1, retryAfterSec),
-    }));
+      retryAfter,
+    }, { headers: { "Retry-After": String(retryAfter) } });
   }
 
   function invoke(
@@ -110,6 +112,12 @@ export function createRateLimit({ redis }: RateLimitDependencies) {
    * and no user is known yet. Its budgets are deliberately loose: the job here
    * is to stop an unauthenticated flood, not to price the work.
    *
+   * The address comes from `resolveClientIp`, which reads `X-Forwarded-For`
+   * only when the socket peer is a configured trusted proxy. That is what
+   * stops `/login` and `/register` — the two endpoints that never reach the
+   * per-user tier below — from sharing one bucket across every client behind
+   * a reverse proxy.
+   *
    * Per-request cost is charged later, by `chargeCost`.
    */
   const rateLimit: RateLimitFunction = async function rateLimit(
@@ -119,7 +127,7 @@ export function createRateLimit({ redis }: RateLimitDependencies) {
     nextHandler: NextHandler | RequestHandler,
     policy: GcraPolicy,
   ) {
-    const clientIp = request.socket.remoteAddress ?? "unknown";
+    const clientIp = resolveClientIp(request, trustedProxies);
 
     const decision = await consume(clientIp, policy, 1);
     if (!decision.allowed) {

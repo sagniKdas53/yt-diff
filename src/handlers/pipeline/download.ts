@@ -31,25 +31,35 @@ import type {
   VideoEntryRecord,
 } from "./types.ts";
 import { downloadOptions, ProcessExitCodes } from "./types.ts";
-import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
-import { appendUrlArg } from "../../utils/url.ts";
+import { json } from "../../utils/http.ts";
+import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
+import { createYtDlpLauncher } from "./ytdlp.ts";
 
 export function createDownloadFlow(
   deps: PipelineHandlerDependencies,
   downloadProcesses: Map<string, DownloadProcessEntry>,
   processManager: {
     updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
+    setProcessStatus: (
+      processKey: string,
+      status: ProcessStatus,
+      options?: ProcessStatusOptions,
+    ) => boolean;
     cleanupProcess: (processKey: string, pid: number | undefined) => void;
   },
 ) {
   const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks } =
     deps;
-  const jsonMimeType = MIME_TYPES[".json"];
   const DownloadSemaphore = new Semaphore(
     config.queue.maxDownloads,
     "DownloadSemaphore",
   );
-  const { updateProcessActivity, cleanupProcess } = processManager;
+  const { updateProcessActivity, setProcessStatus, cleanupProcess } =
+    processManager;
+  const launchYtDlp = createYtDlpLauncher({
+    buildSiteArgs,
+    spawnPythonProcess,
+  });
   let queueSequence = 0;
 
   /**
@@ -172,18 +182,16 @@ export function createDownloadFlow(
       );
 
       if (notIndexed.length > 0) {
-        response.writeHead(404, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 404, {
           error: `Video with URL ${notIndexed[0]} is not indexed`,
-        }));
+        });
       }
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 200, {
         status: "success",
         message: "Downloads initiated",
         items,
-      }));
+      });
     } catch (error) {
       logger.error("Download processing failed", {
         error: (error as Error).message,
@@ -191,11 +199,10 @@ export function createDownloadFlow(
       });
 
       const statusCode = (error as HttpError).status || 500;
-      response.writeHead(statusCode, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, statusCode, {
         status: "error",
         message: he.escape((error as Error).message),
-      }));
+      });
     }
   }
 
@@ -306,43 +313,26 @@ export function createDownloadFlow(
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
-        const processArgs = appendUrlArg(
-          ["-P", "home:" + savePath],
-          videoUrl,
-        );
-
         safeEmit("download-started", {
           url: videoUrl,
           percentage: 101,
         });
 
-        const siteArgs = buildSiteArgs(videoUrl, config);
-        if (siteArgs.length > 0) {
-          processArgs.unshift(...siteArgs);
-        }
-
-        logger.debug(`Starting download for ${videoUrl}`, {
-          url: videoTitle,
-          savePath,
-          fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
-            processArgs.join(" ")
-          }`,
+        const { process: downloadProcess } = launchYtDlp({
+          url: videoUrl,
+          options: downloadOptions,
+          flags: ["-P", "home:" + savePath],
+          reason: `Starting download for ${videoUrl}`,
+          context: { title: videoTitle, savePath },
         });
 
-        const downloadProcess = spawnPythonProcess(
-          downloadOptions.concat(processArgs),
-        );
-
-        const processEntry = downloadProcesses.get(processKey);
-        if (processEntry) {
-          const now = Date.now();
-          processEntry.spawnedProcess = downloadProcess;
-          processEntry.status = "running";
-          processEntry.lastActivity = now;
-          processEntry.lastStdoutActivity = now;
-          processEntry.spawnTimeStamp = now;
-          downloadProcesses.set(processKey, processEntry);
-        } else {
+        // Fatal if the entry is gone: the subprocess is running and nothing
+        // would ever reap it.
+        if (
+          !setProcessStatus(processKey, "running", {
+            spawnedProcess: downloadProcess,
+          })
+        ) {
           return reject(new Error(`Process entry not found: ${processKey}`));
         }
 

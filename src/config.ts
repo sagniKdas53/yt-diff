@@ -1,3 +1,8 @@
+import {
+  parseTrustedProxies,
+  type TrustedProxyRange,
+} from "./utils/clientIp.ts";
+
 function readTrimmedFile(filePath: string): string {
   return Deno.readTextFileSync(filePath).trim();
 }
@@ -191,6 +196,7 @@ function buildRateLimitConfig(): AppConfig["rateLimit"] {
       listIncremental: envInt("RATE_LIMIT_WEIGHT_LIST_INCREMENTAL", 2),
       download: envInt("RATE_LIMIT_WEIGHT_DOWNLOAD", 1),
     },
+    trustedProxies: parseTrustedProxies(Deno.env.get("TRUSTED_PROXIES")),
   };
 }
 
@@ -240,6 +246,12 @@ export interface AppConfig {
       listIncremental: number;
       download: number;
     };
+    /**
+     * Hops whose `X-Forwarded-For` may be believed, as addresses or CIDRs.
+     * Empty means the socket peer is the client, which is correct for a
+     * directly-exposed server and wrong — but safe — behind an unlisted proxy.
+     */
+    trustedProxies: TrustedProxyRange[];
   };
   queue: {
     maxListings: number;
