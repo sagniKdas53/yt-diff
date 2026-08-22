@@ -31,7 +31,7 @@ import type {
   VideoEntryRecord,
 } from "./types.ts";
 import { downloadOptions, ProcessExitCodes } from "./types.ts";
-import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { json } from "../../utils/http.ts";
 import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
 import { createYtDlpLauncher } from "./ytdlp.ts";
 
@@ -50,7 +50,6 @@ export function createDownloadFlow(
 ) {
   const { safeEmit, buildSiteArgs, spawnPythonProcess, streamTextChunks } =
     deps;
-  const jsonMimeType = MIME_TYPES[".json"];
   const DownloadSemaphore = new Semaphore(
     config.queue.maxDownloads,
     "DownloadSemaphore",
@@ -183,18 +182,16 @@ export function createDownloadFlow(
       );
 
       if (notIndexed.length > 0) {
-        response.writeHead(404, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 404, {
           error: `Video with URL ${notIndexed[0]} is not indexed`,
-        }));
+        });
       }
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 200, {
         status: "success",
         message: "Downloads initiated",
         items,
-      }));
+      });
     } catch (error) {
       logger.error("Download processing failed", {
         error: (error as Error).message,
@@ -202,11 +199,10 @@ export function createDownloadFlow(
       });
 
       const statusCode = (error as HttpError).status || 500;
-      response.writeHead(statusCode, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, statusCode, {
         status: "error",
         message: he.escape((error as Error).message),
-      }));
+      });
     }
   }
 

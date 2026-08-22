@@ -34,7 +34,7 @@ import type {
   StreamingVideoProcessingResult,
   VideoUpsertData,
 } from "./types.ts";
-import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { json } from "../../utils/http.ts";
 import { truncateText, urlToTitle } from "./process-manager.ts";
 import { join } from "../../utils/path.ts";
 import {
@@ -65,7 +65,6 @@ export function createListingFlow(
     streamTextChunks,
     streamLines,
   } = deps;
-  const jsonMimeType = MIME_TYPES[".json"];
   const ListingSemaphore = new Semaphore(
     config.queue.maxListings,
     "ListingSemaphore",
@@ -379,23 +378,21 @@ export function createListingFlow(
         queueDepthBefore,
       });
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 200, {
         status: "success",
         message: "Listing initiated",
         items: itemsToList,
         queueDepthBefore,
-      }));
+      });
     } catch (error) {
       logger.error("Failed to process URL list", {
         error: (error as Error).message,
         stack: (error as Error).stack,
       });
-      response.writeHead(500, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 500, {
         status: "error",
         message: he.escape((error as Error).message),
-      }));
+      });
     }
   }
 

@@ -17,10 +17,9 @@ import type {
   SafePlaylistVideoRow,
   SubListRequest,
 } from "./types.ts";
-import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
+import { json } from "../../utils/http.ts";
 
 export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
-  const jsonMimeType = MIME_TYPES[".json"];
   async function getPlaylistsForDisplay(
     requestBody: PlaylistDisplayRequest,
     response: HttpResponseLike,
@@ -96,8 +95,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
 
       const results = await PlaylistMetadata.findAndCountAll(queryOptions);
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify(results));
+      json(response, 200, results);
     } catch (error) {
       logger.error("Failed to fetch playlists", {
         error: (error as Error).message,
@@ -105,10 +103,9 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       });
 
       const statusCode = (error as HttpError).status || 500;
-      response.writeHead(statusCode, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, statusCode, {
         error: he.escape((error as Error).message),
-      }));
+      });
     }
   }
 
@@ -275,8 +272,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         playlistTitle,
       };
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify(safeResult));
+      json(response, 200, safeResult);
     } catch (error) {
       logger.error("Failed to fetch playlist videos", {
         error: (error as Error).message,
@@ -284,10 +280,9 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       });
 
       const statusCode = (error as HttpError).status || 500;
-      response.writeHead(statusCode, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, statusCode, {
         error: he.escape((error as Error).message),
-      }));
+      });
     }
   }
 

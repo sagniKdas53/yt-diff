@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { HttpResponseLike } from "../transport/http.ts";
-import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
+import { json } from "../utils/http.ts";
 import { toHttpUrl } from "../utils/url.ts";
 import { logger } from "../logger.ts";
 
@@ -17,14 +17,11 @@ export function validateBody<T>(
         errors: JSON.stringify(result.error.format()),
         data: JSON.stringify(data),
       });
-      res.writeHead(400, generateCorsHeaders(MIME_TYPES[".json"]));
-      return res.end(
-        JSON.stringify({
-          status: "error",
-          message: "Invalid payload",
-          errors: result.error.issues,
-        }),
-      );
+      return json(res, 400, {
+        status: "error",
+        message: "Invalid payload",
+        errors: result.error.issues,
+      });
     }
     return handler(result.data, res);
   };

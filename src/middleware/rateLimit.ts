@@ -5,7 +5,7 @@ import { logger } from "../logger.ts";
 import { resolveClientIp, type TrustedProxyRange } from "../utils/clientIp.ts";
 import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 
-import { generateCorsHeaders, MIME_TYPES } from "../utils/http.ts";
+import { json } from "../utils/http.ts";
 import { createGcraLimiter, type GcraPolicy } from "./gcra.ts";
 
 export type MiddlewareNext = (
@@ -72,7 +72,6 @@ export function createRateLimit(
   { redis, trustedProxies = config.rateLimit.trustedProxies }:
     RateLimitDependencies,
 ) {
-  const jsonMimeType = MIME_TYPES[".json"];
   const consume = createGcraLimiter(redis);
 
   function reject(
@@ -80,18 +79,14 @@ export function createRateLimit(
     retryAfterSec: number,
     message: string,
   ) {
-    const headers: Record<string, string | number> = {
-      ...generateCorsHeaders(jsonMimeType),
-    };
+    const retryAfter = Math.max(1, retryAfterSec);
     // Without Retry-After a client has no way to back off correctly, and the
     // frontend cannot tell a throttle apart from a transient failure.
-    headers["Retry-After"] = String(Math.max(1, retryAfterSec));
-    response.writeHead(429, headers);
-    return response.end(JSON.stringify({
+    return json(response, 429, {
       status: "error",
       message,
-      retryAfter: Math.max(1, retryAfterSec),
-    }));
+      retryAfter,
+    }, { headers: { "Retry-After": String(retryAfter) } });
   }
 
   function invoke(

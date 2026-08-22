@@ -35,23 +35,6 @@ import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
-import {
-  BulkRefreshSignedUrlsRequestBodySchema,
-  BulkSignedFilesRequestBodySchema,
-  DedupRequestBodySchema,
-  DeletePlaylistRequestBodySchema,
-  DeleteVideosRequestBodySchema,
-  DownloadRequestBodySchema,
-  ListingRequestBodySchema,
-  PlaylistDisplayRequestSchema,
-  QueueStatusRequestBodySchema,
-  RefreshSignedUrlRequestBodySchema,
-  ReindexAllRequestBodySchema,
-  SignedFileRequestBodySchema,
-  SubListRequestSchema,
-  UpdatePlaylistMonitoringRequestSchema,
-  validateBody,
-} from "./src/middleware/validator.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
 import { dispatchRoute } from "./src/routes/http.ts";
 import { getSignedFileMetadata } from "./src/routes/helpers/getSignedFileMetadata.ts";
@@ -82,6 +65,7 @@ import {
 import {
   CORS_ALLOWED_ORIGINS,
   generateCorsHeaders,
+  json,
   MIME_TYPES,
   SIGNED_FILE_CSP,
 } from "./src/utils/http.ts";
@@ -526,14 +510,11 @@ function processQueueStatusRequest(
   _data: unknown,
   res: HttpResponseLike,
 ) {
-  res.writeHead(200, generateCorsHeaders(MIME_TYPES[".json"]));
-  res.end(
-    JSON.stringify({
-      status: "success",
-      generation: connectionGeneration,
-      queue: getQueueSnapshot(),
-    }),
-  );
+  return json(res, 200, {
+    status: "success",
+    generation: connectionGeneration,
+    queue: getQueueSnapshot(),
+  });
 }
 
 // Functions to run the server
@@ -687,68 +668,34 @@ const socketSidecarOrigin = `http://127.0.0.1:${socketSidecarPort}`;
 
 const apiRoutes = createApiRoutes({
   authenticateRequest,
-  authenticateUser,
-  isRegistrationAllowed,
   rateLimit,
-  refreshAuthToken,
-  registerUser,
-  processListingRequest: validateBody(
-    ListingRequestBodySchema,
+  // Schemas are not applied here any more: each endpoint's record in
+  // src/routes/endpoints.ts names its own, and the route builder applies it.
+  // This is the whole point of the table -- the schema used to live two
+  // hundred lines from the path and the auth wrapper it belonged to.
+  authenticated: {
+    refreshAuthToken,
     processListingRequest,
-  ),
-  processDownloadRequest: validateBody(
-    DownloadRequestBodySchema,
     processDownloadRequest,
-  ),
-  updatePlaylistMonitoring: validateBody(
-    UpdatePlaylistMonitoringRequestSchema,
     updatePlaylistMonitoring,
-  ),
-  getPlaylistsForDisplay: validateBody(
-    PlaylistDisplayRequestSchema,
     getPlaylistsForDisplay,
-  ),
-  processDeletePlaylistRequest: validateBody(
-    DeletePlaylistRequestBodySchema,
     processDeletePlaylistRequest,
-  ),
-  getSubListVideos: validateBody(SubListRequestSchema, getSubListVideos),
-  processDeleteVideosRequest: validateBody(
-    DeleteVideosRequestBodySchema,
+    getSubListVideos,
     processDeleteVideosRequest,
-  ),
-  makeSignedUrl: validateBody(
-    SignedFileRequestBodySchema,
     makeSignedUrl,
-  ),
-  refreshSignedUrl: validateBody(
-    RefreshSignedUrlRequestBodySchema,
     refreshSignedUrl,
-  ),
-  refreshSignedUrls: validateBody(
-    BulkRefreshSignedUrlsRequestBodySchema,
     refreshSignedUrls,
-  ),
-  makeSignedUrls: validateBody(
-    BulkSignedFilesRequestBodySchema,
     makeSignedUrls,
-  ),
-  processReindexAllRequest: validateBody(
-    ReindexAllRequestBodySchema,
     processReindexAllRequest,
-  ),
-  processDedupUnlistedRequest: validateBody(
-    DedupRequestBodySchema,
     processDedupUnlistedRequest,
-  ),
-  processDedupPlaylistsRequest: validateBody(
-    DedupRequestBodySchema,
     processDedupPlaylistsRequest,
-  ),
-  processQueueStatusRequest: validateBody(
-    QueueStatusRequestBodySchema,
     processQueueStatusRequest,
-  ),
+  },
+  publicHandlers: {
+    authenticateUser,
+    registerUser,
+    isRegistrationAllowed,
+  },
 });
 
 const jobs = createJobs({

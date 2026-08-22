@@ -25,11 +25,7 @@ export interface AuthJwtPayload extends jwt.JwtPayload {
   exp?: number;
 }
 
-import {
-  generateCorsHeaders,
-  MIME_TYPES,
-  parseRequestJson,
-} from "../utils/http.ts";
+import { json, parseRequestJson } from "../utils/http.ts";
 import { IsRegistrationAllowedSchema, UserAuthSchema } from "./validator.ts";
 import type { RequestContext } from "./rateLimit.ts";
 type NextHandler = (
@@ -131,7 +127,6 @@ export function createAuthMiddleware({
   hashPassword,
   emitTokenExpired,
 }: AuthDependencies) {
-  const jsonMimeType = MIME_TYPES[".json"];
   // Warm the dummy hash so the first failed login after a restart is not
   // measurably slower than the ones after it.
   void getDummyPasswordHash();
@@ -141,20 +136,18 @@ export function createAuthMiddleware({
   ): Promise<unknown> {
     try {
       if (!config.registration.allowed) {
-        response.writeHead(403, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 403, {
           status: "error",
           message: "Registration is currently disabled",
-        }));
+        });
       }
 
       const userCount = await UserAccount.count();
       if (userCount >= config.registration.maxUsers) {
-        response.writeHead(403, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 403, {
           status: "error",
           message: "Maximum number of users reached",
-        }));
+        });
       }
 
       let requestData = {};
@@ -167,11 +160,10 @@ export function createAuthMiddleware({
         logger.error("Failed to parse request JSON", {
           error: (error as Error).message,
         });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 400, {
           status: "error",
           message: `${(error as Error).message || "Invalid request"}`,
-        }));
+        });
       }
 
       const parsed = UserAuthSchema.safeParse(requestData);
@@ -179,11 +171,10 @@ export function createAuthMiddleware({
         logger.error("Registration payload invalid", {
           errors: JSON.stringify(parsed.error.format()),
         });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 400, {
           status: "error",
           message: "Invalid payload",
-        }));
+        });
       }
       const { username, password } = parsed.data;
 
@@ -192,11 +183,10 @@ export function createAuthMiddleware({
       });
 
       if (existingUser) {
-        response.writeHead(409, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 409, {
           status: "error",
           message: "Username already exists",
-        }));
+        });
       }
 
       const [salt, hashedPassword] = await hashPassword(password);
@@ -206,18 +196,16 @@ export function createAuthMiddleware({
         passwordHash: hashedPassword,
       });
 
-      response.writeHead(201, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 201, {
         status: "success",
         message: "User registered successfully",
-      }));
+      });
     } catch (error) {
       logger.error("Registration failed", { error: (error as Error).message });
-      response.writeHead(500, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 500, {
         status: "error",
         message: "Registration failed",
-      }));
+      });
     }
   }
 
@@ -237,11 +225,10 @@ export function createAuthMiddleware({
       logger.error("Failed to parse request JSON", {
         error: (err as Error).message,
       });
-      response.writeHead(400, generateCorsHeaders(jsonMimeType));
-      return response.end(JSON.stringify({
+      return json(response, 400, {
         status: "error",
         message: `${(err as Error).message || "Invalid request"}`,
-      }));
+      });
     }
 
     const parsed = IsRegistrationAllowedSchema.safeParse(requestData);
@@ -251,18 +238,17 @@ export function createAuthMiddleware({
       allow = false;
     }
 
-    response.writeHead(200, generateCorsHeaders(jsonMimeType));
-    if (sendStats === true) {
-      return response.end(JSON.stringify({
-        registrationAllowed: allow,
-        currentUsers: userCount,
-        maxUsers: config.registration.maxUsers,
-      }));
-    }
-
-    return response.end(JSON.stringify({
-      registrationAllowed: allow,
-    }));
+    return json(
+      response,
+      200,
+      sendStats
+        ? {
+          registrationAllowed: allow,
+          currentUsers: userCount,
+          maxUsers: config.registration.maxUsers,
+        }
+        : { registrationAllowed: allow },
+    );
   }
 
   async function authenticateRequest(
@@ -285,10 +271,10 @@ export function createAuthMiddleware({
 
       const token = headerToken;
       if (!token) {
-        response.writeHead(401, generateCorsHeaders(jsonMimeType));
-        return response.end(
-          JSON.stringify({ status: "error", message: "Token required" }),
-        );
+        return json(response, 401, {
+          status: "error",
+          message: "Token required",
+        });
       }
 
       const decodedToken = jwt.verify(
@@ -303,20 +289,18 @@ export function createAuthMiddleware({
 
       if (passwordChanged) {
         logger.error("Token invalid - password changed");
-        response.writeHead(401, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 401, {
           status: "error",
           message: "Token expired",
-        }));
+        });
       }
 
       if (!user) {
         logger.error("User not found");
-        response.writeHead(404, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 404, {
           status: "error",
           message: "User not found",
-        }));
+        });
       }
 
       let requestData = {};
@@ -329,11 +313,10 @@ export function createAuthMiddleware({
         logger.error("Failed to parse request JSON", {
           error: (error as Error).message,
         });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 400, {
           status: "error",
           message: `${(error as Error).message || "Invalid request"}`,
-        }));
+        });
       }
 
       // Forward who this is alongside the body. This is the only point in the
@@ -369,11 +352,10 @@ export function createAuthMiddleware({
         }
       }
 
-      response.writeHead(statusCode, generateCorsHeaders(jsonMimeType));
-      return response.end(JSON.stringify({
+      return json(response, statusCode, {
         status: "error",
         message: he.escape(message),
-      }));
+      });
     }
   }
 
@@ -430,20 +412,18 @@ export function createAuthMiddleware({
         logger.error("Failed to parse request JSON", {
           error: (error as Error).message,
         });
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 400, {
           status: "error",
           message: `${(error as Error).message || "Invalid request"}`,
-        }));
+        });
       }
 
       const parsed = UserAuthSchema.safeParse(requestData);
       if (!parsed.success) {
-        response.writeHead(400, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 400, {
           status: "error",
           message: "Invalid credentials format",
-        }));
+        });
       }
       const { username, password } = parsed.data;
 
@@ -460,11 +440,10 @@ export function createAuthMiddleware({
         // identical on both paths; this makes the timing identical too.
         await bcrypt.compare(password, await getDummyPasswordHash());
         logger.warn(`Authentication failed for user ${username}`);
-        response.writeHead(401, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 401, {
           status: "error",
           message: "Invalid credentials",
-        }));
+        });
       }
 
       const isPasswordValid = await bcrypt.compare(
@@ -474,11 +453,10 @@ export function createAuthMiddleware({
 
       if (!isPasswordValid) {
         logger.warn(`Authentication failed for user ${username}`);
-        response.writeHead(401, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 401, {
           status: "error",
           message: "Invalid credentials",
-        }));
+        });
       }
 
       const token = generateAuthToken(
@@ -487,23 +465,21 @@ export function createAuthMiddleware({
       );
       logger.info(`Authentication successful for user ${username}`);
 
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      return response.end(JSON.stringify({
+      return json(response, 200, {
         status: "success",
         token,
         // The client schedules its own renewal off this rather than parsing
         // the JWT, which would mean trusting a payload it cannot verify.
         expiresAt: expiryOf(token),
-      }));
+      });
     } catch (error) {
       logger.error("Authentication failed", {
         error: (error as Error).message,
       });
-      response.writeHead(500, generateCorsHeaders(jsonMimeType));
-      response.end(JSON.stringify({
+      json(response, 500, {
         status: "error",
         message: "Authentication failed",
-      }));
+      });
     }
   }
 
@@ -530,20 +506,18 @@ export function createAuthMiddleware({
       if (!context?.userId) {
         // Unreachable through the router — authenticateRequest always supplies
         // a context — but this must never mint a token for nobody.
-        response.writeHead(401, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 401, {
           status: "error",
           message: "Token required",
-        }));
+        });
       }
 
       const user = await UserAccount.findByPk(context.userId);
       if (!user) {
-        response.writeHead(404, generateCorsHeaders(jsonMimeType));
-        return response.end(JSON.stringify({
+        return json(response, 404, {
           status: "error",
           message: "User not found",
-        }));
+        });
       }
 
       // Re-read updatedAt from the row rather than carrying the old token's
@@ -555,21 +529,19 @@ export function createAuthMiddleware({
       );
 
       logger.debug(`Refreshed token for user ${context.userName}`);
-      response.writeHead(200, generateCorsHeaders(jsonMimeType));
-      return response.end(JSON.stringify({
+      return json(response, 200, {
         status: "success",
         token,
         expiresAt: expiryOf(token),
-      }));
+      });
     } catch (error) {
       logger.error("Token refresh failed", {
         error: (error as Error).message,
       });
-      response.writeHead(500, generateCorsHeaders(jsonMimeType));
-      return response.end(JSON.stringify({
+      return json(response, 500, {
         status: "error",
         message: "Token refresh failed",
-      }));
+      });
     }
   }
 
