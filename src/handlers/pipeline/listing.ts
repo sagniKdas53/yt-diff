@@ -38,17 +38,24 @@ import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
 import { truncateText, urlToTitle } from "./process-manager.ts";
 import { join } from "../../utils/path.ts";
 import {
-  appendUrlArg,
   hasEphemeralThumbnails,
   isSiteXDotCom,
   normalizeUrl,
 } from "../../utils/url.ts";
+import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
+import { chunkPlaylistLines, type PlaylistChunk } from "./chunks.ts";
+import { createYtDlpLauncher } from "./ytdlp.ts";
 
 export function createListingFlow(
   deps: PipelineHandlerDependencies,
   listProcesses: Map<string, ListingProcessEntry>,
   processManager: {
     updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
+    setProcessStatus: (
+      processKey: string,
+      status: ProcessStatus,
+      options?: ProcessStatusOptions,
+    ) => boolean;
   },
 ) {
   const {
@@ -67,7 +74,11 @@ export function createListingFlow(
   let pendingPlaylistSortCounterPromise: Promise<number> | null = null;
   let pendingPlaylistCreatePromise: Promise<void> = Promise.resolve();
 
-  const { updateProcessActivity } = processManager;
+  const { updateProcessActivity, setProcessStatus } = processManager;
+  const launchYtDlp = createYtDlpLauncher({
+    buildSiteArgs,
+    spawnPythonProcess,
+  });
 
   function buildDownloadLocation(videoEntry: Model): string | null {
     const saveDirectory = videoEntry.getDataValue("saveDirectory") as
@@ -606,6 +617,188 @@ export function createListingFlow(
     }
   }
 
+  /**
+   * Where chunks come from, and what this source's failures mean.
+   *
+   * The two listing paths — yt-dlp's line stream and the YouTube Data API —
+   * were line-for-line duplicates of one algorithm apart from these four
+   * things. They are now the only things each path states.
+   */
+  interface PlaylistChunkSource {
+    chunks: AsyncIterable<PlaylistChunk>;
+    /** Stops production when the consumer breaks out early. */
+    stop?(): void;
+    /** What an entirely empty run means here. May throw, and is caught. */
+    onEmpty(): ListingResult;
+    /**
+     * What a failure means here. Returning `null` says the run finished rather
+     * than failed, and the driver completes normally — which is how a listing
+     * this code deliberately killed reports the items it did ingest. Throwing
+     * propagates, which is how the API path asks its caller to fall back.
+     */
+    onError(error: Error): ListingResult | null;
+    /** Per-chunk hook for source-specific progress logging. */
+    onChunkDone?(processedChunks: number): void;
+  }
+
+  /** Common to both paths: a re-index starts from an empty mapping table. */
+  async function clearMappingsForReindex(
+    videoUrl: string,
+    monitoringType: string,
+  ) {
+    if (monitoringType !== "Full" && monitoringType !== "Refresh") return;
+
+    const deletedCount = await PlaylistVideoMapping.destroy({
+      where: { playlistUrl: videoUrl },
+    });
+    logger.info(
+      `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index`,
+      { url: videoUrl },
+    );
+  }
+
+  /**
+   * Drives one playlist listing to completion, whatever produced the chunks.
+   *
+   * Everything here was written twice: ingest the chunk, count it, refresh the
+   * process's liveness clock, emit a progress frame, and stop early once two
+   * consecutive chunks turn out to be entirely items already on record. The
+   * two copies had drifted — one compared the duplicate count against the
+   * configured chunk size and the other against the chunk actually received,
+   * which differ on a final partial chunk.
+   */
+  async function consumePlaylistChunks(
+    source: PlaylistChunkSource,
+    item: {
+      videoUrl: string;
+      isScheduledUpdate: boolean;
+      shouldEmitProgress: boolean;
+      playlistTitle: string;
+      seekPlaylistListTo: number;
+      processKey: string;
+      monitoringType: string;
+    },
+  ): Promise<ListingResult> {
+    const {
+      videoUrl,
+      isScheduledUpdate,
+      shouldEmitProgress,
+      playlistTitle,
+      seekPlaylistListTo,
+      processKey,
+      monitoringType,
+    } = item;
+
+    let processedChunks = 0;
+    let consecutiveDuplicateChunks = 0;
+
+    try {
+      for await (const chunk of source.chunks) {
+        const result = await processStreamingVideoInformation(
+          chunk.items,
+          videoUrl,
+          chunk.startIndex,
+          isScheduledUpdate,
+          monitoringType,
+        );
+
+        processedChunks++;
+        updateProcessActivity(processKey, true);
+
+        if (!isScheduledUpdate) {
+          safeEmit("listing-playlist-chunk-complete", {
+            url: videoUrl,
+            type: "playlist-chunk",
+            status: "chunk-completed",
+            processedChunks,
+            playlistTitle,
+            seekPlaylistListTo,
+          });
+        }
+
+        source.onChunkDone?.(processedChunks);
+
+        // "Start" walks a playlist from the top looking for what is new, so
+        // two chunks running with nothing new in them means the walk has
+        // reached ground already covered.
+        if (
+          monitoringType === "Start" &&
+          result.alreadyExistedCount === chunk.items.length
+        ) {
+          consecutiveDuplicateChunks++;
+          if (consecutiveDuplicateChunks >= 2) {
+            logger.info(
+              "Two consecutive chunks were entirely known items; stopping early",
+              { url: videoUrl, processedChunks },
+            );
+            source.stop?.();
+            break;
+          }
+        } else {
+          consecutiveDuplicateChunks = 0;
+        }
+      }
+
+      if (processedChunks === 0) {
+        return source.onEmpty();
+      }
+    } catch (error) {
+      const handled = source.onError(error as Error);
+      if (handled) return handled;
+    }
+
+    // Reached whether the run ended naturally or was stopped early: in both
+    // cases the process is done and the cleanup job should be able to reap it.
+    // The early-stop path used to leave the entry at "running" until the idle
+    // timeout noticed.
+    setProcessStatus(processKey, "completed");
+
+    return completePlaylistListing(
+      videoUrl,
+      processedChunks,
+      playlistTitle,
+      seekPlaylistListTo,
+      shouldEmitProgress,
+    );
+  }
+
+  /**
+   * Where a "Start" listing resumes from.
+   *
+   * "End" walks the tail, so it rewinds one chunk from the last position on
+   * record rather than starting at the top. Every other mode starts at 1.
+   */
+  async function resolveStartIndex(
+    videoUrl: string,
+    chunkSize: number,
+    monitoringType: string,
+  ): Promise<number> {
+    if (monitoringType !== "End") return 1;
+
+    const lastVideo = await PlaylistVideoMapping.findOne({
+      where: { playlistUrl: videoUrl },
+      order: [["positionInPlaylist", "DESC"]],
+      attributes: ["positionInPlaylist"],
+    });
+
+    const maxPosition = lastVideo
+      ? lastVideo.getDataValue("positionInPlaylist")
+      : 0;
+    return maxPosition > 0 ? Math.max(1, maxPosition - chunkSize + 1) : 1;
+  }
+
+  /**
+   * Errors that mean "we stopped this ourselves", not "this listing failed".
+   *
+   * Matched on the message because that is all a process exit gives us today;
+   * `Q4` is the finding that says this should be a typed error with an
+   * `exitCode` field instead.
+   */
+  function isDeliberateTermination(error: Error): boolean {
+    return error.message === "Process exited with code null" ||
+      error.message === "Process exited with code 143";
+  }
+
   async function handlePlaylistStreaming(
     item: {
       videoUrl: string;
@@ -618,18 +811,7 @@ export function createListingFlow(
       monitoringType: string;
     },
   ): Promise<ListingResult> {
-    const {
-      videoUrl,
-      chunkSize,
-      isScheduledUpdate,
-      shouldEmitProgress,
-      playlistTitle,
-      seekPlaylistListTo,
-      processKey,
-      monitoringType,
-    } = item;
-
-    let processedChunks = 0;
+    const { videoUrl, chunkSize, processKey, monitoringType } = item;
 
     logger.info("Starting streaming listing for playlist", { url: videoUrl });
 
@@ -646,10 +828,7 @@ export function createListingFlow(
             "Routing to YouTube API path",
             { url: videoUrl, playlistId },
           );
-          return await handlePlaylistViaApi({
-            ...item,
-            playlistId,
-          });
+          return await handlePlaylistViaApi({ ...item, playlistId });
         } catch (apiError) {
           logger.warn(
             "YouTube API failed, falling back to yt-dlp",
@@ -659,139 +838,41 @@ export function createListingFlow(
       }
     }
 
-    if (monitoringType === "Full" || monitoringType === "Refresh") {
-      const deletedCount = await PlaylistVideoMapping.destroy({
-        where: { playlistUrl: videoUrl },
-      });
-      logger.info(
-        `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index`,
-        { url: videoUrl },
-      );
-    }
+    await clearMappingsForReindex(videoUrl, monitoringType);
+    const startIndex = await resolveStartIndex(
+      videoUrl,
+      chunkSize,
+      monitoringType,
+    );
 
-    let startIndex = 1;
-    if (monitoringType === "End") {
-      const lastVideo = await PlaylistVideoMapping.findOne({
-        where: { playlistUrl: videoUrl },
-        order: [["positionInPlaylist", "DESC"]],
-        attributes: ["positionInPlaylist"],
-      });
+    const streamProcessor = streamPlayListItems(
+      videoUrl,
+      processKey,
+      startIndex,
+    );
 
-      const maxPosition = lastVideo
-        ? lastVideo.getDataValue("positionInPlaylist")
-        : 0;
-      if (maxPosition > 0) {
-        startIndex = Math.max(1, maxPosition - chunkSize + 1);
-      }
-    }
-
-    let chunkItems: string[] = [];
-    let absoluteIndexCount = startIndex - 1;
-    let consecutiveDuplicateChunks = 0;
-    let processSucceeded = false;
-    let error: Error | undefined;
-    let ytDlpProcess: ManagedProcess;
-
-    try {
-      const streamProcessor = streamPlayListItems(
-        videoUrl,
-        processKey,
+    return await consumePlaylistChunks({
+      chunks: chunkPlaylistLines(
+        streamProcessor.iterator,
+        chunkSize,
         startIndex,
-      );
-      ytDlpProcess = streamProcessor.process;
-
-      for await (const line of streamProcessor.iterator) {
-        absoluteIndexCount++;
-        chunkItems.push(line);
-
-        if (chunkItems.length >= chunkSize) {
-          const result = await processStreamingVideoInformation(
-            chunkItems,
-            videoUrl,
-            absoluteIndexCount - chunkSize + 1,
-            isScheduledUpdate,
-            monitoringType,
-          );
-
-          processedChunks++;
-          chunkItems = [];
-          updateProcessActivity(processKey, true);
-
-          if (!isScheduledUpdate) {
-            safeEmit("listing-playlist-chunk-complete", {
-              url: videoUrl,
-              type: "playlist-chunk",
-              status: "chunk-completed",
-              processedChunks,
-              playlistTitle,
-              seekPlaylistListTo,
-            });
-          }
-
-          if (
-            result.alreadyExistedCount === chunkSize &&
-            monitoringType === "Start"
-          ) {
-            consecutiveDuplicateChunks++;
-            if (consecutiveDuplicateChunks >= 2) {
-              ytDlpProcess.kill("SIGTERM");
-              break;
-            }
-          } else {
-            consecutiveDuplicateChunks = 0;
-          }
-        }
-      }
-
-      if (chunkItems.length > 0) {
-        await processStreamingVideoInformation(
-          chunkItems,
-          videoUrl,
-          absoluteIndexCount - chunkItems.length + 1,
-          isScheduledUpdate,
-          monitoringType,
-        );
-        processedChunks++;
-        updateProcessActivity(processKey, true);
-        if (!isScheduledUpdate) {
-          safeEmit("listing-playlist-chunk-complete", {
-            url: videoUrl,
-            type: "playlist-chunk",
-            status: "chunk-completed",
-            processedChunks,
-            playlistTitle,
-            seekPlaylistListTo,
-          });
-        }
-      } else if (processedChunks === 0) {
+      ),
+      stop: () => streamProcessor.process.kill("SIGTERM"),
+      onEmpty: () => {
+        // A tail walk that starts past the top and finds nothing is not an
+        // empty playlist — the positions it was told about are gone.
         if (monitoringType === "End" && startIndex > 1) {
           throw new Error(
             "End mode index returned empty due to likely deletions.",
           );
-        } else {
-          return handleEmptyResponse(videoUrl);
         }
-      }
-      processSucceeded = true;
-    } catch (e) {
-      error = e as Error;
-    }
-
-    if (
-      !processSucceeded && error &&
-      error.message !== "Process exited with code null" &&
-      error.message !== "Process exited with code 143"
-    ) {
-      return handleListingError(error, videoUrl, "playlist");
-    }
-
-    return completePlaylistListing(
-      videoUrl,
-      processedChunks,
-      playlistTitle,
-      seekPlaylistListTo,
-      shouldEmitProgress,
-    );
+        return handleEmptyResponse(videoUrl);
+      },
+      onError: (error) =>
+        isDeliberateTermination(error)
+          ? null
+          : handleListingError(error, videoUrl, "playlist"),
+    }, item);
   }
 
   async function handlePlaylistViaApi(
@@ -807,96 +888,47 @@ export function createListingFlow(
       playlistId: string;
     },
   ): Promise<ListingResult> {
-    const {
-      videoUrl,
-      chunkSize,
-      isScheduledUpdate,
-      shouldEmitProgress,
-      playlistTitle,
-      seekPlaylistListTo,
-      processKey,
-      monitoringType,
-      playlistId,
-    } = item;
-
-    let processedChunks = 0;
+    const { videoUrl, chunkSize, processKey, monitoringType, playlistId } =
+      item;
 
     logger.info("Starting YouTube API listing for playlist", {
       url: videoUrl,
       playlistId,
     });
 
-    // For Full/Refresh modes, clear existing mappings before re-indexing
-    if (monitoringType === "Full" || monitoringType === "Refresh") {
-      const deletedCount = await PlaylistVideoMapping.destroy({
-        where: { playlistUrl: videoUrl },
-      });
-      logger.info(
-        `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index (API path)`,
-        { url: videoUrl },
-      );
-    }
+    await clearMappingsForReindex(videoUrl, monitoringType);
 
-    // Update process status to "running" for the cleanup job
-    const processEntry = listProcesses.get(processKey);
-    if (processEntry) {
-      processEntry.status = "running";
-      processEntry.lastActivity = Date.now();
-      processEntry.lastStdoutActivity = Date.now();
-      listProcesses.set(processKey, processEntry);
-    }
+    // Tell the cleanup job this key is live work, not a stalled entry. The
+    // yt-dlp path gets this from spawning; there is no process here to do it.
+    setProcessStatus(processKey, "running", { stdout: true });
 
-    try {
-      let hasItems = false;
-      let consecutiveDuplicateChunks = 0;
+    let totalExpected = 0;
 
-      // Stream chunks progressively from the YouTube API
+    async function* apiChunks(): AsyncGenerator<PlaylistChunk> {
       for await (
-        const { items: chunkItems, chunkStartIndex, totalExpected }
-          of fetchPlaylistItemsChunked(playlistId, chunkSize)
+        const page of fetchPlaylistItemsChunked(playlistId, chunkSize)
       ) {
-        hasItems = true;
+        totalExpected = page.totalExpected;
+        yield { items: page.items, startIndex: page.chunkStartIndex };
+      }
+    }
 
-        const result = await processStreamingVideoInformation(
-          chunkItems,
-          videoUrl,
-          chunkStartIndex,
-          isScheduledUpdate,
-          monitoringType,
-        );
-
-        processedChunks++;
-        updateProcessActivity(processKey, true);
-
-        if (!isScheduledUpdate) {
-          safeEmit("listing-playlist-chunk-complete", {
-            url: videoUrl,
-            type: "playlist-chunk",
-            status: "chunk-completed",
-            processedChunks,
-            playlistTitle,
-            seekPlaylistListTo,
-          });
-        }
-
-        // Early termination for "Start" mode if all items already exist
-        if (
-          result.alreadyExistedCount === chunkItems.length &&
-          monitoringType === "Start"
-        ) {
-          consecutiveDuplicateChunks++;
-          if (consecutiveDuplicateChunks >= 2) {
-            logger.info(
-              "YouTube API path: 2 consecutive duplicate chunks, stopping early",
-              { url: videoUrl, processedChunks },
-            );
-            break;
-          }
-        } else {
-          consecutiveDuplicateChunks = 0;
-        }
-
-        // Log progress every 10 chunks
+    return await consumePlaylistChunks({
+      chunks: apiChunks(),
+      onEmpty: () => handleEmptyResponse(videoUrl),
+      onError: (error) => {
+        logger.error("YouTube API listing failed", {
+          url: videoUrl,
+          playlistId,
+          error: error.message,
+          stack: error.stack,
+        });
+        setProcessStatus(processKey, "failed");
+        // Rethrown rather than reported: the caller uses this to decide
+        // whether to fall back to yt-dlp.
+        throw error;
+      },
+      onChunkDone: (processedChunks) => {
         if (processedChunks % 10 === 0) {
           logger.info("YouTube API processing progress", {
             url: videoUrl,
@@ -904,43 +936,8 @@ export function createListingFlow(
             totalExpected,
           });
         }
-      }
-
-      if (!hasItems) {
-        return handleEmptyResponse(videoUrl);
-      }
-
-      // Mark process as completed
-      if (processEntry) {
-        processEntry.status = "completed";
-        processEntry.lastActivity = Date.now();
-        listProcesses.set(processKey, processEntry);
-      }
-
-      return completePlaylistListing(
-        videoUrl,
-        processedChunks,
-        playlistTitle,
-        seekPlaylistListTo,
-        shouldEmitProgress,
-      );
-    } catch (error) {
-      logger.error("YouTube API listing failed", {
-        url: videoUrl,
-        playlistId,
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-      });
-
-      // Mark process as failed
-      if (processEntry) {
-        processEntry.status = "failed";
-        processEntry.lastActivity = Date.now();
-        listProcesses.set(processKey, processEntry);
-      }
-
-      throw error; // Re-throw so the caller can fall back to yt-dlp
-    }
+      },
+    }, item);
   }
 
   async function handleSingleVideoStreaming(
@@ -1052,40 +1049,24 @@ export function createListingFlow(
       startIndex,
     });
 
-    const processArgs = appendUrlArg([
-      "--playlist-start",
-      startIndex.toString(),
-      "--dump-json",
-      "--no-download",
-    ], videoUrl);
-
-    const siteArgs = buildSiteArgs(videoUrl, config);
-    if (siteArgs.length > 0) {
-      processArgs.unshift(...siteArgs);
-    }
-
-    const fullCommandString = [
-      "yt-dlp",
-      ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
-    ].join(" ");
-
-    logger.debug(`Starting streaming listing for ${videoUrl}`, {
+    const { process: listProcess } = launchYtDlp({
       url: videoUrl,
-      fullCommand: fullCommandString,
+      flags: [
+        "--playlist-start",
+        startIndex.toString(),
+        "--dump-json",
+        "--no-download",
+      ],
+      reason: `Starting streaming listing for ${videoUrl}`,
     });
 
-    const listProcess = spawnPythonProcess(processArgs);
-    const processEntry = listProcesses.get(processKey);
-
-    if (processEntry) {
-      const now = Date.now();
-      processEntry.spawnedProcess = listProcess;
-      processEntry.status = "running";
-      processEntry.spawnTimeStamp = now;
-      processEntry.lastActivity = now;
-      processEntry.lastStdoutActivity = now;
-      listProcesses.set(processKey, processEntry);
-    } else {
+    // Fatal if the entry is gone: the subprocess is running and nothing would
+    // ever reap it.
+    if (
+      !setProcessStatus(processKey, "running", {
+        spawnedProcess: listProcess,
+      })
+    ) {
       throw new Error(`Process entry not found: ${processKey}`);
     }
 
@@ -1141,12 +1122,7 @@ export function createListingFlow(
           !listProcess.killed && exitCode !== ProcessExitCodes.SUCCESS &&
           !isAllowedError
         ) {
-          const processEntryInt = listProcesses.get(processKey);
-          if (processEntryInt) {
-            processEntryInt.status = "failed";
-            processEntryInt.lastActivity = Date.now();
-            listProcesses.set(processKey, processEntryInt);
-          }
+          setProcessStatus(processKey, "failed");
           // Keeps the original prefix so anything matching on it still works,
           // and appends the reason when yt-dlp gave one.
           await stderrDrained;
@@ -1157,20 +1133,10 @@ export function createListingFlow(
               : `Process exited with code ${exitCode}`,
           );
         } else {
-          const processEntryInt = listProcesses.get(processKey);
-          if (processEntryInt) {
-            processEntryInt.status = "completed";
-            processEntryInt.lastActivity = Date.now();
-            listProcesses.set(processKey, processEntryInt);
-          }
+          setProcessStatus(processKey, "completed");
         }
       } catch (error) {
-        const processEntryInt = listProcesses.get(processKey);
-        if (processEntryInt) {
-          processEntryInt.status = "errored";
-          processEntryInt.lastActivity = Date.now();
-          listProcesses.set(processKey, processEntryInt);
-        }
+        setProcessStatus(processKey, "errored");
         if (!listProcess.killed) {
           listProcess.kill();
         }
@@ -1489,115 +1455,106 @@ export function createListingFlow(
     };
   }
 
-  function addPlaylist(
+  async function addPlaylist(
     playlistUrl: string,
     monitoringType: string,
   ): Promise<PlaylistMetadata> {
+    const { process: titleProcess } = launchYtDlp({
+      url: playlistUrl,
+      flags: [
+        "--playlist-items",
+        "1:5",
+        "--ignore-errors",
+        "--dump-json",
+        "--no-download",
+      ],
+      reason: "Trying to get playlist title",
+    });
+
+    // With --ignore-errors, yt-dlp skips broken items and emits JSON only for
+    // accessible ones, so the first line that arrives is the first usable one
+    // and its playlist_title is all this probe wants.
+    //
+    // Both drains and the exit status are awaited together. This used to be
+    // three detached IIFEs inside a `new Promise`, where the one waiting on
+    // the exit status read a variable another one wrote — correct only for as
+    // long as yt-dlp happened to flush stdout before exiting, and silently
+    // yielding a URL-derived title when it did not.
+    const readFirstLine = async (): Promise<string | null> => {
+      for await (const line of streamLines(titleProcess.stdout)) {
+        const trimmed = line.trim();
+        if (trimmed.length > 0) return trimmed;
+      }
+      return null;
+    };
+
+    const drainStderr = async () => {
+      for await (const data of streamTextChunks(titleProcess.stderr)) {
+        logger.error(`Error getting playlist title: ${data}`);
+      }
+    };
+
+    const [firstValidLine, , status] = await Promise.all([
+      readFirstLine(),
+      drainStderr().catch(() => {
+        // Best-effort: a stderr read that fails must not lose the title.
+      }),
+      titleProcess.status,
+    ]);
+    const { code } = status;
+
     let playlistTitle = "";
-
-    const processArgs = appendUrlArg([
-      "--playlist-items",
-      "1:5",
-      "--ignore-errors",
-      "--dump-json",
-      "--no-download",
-    ], playlistUrl);
-
-    const siteArgs = buildSiteArgs(playlistUrl, config);
-    if (siteArgs.length > 0) {
-      processArgs.unshift(...siteArgs);
+    if (firstValidLine) {
+      // Exit code 1 is expected under --ignore-errors when some items failed
+      // and others succeeded, so the exit code is not consulted here: one
+      // usable line is the whole success condition.
+      try {
+        const jsonData = JSON.parse(firstValidLine);
+        if (jsonData) {
+          playlistTitle = jsonData.playlist_title || jsonData.title || "";
+        }
+      } catch (e) {
+        logger.error("Failed to parse playlist title JSON", {
+          firstValidLine,
+          error: e as Error,
+        });
+      }
+    } else {
+      // Every probed item failed, or nothing in the first 5 entries is
+      // accessible. Fall back to a title derived from the URL.
+      logger.warn(
+        "No valid items found in first 5 entries, using URL-derived title",
+        { url: playlistUrl, exitCode: code },
+      );
     }
 
-    const titleProcess = spawnPythonProcess(processArgs);
+    if (!playlistTitle || playlistTitle.toString().trim() === "NA") {
+      playlistTitle = urlToTitle(playlistUrl);
+    }
 
-    logger.debug("Trying to get playlist title", {
+    playlistTitle = truncateText(playlistTitle, config.maxTitleLength);
+
+    logger.debug(`Creating playlist with title: ${playlistTitle}`, {
       url: playlistUrl,
-      fullCommand: [
-        "yt-dlp",
-        ...processArgs.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
-      ].join(" "),
+      pid: titleProcess.pid,
+      code,
+      monitoringType,
+      lastUpdatedByScheduler: Date.now(),
     });
 
-    return new Promise((resolve, reject) => {
-      // Capture the first valid JSON line from stdout.
-      // With --ignore-errors, yt-dlp skips broken items and emits JSON only
-      // for accessible ones. We only need the first valid line to extract
-      // the playlist_title field.
-      let firstValidLine: string | null = null;
-      void (async () => {
-        for await (const line of streamLines(titleProcess.stdout)) {
-          const trimmed = line.trim();
-          if (trimmed.length > 0 && !firstValidLine) {
-            firstValidLine = trimmed;
-          }
-        }
-      })();
-
-      void (async () => {
-        for await (const data of streamTextChunks(titleProcess.stderr)) {
-          logger.error(`Error getting playlist title: ${data}`);
-        }
-      })();
-
-      void (async () => {
-        const { code } = await titleProcess.status;
-        try {
-          // With --ignore-errors, exit code 1 (partial error) is expected
-          // when some items fail but others succeed. We only care about
-          // whether we got at least one valid JSON line.
-          if (firstValidLine) {
-            try {
-              const jsonData = JSON.parse(firstValidLine);
-              if (jsonData) {
-                playlistTitle = jsonData.playlist_title || jsonData.title ||
-                  playlistTitle;
-              }
-            } catch (e) {
-              logger.error("Failed to parse playlist title JSON", {
-                firstValidLine,
-                error: e as Error,
-              });
-            }
-          } else {
-            // All probed items failed or playlist has no items accessible
-            // in the first 5 entries. Fall back to URL-derived title.
-            logger.warn(
-              "No valid items found in first 5 entries, using URL-derived title",
-              { url: playlistUrl, exitCode: code },
-            );
-            playlistTitle = urlToTitle(playlistUrl);
-          }
-
-          if (!playlistTitle || playlistTitle.toString().trim() === "NA") {
-            playlistTitle = urlToTitle(playlistUrl);
-          }
-
-          playlistTitle = truncateText(playlistTitle, config.maxTitleLength);
-
-          logger.debug(`Creating playlist with title: ${playlistTitle}`, {
-            url: playlistUrl,
-            pid: titleProcess.pid,
-            code: code,
-            monitoringType: monitoringType,
-            lastUpdatedByScheduler: Date.now(),
-          });
-
-          const playlist = await createPlaylistRecord(
-            playlistUrl,
-            playlistTitle.trim(),
-            monitoringType,
-          );
-
-          resolve(playlist);
-        } catch (error) {
-          logger.error("Failed to create playlist", {
-            url: playlistUrl,
-            error: (error as Error).message,
-          });
-          reject(error);
-        }
-      })().catch(reject);
-    });
+    try {
+      return await createPlaylistRecord(
+        playlistUrl,
+        playlistTitle.trim(),
+        monitoringType,
+      );
+    } catch (error) {
+      logger.error("Failed to create playlist", {
+        url: playlistUrl,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
   }
 
   async function ensurePendingPlaylistSortCounterInitialized() {

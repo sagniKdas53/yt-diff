@@ -32,13 +32,19 @@ import type {
 } from "./types.ts";
 import { downloadOptions, ProcessExitCodes } from "./types.ts";
 import { generateCorsHeaders, MIME_TYPES } from "../../utils/http.ts";
-import { appendUrlArg } from "../../utils/url.ts";
+import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
+import { createYtDlpLauncher } from "./ytdlp.ts";
 
 export function createDownloadFlow(
   deps: PipelineHandlerDependencies,
   downloadProcesses: Map<string, DownloadProcessEntry>,
   processManager: {
     updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
+    setProcessStatus: (
+      processKey: string,
+      status: ProcessStatus,
+      options?: ProcessStatusOptions,
+    ) => boolean;
     cleanupProcess: (processKey: string, pid: number | undefined) => void;
   },
 ) {
@@ -49,7 +55,12 @@ export function createDownloadFlow(
     config.queue.maxDownloads,
     "DownloadSemaphore",
   );
-  const { updateProcessActivity, cleanupProcess } = processManager;
+  const { updateProcessActivity, setProcessStatus, cleanupProcess } =
+    processManager;
+  const launchYtDlp = createYtDlpLauncher({
+    buildSiteArgs,
+    spawnPythonProcess,
+  });
   let queueSequence = 0;
 
   /**
@@ -306,43 +317,26 @@ export function createDownloadFlow(
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
-        const processArgs = appendUrlArg(
-          ["-P", "home:" + savePath],
-          videoUrl,
-        );
-
         safeEmit("download-started", {
           url: videoUrl,
           percentage: 101,
         });
 
-        const siteArgs = buildSiteArgs(videoUrl, config);
-        if (siteArgs.length > 0) {
-          processArgs.unshift(...siteArgs);
-        }
-
-        logger.debug(`Starting download for ${videoUrl}`, {
-          url: videoTitle,
-          savePath,
-          fullCommand: `yt-dlp ${downloadOptions.join(" ")} ${
-            processArgs.join(" ")
-          }`,
+        const { process: downloadProcess } = launchYtDlp({
+          url: videoUrl,
+          options: downloadOptions,
+          flags: ["-P", "home:" + savePath],
+          reason: `Starting download for ${videoUrl}`,
+          context: { title: videoTitle, savePath },
         });
 
-        const downloadProcess = spawnPythonProcess(
-          downloadOptions.concat(processArgs),
-        );
-
-        const processEntry = downloadProcesses.get(processKey);
-        if (processEntry) {
-          const now = Date.now();
-          processEntry.spawnedProcess = downloadProcess;
-          processEntry.status = "running";
-          processEntry.lastActivity = now;
-          processEntry.lastStdoutActivity = now;
-          processEntry.spawnTimeStamp = now;
-          downloadProcesses.set(processKey, processEntry);
-        } else {
+        // Fatal if the entry is gone: the subprocess is running and nothing
+        // would ever reap it.
+        if (
+          !setProcessStatus(processKey, "running", {
+            spawnedProcess: downloadProcess,
+          })
+        ) {
           return reject(new Error(`Process entry not found: ${processKey}`));
         }
 
