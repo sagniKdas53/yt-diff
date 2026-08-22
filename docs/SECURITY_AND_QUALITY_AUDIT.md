@@ -49,23 +49,23 @@ records what each step actually shipped.
 | Q1 | Frontend context layer built then bypassed | Blocker | **Fixed** |
 | Q2 | Two divergent URL canonicalizers | Blocker | **Fixed** — with Q3 |
 | Q3 | Documented tracking-param stripping never implemented | Correctness | **Fixed** — with Q2 |
-| Q4 | Failure classification by error-string equality | Correctness | Open |
+| Q4 | Failure classification by error-string equality | Correctness | **Fixed** |
 | Q5 | CI gates none of the quality signals | Blocker | **Fixed** |
 | Q6 | No shared API contract | Structural | **Fixed** |
 | Q7 | Validation schemas are optional-everything | Structural | **Fixed** — with C1 |
-| Q8 | Non-atomic triple write in the ingest path | Structural | Open |
+| Q8 | Non-atomic triple write in the ingest path | Structural | **Fixed** |
 | Q9 | Duplication with a canonical answer already present | Structural | **Fixed** |
 | Q10 | Files past the 1k-line bar | Structural | Open |
 | F1 | Context providers and `useApi` written but never mounted | High | **Closed** — is Q1 |
-| F2 | No error boundary behind five lazy routes | High | Open |
-| F3 | The socket is never closed on the client | High | Open |
+| F2 | No error boundary behind five lazy routes | High | **Fixed** |
+| F3 | The socket is never closed on the client | High | **Fixed** |
 | F4 | `App.jsx` still owns the socket layer | Medium | **Fixed** — bar the split, which is Q10 |
 | F5 | No routing: no deep links, no Back button | Medium | Open |
 | F6 | No TypeScript, no generated API types | Medium | Open — was ranked with Q6 |
 | F7 | 31-day tokens in `localStorage`, never renewed | Medium | **Fixed** — with S4–S9 |
 | F8 | `"null"` as a `localStorage` sentinel | Low | **Fixed** |
 | F9 | Thumbnails not lazily loaded | Low | **Fixed** |
-| F10 | No test coverage thresholds | Low | Open |
+| F10 | No test coverage thresholds | Low | **Fixed** |
 
 **C1 and Q7 were deliberately paired and fixed in one PR.** They are the same
 boundary reached from two directions — see
@@ -426,7 +426,7 @@ of pairing this with Q2.
 
 ### Q4 — Failure classification by error-message string equality
 
-**Correctness · Verified · Open**
+**Correctness · Verified · Fixed**
 
 `listing.ts:785-787` decides whether a listing genuinely failed by comparing
 `error.message` against two literals:
@@ -446,9 +446,12 @@ The author saw this coming — the comment above the throw reads *"Keeps the
 original prefix so anything matching on it still works"* — but the consumer uses
 exact `!==`, not `startsWith`. **The mitigation does not work.**
 
-**Fix.**
-`class ListingProcessError extends Error { constructor(readonly exitCode: number | null, readonly reason: string) }`,
-thrown at `:1160` and branched on by `exitCode` at `:785`.
+**Fixed** as prescribed. `ListingProcessError` lives beside `ProcessExitCodes`
+in `src/handlers/pipeline/types.ts`, carrying `exitCode` and `reason`; the
+producer throws it and `isDeliberateTermination` narrows on the type and reads
+the code. The message keeps its `Process exited with code <n>[: reason]` shape,
+because it is logged and emitted on `listing-error` for the frontend to render
+— it just stopped being the thing anything decides on.
 
 ### Q5 — CI gates none of the quality signals the repo already has
 
@@ -584,7 +587,7 @@ minting paths now stat with `isFile`.
 
 ### Q8 — Non-atomic triple write and raw interpolated SQL in the hot ingest path
 
-**Structural · Open**
+**Structural · Fixed**
 
 `listing.ts:1410-1418` builds an
 `UPDATE … SET "positionInPlaylist" = CASE WHEN "id" = '<uuid>' THEN <n> … END`
@@ -598,9 +601,14 @@ between them leaves videos upserted with mappings missing, or positions
 half-shifted — and this runs once per chunk, per playlist, on every scheduled
 update.
 
-**Fix.** Wrap all three in `sequelize.transaction()` and replace the CASE
-statement with
-`bulkCreate(rows, { updateOnDuplicate: ["positionInPlaylist"], transaction })`.
+**Fixed** as prescribed. The three writes moved into `persistStreamingChunk`,
+extracted to module scope so the block is reachable from a unit test without
+spawning a listing process, and run inside one `sequelize.transaction()`. The
+CASE statement is now `bulkCreate` with `conflictAttributes: ["id"]` and
+`updateOnDuplicate: ["positionInPlaylist", "updatedAt"]`, which emits
+`ON CONFLICT ("id") DO UPDATE` — every row already exists, so all of them take
+the update branch, and the untouched columns are carried through to keep the
+insert half well-formed.
 
 ### Q9 — Duplication that the tree already has a canonical answer for
 
@@ -665,16 +673,16 @@ statement with
 
 | File | Lines | What is actually wrong |
 | :--- | ---: | :--- |
-| `src/handlers/pipeline/listing.ts` | 1,684 | One function, `createListingFlow`, holding 20 nested functions over four pieces of mutable closure state. Nothing can be imported or tested in isolation. |
-| `frontend/src/components/App.jsx` | 1,038 | Was 1,478 before the Q1 fix took the contexts back. What remains is one **414-line `useEffect`** registering 18 socket handlers with a hand-maintained parallel `.off` block — see [F4](#f4--appjsx-still-owns-the-socket-layer). |
-| `frontend/src/components/VideoPlayer.jsx` | 1,317 | Signed-URL fetching, playback state, fullscreen chrome and drawer navigation in one component — while `useSignedUrlRefresh.js` sits unused. |
-| `frontend/src/components/SubList.jsx` | 1,073 | 8 effects, two of them storing derived state that `useMemo` would compute. |
+| `src/handlers/pipeline/listing.ts` | 1,678 | One function, `createListingFlow`, holding 20 nested functions over four pieces of mutable closure state. `persistStreamingChunk` came out to module scope with the `Q8` fix and is the only part of the file that can be imported or tested on its own. |
+| `frontend/src/components/App.jsx` | 1,053 | Was 1,478 before the Q1 fix took the contexts back; the `F2` boundaries added 20. What remains is one **414-line `useEffect`** registering 18 socket handlers with a hand-maintained parallel `.off` block — see [F4](#f4--appjsx-still-owns-the-socket-layer). |
+| `frontend/src/components/VideoPlayer.jsx` | 1,304 | Signed-URL fetching, playback state, fullscreen chrome and drawer navigation in one component — while `useSignedUrlRefresh.js` sits unused. |
+| `frontend/src/components/SubList.jsx` | 1,038 | 8 effects, two of them storing derived state that `useMemo` would compute. |
 | `scripts/scratch_*.ts` | 1,318 | Referenced by no task, doc or Makefile target, outside every lint/check glob, and importing production DB models to mutate the database. |
 
 The `listing.ts` split is mostly a *consequence* of Q2, Q4 and Q9 rather than
-extra work: once the `sortOrder` counter moves into the database,
-`createListingFlow` has nothing left to close over and the factory becomes plain
-exported functions.
+extra work, and all three have now landed: once the `sortOrder` counter moves
+into the database, `createListingFlow` has nothing left to close over and the
+factory becomes plain exported functions.
 
 ---
 
@@ -702,7 +710,7 @@ reached from the frontend side. `main.jsx` now renders `AppProviders`, and all
 
 ### F2 — No error boundary, behind five lazy-loaded routes
 
-**High · Verified · Open**
+**High · Verified · Fixed**
 
 Zero uses of `componentDidCatch` or `getDerivedStateFromError` anywhere in
 `frontend/src`. `App.jsx:31-35` lazy-loads `Nav`, `PlayList`, `SubList`, `Login`
@@ -716,15 +724,24 @@ open across a deploy requests a chunk that no longer exists, the dynamic import
 rejects, and React caches that rejection for the life of the tab. To the user it
 reads as "the app went blank and I had to log out and back in."
 
-**Fix.** A dependency-free boundary — no MUI, no theme, inline styles — so it
-still renders when MUI is what broke. Detect chunk-load failures specifically,
-treat them as a stale build, and reload once, guarded through `sessionStorage`
-so a genuinely broken build cannot loop. Wrap `<App />` in `main.jsx` and the
-lazy `Suspense` blocks too.
+**Fixed** as prescribed. `src/components/ErrorBoundary.jsx` imports React,
+PropTypes and one predicate, and styles itself inline. `isChunkLoadError` lives
+in `src/lib/chunkLoadError.js` and matches the shapes all three engines produce,
+since none of the wording is standardised. A stale chunk reloads once, with the
+attempt timestamped in `sessionStorage`: a second failure inside ten seconds is
+a broken build rather than a stale tab, and gets the message instead of another
+round trip — while a marker from an earlier deploy does not stop a tab catching
+up twice. Storage that throws at all (private mode, blocked site data) means the
+message and never a blind reload.
+
+It wraps `<App />` outside the providers in `main.jsx`, so a throw while a
+context initialises is caught too, and each lazy `Suspense` block is now a
+`LazyRegion` — a compact boundary around the `Suspense` — so one unloadable
+panel does not take the shell with it.
 
 ### F3 — The socket is never closed on the client
 
-**High · Verified · Open — and partly a security item**
+**High · Verified · Fixed — and partly a security item**
 
 `SocketContext.jsx:20-27` builds the connection inside a `useMemo` keyed on
 `token`, with `forceNew: true`. There is no `disconnect()` or `.close()` call
@@ -742,10 +759,11 @@ events.
 The `Q1` fix moved this code from `App.jsx` into `SocketContext` without
 changing it, so the finding survived the refactor intact.
 
-**Fix.** Creating a connection is a side effect, not a computation: move it out
-of `useMemo` into a `useEffect` keyed on `token`, with the cleanup calling
-`sock.disconnect()`. Hold the socket in state so consumers re-render when it
-swaps.
+**Fixed** as prescribed. Creation moved out of `useMemo` into a `useEffect`
+keyed on `token`, the cleanup calls `sock.disconnect()`, and the socket is held
+in state so consumers re-render when it swaps. The App and batch-reindex suites
+stubbed `socket.io-client` with a socket that had no `disconnect`; they now mock
+the method the provider calls.
 
 ### F4 — `App.jsx` still owns the socket layer
 
@@ -884,7 +902,7 @@ those thumbnails start well below the fold.
 
 ### F10 — No test coverage thresholds
 
-**Low · Verified · Open**
+**Low · Verified · Fixed**
 
 `vitest.config.js` composes the two viewport projects and sets no coverage
 provider and no threshold; `@vitest/coverage-v8` is not a dependency. 13 desktop
@@ -894,10 +912,16 @@ and 5 mobile test files run with nothing asserting they keep covering anything.
 a coverage floor would have gated nothing. Now `npm run lint` and `vitest run`
 fail the build, so a threshold is a real gate for the first time.
 
-**Fix.** Add `@vitest/coverage-v8` and set the floor at wherever coverage
-already sits, so it can only rise. Do not exclude `App.jsx` or `VideoPlayer.jsx`
-to make the number look better — carving out the hard files leaves the gate
-measuring only the easy ones, which is how a coverage gate becomes decorative.
+**Fixed** as prescribed. `@vitest/coverage-v8` with the v8 provider, and the
+floor set where coverage already sat — statements 64, branches 47, functions 55,
+lines 66 against 64.96/47.73/55.27/66.61. `App.jsx` and `VideoPlayer.jsx` are
+inside it; `src/main.jsx` is the one exclusion, being the ReactDOM bootstrap
+with nothing in it to cover.
+
+One thing the finding did not say: the frontend CI job ran `vitest run` without
+`--coverage`, so the thresholds would have been configured and never checked.
+The flag is now on that step, which is what makes the floor a gate rather than a
+number in a config file.
 
 ---
 
@@ -961,7 +985,14 @@ method as Q2: rather than trying to test `handlePlaylistStreaming` where it
 sits, the two pieces of it that are worth pinning came out to modules that can
 be. `chunks.ts` holds the offset arithmetic that writes `positionInPlaylist`,
 and `ytdlp.ts` holds the argv builder that carries C1's `--`. Both are now
-covered directly. What is still untested is the part that needs a database.
+covered directly.
+
+Q8 applied the same move to the part that needs a database, without needing
+one: `persistStreamingChunk` came out of `processStreamingVideoInformation` to
+module scope, and the models are the seam — stubbing their statics pins the
+transaction and the upsert keys without a connection. That is the first test of
+any kind against `processStreamingVideoInformation`. What is still untested is
+everything upstream of the writes.
 
 ---
 
@@ -1042,26 +1073,30 @@ keeping the frontend items on a list of their own. The frontend items do not que
 the backend ones: `F2` and `F3` are the highest impact-per-hour work left in the
 tree, and nothing above them blocks either.
 
-6. **F2 + F3** — an error boundary that handles stale chunks, and moving socket
-   construction into an effect that disconnects on cleanup. Both are localized,
-   neither depends on the other, and together they close the blank-screen
-   failure and the leaked signed-out connection. `F3` carries the security
-   half: today a logged-out tab keeps an authenticated socket open for the rest
-   of the token's life.
+6. ~~**F2 + F3** — an error boundary that handles stale chunks, and moving
+   socket construction into an effect that disconnects on cleanup.~~ **Done**,
+   as `ErrorBoundary` + `LazyRegion` around all six lazy blocks and around
+   `<App />` outside the providers, and a `useEffect` keyed on `token` whose
+   cleanup disconnects. `F3` carried the security half: a logged-out tab used to
+   keep an authenticated socket open for the rest of the token's life.
 
    ~~Plus the F8 and F9 residue.~~ **Those two are done** — the sentinel is
    migrated rather than guarded, and the drawer `Avatar` lazy-loads. They came
    off this step early because neither depended on `F2` or `F3` for anything.
-7. **Q4** — typed process errors. `ListingProcessError` with an `exitCode`
-   field, branched on rather than string-compared, so a SIGTERM that also wrote
-   to stderr stops surfacing to the user as a listing failure. Smallest
-   remaining correctness bug, and it is user-visible.
-8. **F10** — the coverage floor, set at current coverage across everything. Do
-   it before the decomposition, not after: it is the only thing that will notice
-   if steps 10–11 quietly drop test coverage while moving code.
-9. **Q8** — one `sequelize.transaction()` around the triple write, and
-    `bulkCreate` with `updateOnDuplicate` in place of the interpolated CASE.
-    Bounded, and it runs once per chunk per playlist on every scheduled update.
+7. ~~**Q4** — typed process errors.~~ **Done**, as `ListingProcessError` with an
+   `exitCode` field, branched on rather than string-compared, so a SIGTERM that
+   also wrote to stderr stops surfacing to the user as a listing failure.
+8. ~~**F10** — the coverage floor, set at current coverage across everything.~~
+   **Done**, at 64/47/55/66 with nothing carved out but `main.jsx` — and with
+   `--coverage` added to the frontend CI step, without which the floor would
+   have been configured and never checked. It is now in place before the
+   decomposition, which is the point: it is the only thing that will notice if
+   steps 10–11 quietly drop coverage while moving code.
+9. ~~**Q8** — one `sequelize.transaction()` around the triple write, and
+    `bulkCreate` with `updateOnDuplicate` in place of the interpolated CASE.~~
+    **Done**, as `persistStreamingChunk`, extracted to module scope so the
+    write block is testable without spawning a listing process. Backend suite
+    272 → 276, frontend 102 → 119.
 10. ~~**Q6 + F6 as one piece of work**~~ — **Q6 is done**, as
     `src/routes/endpoints.ts` (one record per endpoint, which `api.ts` maps
     over), `json()` in `src/utils/http.ts` across 59 call sites, and
@@ -1078,10 +1113,10 @@ tree, and nothing above them blocks either.
     were collapsing on their own terms, not as a consequence of `Q4` and `Q8`,
     and the `useLatest` hook needed nothing from either.
 
-    What remains is the file-size work proper: `createListingFlow` has nothing
-    left to close over once `Q4` and `Q8` land, and `App.jsx`'s 414-line socket
-    effect becomes a `useSocketEvents` hook — which is also the rest of `F4`,
-    and what `F5` is waiting on.
+    What remains is the file-size work proper: `Q4` and `Q8` have landed, so
+    `createListingFlow` has nothing left to close over, and `App.jsx`'s
+    414-line socket effect becomes a `useSocketEvents` hook — which is also the
+    rest of `F4`, and what `F5` is waiting on.
 12. **F5** — routing. After the `App.jsx` split in step 11, for the reason `F5`
     gives: routing a component that also owns the socket layer is much harder
     than routing one that does not.
