@@ -55,13 +55,13 @@ records what each step actually shipped.
 | Q7 | Validation schemas are optional-everything | Structural | **Fixed** — with C1 |
 | Q8 | Non-atomic triple write in the ingest path | Structural | **Fixed** |
 | Q9 | Duplication with a canonical answer already present | Structural | **Fixed** |
-| Q10 | Files past the 1k-line bar | Structural | Open |
+| Q10 | Files past the 1k-line bar | Structural | **Fixed** |
 | F1 | Context providers and `useApi` written but never mounted | High | **Closed** — is Q1 |
 | F2 | No error boundary behind five lazy routes | High | **Fixed** |
 | F3 | The socket is never closed on the client | High | **Fixed** |
-| F4 | `App.jsx` still owns the socket layer | Medium | **Fixed** — bar the split, which is Q10 |
+| F4 | `App.jsx` still owns the socket layer | Medium | **Fixed** |
 | F5 | No routing: no deep links, no Back button | Medium | Open |
-| F6 | No TypeScript, no generated API types | Medium | Open — was ranked with Q6 |
+| F6 | No TypeScript, no generated API types | Medium | **Fixed** — was ranked with Q6 |
 | F7 | 31-day tokens in `localStorage`, never renewed | Medium | **Fixed** — with S4–S9 |
 | F8 | `"null"` as a `localStorage` sentinel | Low | **Fixed** |
 | F9 | Thumbnails not lazily loaded | Low | **Fixed** |
@@ -538,10 +538,10 @@ logged out on. That distinction was open-coded as `if (response.status !== 401)`
 at five call sites, right for the expiry case and wrong for a bad password at
 `/login`.
 
-**What is still open.** The typed client of [F6](#f6--no-typescript-no-generated-api-types).
-The two were ranked as one step because designing the contract twice would be
-waste — that risk is gone now: the contract exists, in one file, and an OpenAPI
-document can be emitted from those records rather than written beside them.
+**What was still open** — the typed client of
+[F6](#f6--no-typescript-no-generated-api-types), now shipped: the response
+schemas live beside this file's request records in `openapi.ts`, and the
+generated client consumes both.
 
 ### Q7 — Validation schemas are optional-everything
 
@@ -669,20 +669,30 @@ insert half well-formed.
 
 ### Q10 — Files past the 1k-line bar
 
-**Structural · Open**
+**Structural · Fixed**
 
-| File | Lines | What is actually wrong |
-| :--- | ---: | :--- |
-| `src/handlers/pipeline/listing.ts` | 1,678 | One function, `createListingFlow`, holding 20 nested functions over four pieces of mutable closure state. `persistStreamingChunk` came out to module scope with the `Q8` fix and is the only part of the file that can be imported or tested on its own. |
-| `frontend/src/components/App.jsx` | 1,053 | Was 1,478 before the Q1 fix took the contexts back; the `F2` boundaries added 20. What remains is one **414-line `useEffect`** registering 18 socket handlers with a hand-maintained parallel `.off` block — see [F4](#f4--appjsx-still-owns-the-socket-layer). |
-| `frontend/src/components/VideoPlayer.jsx` | 1,304 | Signed-URL fetching, playback state, fullscreen chrome and drawer navigation in one component — while `useSignedUrlRefresh.js` sits unused. |
-| `frontend/src/components/SubList.jsx` | 1,038 | 8 effects, two of them storing derived state that `useMemo` would compute. |
-| `scripts/scratch_*.ts` | 1,318 | Referenced by no task, doc or Makefile target, outside every lint/check glob, and importing production DB models to mutate the database. |
+| File | Was | Now | What happened |
+| :--- | ---: | ---: | :--- |
+| `src/handlers/pipeline/listing.ts` | 1,678 | 922 | The factory dissolved. `processStreamingVideoInformation` moved beside `persistStreamingChunk` into [`ingest-chunk.ts`](../src/handlers/pipeline/ingest-chunk.ts) — parse, diff and the Q8 transaction are one unit now; `addPlaylist`/`createPlaylistRecord` moved to [`playlist-records.ts`](../src/handlers/pipeline/playlist-records.ts); the `/list` triage path to [`listing-requests.ts`](../src/handlers/pipeline/listing-requests.ts). |
+| `frontend/src/components/App.jsx` | 1,053 | 588 | The 414-line socket effect is a `useSocketEvents` hook, which owns the listing counter, batch-reindex tracker and last-downloaded ref, and registers its eighteen listeners from one table — the hand-maintained parallel `.off` block cannot drift by construction. This was the rest of `F4`. |
+| `frontend/src/components/VideoPlayer.jsx` | 1,304 | 891 | Signed-URL minting/refresh/recovery is `useSignedPlayback`, subtitles (fetch, VTT parse, cue selection) are `useSubtitleTrack`, page-crossing prev/next is `usePlaylistNavigation`, and the pure VTT parser sits in `src/lib/subtitles.js`. `useSignedUrlRefresh.js`, which had sat unused through all of this, is deleted. |
+| `frontend/src/components/SubList.jsx` | 1,038 | 769 | Thumbnails (bulk fetch + expiry scheduling) are `useThumbnailUrls`; the rows fetch is `useSubListRows`; the delete dialog is its own component. Two of the eight effects were deleted outright: "select all" is derived from the rows on screen rather than mirrored into state, which also closed a stale-true edge when a page change pruned the last checked key away. |
+| `scripts/scratch_*.ts` | 1,318 | 0 | Deleted — one-off migration scripts referenced by no task, doc or Makefile target. Git history keeps them. |
 
-The `listing.ts` split is mostly a *consequence* of Q2, Q4 and Q9 rather than
-extra work, and all three have now landed: once the `sortOrder` counter moves
-into the database, `createListingFlow` has nothing left to close over and the
-factory becomes plain exported functions.
+**The enabler did ship:** the playlist sort order now comes from
+`MAX(sortOrder) + 1`, read inside a serialized create in
+`playlist-records.ts`, so `createListingFlow`'s counter, its initialization
+promise, the create lock *and* the `resetPendingPlaylistSortCounter`
+invalidation hook that deletion had to remember to call are all gone —
+reading at write time has nothing to invalidate. What remains of the factory
+is pure wiring (`createListingRuntime`) assembling an explicit context object
+that every function takes as a parameter; each substantial function below it
+is a plain export a test can call without building the pipeline.
+
+The split also made three components small enough for React Compiler's lint
+rules to analyze for the first time, which surfaced pre-existing
+setState-in-effect patterns; two were genuinely derivable and removed, the
+other two carry justifications inline.
 
 ---
 
@@ -790,9 +800,9 @@ sites that happened not to trip the rule.
 React 19's `useEffectEvent` still replaces the pattern outright, and is still
 the concrete payoff of that upgrade rather than a reason to do it.
 
-**What is left is the split**, not the mirrors: turning the 414-line socket
-effect into a `useSocketEvents` hook is the `App.jsx` row of
-[Q10](#q10--files-past-the-1k-line-bar), and is tracked there.
+**The split shipped with `Q10`**: the effect is now a `useSocketEvents` hook
+(see the `App.jsx` row there). The mirrors went with it — the hook takes the
+`useLatest` boxes as parameters and owns the batch-reindex mirror itself.
 
 ### F5 — No routing: no deep links, no working Back button
 
@@ -811,7 +821,7 @@ socket layer is materially harder than adding it to one that has been split.
 
 ### F6 — No TypeScript, no generated API types
 
-**Medium · Verified · Open — the frontend half of `Q6`**
+**Medium · Verified · Fixed — with `Q6`**
 
 All of `frontend/src` is `.jsx` with `PropTypes`. The backend is already Deno +
 TypeScript with typed handlers, so the types exist — they just stop at the
@@ -822,11 +832,25 @@ This is [Q6](#q6--no-shared-api-contract) seen from the client: the same missing
 contract that lets `SubList.jsx` read `item.video_metadatum.videoUrl` — a
 Sequelize association name reaching JSX with nothing describing it.
 
-**Fix.** Not a TypeScript rewrite. Emit an OpenAPI document from the Deno
-handlers, generate a typed client module from it, and consume that from plain JS
-via JSDoc + `checkJs`. Typing just the API responses catches most of what
-`PropTypes` misses. Sequence it with `Q6`'s backend half — one endpoint record
-per route — so the document has a single source.
+**Fixed**, as prescribed. `src/routes/openapi.ts` declares one response schema
+per endpoint beside the request records `Q6` left in `endpoints.ts`, and
+`deno task gen:api` emits two artifacts from those schemas:
+
+- `openapi.json` — the OpenAPI 3.0 document for the whole HTTP surface.
+- `frontend/src/api/generated/apiTypes.js` — JSDoc typedefs plus a route union.
+
+The frontend stays JavaScript. `createApiClient.post` is generic over that
+route union via JSDoc, so `api.post("/getsub", body)` accepts exactly the
+documented request and resolves to exactly the documented response — the
+`videoUrl` association name now has a type on both sides of the wire. A
+`tsconfig.checkjs.json` runs `tsc --checkJs --noEmit` over the API layer
+(`npm run typecheck`) as a CI step, and `tests/api_codegen.test.ts`
+regenerates both artifacts in memory and fails against the committed copies,
+so a schema edit without regeneration cannot land.
+
+Not a TypeScript rewrite, deliberately: typing the API responses catches most
+of what `PropTypes` misses, and components keep their PropTypes until each is
+migrated on its own terms.
 
 ### F7 — 31-day bearer tokens in `localStorage`, never renewed
 
@@ -1104,19 +1128,24 @@ tree, and nothing above them blocks either.
     suite 256 → 267, frontend 91 → 102, and net −418 lines across the two
     repositories.
 
-    **F6 is what is left.** The two were ranked together because designing the
-    contract twice would be waste — that risk is gone: the contract exists, in
-    one file, so the OpenAPI document can be emitted from those records and the
-    generated client consumed from JS via JSDoc + `checkJs`.
-11. **Q10** — the decomposition. `Q9` and the mirrors half of `F4` came off this
-    step early rather than waiting for it: the duplicated listing algorithms
-    were collapsing on their own terms, not as a consequence of `Q4` and `Q8`,
-    and the `useLatest` hook needed nothing from either.
-
-    What remains is the file-size work proper: `Q4` and `Q8` have landed, so
-    `createListingFlow` has nothing left to close over, and `App.jsx`'s
-    414-line socket effect becomes a `useSocketEvents` hook — which is also the
-    rest of `F4`, and what `F5` is waiting on.
+    ~~**F6 is what is left.**~~ **F6 is done too**, as `src/routes/openapi.ts`
+    (one response schema per endpoint, beside the request records),
+    `deno task gen:api` emitting `openapi.json` plus
+    `frontend/src/api/generated/apiTypes.js`, and a typed `post()` consumed
+    from plain JS through a new `checkJs` gate. The contract now exists on
+    both sides of the network boundary, generated from one file.
+11. ~~**Q10** — the decomposition.~~ **Done.** `Q4` and `Q8` landed first, so
+    `createListingFlow` had nothing left to close over once the sort-order
+    counter moved into the database (`MAX(sortOrder) + 1` inside a serialized
+    create — which also deleted the reset hook deletion used to have to
+    call). `listing.ts` dissolved into `ingest-chunk.ts`,
+    `playlist-records.ts` and `listing-requests.ts` around it; App.jsx's
+    socket effect became `useSocketEvents` — closing the rest of `F4` and
+    unblocking `F5` — while VideoPlayer and SubList gave up their
+    signed-URL/subtitle/thumbnail layers to hooks. Every file named in the
+    finding is under the bar, the scratch scripts are gone, and the F10
+    coverage floor came through as designed: coverage rose slightly across
+    the move (65.7/48.9/56.6/67.4 against the 64/47/55/66 floor).
 12. **F5** — routing. After the `App.jsx` split in step 11, for the reason `F5`
     gives: routing a component that also owns the socket layer is much harder
     than routing one that does not.
