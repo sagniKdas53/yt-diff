@@ -8,7 +8,12 @@ import {
   createProcessManager,
 } from "./process-manager.ts";
 import { createDownloadFlow } from "./download.ts";
-import { createListingFlow } from "./listing.ts";
+import {
+  createListingRuntime,
+  getListingQueueDepth,
+  listItemsConcurrently,
+} from "./listing.ts";
+import { processListingRequest } from "./listing-requests.ts";
 
 export * from "./types.ts";
 
@@ -22,19 +27,49 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
     downloadProcesses,
     processManager,
   );
-  const listingFlow = createListingFlow(deps, listProcesses, processManager);
+  const listingRuntime = createListingRuntime(
+    deps,
+    listProcesses,
+    processManager,
+  );
 
   return {
     cleanupStaleProcesses,
     downloadProcesses,
     listProcesses,
-    listItemsConcurrently: listingFlow.listItemsConcurrently,
+    listItemsConcurrently: (
+      items: Parameters<typeof listItemsConcurrently>[1],
+      chunkSize: Parameters<typeof listItemsConcurrently>[2],
+      isScheduledUpdate: Parameters<typeof listItemsConcurrently>[3],
+    ) =>
+      listItemsConcurrently(
+        listingRuntime,
+        items,
+        chunkSize,
+        isScheduledUpdate,
+      ),
     processDownloadRequest: downloadFlow.processDownloadRequest,
     resolveAndEnqueue: downloadFlow.resolveAndEnqueue,
-    processListingRequest: listingFlow.processListingRequest,
+    processListingRequest: (
+      requestBody: Parameters<typeof processListingRequest>[1],
+      response: Parameters<typeof processListingRequest>[2],
+    ) =>
+      processListingRequest(
+        {
+          safeEmit: listingRuntime.safeEmit,
+          enqueue: (items, chunkSize, isScheduledUpdate) =>
+            listItemsConcurrently(
+              listingRuntime,
+              items,
+              chunkSize,
+              isScheduledUpdate,
+            ),
+          queueDepth: () => getListingQueueDepth(listingRuntime),
+        },
+        requestBody,
+        response,
+      ),
     getQueueSnapshot: downloadFlow.getQueueSnapshot,
-    resetPendingPlaylistSortCounter:
-      listingFlow.resetPendingPlaylistSortCounter,
-    getListingQueueDepth: listingFlow.getListingQueueDepth,
+    getListingQueueDepth: () => getListingQueueDepth(listingRuntime),
   };
 }
