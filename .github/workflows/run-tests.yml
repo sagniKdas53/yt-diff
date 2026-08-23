@@ -52,6 +52,12 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        # The contract test compares the generated frontend typedefs against
+        # the committed ones, which live across the submodule boundary. It
+        # skips gracefully when the tree is absent, but checking it out is
+        # what makes the pin real here.
+        with:
+          submodules: true
 
       - name: Set up Deno
         uses: denoland/setup-deno@v2
