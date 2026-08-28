@@ -682,17 +682,33 @@ insert half well-formed.
 **The enabler did ship:** the playlist sort order now comes from
 `MAX(sortOrder) + 1`, read inside a serialized create in
 `playlist-records.ts`, so `createListingFlow`'s counter, its initialization
-promise, the create lock *and* the `resetPendingPlaylistSortCounter`
-invalidation hook that deletion had to remember to call are all gone —
-reading at write time has nothing to invalidate. What remains of the factory
-is pure wiring (`createListingRuntime`) assembling an explicit context object
-that every function takes as a parameter; each substantial function below it
-is a plain export a test can call without building the pipeline.
+promise *and* the `resetPendingPlaylistSortCounter` invalidation hook that
+deletion had to remember to call are all gone — reading at write time has
+nothing to invalidate. The serialization itself remains, as the module-level
+`playlistCreateChain`: reading the tail is only safe if the read and the write
+it feeds are one section, or three concurrent creates all see the same tail
+and claim the same number. `tests/playlist_records.test.ts` pins that — it
+fails if the chain is removed — along with the renumber-after-delete case the
+old reset hook existed for.
+
+What remains of the factory is pure wiring (`createListingRuntime`) assembling
+an explicit context object that every function takes as a parameter; each
+substantial function below it is a plain export a test can call without
+building the pipeline, which `tests/listing_requests.test.ts` and
+`tests/playlist_records.test.ts` now do.
 
 The split also made three components small enough for React Compiler's lint
 rules to analyze for the first time, which surfaced pre-existing
 setState-in-effect patterns; two were genuinely derivable and removed, the
 other two carry justifications inline.
+
+**One file over the bar is still over it.** `src/bot/core.ts` is 1,351 lines
+and was 1,351 lines when this finding was written — it predates the audit by
+three weeks and was simply not in the table above, so closing the five rows
+that were does not make the heading literally true. It is a separate piece of
+work with a separate shape (the bot is one command surface, not a factory
+holding closure state), and nothing in this audit's fix order depends on it.
+Tracked here rather than reopened as its own finding.
 
 ---
 
@@ -842,15 +858,51 @@ per endpoint beside the request records `Q6` left in `endpoints.ts`, and
 The frontend stays JavaScript. `createApiClient.post` is generic over that
 route union via JSDoc, so `api.post("/getsub", body)` accepts exactly the
 documented request and resolves to exactly the documented response — the
-`videoUrl` association name now has a type on both sides of the wire. A
-`tsconfig.checkjs.json` runs `tsc --checkJs --noEmit` over the API layer
-(`npm run typecheck`) as a CI step, and `tests/api_codegen.test.ts`
-regenerates both artifacts in memory and fails against the committed copies,
-so a schema edit without regeneration cannot land.
+`videoUrl` association name now has a type on both sides of the wire.
+`tsconfig.checkjs.json` runs `tsc --checkJs --noEmit` (`npm run typecheck`)
+over `src/api`, the hooks, the components and the contexts — everything that
+calls `post()`, not just the client that defines it — as a step in both
+repositories' PR workflows. `tests/api_codegen.test.ts` regenerates both
+artifacts in memory and fails against the committed copies, so a schema edit
+without regeneration cannot land.
 
 Not a TypeScript rewrite, deliberately: typing the API responses catches most
 of what `PropTypes` misses, and components keep their PropTypes until each is
 migrated on its own terms.
+
+> [!NOTE]
+> **The first cut of this shipped inert, and the finding is only closed as of
+> the follow-up.** Three things had to be true for the contract to check
+> anything, and none of them was:
+>
+> 1. **`ApiRoute` was `any`.** The generator emitted the route union as a JSDoc
+>    typedef whose type expression started on the line *after* `@typedef {`.
+>    TypeScript does not parse that form — it takes the typedef as `any` and
+>    reports nothing. `post()`'s path parameter was therefore constrained by
+>    `any`: every path was accepted, every response came back untyped. A
+>    silent `any` is precisely what `tsc` cannot tell you about, so
+>    `tests/desktop/apiContract.test.js` on the frontend asserts the emitted
+>    shape instead.
+> 2. **`ApiClient` did not exist.** Four hooks annotated their `api` parameter
+>    as `import("../api/client.js").ApiClient`, a typedef `client.js` never
+>    exported.
+> 3. **The gate did not reach the call sites.** `tsconfig.checkjs.json`
+>    covered the client module and two others — none of the eleven files that
+>    actually call `post()`.
+>
+> Once all three were fixed the gate immediately found what the finding said it
+> would: `SubListItemCard` reading `element.isAvailable`, a field that lives
+> under `video_metadatum` and was always `undefined`; `DownloadContext` reading
+> a `percentage` that `/queuestatus` has never returned, so progress restored
+> after a reload was always 0; a `slotProps.list` key MUI v5 does not read,
+> which dropped a menu's `aria-labelledby`; `useSubtitleTrack` documenting
+> three of its six return values; and `useSocketEvents`'s `downloadedItem` ref
+> declaring four fields while assigning the nine `SubList` reads.
+>
+> The lesson generalises past this finding: a generated artifact is not a
+> contract until something fails when it is wrong. Both halves are now pinned
+> — the backend test regenerates and compares, the frontend test asserts the
+> emitted file is in a form the checker can read.
 
 ### F7 — 31-day bearer tokens in `localStorage`, never renewed
 

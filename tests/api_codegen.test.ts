@@ -5,6 +5,7 @@ import {
   emitFrontendTypes,
   ResponseSchemas,
   SubListVideoRowSchema,
+  UnrecordedRequestSchemas,
 } from "../src/routes/openapi.ts";
 
 /**
@@ -27,16 +28,29 @@ Deno.test("every endpoint documents a response body", () => {
   }
 });
 
-Deno.test("only /refresh may omit a request schema", () => {
+Deno.test("every endpoint documents a request body", () => {
+  // Not every schema lives in the endpoint record: the public handlers and
+  // `/refresh` run before or without the router's validation step, so theirs
+  // are in `UnrecordedRequestSchemas`. What matters to a client is that the
+  // contract describes a body for every route — a route the generator thinks
+  // is bodyless types the correct call as an error, which is what
+  // `post("/refresh", {})` used to hit.
   for (const endpoint of API_ENDPOINTS) {
-    if (endpoint.kind === "authenticated") {
-      if (!endpoint.schema && endpoint.path !== "/refresh") {
-        throw new Error(
-          `${endpoint.path} has no request schema and no documented reason`,
-        );
-      }
+    const recorded = "schema" in endpoint ? endpoint.schema : undefined;
+    if (!recorded && !UnrecordedRequestSchemas[endpoint.path]) {
+      throw new Error(
+        `${endpoint.path} has no request schema, in its record or in UnrecordedRequestSchemas`,
+      );
     }
   }
+});
+
+Deno.test("/refresh's documented body is the empty object the server needs", () => {
+  // `parseRequestJson` refuses a request with no body, so the contract has to
+  // ask for `{}` — not for nothing.
+  const schema = UnrecordedRequestSchemas["/refresh"];
+  assertExists(schema);
+  assertEquals(schema.safeParse({}).success, true);
 });
 
 Deno.test("the OpenAPI document covers exactly the endpoint table", () => {

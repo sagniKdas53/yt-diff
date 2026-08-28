@@ -7,7 +7,7 @@
  *     through `checkJs` by the frontend's typed client.
  *
  * Run via `deno task gen:api`. Both files are committed; the contract test
- * (`tests/api_contract.test.ts`) regenerates them in memory and fails if
+ * (`tests/api_codegen.test.ts`) regenerates them in memory and fails if
  * either would change, so they cannot drift from `endpoints.ts` silently.
  */
 

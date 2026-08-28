@@ -16,7 +16,7 @@ import {
  * association name reached the frontend as an undocumented field name.
  *
  * One schema per success body here, keyed by path. They are documentation
- * that can be checked: `tests/api_contract.test.ts` pins both generated
+ * that can be checked: `tests/api_codegen.test.ts` pins both generated
  * artifacts against this module, so a handler whose shape drifts from its
  * entry here is caught when the artifacts are regenerated.
  *
@@ -92,17 +92,41 @@ const BulkFilesResponseSchema = z.object({
 });
 
 /**
- * Request bodies for the three public endpoints.
+ * Request bodies for the endpoints whose record carries no schema.
  *
- * Their handlers read the raw request because they run before
- * authentication, so no schema sits in their endpoint record — but their
- * bodies are still part of the contract, so they are named here.
+ * The three public handlers read the raw request because they run before
+ * authentication, and `/refresh` reads only the verified identity — so no
+ * zod schema sits in any of their endpoint records. Their bodies are still
+ * part of the contract, so they are named here.
+ *
+ * `/refresh` takes an empty object rather than nothing at all: the server's
+ * `parseRequestJson` refuses a request with no body before the handler runs,
+ * so a client that posted literally nothing would get a 400. Describing it as
+ * bodyless was the one place the generated contract disagreed with the
+ * running server, and it typed the correct call — `post("/refresh", {})` —
+ * as the error.
  */
-export const PublicRequestSchemas: Record<string, z.ZodType | undefined> = {
+export const UnrecordedRequestSchemas: Record<string, z.ZodType | undefined> = {
   "/login": UserAuthSchema,
   "/register": UserAuthSchema,
   "/isregallowed": IsRegistrationAllowedSchema,
+  "/refresh": z.object({}),
 };
+
+/**
+ * The request schema for one endpoint, wherever it is declared.
+ *
+ * Most endpoints carry theirs in the record, because the router applies it
+ * before the handler. The rest are in `UnrecordedRequestSchemas`. Both
+ * generators resolve through here so the OpenAPI document and the frontend
+ * typedefs cannot disagree about which routes take a body.
+ */
+function requestSchemaFor(
+  endpoint: typeof API_ENDPOINTS[number],
+): z.ZodType | undefined {
+  const recorded = "schema" in endpoint ? endpoint.schema : undefined;
+  return recorded ?? UnrecordedRequestSchemas[endpoint.path];
+}
 
 export const ResponseSchemas: Record<string, z.ZodType> = {
   "/list": z.object({
@@ -238,9 +262,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
   const paths: Record<string, unknown> = {};
 
   for (const endpoint of API_ENDPOINTS) {
-    const requestSchema = endpoint.kind === "authenticated"
-      ? endpoint.schema
-      : PublicRequestSchemas[endpoint.path];
+    const requestSchema = requestSchemaFor(endpoint);
     const responseSchema = ResponseSchemas[endpoint.path];
 
     const operation: Record<string, unknown> = {
@@ -455,9 +477,7 @@ export function emitFrontendTypes(): string {
 
   for (const endpoint of API_ENDPOINTS) {
     const stem = typeNameStem(endpoint.path);
-    const requestSchema = endpoint.kind === "authenticated"
-      ? endpoint.schema
-      : PublicRequestSchemas[endpoint.path];
+    const requestSchema = requestSchemaFor(endpoint);
     const responseSchema = ResponseSchemas[endpoint.path];
 
     if (requestSchema) {
@@ -471,17 +491,19 @@ export function emitFrontendTypes(): string {
   const routes = API_ENDPOINTS.map((endpoint) =>
     routeTypedef(
       endpoint.path,
-      Boolean(
-        endpoint.kind === "authenticated"
-          ? endpoint.schema
-          : PublicRequestSchemas[endpoint.path],
-      ),
+      Boolean(requestSchemaFor(endpoint)),
       Boolean(ResponseSchemas[endpoint.path]),
     )
   );
 
-  const union = API_ENDPOINTS.map((e) => `${typeNameStem(e.path)}Route`)
-    .join("\n * | ");
+  // The union has to start on the same line as `@typedef {`. TypeScript does
+  // not parse a JSDoc type expression that begins on a later line — it takes
+  // the typedef as `any` and says nothing, which is what `ApiRoute` silently
+  // was: every `post()` accepted every path and returned `any`, so none of
+  // this typed anything. Continuation lines are fine; only the first matters.
+  const routeNames = API_ENDPOINTS.map((e) => `${typeNameStem(e.path)}Route`);
+  const union = routeNames[0] +
+    routeNames.slice(1).map((name) => `\n *   | ${name}`).join("");
 
   // The trailing export marks this as an ES module, which is what lets
   // `import("./generated/apiTypes.js")` type expressions resolve under
@@ -490,9 +512,11 @@ export function emitFrontendTypes(): string {
     blocks.join("\n\n") +
     "\n\n" +
     routes.join("\n") +
-    `\n\n/** @typedef {
- * | ${union}
- * } ApiRoute */
+    `\n\n/**
+ * Every route, as a discriminated union on \`path\`.
+ *
+ * @typedef {${union}} ApiRoute
+ */
 
 export {};
 `;
