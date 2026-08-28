@@ -702,13 +702,29 @@ rules to analyze for the first time, which surfaced pre-existing
 setState-in-effect patterns; two were genuinely derivable and removed, the
 other two carry justifications inline.
 
-**One file over the bar is still over it.** `src/bot/core.ts` is 1,351 lines
-and was 1,351 lines when this finding was written — it predates the audit by
-three weeks and was simply not in the table above, so closing the five rows
-that were does not make the heading literally true. It is a separate piece of
-work with a separate shape (the bot is one command surface, not a factory
-holding closure state), and nothing in this audit's fix order depends on it.
-Tracked here rather than reopened as its own finding.
+**The sixth file, added after the fact.** `src/bot/core.ts` was 1,351 lines and
+had been since three weeks before this audit was written — it was simply not in
+the table above, so the five rows that were did not make the heading true. It
+is now 141, and the table row is:
+
+| File | Was | Now | What happened |
+| :--- | ---: | ---: | :--- |
+| `src/bot/core.ts` | 1,351 | 141 | The same shape as `listing.ts` and the same treatment. `createBotCore` held thirty-three nested functions over two in-flight maps — `pending` and `listings` — that the command handlers, the delivery path, the watchdog timers and the six bus subscriptions all reached by capture. The maps are a `BotRuntime` passed explicitly now, and the handlers moved beside the thing they do: [`replies.ts`](../src/bot/replies.ts), [`deliver.ts`](../src/bot/deliver.ts), [`submissions.ts`](../src/bot/submissions.ts), [`indexing.ts`](../src/bot/indexing.ts), [`queries.ts`](../src/bot/queries.ts) and [`subscriptions.ts`](../src/bot/subscriptions.ts). What is left in `core.ts` is the wiring and the command routing. Largest bot module is now 317. |
+
+Unlike the listing pipeline's sort-order counter, none of this state could be
+moved into the database and deleted: it is in-flight request state with live
+timers and adapter handles attached. Making it explicit was the whole of the
+available win, and it was enough — the handlers no longer share a scope, only a
+value they are handed, so each is callable from a test.
+
+One thing genuinely got harder, and is worth recording because it is the trap in
+this shape of refactor: `events.off` removes a listener **by function
+identity**. Handlers that take the runtime as a parameter have to be bound once
+and kept, or unsubscribing silently leaves every listener attached and the bot
+answers events after it has been told to stop. Nothing type-checks that, and no
+existing test covered it. `createSubscriptions` binds them once — the only
+closure left in the bot, holding nothing but those six identities — and
+`tests/bot_runtime.test.ts` asserts the listener counts fall back to zero.
 
 ---
 
