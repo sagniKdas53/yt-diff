@@ -29,6 +29,7 @@
         "fmt": "deno fmt index.ts src/ tests/ scripts/",
         "fmt:check": "deno fmt --check index.ts src/ tests/ scripts/",
         "ship": "deno check index.ts src/ tests/ scripts/ && deno lint index.ts src/ tests/ scripts/ && deno fmt index.ts src/ tests/ scripts/",
-        "test:unit": "deno test --allow-read --allow-write --allow-env tests/"
+        "test:unit": "deno test --allow-read --allow-write --allow-env tests/",
+        "gen:api": "deno run --allow-read --allow-write --allow-env scripts/gen_openapi.ts"
     }
 }

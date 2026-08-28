@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "std/assert/mod.ts";
-import { persistStreamingChunk } from "../src/handlers/pipeline/listing.ts";
+import { persistStreamingChunk } from "../src/handlers/pipeline/ingest-chunk.ts";
 import {
   PlaylistVideoMapping,
   sequelize,

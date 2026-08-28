@@ -102,7 +102,6 @@ export interface ListingItem {
   isScheduledUpdate?: boolean;
 }
 
-export type ResetPendingPlaylistSortCounter = () => void;
 export type ListItemsConcurrently = (
   items: ListingItem[],
   chunkSize: number,
@@ -113,6 +112,5 @@ export type SafeEmit = (event: string, payload: unknown) => void;
 
 export interface PlaylistHandlerDependencies {
   listItemsConcurrently: ListItemsConcurrently;
-  resetPendingPlaylistSortCounter: ResetPendingPlaylistSortCounter;
   safeEmit: SafeEmit;
 }

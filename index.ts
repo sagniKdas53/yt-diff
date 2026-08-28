@@ -416,7 +416,6 @@ const {
   processListingRequest,
   resolveAndEnqueue,
   getQueueSnapshot,
-  resetPendingPlaylistSortCounter,
   getListingQueueDepth,
 } = createPipelineHandlers({
   safeEmit,
@@ -491,7 +490,6 @@ const {
   getSubListVideos,
 } = createPlaylistHandlers({
   listItemsConcurrently,
-  resetPendingPlaylistSortCounter,
   safeEmit,
 });
 /**

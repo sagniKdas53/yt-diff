@@ -24,8 +24,7 @@ import { json } from "../../utils/http.ts";
 import { removeVideoFiles } from "../videoFiles.ts";
 
 export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
-  const { listItemsConcurrently, resetPendingPlaylistSortCounter, safeEmit } =
-    deps;
+  const { listItemsConcurrently, safeEmit } = deps;
 
   async function updatePlaylistMonitoring(
     requestBody: UpdatePlaylistMonitoringRequest,
@@ -144,9 +143,6 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             },
           );
 
-          // Force the next addPlaylist call to re-read the tail sortOrder from DB
-          // after deletions reshuffle the playlist ordering.
-          resetPendingPlaylistSortCounter();
           logger.debug(
             "Updated sortOrder for playlists after deleted playlist",
             {

@@ -52,6 +52,12 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
+        # The contract test compares the generated frontend typedefs against
+        # the committed ones, which live across the submodule boundary. It
+        # skips gracefully when the tree is absent, but checking it out is
+        # what makes the pin real here.
+        with:
+          submodules: true
 
       - name: Set up Deno
         uses: denoland/setup-deno@v2
@@ -104,6 +110,14 @@ jobs:
       - name: Lint
         working-directory: frontend
         run: npm run lint
+
+      # checkJs over the API boundary: the generated contract types in
+      # src/api/generated are what make `post("/getsub", …)` typed at every
+      # call site. Regenerated artifacts are pinned by the backend suite
+      # (tests/api_codegen.test.ts), so this only needs to consume them.
+      - name: Typecheck API boundary
+        working-directory: frontend
+        run: npm run typecheck
 
       # Runs whichever way lint went -- same reason as Static Checks -- but not
       # when the install itself failed, where there is nothing to test.
