@@ -19,6 +19,12 @@ interface StaticAssetDependencies {
   htmlMimeType: string;
 }
 
+/** Everything up to the first `?`, which is the part the asset table is keyed on. */
+function stripQuery(url: string): string {
+  const at = url.indexOf("?");
+  return at === -1 ? url : url.slice(0, at);
+}
+
 export function serveStaticAsset(
   req: HttpRequestLike,
   res: HttpResponseLike,
@@ -32,7 +38,15 @@ export function serveStaticAsset(
     return false;
   }
 
-  const assetPath = req.url;
+  // `req.url` is pathname + search (see `DenoRequestAdapter`), but the asset
+  // table is keyed on pathname alone, so a query string used to turn a real
+  // asset into a 404: `/ytdiff/?utm_source=x` missed the `/ytdiff/` key and
+  // the app failed to load from any link carrying a tracking parameter. No
+  // static asset here is identified by its query, so the lookup drops it.
+  //
+  // This is also what a fragment-routed deep link relies on — the fragment
+  // never reaches the server, but anything else pasted alongside it does.
+  const assetPath = stripQuery(req.url);
   const reqEncoding = req.headers["accept-encoding"] || "";
 
   if (!assetPath || !Object.hasOwn(staticAssets, assetPath)) {

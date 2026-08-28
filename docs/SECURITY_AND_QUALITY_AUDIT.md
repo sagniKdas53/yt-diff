@@ -60,7 +60,7 @@ records what each step actually shipped.
 | F2 | No error boundary behind five lazy routes | High | **Fixed** |
 | F3 | The socket is never closed on the client | High | **Fixed** |
 | F4 | `App.jsx` still owns the socket layer | Medium | **Fixed** |
-| F5 | No routing: no deep links, no Back button | Medium | Open |
+| F5 | No routing: no deep links, no Back button | Medium | **Fixed** |
 | F6 | No TypeScript, no generated API types | Medium | **Fixed** — was ranked with Q6 |
 | F7 | 31-day tokens in `localStorage`, never renewed | Medium | **Fixed** — with S4–S9 |
 | F8 | `"null"` as a `localStorage` sentinel | Low | **Fixed** |
@@ -838,18 +838,86 @@ the concrete payoff of that upgrade rather than a reason to do it.
 
 ### F5 — No routing: no deep links, no working Back button
 
-**Medium · Verified · Open**
+**Medium · Verified · Fixed**
 
-`App.jsx:1007` is the whole navigation model:
-`{token === null ? renderAuth() : renderMain()}`. Which view is showing lives in
-component state; the URL never changes. `react-router` is not a dependency.
+`App.jsx` was the whole navigation model:
+`{token === null ? renderAuth() : renderMain()}`. Which view was showing lived
+in component state; the URL never changed. `react-router` was not a dependency.
 
 So: no link to a specific playlist, no bookmark, no reopening where you left
-off, and the browser Back button exits the app rather than navigating inside it.
-On mobile, where Back is the primary gesture, that is the visible cost.
+off, and the browser Back button exited the app rather than navigating inside
+it. On mobile, where Back is the primary gesture, that was the visible cost.
 
-**Fix.** Do it after `F4`. Adding routing to a component that also owns the
-socket layer is materially harder than adding it to one that has been split.
+**The finding overstated the remedy.** It reads as "adopt a router, redesign
+the two-panel UI", and the two-panel UI was never the obstacle. A URL does not
+have to describe a layout; it describes a *selection*. Master-detail is the
+most routable shape there is — the left panel is a list that persists across
+navigations, the right panel is the detail keyed off one parameter. The
+selection was already isolated in a single variable, `playListUrl`, so what
+was actually missing was somewhere to keep it other than `useState`.
+
+**Fixed** as `src/router/` in the frontend: a fragment-backed router in two
+files, and no new dependency.
+
+- **`routes.js` is the grammar**, as pure functions — `#/`, `#/unlisted`,
+  `#/playlist/<encoded url>`, and `?v=<encoded url>` for the player. It is
+  total: a rotted or hand-mangled link parses to the root rather than throwing,
+  and `parse(format(x))` round-trips for every route, including a playlist URL
+  carrying a `?list=` of its own.
+- **`RouterProvider.jsx` is the plumbing**, over `useSyncExternalStore` rather
+  than `useState` plus an effect. The address bar is precisely an external
+  store — React does not own it, and it changes without React's knowledge on
+  Back, Forward or a hand-edited URL — so that is the primitive that fits, and
+  it removes the render where the app and the address bar disagree.
+
+**The fragment, not the path.** `makeAssets` builds an exact-match asset table
+and `serveStaticAsset` 404s a miss; there is no history fallback, so a GET for
+`/ytdiff/playlist/x` is a hard 404 on the server. A fragment never reaches the
+server, so this needed no backend change, and there is no SEO stake in a
+self-hosted tool behind a login to pay for one.
+
+One backend change did come out of it, and it fixes a bug that predates the
+routing work: `req.url` is pathname **plus search**, but the asset table is
+keyed on pathname, so `/ytdiff/?utm_source=x` missed the `/ytdiff/` key and
+404'd. Any link to the app carrying a tracking parameter failed to load it at
+all. `serveStaticAsset` now drops the query before the lookup, which cannot
+widen what the table matches — no static asset here is identified by its query.
+
+Three things fell out of the change that are worth naming:
+
+- **Push versus replace is the whole of the Back experience.** A background
+  listing finishing and pulling the view to its playlist is not a place the
+  user asked to be, so `useSocketEvents` navigates with `replace` and leaves no
+  entry to press Back through. Everything a person clicks pushes. The player
+  is the same rule seen twice: opening it from closed pushes, so Back closes
+  it; moving between videos while it is open replaces, so Back stays "close the
+  player" rather than walking back through everything that was watched.
+- **The mobile slide now follows the route rather than the tap**, which is what
+  makes the browser's own Back gesture work: it arrives as an ordinary route
+  change and slides out exactly as the in-app arrow does. `mobileView` survives
+  only because an outgoing panel has to stay mounted for its animation.
+- **The `"init"` / `"None"` sentinels became locations.** They are `#/` and
+  `#/unlisted` in the URL, and the grammar normalises a hand-written
+  `#/playlist/None` back to the state it names, so there is no second spelling
+  for either.
+
+**What is deliberately not in the URL**: the search query, the sort, the page,
+`rowsPerPage`, and the row selection. Each one is another sync point and
+another way to get a state → URL → state loop, and the selection in particular
+is a download staging area rather than a location. They can be added one at a
+time if sharing a search ever turns out to matter.
+
+**A known limit, stated rather than hidden.** The player can only be opened
+from a row that is loaded, so a link to a video on a page that is not showing —
+or to one that was never downloaded — cannot be honoured. Rather than leave the
+address bar naming something the app is not showing, the `v` parameter is
+dropped once the rows have arrived and it is clear the video is not among them.
+Fixing that properly needs a lookup endpoint that can say which page a video is
+on, which is `Q6`-shaped work and not worth it until someone wants it.
+
+**`react-router` was considered and deliberately not adopted** — see the plan's
+step 12 for why, and `RouterProvider.jsx` for the three-step migration that
+keeps the option cheap.
 
 ### F6 — No TypeScript, no generated API types
 
@@ -1214,9 +1282,30 @@ tree, and nothing above them blocks either.
     finding is under the bar, the scratch scripts are gone, and the F10
     coverage floor came through as designed: coverage rose slightly across
     the move (65.7/48.9/56.6/67.4 against the 64/47/55/66 floor).
-12. **F5** — routing. After the `App.jsx` split in step 11, for the reason `F5`
-    gives: routing a component that also owns the socket layer is much harder
-    than routing one that does not.
+12. ~~**F5** — routing.~~ **Done**, as `src/router/` — a fragment-backed
+    router in two files (`routes.js` for the grammar, `RouterProvider.jsx` for
+    the plumbing) and no new dependency. The step-11 sequencing turned out to
+    matter less than expected: only the socket layer's push-versus-replace
+    decision touches `useSocketEvents` at all, and that is one word per call
+    site. What the split did buy was being able to make it in one place.
+
+    **`react-router` was considered and not adopted.** The app has two
+    destinations and one modal; a router earns its dependency at four or five,
+    and until then it is more moving parts than the problem has. The decision
+    is kept cheap to reverse instead of being argued about again: nothing
+    outside `src/router/` knows how navigation is implemented — consumers see a
+    `{playlistUrl, videoUrl}` object and a `navigate` function, never a
+    `location` or a `<Route>` — so adopting it later is a change to one file,
+    documented as three steps in `RouterProvider.jsx`, with `routes.js` and its
+    tests carrying over whole. `HashRouter` would keep the backend untouched;
+    only `BrowserRouter` would need the server to serve `index.html` for
+    unknown paths under its base.
+
+    Frontend suite 154 → 180, and coverage rose across the move
+    (72/55.4/62.3/73.3 against the old 69/51/59/70 floor, which has been
+    raised to match). One backend bug came out of it: a query string on the
+    app's own URL used to 404, because the static asset table is keyed on the
+    path but was looked up with the search string still attached.
 13. ~~**S2, S4–S9 and F7** — the security long tail, cheapest first.~~
     **Done for S4–S9 and F7**, taken together as one change because they are
     one exposure: the CSP closes the path a token is stolen through, and the
