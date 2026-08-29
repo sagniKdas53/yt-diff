@@ -37,6 +37,7 @@ export async function tryServeNativeFile(
   request: Request,
   metadata: SignedFileMetadata,
   generateCorsHeaders: (contentType: string) => Record<string, string | number>,
+  cacheMaxAge = 0,
 ): Promise<Response | null> {
   const { filePath, mimeType, inline } = metadata;
 
@@ -63,6 +64,18 @@ export async function tryServeNativeFile(
       `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
     );
     headers.set("Accept-Ranges", "bytes");
+
+    // `private`, never `public`: these are signed, per-user URLs, and a shared
+    // cache holding one is a cache holding someone's file.
+    //
+    // The lifetime is exactly the signed entry's remaining one.
+    // `getSignedFileMetadata` slides the entry's TTL to `cacheMaxAge` on the
+    // way in, so a copy cached for that long expires no later than the
+    // credential that authorised it — a cached thumbnail can never outlive its
+    // own signature. Zero means "not configured", and then nothing is cached.
+    if (cacheMaxAge > 0) {
+      headers.set("Cache-Control", `private, max-age=${cacheMaxAge}`);
+    }
 
     const rangeHeader = request.headers.get("range");
 

@@ -905,6 +905,9 @@ Deno.serve(
             // app's own.
             csp: SIGNED_FILE_CSP,
           }),
+        // The same lifetime the entry's TTL was just slid to, so a cached copy
+        // cannot outlive the signature that authorised it.
+        config.cache.maxAge,
       );
       if (nativeResponse) {
         return nativeResponse;

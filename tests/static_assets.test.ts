@@ -13,16 +13,25 @@ const INDEX = { file: "<!doctype html>", type: HTML };
 const assets = Object.assign(Object.create(null), {
   "/ytdiff/": INDEX,
   "/ytdiff/index.html": INDEX,
-  "/ytdiff/assets/app.js": { file: "console.log(1)", type: "text/javascript" },
+  "/ytdiff/assets/app-B_gefvJN.js": {
+    file: "console.log(1)",
+    type: "text/javascript",
+  },
+  "/ytdiff/favicon.ico": { file: "x", type: "image/x-icon" },
 });
 
-/** Records what the handler wrote, so a test can assert on the status alone. */
+/** Records what the handler wrote, so a test can assert on it afterwards. */
 function makeExchange(url: string, headers: Record<string, string> = {}) {
-  const written: { status?: number; body: string } = { body: "" };
+  const written: {
+    status?: number;
+    body: string;
+    headers: Record<string, string | number>;
+  } = { body: "", headers: {} };
   const req = { url, method: "GET", headers } as unknown as HttpRequestLike;
   const res = {
-    writeHead(status: number) {
+    writeHead(status: number, headers?: Record<string, string | number>) {
       written.status = status;
+      written.headers = headers ?? {};
       return this;
     },
     write(chunk: string | Uint8Array) {
@@ -45,7 +54,7 @@ const serve = (url: string, headers?: Record<string, string>) => {
 };
 
 Deno.test("static - serves an exact asset path", () => {
-  const { handled, written } = serve("/ytdiff/assets/app.js");
+  const { handled, written } = serve("/ytdiff/assets/app-B_gefvJN.js");
   assertEquals(handled, true);
   assertEquals(written.status, 200);
 });
@@ -84,4 +93,34 @@ Deno.test("static - a fragment-routed deep link loads the app", () => {
   const { handled, written } = serve("/ytdiff/");
   assertEquals(handled, true);
   assertEquals(written.status, 200);
+});
+
+Deno.test("static - a content-hashed asset is immutable for a year", () => {
+  // Vite writes the content hash into the name, so these bytes can never
+  // change under this URL; a deploy asks for a different name instead.
+  const { written } = serve("/ytdiff/assets/app-B_gefvJN.js");
+  assertEquals(
+    written.headers["Cache-Control"],
+    "public, max-age=31536000, immutable",
+  );
+});
+
+Deno.test("static - the entry document is always revalidated", () => {
+  // It is what names the hashed bundles. A stale one points at files that a
+  // deploy has already replaced, so it must never be reused without asking.
+  for (const url of ["/ytdiff/", "/ytdiff/index.html", "/ytdiff/favicon.ico"]) {
+    const { written } = serve(url);
+    assertEquals(written.headers["Cache-Control"], "no-cache", url);
+  }
+});
+
+Deno.test("static - the compressed variants carry the same policy", () => {
+  // The chosen encoding must not change how long the answer may be reused.
+  const { written } = serve("/ytdiff/assets/app-B_gefvJN.js", {
+    "accept-encoding": "br, gzip",
+  });
+  assertEquals(
+    written.headers["Cache-Control"],
+    "public, max-age=31536000, immutable",
+  );
 });
