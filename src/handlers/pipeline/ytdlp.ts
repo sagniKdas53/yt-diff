@@ -25,16 +25,117 @@ export interface YtDlpLaunchSpec {
   context?: Record<string, unknown>;
 }
 
+/** Stands in for anything that must not reach a log. */
+const REDACTED = "<redacted>";
+
 /**
- * Renders an argv the way a person would have to type it.
+ * Flags whose argument is a secret outright.
+ *
+ * `--netrc-cmd` is here because the command it names is usually a password
+ * manager invocation carrying its own arguments.
+ */
+const SECRET_VALUE_FLAGS = new Set([
+  "--username",
+  "--password",
+  "--twofactor",
+  "--video-password",
+  "--ap-username",
+  "--ap-password",
+  "--netrc-cmd",
+]);
+
+/** Flags whose argument is a URL that may carry `user:pass@` in front of it. */
+const CREDENTIALED_URL_FLAGS = new Set([
+  "--proxy",
+  "--geo-verification-proxy",
+]);
+
+/**
+ * Strips `user:pass@` from a URL, keeping everything that aids debugging.
+ *
+ * Deliberately a regex and not `new URL()`: a malformed proxy string is
+ * exactly the case you want the log line for, and throwing here would lose it.
+ */
+function redactUrlUserinfo(value: string): string {
+  return value.replace(
+    /^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/i,
+    `$1${REDACTED}@`,
+  );
+}
+
+/**
+ * Replaces credential arguments with a placeholder, leaving the rest intact.
+ *
+ * The point is to keep the log line diagnostic. Which flags were passed, in
+ * what order, against which URL and which proxy host — all of that is what the
+ * line is read for, and all of it survives. Only the values that authenticate
+ * are dropped.
+ *
+ * Both `--password x` and `--password=x` are handled. Only the first form is
+ * produced today, but the argv is assembled in three places and a log that
+ * leaks on a spelling nobody thought about is the failure mode being closed.
+ */
+export function redactSecretArgs(args: string[]): string[] {
+  const redacted: string[] = [];
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    const separator = arg.indexOf("=");
+    const flag = separator === -1 ? arg : arg.slice(0, separator);
+
+    if (SECRET_VALUE_FLAGS.has(flag)) {
+      if (separator !== -1) {
+        redacted.push(`${flag}=${REDACTED}`);
+        continue;
+      }
+      redacted.push(arg);
+      // A trailing flag with no value is malformed, not a leak; leave it.
+      if (index + 1 < args.length) {
+        redacted.push(REDACTED);
+        index++;
+      }
+      continue;
+    }
+
+    if (CREDENTIALED_URL_FLAGS.has(flag)) {
+      if (separator !== -1) {
+        redacted.push(`${flag}=${redactUrlUserinfo(arg.slice(separator + 1))}`);
+        continue;
+      }
+      redacted.push(arg);
+      if (index + 1 < args.length) {
+        redacted.push(redactUrlUserinfo(args[index + 1]));
+        index++;
+      }
+      continue;
+    }
+
+    redacted.push(arg);
+  }
+
+  return redacted;
+}
+
+/**
+ * Renders an argv the way a person would have to type it, minus the secrets.
  *
  * Only for logs. Arguments containing whitespace are quoted, which the
  * download path's own version did not do — so a save path with a space in it
  * used to log as a command that would not run if pasted.
+ *
+ * Credentials are removed on the way through. Every yt-dlp launch logs this
+ * string at debug level, and for iwara that argv carries `--username`,
+ * `--password` and a `--proxy` URL with its own `user:pass@` — so before this,
+ * two live passwords were written to the container log on every single listing
+ * and download, and travelled onward in any log anyone was asked to look at.
+ * The consequence is that the rendered line is no longer runnable as-is for
+ * those flags, which is the intended trade.
  */
 function renderCommand(args: string[]): string {
-  return ["yt-dlp", ...args.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg))]
-    .join(" ");
+  return [
+    "yt-dlp",
+    ...redactSecretArgs(args).map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)),
+  ].join(" ");
 }
 
 /**
