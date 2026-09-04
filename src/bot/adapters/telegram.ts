@@ -29,13 +29,29 @@ export function createTelegramAdapter(
     maxUploadBytes: options.maxUploadBytes,
 
     start(onMessage: (message: IncomingMessage) => Promise<void>) {
+      // grammy's polling loop awaits this handler before fetching the next
+      // batch of updates, so whatever `onMessage` is, it has to come back
+      // promptly: a handler that blocks does not merely delay one reply, it
+      // stops the bot reading Telegram at all. The bot service satisfies that
+      // by dispatching onto a worker pool (see bot/dispatcher.ts) — this
+      // adapter only has to not add waiting of its own.
       bot.on("message:text", async (ctx) => {
-        await onMessage({
-          platform: "telegram",
-          chatId: String(ctx.chat.id),
-          messageId: String(ctx.message.message_id),
-          text: ctx.message.text.trim(),
-        });
+        try {
+          await onMessage({
+            platform: "telegram",
+            chatId: String(ctx.chat.id),
+            messageId: String(ctx.message.message_id),
+            text: ctx.message.text.trim(),
+          });
+        } catch (error) {
+          // Reported here rather than thrown on: grammy's error boundary would
+          // catch it too, but a queueing failure is this adapter's problem and
+          // must not look like a failed update.
+          logger.error("Telegram message was not accepted", {
+            chatId: String(ctx.chat.id),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       });
 
       bot.catch((error) => {

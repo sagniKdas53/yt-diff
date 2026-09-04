@@ -182,7 +182,8 @@ configures it is unaffected. Full setup guide in [`BOT.md`](./BOT.md).
 | `BOT_RETENTION_HOURS` | `24` | Fractional allowed (`0.25` = 15 min). |
 | `BOT_REAP_INTERVAL` | `0 * * * *` | Reaper cron; ephemeral mode only. |
 | `BOT_TELEGRAM_MAX_UPLOAD` | `50000000` | Above this a link is sent instead of the file. |
-| `BOT_MAX_PENDING_PER_CHAT` | `5` | Backpressure per chat. |
+| `BOT_MAX_PENDING_PER_CHAT` | `20` | Downloads plus playlist listings one chat may have in flight. |
+| `BOT_MAX_CONCURRENT_MESSAGES` | `20` | Link submissions worked on at once. The rest queue in order; nothing is dropped, and questions like `/status` never queue. |
 | `BOT_LARGE_FILE_WARN` | `104857600` | Warn before downloading if the estimate exceeds 100 MB. |
 
 The bot **fails closed**: any misconfiguration (empty allowlist, missing token,
@@ -360,6 +361,7 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | `PRUNE_INTERVAL`   | `*/30 * * * *` | Cron expression for orphan video pruning      |
 | `CLEANUP_INTERVAL` | `*/10 * * * *` | Cron expression for stale process cleanup     |
 | `PROCESS_MAX_AGE`  | `300000`       | Max process age in ms before cleanup kills it |
+| `TITLE_PROBE_TIMEOUT` | `60000`     | Deadline in ms for the yt-dlp probe that reads a new playlist's title |
 | `TZ_PREFERRED`     | `Asia/Kolkata` | Timezone for cron job scheduling              |
 
 ### Authentication

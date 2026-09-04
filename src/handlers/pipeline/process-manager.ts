@@ -98,10 +98,14 @@ export function cleanupStaleProcesses(
       continue;
     }
 
-    if (
-      status === "running" &&
-      (idleTime > maxIdleTime || age > maxLifetime || isErrorOnly)
-    ) {
+    // Every status that is not terminal is checked, not just "running". An
+    // entry sits at "pending" from the moment a listing takes a slot until
+    // yt-dlp is spawned, and "errored" is never reaped anywhere else — so a
+    // run that wedged before spawning used to be invisible here forever. That
+    // is what happened on 2026-09-04: the entry read `status: "pending",
+    // spawnedProcess: null` while its untracked title probe held the listing
+    // semaphore, and two cleanup runs walked straight past it.
+    if (idleTime > maxIdleTime || age > maxLifetime || isErrorOnly) {
       const isActivelyProducingData = lastStdoutActivity &&
         (now - lastStdoutActivity < maxIdleTime);
       if (
@@ -150,9 +154,9 @@ export function cleanupStaleProcesses(
 /**
  * The statuses `cleanupStaleProcesses` branches on.
  *
- * "errored" is not one of them — it reads as terminal but is not reaped, so
- * an entry left in it lingers until the idle timeout. Named here rather than
- * left as loose strings so that stays visible.
+ * Only "completed" and "failed" are terminal, and only those are reaped on
+ * sight. Everything else — including "errored", which reads terminal but is
+ * not — is reaped on the idle and lifetime clocks like any live entry.
  */
 export type ProcessStatus =
   | "queued"

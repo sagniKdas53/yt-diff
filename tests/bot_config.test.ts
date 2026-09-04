@@ -133,7 +133,8 @@ Deno.test("botConfig - applies documented defaults", () => {
   assertEquals(bot.retentionHours, 24);
   assertEquals(bot.reapInterval, "0 * * * *");
   assertEquals(bot.telegramMaxUpload, 50000000);
-  assertEquals(bot.maxPendingPerChat, 5);
+  assertEquals(bot.maxPendingPerChat, 20);
+  assertEquals(bot.maxConcurrentMessages, 20);
 });
 
 Deno.test("botConfig - retention hours of 0 is honoured, not defaulted", () => {
