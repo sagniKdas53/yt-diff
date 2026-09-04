@@ -129,6 +129,13 @@ export interface VideoEntryRecord extends VideoEntrySnapshot {
 export interface StreamedItemData extends Record<string, unknown> {
   webpage_url?: string;
   url?: string;
+  /**
+   * The item's 1-based position in the playlist, as the source reports it.
+   *
+   * yt-dlp emits this on every `--dump-json` line and it counts the items it
+   * skipped, which is the whole reason it is read: emission order does not.
+   */
+  playlist_index?: number;
   thumbnail?: string | null;
   title?: string;
   id?: string;

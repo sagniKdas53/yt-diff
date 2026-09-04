@@ -450,5 +450,10 @@ export function toYtDlpJsonString(item: YouTubeApiItem): string {
     title: item.title,
     thumbnail: item.thumbnail,
     filesize_approx: "NA",
+    // The API reports a 0-based position and this path keeps private entries
+    // as placeholders, so emission order happens to match — but it matches by
+    // luck. Reporting the position makes it match by construction, on the same
+    // field the yt-dlp path uses.
+    playlist_index: item.position + 1,
   });
 }
