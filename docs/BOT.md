@@ -301,6 +301,36 @@ an unthrottled progress bar gets the bot temporarily banned.
 
 ---
 
+## 6.1 How many at once
+
+Send as many links as you like. Messages are accepted the moment they arrive and
+handled off the polling loop, so nothing you send has to wait for whatever came
+before it to finish.
+
+Two limits shape what happens next:
+
+| Limit | Default | What it bounds |
+| :-- | :-- | :-- |
+| `BOT_MAX_CONCURRENT_MESSAGES` | 20 | Link submissions worked on at once. Extras queue in the order they were sent — none are dropped. |
+| `BOT_MAX_PENDING_PER_CHAT` | 20 | Downloads plus playlist listings one chat may have in flight. Past this the reply is *"You already have the maximum number of requests in flight"*. |
+
+Questions — `/status`, `/list`, `/search`, `/history`, `/help` — are answered
+straight away and never queue behind downloads, because they are a database read
+and a reply.
+
+Note that `MAX_LISTINGS` and `MAX_DOWNLOADS` (both 1 by default) still decide how
+much yt-dlp runs at once. Twenty accepted submissions are twenty acknowledgements
+and a queue, not twenty parallel downloads; the ack says how many are ahead.
+
+> [!NOTE]
+> Before 2026-09-04 a single slow submission stopped the bot reading Telegram at
+> all — grammy awaits each update's handler before fetching the next batch, and a
+> playlist probe that wedged inside yt-dlp took the whole bot down with it for an
+> hour. See
+> [`RCA_PLAYLIST_INDEXING_DEADLOCK.md`](./RCA_PLAYLIST_INDEXING_DEADLOCK.md).
+
+---
+
 ## 7. Cookies, proxy and auth
 
 The bot inherits everything from `buildSiteArgs` — the same code path the web UI
@@ -335,4 +365,4 @@ If a link works in the web UI it works in the bot, and vice versa.
   [`TODO.md`](./TODO.md) item 23.
 
 ---
-*Last updated at: 2026-08-20*
+*Last updated at: 2026-09-04*

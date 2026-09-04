@@ -120,7 +120,8 @@ export function resolveBotConfig(
     retentionHours,
     reapInterval,
     telegramMaxUpload: +(getEnv("BOT_TELEGRAM_MAX_UPLOAD") || 50000000),
-    maxPendingPerChat: +(getEnv("BOT_MAX_PENDING_PER_CHAT") || 5),
+    maxPendingPerChat: +(getEnv("BOT_MAX_PENDING_PER_CHAT") || 20),
+    maxConcurrentMessages: +(getEnv("BOT_MAX_CONCURRENT_MESSAGES") || 20),
     largeFileWarnBytes: +(getEnv("BOT_LARGE_FILE_WARN") || 104857600),
     _configError: configError,
   };
@@ -259,6 +260,12 @@ export interface AppConfig {
     cleanUpInterval: string;
     maxIdle: number;
     maxLifetime: number;
+    /**
+     * Deadline for one playlist-title probe. Short on purpose: the probe asks
+     * for a single string, and a probe that outlives this is holding the one
+     * listing slot for nothing.
+     */
+    titleProbeTimeout: number;
   };
   registration: {
     allowed: boolean;
@@ -316,6 +323,11 @@ export interface AppConfig {
     reapInterval: string;
     telegramMaxUpload: number;
     maxPendingPerChat: number;
+    /**
+     * How many chat messages the bot works on at once. The rest queue; none
+     * are dropped, and none of them hold up the platform's update loop.
+     */
+    maxConcurrentMessages: number;
     /** Warn in chat when a queued item's size estimate exceeds this. */
     largeFileWarnBytes: number;
     /** Why the bot refused to enable itself; logged once during bootstrap. */
@@ -395,6 +407,7 @@ export const config: AppConfig = {
     cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *",
     maxIdle: +(Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000),
     maxLifetime: +(Deno.env.get("PROCESS_MAX_LIFETIME") || 15 * 60 * 1000),
+    titleProbeTimeout: +(Deno.env.get("TITLE_PROBE_TIMEOUT") || 60 * 1000),
   },
   registration: {
     allowed: Deno.env.get("ALLOW_REGISTRATION") !== "false",

@@ -33,6 +33,7 @@ import {
 } from "./src/handlers/pipeline/dedup.ts";
 import { createJobs, startJobs } from "./src/jobs/index.ts";
 import { logger } from "./src/logger.ts";
+import { streamLines, streamTextChunks } from "./src/utils/streams.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
@@ -203,48 +204,6 @@ function spawnPythonProcess(args: string[]): ManagedProcess {
       }
     },
   };
-}
-
-async function* streamTextChunks(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (value) {
-        yield decoder.decode(value, { stream: true });
-      }
-    }
-    const trailing = decoder.decode();
-    if (trailing) {
-      yield trailing;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-async function* streamLines(stream: ReadableStream<Uint8Array>) {
-  let buffered = "";
-  for await (const chunk of streamTextChunks(stream)) {
-    buffered += chunk;
-    let newlineIndex = buffered.indexOf("\n");
-    while (newlineIndex !== -1) {
-      const line = buffered.slice(0, newlineIndex).replace(/\r$/, "");
-      buffered = buffered.slice(newlineIndex + 1);
-      yield line;
-      newlineIndex = buffered.indexOf("\n");
-    }
-  }
-
-  const trailing = buffered.trim();
-  if (trailing.length > 0) {
-    yield trailing;
-  }
 }
 
 // Retained so bootstrap can wait for the schema (and the BotSubmission table)

@@ -27,9 +27,15 @@ The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSO
 
 - **Suggested Improvement**: Periodically review whether `raw_metadata` is actively utilized. If not, consider extracting only specific metadata keys explicitly rather than a catch-all JSON dump, or offload this archival data to file-based cache.
 
+### 4. Playlist Indexing Pipe Buffer Deadlock (resolved)
+
+Probing playlist titles via `addPlaylist` (`playlist-records.ts`) read only the first stdout line and awaited `.status` without draining or killing the `yt-dlp` subprocess. When subsequent videos outputted additional JSON metadata, the Linux 64 KB pipe buffer saturated and deadlocked the process, freezing both `ListingSemaphore` and Telegram polling. See [`RCA_PLAYLIST_INDEXING_DEADLOCK.md`](./RCA_PLAYLIST_INDEXING_DEADLOCK.md) for full root cause analysis, empirical reproduction, and suggested remediation.
+
+- **Resolved on 2026-09-04**: `streamTextChunks` now cancels its reader when a consumer stops early (`src/utils/streams.ts`), the title probe kills itself and enforces a `TITLE_PROBE_TIMEOUT` deadline, bot messages are handled off the polling loop by `src/bot/dispatcher.ts`, and `cleanupStaleProcesses` reaps every non-terminal status rather than only `"running"`. See section 6 of the RCA.
+
 ---
 
-### 4. Rate Limiting Defaults to Off When Unset (resolved)
+### 5. Rate Limiting Defaults to Off When Unset (resolved)
 
 Rate limiting used to default to off. `config.cache.reqPerIP` was built as
 `parseInt(Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0", 10)` and
@@ -74,7 +80,7 @@ full variable list and weights.
 
 ---
 
-### 5. Root `package.json` Removed (resolved)
+### 6. Root `package.json` Removed (resolved)
 
 The repository root used to carry a `package.json` containing literally `{}`
 plus an empty `package-lock.json`, while `deno.json` held the real dependency

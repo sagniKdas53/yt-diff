@@ -2,8 +2,10 @@ import { config } from "../config.ts";
 import type { AppEventBus } from "../events.ts";
 import { logger } from "../logger.ts";
 import { createTelegramAdapter } from "./adapters/telegram.ts";
+import { parseCommand } from "./commands.ts";
 import { type BotCoreDependencies, createBotCore } from "./core.ts";
 import { createDelivery } from "./delivery.ts";
+import { createMessageDispatcher } from "./dispatcher.ts";
 import { type BotStore, createSequelizeBotStore } from "./store.ts";
 import type { BotAdapter } from "./types.ts";
 
@@ -30,6 +32,15 @@ export interface BotService {
   start(): Promise<void>;
   stop(): Promise<void>;
 }
+
+/**
+ * Commands that end in a yt-dlp process, and so have to queue for a slot.
+ *
+ * A bare link parses as `get`, which is how most submissions arrive. Every
+ * other command is a database read and a reply — see the dispatcher's two
+ * lanes for why the difference is worth naming.
+ */
+const SLOW_COMMANDS = new Set(["get", "link", "download", "index"]);
 
 /**
  * Builds the chat bot, or a no-op service when it is disabled.
@@ -94,6 +105,15 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     largeFileWarnBytes: config.bot.largeFileWarnBytes,
   });
 
+  // Handlers run here rather than inside the adapter's update loop, so a
+  // message that takes minutes — a playlist index, a large download — never
+  // stops the next one from being read. See dispatcher.ts.
+  const dispatcher = createMessageDispatcher({
+    concurrency: config.bot.maxConcurrentMessages,
+    handle: core.handleMessage,
+    isSlow: (message) => SLOW_COMMANDS.has(parseCommand(message.text).kind),
+  });
+
   let started = false;
 
   return {
@@ -106,7 +126,7 @@ export function createBotService(deps: BotServiceDependencies): BotService {
 
       for (const adapter of adapters) {
         try {
-          await adapter.start(core.handleMessage);
+          await adapter.start(dispatcher.dispatch);
         } catch (error) {
           logger.error("Failed to start a bot adapter", {
             platform: adapter.platform,
@@ -118,6 +138,8 @@ export function createBotService(deps: BotServiceDependencies): BotService {
       logger.info("Chat bot started", {
         platforms: adapters.map((a) => a.platform).join(","),
         allowedChats: config.bot.allowedChatIds.length,
+        concurrentMessages: config.bot.maxConcurrentMessages,
+        maxPendingPerChat: config.bot.maxPendingPerChat,
         retention: config.bot.retentionMode,
         // Logged because a link to an unreachable origin looks fine in chat and
         // only fails on the device that taps it.
@@ -145,6 +167,16 @@ export function createBotService(deps: BotServiceDependencies): BotService {
           });
         }
       }
+
+      // Adapters are down, so nothing new arrives; this is only the backlog
+      // finishing. Bounded by the caller's shutdown failsafe, not by hope.
+      if (dispatcher.inFlight > 0 || dispatcher.queueDepth > 0) {
+        logger.info("Waiting for in-flight chat messages", {
+          inFlight: dispatcher.inFlight,
+          queued: dispatcher.queueDepth,
+        });
+      }
+      await dispatcher.drain();
     },
   };
 }

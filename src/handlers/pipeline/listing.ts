@@ -280,6 +280,10 @@ export async function executeListing(
           ["Refresh", "Full"].includes(currentMonitoringType)
             ? "N/A"
             : currentMonitoringType,
+          // So the title probe is tracked against this listing's entry rather
+          // than running untracked, which is how a wedged one stayed
+          // invisible to the cleanup job.
+          processKey,
         );
         playlistTitle = newPlaylist.title;
         seekPlaylistListTo = newPlaylist.sortOrder;
