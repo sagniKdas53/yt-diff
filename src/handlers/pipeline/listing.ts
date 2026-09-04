@@ -21,6 +21,7 @@ import { ProcessExitCodes } from "./types.ts";
 import { isSiteXDotCom, normalizeUrl } from "../../utils/url.ts";
 import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
 import { chunkPlaylistLines, type PlaylistChunk } from "./chunks.ts";
+import { createSingleFlight, type SingleFlight } from "./singleflight.ts";
 import { createYtDlpLauncher, type YtDlpLauncher } from "./ytdlp.ts";
 import { fetchPlaylistItemsChunked } from "../youtube-api.ts";
 import { processStreamingVideoInformation } from "./ingest-chunk.ts";
@@ -44,6 +45,12 @@ export interface ListingRuntime {
   streamTextChunks: PipelineHandlerDependencies["streamTextChunks"];
   listProcesses: Map<string, ListingProcessEntry>;
   semaphore: Semaphore;
+  /**
+   * One run per URL and intent. A listing is only registered in
+   * `listProcesses` after it takes a semaphore slot, so without this a queued
+   * listing is invisible and the same URL can be queued repeatedly.
+   */
+  inFlight: SingleFlight<ListingResult>;
   updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
   setProcessStatus: (
     processKey: string,
@@ -85,6 +92,7 @@ export function createListingRuntime(
     streamTextChunks,
     listProcesses,
     semaphore: new Semaphore(config.queue.maxListings, "ListingSemaphore"),
+    inFlight: createSingleFlight<ListingResult>(),
     updateProcessActivity: processManager.updateProcessActivity,
     setProcessStatus: processManager.setProcessStatus,
   };
@@ -116,9 +124,7 @@ export async function listItemsConcurrently(
   rt.semaphore.setMaxConcurrent(config.queue.maxListings);
 
   const listingResults = await Promise.all(
-    items.map((item) =>
-      listWithSemaphore(rt, item, chunkSize, isScheduledUpdate)
-    ),
+    items.map((item) => listOnce(rt, item, chunkSize, isScheduledUpdate)),
   );
 
   try {
@@ -141,6 +147,45 @@ export async function listItemsConcurrently(
   }
 
   return listingResults;
+}
+
+/**
+ * What counts as "the same listing" for the purpose of joining one.
+ *
+ * The URL alone is not enough: `/index <url> Start` and a bare submission of
+ * the same URL ask for different things, and collapsing them would hand the
+ * second caller a result computed under the first one's watch mode. Requests
+ * that agree on all three fields are genuinely the same request, which is the
+ * case that was being queued twice.
+ */
+function listingKey(item: ListingItem, isScheduledUpdate: boolean): string {
+  return JSON.stringify([
+    item.url,
+    item.currentMonitoringType,
+    item.isScheduledUpdate === true || isScheduledUpdate,
+  ]);
+}
+
+/** Starts a listing, or joins the one already running or queued for it. */
+function listOnce(
+  rt: ListingRuntime,
+  item: ListingItem,
+  chunkSize: number,
+  isScheduledUpdate: boolean,
+): Promise<ListingResult> {
+  const key = listingKey(item, isScheduledUpdate);
+
+  if (rt.inFlight.has(key)) {
+    logger.info("Listing already under way for this URL, joining it", {
+      url: item.url,
+      monitoringType: item.currentMonitoringType,
+    });
+  }
+
+  return rt.inFlight.run(
+    key,
+    () => listWithSemaphore(rt, item, chunkSize, isScheduledUpdate),
+  );
 }
 
 async function listWithSemaphore(

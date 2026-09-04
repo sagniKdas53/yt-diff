@@ -1,5 +1,8 @@
 import { assert, assertEquals } from "std/assert/mod.ts";
-import { persistStreamingChunk } from "../src/handlers/pipeline/ingest-chunk.ts";
+import {
+  persistStreamingChunk,
+  processStreamingVideoInformation,
+} from "../src/handlers/pipeline/ingest-chunk.ts";
 import {
   PlaylistVideoMapping,
   sequelize,
@@ -224,5 +227,148 @@ Deno.test("persistStreamingChunk - an empty chunk opens no transaction", async (
     assertEquals(stub.calls.length, 0);
   } finally {
     stub.restore();
+  }
+});
+
+/**
+ * Positions come from the source, not from counting what arrived.
+ *
+ * yt-dlp skips items it cannot extract — private, deleted, age-gated — and
+ * says so on stderr while stdout carries on. On
+ * `iwara.tv/profile/muta81/videos` on 2026-09-04 the first five uploads were
+ * private, so the sixth video was written at position 1, and by the eighth
+ * chunk the offset had grown to 38. These drive the real shape of that data.
+ */
+
+/** Stubs the two reads `processStreamingVideoInformation` makes. */
+function installReads(): { restore: () => void } {
+  // deno-lint-ignore no-explicit-any
+  (VideoMetadata as any).findAll = () => Promise.resolve([]);
+  // deno-lint-ignore no-explicit-any
+  (PlaylistVideoMapping as any).findAll = () => Promise.resolve([]);
+  return {
+    restore: () => {
+      // deno-lint-ignore no-explicit-any
+      delete (VideoMetadata as any).findAll;
+      // deno-lint-ignore no-explicit-any
+      delete (PlaylistVideoMapping as any).findAll;
+    },
+  };
+}
+
+/** One yt-dlp `--dump-json` line, with or without the reported position. */
+function line(id: string, playlistIndex?: number): string {
+  return JSON.stringify({
+    webpage_url: `https://iwara.tv/video/${id}`,
+    id,
+    title: `video ${id}`,
+    filesize_approx: "NA",
+    ...(playlistIndex === undefined ? {} : { playlist_index: playlistIndex }),
+  });
+}
+
+function positionsWritten(calls: Call[]): number[] {
+  return calls
+    .filter((call) => call.model === "PlaylistVideoMapping")
+    .flatMap((call) => call.rows)
+    .map((row) => row.positionInPlaylist as number);
+}
+
+Deno.test("processStreamingVideoInformation - skipped items do not shift the ones after them", async () => {
+  // The muta81 first chunk exactly: five private uploads skipped, so the ten
+  // lines that arrive are playlist positions 6-15 while the chunk still
+  // believes it starts at 1.
+  const reads = installReads();
+  const { calls, restore } = install();
+  try {
+    await processStreamingVideoInformation(
+      Array.from({ length: 10 }, (_v, i) => line(`v${i}`, i + 6)),
+      "https://www.iwara.tv/profile/muta81/videos",
+      1,
+      false,
+    );
+
+    assertEquals(positionsWritten(calls), [6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  } finally {
+    restore();
+    reads.restore();
+  }
+});
+
+Deno.test("processStreamingVideoInformation - the drift does not accumulate down the playlist", async () => {
+  // Eighth chunk, offset grown to 38: counting would store 71-80.
+  const reads = installReads();
+  const { calls, restore } = install();
+  try {
+    await processStreamingVideoInformation(
+      Array.from({ length: 10 }, (_v, i) => line(`v${i}`, i + 109)),
+      "https://www.iwara.tv/profile/muta81/videos",
+      71,
+      false,
+    );
+
+    assertEquals(positionsWritten(calls)[0], 109);
+    assertEquals(positionsWritten(calls).at(-1), 118);
+  } finally {
+    restore();
+    reads.restore();
+  }
+});
+
+Deno.test("processStreamingVideoInformation - a source with no reported position still counts", async () => {
+  // The single-video path emits no playlist_index, and neither did the
+  // YouTube API path before it was taught to.
+  const reads = installReads();
+  const { calls, restore } = install();
+  try {
+    await processStreamingVideoInformation(
+      Array.from({ length: 3 }, (_v, i) => line(`v${i}`)),
+      "https://www.iwara.tv/profile/muta81/videos",
+      21,
+      false,
+    );
+
+    assertEquals(positionsWritten(calls), [21, 22, 23]);
+  } finally {
+    restore();
+    reads.restore();
+  }
+});
+
+Deno.test("processStreamingVideoInformation - a nonsense position falls back to counting", async () => {
+  const reads = installReads();
+  const { calls, restore } = install();
+  try {
+    await processStreamingVideoInformation(
+      [line("a", 0), line("b", -3), line("c")],
+      "https://www.iwara.tv/profile/muta81/videos",
+      5,
+      false,
+    );
+
+    assertEquals(positionsWritten(calls), [5, 6, 7]);
+  } finally {
+    restore();
+    reads.restore();
+  }
+});
+
+Deno.test("processStreamingVideoInformation - the None pseudo-playlist ignores positions entirely", async () => {
+  // Everything there sits at the index the caller chose; it is not an ordered
+  // playlist and a reported position would be meaningless in it.
+  const reads = installReads();
+  const { calls, restore } = install();
+  try {
+    await processStreamingVideoInformation(
+      [line("a", 6), line("b", 7)],
+      "None",
+      99,
+      false,
+    );
+
+    assertEquals(positionsWritten(calls), [99, 99]);
+  } finally {
+    restore();
+    reads.restore();
   }
 });

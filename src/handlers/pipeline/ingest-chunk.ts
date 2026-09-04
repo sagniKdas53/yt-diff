@@ -102,6 +102,38 @@ export async function persistStreamingChunk(
 }
 
 /**
+ * Where this item sits in the playlist, in the source's own numbering.
+ *
+ * Counting emitted lines is only correct when the source emits every item, and
+ * it does not: yt-dlp skips whatever it cannot extract — private, deleted,
+ * age-gated — and says so on stderr while stdout simply carries on. Every item
+ * after a skipped one then lands one position short, and the shortfall
+ * accumulates.
+ *
+ * Observed on `iwara.tv/profile/muta81/videos` on 2026-09-04: five private
+ * uploads at the top, so the sixth video was stored at position 1, and by the
+ * eighth chunk the offset had grown to 38. Re-listing renumbered the whole
+ * playlist every time an upload became visible, and `resolveStartIndex` fed
+ * those emission-order numbers to `--playlist-start`, which reads them as
+ * source positions — two different coordinate systems, one variable.
+ *
+ * `playlist_index` is what the source says, so it is what gets stored. The
+ * counting expression remains for anything that does not report one: the
+ * single-video path, and the pseudo-playlist that has no positions to speak of.
+ */
+function positionOf(
+  itemData: StreamedItemData,
+  chunkStartIndex: number,
+  index: number,
+): number {
+  const reported = itemData.playlist_index;
+  return typeof reported === "number" && Number.isFinite(reported) &&
+      reported > 0
+    ? reported
+    : chunkStartIndex + index;
+}
+
+/**
  * Turns one chunk of yt-dlp JSON lines into database rows.
  *
  * Parse, diff against what is already on record, and hand the writes to
@@ -210,7 +242,7 @@ export async function processStreamingVideoInformation(
     const existingVideo = existingVideosMap.get(videoUrl);
     const absoluteIndex = playlistUrl === "None"
       ? chunkStartIndex
-      : chunkStartIndex + index;
+      : positionOf(itemData, chunkStartIndex, index);
     const existingMapping = existingMappingsMap.get(
       `${videoUrl}|${absoluteIndex}`,
     );
