@@ -89,7 +89,7 @@ async function serve(
   try {
     const response = await tryServeNativeFile(
       new Request("http://localhost/ytdiff/file?fileId=x&inline=true"),
-      { filePath, mimeType, inline },
+      { filePath, mimeType, inline, expiresInSeconds: 3600 },
       corsFor,
     );
     assert(response !== null);
@@ -149,4 +149,15 @@ Deno.test("signed files - inline=false stays an attachment", async () => {
   const response = await serve("clip.mp4", "video/mp4", false);
   const disposition = response.headers.get("Content-Disposition") ?? "";
   assert(disposition.startsWith("attachment"), disposition);
+});
+
+Deno.test("signed file - the response is cacheable but only privately", async () => {
+  // A per-user signed URL must never be held by a shared cache, and the copy
+  // must not outlive the signature — `expiresInSeconds` is the TTL that
+  // `getSignedFileMetadata` has just slid forward on the way in.
+  const response = await serve("clip.mp4", "video/mp4", true);
+  assertEquals(
+    response.headers.get("cache-control"),
+    "private, max-age=3600",
+  );
 });

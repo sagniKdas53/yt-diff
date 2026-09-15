@@ -3,6 +3,7 @@ import type {
   HttpRequestLike,
   HttpResponseLike,
 } from "../../transport/http.ts";
+import { etagMatches, staticCacheControl } from "./assetCache.ts";
 
 type GenerateCorsHeaders = (
   contentType: string,
@@ -11,6 +12,12 @@ type GenerateCorsHeaders = (
 export interface StaticAsset {
   file: Uint8Array | string;
   type: string;
+  /**
+   * Strong validator over these exact bytes, computed at boot. Absent only in
+   * tests that build a table by hand; a variant without one simply does not
+   * take part in revalidation.
+   */
+  etag?: string;
 }
 
 interface StaticAssetDependencies {
@@ -23,6 +30,25 @@ interface StaticAssetDependencies {
 function stripQuery(url: string): string {
   const at = url.indexOf("?");
   return at === -1 ? url : url.slice(0, at);
+}
+
+/**
+ * Adds `Accept-Encoding` to whatever `Vary` the CORS headers already set.
+ *
+ * This path answers one URL with brotli, gzip or identity bytes depending on
+ * the request. Without naming `Accept-Encoding`, a shared cache is entitled to
+ * hand the brotli body to a client that never asked for it — which only became
+ * reachable once these responses were cacheable at all.
+ */
+function varyWithEncoding(existing: string | number | undefined): string {
+  const parts = String(existing ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.some((part) => part.toLowerCase() === "accept-encoding")) {
+    parts.push("Accept-Encoding");
+  }
+  return parts.join(", ");
 }
 
 export function serveStaticAsset(
@@ -67,27 +93,44 @@ export function serveStaticAsset(
     string,
     string | number
   >;
+  resHeaders["Cache-Control"] = staticCacheControl(assetPath);
+  resHeaders["Vary"] = varyWithEncoding(resHeaders["Vary"]);
+
+  // Pick the encoded variant first: its bytes are what the validator has to
+  // describe, and the 304 below must answer for that same representation.
   const brKey = assetPath + ".br";
   const gzKey = assetPath + ".gz";
+  let variant = staticAssets[assetPath]!;
 
   if (reqEncoding.includes("br") && Object.hasOwn(staticAssets, brKey)) {
     resHeaders["Content-Encoding"] = "br";
-    res.writeHead(200, resHeaders);
-    res.write(staticAssets[brKey].file);
-    res.end();
-    return true;
+    variant = staticAssets[brKey]!;
+  } else if (
+    reqEncoding.includes("gzip") && Object.hasOwn(staticAssets, gzKey)
+  ) {
+    resHeaders["Content-Encoding"] = "gzip";
+    variant = staticAssets[gzKey]!;
   }
 
-  if (reqEncoding.includes("gzip") && Object.hasOwn(staticAssets, gzKey)) {
-    resHeaders["Content-Encoding"] = "gzip";
-    res.writeHead(200, resHeaders);
-    res.write(staticAssets[gzKey].file);
-    res.end();
-    return true;
+  if (variant.etag) {
+    resHeaders["ETag"] = variant.etag;
+
+    // `no-cache` means revalidate before reuse, not "do not store" — so the
+    // entry document still gets asked for on every load. With a validator that
+    // question is answered by an empty 304 instead of the whole document.
+    if (etagMatches(req.headers["if-none-match"], variant.etag)) {
+      // A 304 carries no body and no `Content-Length`; the cached entry
+      // supplies those. `Content-Encoding` would describe a body that is not
+      // here, so it comes back off.
+      delete resHeaders["Content-Encoding"];
+      res.writeHead(304, resHeaders);
+      res.end();
+      return true;
+    }
   }
 
   res.writeHead(200, resHeaders);
-  res.write(staticAssets[assetPath].file);
+  res.write(variant.file);
   res.end();
   return true;
 }

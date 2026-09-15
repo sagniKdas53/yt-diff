@@ -37,7 +37,12 @@ import { streamLines, streamTextChunks } from "./src/utils/streams.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
 import { createRateLimit } from "./src/middleware/rateLimit.ts";
 import { createApiRoutes } from "./src/routes/api.ts";
-import { dispatchRoute } from "./src/routes/http.ts";
+import {
+  allowedMethodsFor,
+  dispatchRoute,
+  isApiPath,
+} from "./src/routes/http.ts";
+import { computeETag } from "./src/routes/helpers/assetCache.ts";
 import { getSignedFileMetadata } from "./src/routes/helpers/getSignedFileMetadata.ts";
 import { tryServeNativeFile } from "./src/routes/helpers/serveNativeFile.ts";
 import {
@@ -545,8 +550,33 @@ function makeAssets(fileList: Array<{ filePath: string; extension: string }>) {
   return staticAssets;
 }
 
+/**
+ * Stamps every asset with a strong validator over its own bytes.
+ *
+ * One pass at boot over a table that is already fully in memory, so a
+ * revalidation costs nothing per request. Entries are de-duplicated by object
+ * identity: the aliases above (`/ytdiff`, `/ytdiff/`) share one object with
+ * `/ytdiff/index.html`, and hashing it once gives all of them the same tag —
+ * which is what a client that reaches the app by either name should see.
+ */
+async function stampETags(
+  assets: Record<string, StaticAsset>,
+): Promise<Record<string, StaticAsset>> {
+  const stamped = new Set<StaticAsset>();
+  for (const asset of Object.values(assets)) {
+    if (!asset || stamped.has(asset)) {
+      continue;
+    }
+    asset.etag = await computeETag(asset.file);
+    stamped.add(asset);
+  }
+  return assets;
+}
+
 const filesList = getFiles("dist");
-const staticAssets: Record<string, StaticAsset> = makeAssets(filesList);
+const staticAssets: Record<string, StaticAsset> = await stampETags(
+  makeAssets(filesList),
+);
 const socketPathPrefix = `${config.urlBase}/socket.io`;
 let tlsOptions: { cert: string; key: string } | undefined;
 
@@ -726,67 +756,97 @@ const botService = createBotService({
     playlistRegex.test(url) && !isSiteXDotCom(url),
 });
 
+/**
+ * Serves the static asset tree. GET and HEAD only — the response adapter drops
+ * the body for a HEAD, so it gets the same headers a GET would, which is what
+ * a cache revalidating against `ETag` needs.
+ */
+function routeAsset(req: HttpRequestLike, res: HttpResponseLike) {
+  try {
+    logger.trace(`Request Received`, {
+      url: req.url,
+      method: req.method,
+      encoding: req.headers["accept-encoding"] || "",
+    });
+    // Signed-file streaming is handled natively in the Deno.serve callback;
+    // this path only sees the built frontend and the few files beside it.
+    if (
+      serveStaticAsset(req, res, {
+        staticAssets,
+        generateCorsHeaders,
+        htmlMimeType: MIME_TYPES[".html"],
+      })
+    ) {
+      return;
+    }
+  } catch (error) {
+    logger.error("Error in processing request", {
+      url: req.url,
+      method: req.method,
+      error: error as Error,
+    });
+    res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+    res.write("Not Found");
+  }
+  res.end();
+}
+
+/**
+ * Serves the API. Reaching here means the path is in the route table, so a
+ * method the table does not have for it is a 405 naming what it does accept —
+ * not the 404 an unmatched request used to fall through to.
+ */
+function routeApi(req: HttpRequestLike, res: HttpResponseLike) {
+  if (dispatchRoute(req, res, apiRoutes)) {
+    return;
+  }
+
+  const allowed = allowedMethodsFor(req.url, apiRoutes);
+  logger.error("Method not allowed for API endpoint", {
+    url: req.url,
+    method: req.method,
+    allowed: allowed.join(", "),
+  });
+  res.writeHead(405, {
+    ...generateCorsHeaders(MIME_TYPES[".json"]),
+    "Allow": allowed.join(", "),
+  });
+  res.write(JSON.stringify({ error: "Method Not Allowed" }));
+  res.end();
+}
+
 function handleRequest(
   req: HttpRequestLike,
   res: HttpResponseLike,
 ) {
-  if (req.url && req.url.startsWith(config.urlBase) && req.method === "GET") {
-    try {
-      const reqEncoding = req.headers["accept-encoding"] || "";
-      logger.trace(`Request Received`, {
-        url: req.url,
-        method: req.method,
-        encoding: reqEncoding,
-      });
-      // File streaming is now handled natively in the Deno.serve callback.
-      // This section now only handles other GET requests like static assets.
-
-      if (
-        serveStaticAsset(req, res, {
-          staticAssets,
-          generateCorsHeaders,
-          htmlMimeType: MIME_TYPES[".html"],
-        })
-      ) {
-        return;
-      }
-    } catch (error) {
-      logger.error("Error in processing request", {
-        url: req.url,
-        method: req.method,
-        error: error as Error,
-      });
-      res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-      res.write("Not Found");
-    }
-    res.end();
-  } else if (req.method === "OPTIONS") {
+  // CORS preflight belongs to neither side and is answered the same way for
+  // both, so it is settled before the split.
+  if (req.method === "OPTIONS") {
     res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
     res.end();
-  } else if (req.method === "HEAD") {
-    res.writeHead(204, generateCorsHeaders(MIME_TYPES[".json"]));
-    res.end();
-  } else if (req.method === "POST") {
-    if (dispatchRoute(req, res, apiRoutes)) {
-      return;
-    }
-
-    logger.error("Requested Resource couldn't be found", {
-      url: req.url,
-      method: req.method,
-    });
-    res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-    res.write("Not Found");
-    res.end();
-  } else {
-    logger.error("Requested Resource couldn't be found", {
-      url: req.url,
-      method: req.method,
-    });
-    res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
-    res.write("Not Found");
-    res.end();
+    return;
   }
+
+  if (isApiPath(req.url, apiRoutes)) {
+    routeApi(req, res);
+    return;
+  }
+
+  if (
+    req.url && req.url.startsWith(config.urlBase) &&
+    (req.method === "GET" || req.method === "HEAD")
+  ) {
+    routeAsset(req, res);
+    return;
+  }
+
+  logger.error("Requested Resource couldn't be found", {
+    url: req.url,
+    method: req.method,
+  });
+  res.writeHead(404, generateCorsHeaders(MIME_TYPES[".html"]));
+  res.write("Not Found");
+  res.end();
 }
 
 async function bootstrapRuntime() {

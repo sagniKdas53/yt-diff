@@ -4,6 +4,13 @@ export interface SignedFileMetadata {
   filePath: string;
   mimeType: string;
   inline: boolean;
+  /**
+   * Seconds this signature stays valid, as of this request. The TTL is slid
+   * forward to `cacheMaxAge` just below, so it is exactly that — and it is
+   * what bounds the response's `max-age`, keeping a cached copy from
+   * outliving the signature that authorised it.
+   */
+  expiresInSeconds: number;
 }
 
 /**
@@ -47,5 +54,6 @@ export async function getSignedFileMetadata(
     filePath: signedEntry.filePath,
     mimeType: signedEntry.mimeType || "application/octet-stream",
     inline,
+    expiresInSeconds: cacheMaxAge,
   };
 }
