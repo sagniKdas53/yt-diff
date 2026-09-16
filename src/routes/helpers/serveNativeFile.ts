@@ -1,6 +1,7 @@
 import { logger } from "../../logger.ts";
 import { stat } from "../../utils/fs.ts";
 import { basename } from "../../utils/path.ts";
+import { signedFileCacheControl } from "./assetCache.ts";
 import type { SignedFileMetadata } from "./getSignedFileMetadata.ts";
 
 /**
@@ -38,7 +39,7 @@ export async function tryServeNativeFile(
   metadata: SignedFileMetadata,
   generateCorsHeaders: (contentType: string) => Record<string, string | number>,
 ): Promise<Response | null> {
-  const { filePath, mimeType, inline } = metadata;
+  const { filePath, mimeType, inline, expiresInSeconds } = metadata;
 
   try {
     const fileStats = await stat(filePath);
@@ -63,6 +64,10 @@ export async function tryServeNativeFile(
       `${dispositionType}; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
     );
     headers.set("Accept-Ranges", "bytes");
+    // `private`, and never longer than the signature is good for — see
+    // `signedFileCacheControl`. This is what stops a page of the video grid
+    // refetching all of its thumbnails on every render.
+    headers.set("Cache-Control", signedFileCacheControl(expiresInSeconds));
 
     const rangeHeader = request.headers.get("range");
 

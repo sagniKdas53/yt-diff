@@ -11,6 +11,7 @@ export interface HttpRequestLike {
     Authorization?: string;
     range?: string;
     "accept-encoding"?: string;
+    "if-none-match"?: string;
   };
   socket: HttpSocketLike;
   on(event: string, listener: (...args: any[]) => void): unknown;
