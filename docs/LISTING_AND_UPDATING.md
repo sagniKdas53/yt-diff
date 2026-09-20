@@ -82,8 +82,14 @@ the configured **Monitoring Type**.
 - **Behavior**: The scheduler spawns `yt-dlp` to read from `--playlist-start 1`.
 - **Optimization**: To avoid scanning a massive channel perpetually, `yt-diff`
   watches for completely duplicate chunks. If the scanner encounters **two
-  consecutive chunks** where every single video parsed already exists exactly at
-  those indices in the database, the process cleanly aborts.
+  consecutive chunks** where every single video parsed already exists at those
+  indices in the database (no moves, no new videos), the process cleanly
+  aborts. A chunk whose known videos moved to new indices does not count —
+  the walk keeps going so the tail is not left stale.
+- **Prepend handling**: When a head chunk shows every moved video shifted by
+  the same positive amount (new videos prepended), the unvisited tail is
+  renumbered in one statement and the walk stops. Mixed moves, deletions, or
+  a head that never appears fall back to a full walk.
 
 ### `End` Mode (Incremental Append)
 

@@ -1,4 +1,9 @@
-import { PlaylistMetadata, PlaylistVideoMapping } from "../../db/models.ts";
+import { Op, type WhereOptions } from "sequelize";
+import {
+  PlaylistMetadata,
+  PlaylistVideoMapping,
+  sequelize,
+} from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import {
   extractPlaylistId,
@@ -16,6 +21,7 @@ import type {
   ListingResult,
   ManagedProcess,
   PipelineHandlerDependencies,
+  StreamingVideoMove,
 } from "./types.ts";
 import { ProcessExitCodes } from "./types.ts";
 import { isSiteXDotCom, normalizeUrl } from "../../utils/url.ts";
@@ -398,6 +404,69 @@ async function clearMappingsForReindex(
 }
 
 /**
+ * The uniform shift of one chunk's moved rows, or null when there is none.
+ *
+ * A pure prepend (the `Start` common case) moves every known row in the chunk
+ * by the same positive amount — that amount is the number of new videos, and
+ * it is self-describing: no external reference is needed. Anything else (no
+ * moves, mixed directions, deletions) returns null and the caller keeps
+ * walking instead of shortcutting.
+ */
+export function uniformPositiveDelta(
+  moves: StreamingVideoMove[],
+): number | null {
+  if (moves.length === 0) return null;
+  const delta = moves[0].newPosition - moves[0].oldPosition;
+  if (!Number.isInteger(delta) || delta <= 0) return null;
+  for (const move of moves) {
+    if (move.newPosition - move.oldPosition !== delta) return null;
+  }
+  return delta;
+}
+
+/**
+ * Renumbers the unvisited tail of a prepended-to playlist in one statement.
+ *
+ * After the head chunks revealed a uniform shift `delta`, every row at or
+ * below `minOldPosition` that this run has not touched sits `delta`
+ * positions too early. Rows this run already wrote — moved per-chunk
+ * (`excludeIds`) or newly created — carry fresh timestamps, so the
+ * `updatedAt < olderThan` bound (with `olderThan` captured before the first
+ * chunk) keeps the statement from moving either group a second time.
+ */
+export async function shiftPlaylistTail(
+  playlistUrl: string,
+  minOldPosition: number,
+  delta: number,
+  excludeIds: string[],
+  olderThan: Date,
+): Promise<number> {
+  const where: WhereOptions = {
+    playlistUrl,
+    positionInPlaylist: { [Op.gte]: minOldPosition },
+    updatedAt: { [Op.lt]: olderThan },
+  };
+  if (excludeIds.length > 0) {
+    (where as Record<string, unknown>).id = { [Op.notIn]: excludeIds };
+  }
+  const [affectedCount] = await PlaylistVideoMapping.update(
+    {
+      positionInPlaylist: sequelize.literal(
+        `"positionInPlaylist" + ${delta}`,
+      ),
+    } as never,
+    { where },
+  );
+  logger.info("Shifted playlist tail after prepended videos", {
+    playlistUrl,
+    minOldPosition,
+    delta,
+    shiftedCount: affectedCount,
+  });
+  return affectedCount;
+}
+
+/**
  * Drives one playlist listing to completion, whatever produced the chunks.
  *
  * Everything here was written twice: ingest the chunk, count it, refresh the
@@ -406,8 +475,17 @@ async function clearMappingsForReindex(
  * two copies had drifted — one compared the duplicate count against the
  * configured chunk size and the other against the chunk actually received,
  * which differ on a final partial chunk.
+ *
+ * Early exit applies to `Start` only, and only in two shapes: chunks of
+ * exact-position rows (nothing changed below — the classic stop), and a
+ * single uniform positive shift (prepended videos — the tail is renumbered
+ * in SQL via `shiftPlaylistTail` and the walk stops). Anything else —
+ * mixed moves, deletions, unparseable positions — keeps walking to the end
+ * rather than stopping blind: that full-walk fallback is what keeps a shift
+ * larger than the chunk size, or an old head missing from the results, from
+ * leaving a stale tail behind.
  */
-async function consumePlaylistChunks(
+export async function consumePlaylistChunks(
   rt: ListingRuntime,
   source: PlaylistChunkSource,
   item: {
@@ -418,6 +496,14 @@ async function consumePlaylistChunks(
     seekPlaylistListTo: number;
     processKey: string;
     monitoringType: string;
+    /**
+     * Set by `handlePlaylistStreaming` for `End` tail walks. When the tail
+     * window contains moved rows, per-chunk updates alone cannot repair the
+     * head the window never visited, so the flag asks the caller to restart
+     * the walk from position 1. The YouTube-API path (already a full scan)
+     * never sets it.
+     */
+    reportTailMove?: { triggered: boolean };
   },
 ): Promise<ListingResult> {
   const {
@@ -432,6 +518,15 @@ async function consumePlaylistChunks(
 
   let processedChunks = 0;
   let consecutiveDuplicateChunks = 0;
+  let shiftApplied = false;
+  // Every mapping row this run moved individually, so the bulk tail shift
+  // (which matches on position, not identity) never moves one twice. The
+  // `updatedAt` bound in `shiftPlaylistTail` covers the same for rows this
+  // run created; both are kept because timestamps only resolve to the
+  // millisecond.
+  const individuallyMovedIds: string[] = [];
+  // Captured before the first chunk: everything this run writes is newer.
+  const runStart = new Date();
 
   try {
     for await (const chunk of source.chunks) {
@@ -459,24 +554,70 @@ async function consumePlaylistChunks(
 
       source.onChunkDone?.(processedChunks);
 
-      // "Start" walks a playlist from the top looking for what is new, so
-      // two chunks running with nothing new in them means the walk has
-      // reached ground already covered.
-      if (
-        monitoringType === "Start" &&
-        result.alreadyExistedCount === chunk.items.length
-      ) {
-        consecutiveDuplicateChunks++;
-        if (consecutiveDuplicateChunks >= 2) {
+      for (const move of result.moves) {
+        individuallyMovedIds.push(move.mappingId);
+      }
+
+      const fullyKnown = result.alreadyExistedCount === chunk.items.length;
+
+      // "Start" walks a playlist from the top looking for what is new.
+      if (monitoringType === "Start" && !shiftApplied) {
+        const delta = uniformPositiveDelta(result.moves);
+        // Shortcut only when every known row in the chunk moved: an exact
+        // row (alreadyExisted beyond the moves) inside the shifted range
+        // would be shifted twice by the statement below — once by identity
+        // (it is already correct) and once by position. Mixed chunks fall
+        // through to the full-walk fallback instead.
+        if (
+          delta !== null && result.alreadyExistedCount === result.moves.length
+        ) {
+          // Pure prepend: the head told us the shift, so the unvisited tail
+          // is fixed in one statement instead of walked item by item. This
+          // is also what keeps a shift larger than the chunk size correct —
+          // the first chunk may be all-new with no reference at all, and the
+          // anchor only appears a chunk later.
+          const minOld = Math.min(
+            ...result.moves.map((move) => move.oldPosition),
+          );
+          await shiftPlaylistTail(
+            videoUrl,
+            minOld,
+            delta,
+            individuallyMovedIds,
+            runStart,
+          );
+          shiftApplied = true;
           logger.info(
-            "Two consecutive chunks were entirely known items; stopping early",
-            { url: videoUrl, processedChunks },
+            "Uniform prepend shift absorbed; stopping early after tail renumber",
+            { url: videoUrl, processedChunks, delta },
           );
           source.stop?.();
           break;
         }
-      } else {
-        consecutiveDuplicateChunks = 0;
+        // Two chunks running with nothing new and nothing moved in them
+        // means the walk has reached ground already covered. Chunks that are
+        // fully known *but moved* (non-uniform shift, deletions) explicitly
+        // do not count: stopping there would leave the tail stale, so the
+        // walk falls back to covering the whole playlist instead.
+        if (fullyKnown && result.moves.length === 0) {
+          consecutiveDuplicateChunks++;
+          if (consecutiveDuplicateChunks >= 2) {
+            logger.info(
+              "Two consecutive chunks were entirely known items; stopping early",
+              { url: videoUrl, processedChunks },
+            );
+            source.stop?.();
+            break;
+          }
+        } else {
+          consecutiveDuplicateChunks = 0;
+        }
+      } else if (
+        monitoringType === "End" &&
+        item.reportTailMove &&
+        result.moves.length > 0
+      ) {
+        item.reportTailMove.triggered = true;
       }
     }
 
@@ -596,28 +737,61 @@ export async function handlePlaylistStreaming(
     startIndex,
   );
 
-  return await consumePlaylistChunks(rt, {
-    chunks: chunkPlaylistLines(
-      streamProcessor.iterator,
-      chunkSize,
-      startIndex,
-    ),
-    stop: () => streamProcessor.process.kill("SIGTERM"),
-    onEmpty: () => {
-      // A tail walk that starts past the top and finds nothing is not an
-      // empty playlist — the positions it was told about are gone.
-      if (monitoringType === "End" && startIndex > 1) {
-        throw new Error(
-          "End mode index returned empty due to likely deletions.",
-        );
-      }
-      return handleEmptyResponse(rt, videoUrl);
+  // The tail window of an `End` walk never visits the head, so moved rows
+  // in it mean positions above the window shifted too (head deletions,
+  // middle inserts, reorders). The window's own rows are already fixed by
+  // per-chunk updates; the restart below repairs the unvisited head with the
+  // same move logic, one pass, no clearing. Pure appends never set the flag
+  // and stay on the cheap path.
+  const reportTailMove = { triggered: false };
+
+  const tailResult = await consumePlaylistChunks(
+    rt,
+    {
+      chunks: chunkPlaylistLines(
+        streamProcessor.iterator,
+        chunkSize,
+        startIndex,
+      ),
+      stop: () => streamProcessor.process.kill("SIGTERM"),
+      onEmpty: () => {
+        // A tail walk that starts past the top and finds nothing is not an
+        // empty playlist — the positions it was told about are gone.
+        if (monitoringType === "End" && startIndex > 1) {
+          throw new Error(
+            "End mode index returned empty due to likely deletions.",
+          );
+        }
+        return handleEmptyResponse(rt, videoUrl);
+      },
+      onError: (error) =>
+        isDeliberateTermination(error)
+          ? null
+          : handleListingError(rt, error, videoUrl, "playlist"),
     },
-    onError: (error) =>
-      isDeliberateTermination(error)
-        ? null
-        : handleListingError(rt, error, videoUrl, "playlist"),
-  }, item);
+    monitoringType === "End" && startIndex > 1
+      ? { ...item, reportTailMove }
+      : item,
+  );
+
+  if (monitoringType === "End" && reportTailMove.triggered) {
+    logger.info(
+      "End tail window showed moved positions; restarting walk from the top",
+      { url: videoUrl },
+    );
+    const fullStream = streamPlayListItems(rt, videoUrl, processKey, 1);
+    return await consumePlaylistChunks(rt, {
+      chunks: chunkPlaylistLines(fullStream.iterator, chunkSize, 1),
+      stop: () => fullStream.process.kill("SIGTERM"),
+      onEmpty: () => handleEmptyResponse(rt, videoUrl),
+      onError: (error) =>
+        isDeliberateTermination(error)
+          ? null
+          : handleListingError(rt, error, videoUrl, "playlist"),
+    }, item);
+  }
+
+  return tailResult;
 }
 
 async function handlePlaylistViaApi(
