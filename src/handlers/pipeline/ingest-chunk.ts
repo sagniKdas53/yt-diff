@@ -137,11 +137,15 @@ function positionOf(
  * Turns one chunk of yt-dlp JSON lines into database rows.
  *
  * Parse, diff against what is already on record, and hand the writes to
- * `persistStreamingChunk`. The diff decides, per item, whether an existing
- * mapping merely moved (update), is genuinely new (create), or — outside any
- * playlist, where duplicates are not allowed — drifted to another position
- * (move). Inside a real playlist duplicates are allowed: YouTube permits the
- * same video at several positions, so each occurrence gets its own mapping.
+ * `persistStreamingChunk`. Per item, one unconsumed mapping row for the same
+ * video URL is consumed: an exact-position row is fast-skipped, a row at
+ * another position is moved to the observed one (and reported in
+ * `result.moves` so the caller can tell a shift from genuinely new videos),
+ * and an occurrence with no row left creates a new mapping. That last case
+ * covers both new videos and legitimate duplicates — YouTube permits the same
+ * video at several positions, so the second occurrence in a chunk finds an
+ * empty queue and gets its own mapping. Outside any playlist ("None"), where
+ * duplicates are not allowed, the single queued row is always reused.
  */
 export async function processStreamingVideoInformation(
   responseItems: string[],
@@ -162,6 +166,7 @@ export async function processStreamingVideoInformation(
     title: "",
     responseUrl: playlistUrl,
     alreadyExistedCount: 0,
+    moves: [],
   };
 
   const parsedItems = responseItems.map(
@@ -216,20 +221,59 @@ export async function processStreamingVideoInformation(
       video,
     ]),
   );
-  const existingMappingsMap = new Map<string, Model>(
-    existingMappings.map((mapping) => [
-      `${mapping.getDataValue("videoUrl")}|${
-        mapping.getDataValue("positionInPlaylist")
-      }`,
-      mapping,
-    ]),
+  // One queue of unconsumed mapping rows per video URL.
+  //
+  // The old code keyed rows by `videoUrl|positionInPlaylist` and, for real
+  // playlists, created a fresh mapping whenever the position differed — so a
+  // prepend that shifted every index down duplicated the whole playlist, and
+  // the `Start` early-exit (which counts fully-known chunks) never fired.
+  // Consuming one queued row per observed occurrence instead turns a shift
+  // into a position update, while a second occurrence with an empty queue
+  // still creates the extra row that legitimate YouTube duplicates need.
+  // Rows are queued in ascending position order so a chunk containing the
+  // same URL twice deterministically consumes the earliest row first.
+  const availableMappingsByUrl = new Map<string, Model[]>(
+    (() => {
+      const grouped = new Map<string, Model[]>();
+      const ordered = [...existingMappings].sort((left, right) =>
+        (left.getDataValue("positionInPlaylist") as number) -
+        (right.getDataValue("positionInPlaylist") as number)
+      );
+      for (const mapping of ordered) {
+        const videoUrl = mapping.getDataValue("videoUrl") as string;
+        const queue = grouped.get(videoUrl);
+        if (queue) {
+          queue.push(mapping);
+        } else {
+          grouped.set(videoUrl, [mapping]);
+        }
+      }
+      return grouped;
+    })(),
   );
-  const existingMappingsByUrl = new Map<string, Model>(
-    existingMappings.map((mapping) => [
-      mapping.getDataValue("videoUrl") as string,
-      mapping,
-    ]),
-  );
+
+  /** Removes and returns the queued row at exactly `position`, if any. */
+  function takeMappingAt(videoUrl: string, position: number): Model | null {
+    const queue = availableMappingsByUrl.get(videoUrl);
+    if (!queue) return null;
+    const index = queue.findIndex(
+      (mapping) =>
+        (mapping.getDataValue("positionInPlaylist") as number) === position,
+    );
+    if (index === -1) return null;
+    const [mapping] = queue.splice(index, 1);
+    if (queue.length === 0) availableMappingsByUrl.delete(videoUrl);
+    return mapping ?? null;
+  }
+
+  /** Removes and returns the earliest queued row for `videoUrl`, if any. */
+  function takeEarliestMapping(videoUrl: string): Model | null {
+    const queue = availableMappingsByUrl.get(videoUrl);
+    if (!queue || queue.length === 0) return null;
+    const mapping = queue.shift() as Model;
+    if (queue.length === 0) availableMappingsByUrl.delete(videoUrl);
+    return mapping;
+  }
 
   const videosToUpsert: VideoUpsertData[] = [];
   const mappingsToCreate: PlaylistMappingCreate[] = [];
@@ -243,19 +287,56 @@ export async function processStreamingVideoInformation(
     const absoluteIndex = playlistUrl === "None"
       ? chunkStartIndex
       : positionOf(itemData, chunkStartIndex, index);
-    const existingMapping = existingMappingsMap.get(
-      `${videoUrl}|${absoluteIndex}`,
-    );
 
+    // An exact queued row means this occurrence is already on record where
+    // the source says it is: fast-skip it (except under Refresh, which
+    // deliberately re-evaluates everything).
+    const exactMapping = takeMappingAt(videoUrl, absoluteIndex);
     if (
       monitoringType !== "Refresh" &&
-      existingVideo && existingMapping &&
-      existingMapping.getDataValue("positionInPlaylist") === absoluteIndex
+      existingVideo && exactMapping
     ) {
       result.alreadyExistedCount++;
       result.count++;
       result.title = existingVideo.getDataValue("title");
       continue;
+    }
+    // A Refresh run that landed on its exact row still consumes it (so a
+    // duplicate occurrence behind it is not mistaken for the same row), but
+    // falls through to refresh the metadata below.
+    const movedMapping = exactMapping ?? takeEarliestMapping(videoUrl);
+    if (movedMapping) {
+      const oldPosition = movedMapping.getDataValue(
+        "positionInPlaylist",
+      ) as number;
+      if (oldPosition !== absoluteIndex) {
+        mappingsToUpdate.push({
+          instance: movedMapping,
+          position: absoluteIndex,
+        });
+        result.moves.push({
+          videoUrl,
+          mappingId: movedMapping.getDataValue("id") as string,
+          oldPosition,
+          newPosition: absoluteIndex,
+        });
+      }
+      // A moved-but-known video is still a known video for the caller's
+      // early-exit accounting: without this, a prepended-to playlist never
+      // produces a fully-known chunk and the walk duplicates everything.
+      if (monitoringType !== "Refresh" && existingVideo) {
+        result.alreadyExistedCount++;
+      }
+    } else {
+      // No unconsumed row for this URL in this playlist: this occurrence is
+      // genuinely new. In real playlists that includes the legitimate second
+      // occurrence of a duplicated video (the first consumed the only queued
+      // row); in "None" it is a first-time add.
+      mappingsToCreate.push({
+        videoUrl: videoUrl,
+        playlistUrl: playlistUrl,
+        positionInPlaylist: absoluteIndex,
+      });
     }
 
     const videoData: VideoUpsertData = {
@@ -279,46 +360,6 @@ export async function processStreamingVideoInformation(
     };
 
     videosToUpsert.push(videoData);
-
-    if (!existingMapping) {
-      if (playlistUrl === "None") {
-        // "None" is the pseudo-playlist for unlisted/unplaylisted videos.
-        // Duplicates are NOT allowed here — if the video already has a mapping,
-        // update its position instead of creating a new one.
-        const driftedMapping = existingMappingsByUrl.get(videoUrl);
-        if (
-          driftedMapping &&
-          driftedMapping.getDataValue("positionInPlaylist") !== absoluteIndex
-        ) {
-          mappingsToUpdate.push({
-            instance: driftedMapping,
-            position: absoluteIndex,
-          });
-        } else if (!driftedMapping) {
-          mappingsToCreate.push({
-            videoUrl: videoUrl,
-            playlistUrl: playlistUrl,
-            positionInPlaylist: absoluteIndex,
-          });
-        }
-      } else {
-        // Real playlists: duplicates ARE allowed. YouTube allows the same video
-        // at multiple positions in a playlist, so we must create a separate
-        // mapping for each occurrence. Do NOT look for drifted mappings to update.
-        mappingsToCreate.push({
-          videoUrl: videoUrl,
-          playlistUrl: playlistUrl,
-          positionInPlaylist: absoluteIndex,
-        });
-      }
-    } else if (
-      existingMapping.getDataValue("positionInPlaylist") !== absoluteIndex
-    ) {
-      mappingsToUpdate.push({
-        instance: existingMapping,
-        position: absoluteIndex,
-      });
-    }
 
     result.count++;
     result.title = videoData.title;

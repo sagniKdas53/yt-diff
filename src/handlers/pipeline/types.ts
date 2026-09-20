@@ -159,6 +159,25 @@ export interface StreamingVideoProcessingResult {
   title: string;
   responseUrl: string;
   alreadyExistedCount: number;
+  /**
+   * One entry per ingested item whose mapping already existed under the same
+   * video URL but at a different position — i.e. the playlist shifted under
+   * us (prepended-to front, head deletions) rather than gaining a genuinely
+   * new video. `mappingId` is the `PlaylistVideoMapping` row that was moved.
+   *
+   * Empty for exact-position fast-skips and for genuinely new videos.
+   */
+  moves: StreamingVideoMove[];
+}
+
+/**
+ * A known video observed at a new playlist position.
+ */
+export interface StreamingVideoMove {
+  videoUrl: string;
+  mappingId: string;
+  oldPosition: number;
+  newPosition: number;
 }
 
 export interface VideoUpsertData extends VideoEntrySnapshot {
