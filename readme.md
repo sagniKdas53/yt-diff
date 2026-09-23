@@ -25,7 +25,7 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     Docker Compose                      │
+│               Rootless Nix OCI image                   │
 │                                                         │
 │  ┌───────────┐   ┌──────────┐   ┌──────────────────┐   │
 │  │  Valkey   │   │ Postgres │   │    pgbackups     │   │
@@ -98,7 +98,7 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
    ```bash
    docker compose up -d
 
-   # Or build locally
+   # Or build the immutable image locally (requires Nix)
    make local && make build && docker compose up -d
    ```
 
@@ -123,7 +123,10 @@ docker pull purevert/yt-diff:latest
 | `1.3` / `1` | newest 1.3.x / 1.x | Auto-updating within a minor or major line. |
 | `sha-a1b2c3d` | one commit | Rollback to a specific build. Kept for 7 days. |
 
-Both images are `linux/amd64` and `linux/arm64`. Version tags are cut automatically from
+Both images are native Nix builds for `linux/amd64` and `linux/arm64`. The application runs
+as UID/GID 1000 without root, and its application and runtime closure live in the read-only
+Nix store. Runtime caches use `/tmp`, while persistent downloads remain on the configured
+bind mount. Version tags are cut automatically from
 [Conventional Commits](https://www.conventionalcommits.org/): a `feat:` on `master` bumps the
 minor, a `fix:` bumps the patch, `BREAKING CHANGE:` bumps the major, and a merge with no
 conventional prefix does not cut a release.
@@ -160,6 +163,7 @@ deno task full         # everything enabled
 | **Valkey / Redis** | ✅ | Rate limiting and caching |
 | **Python 3 + yt-dlp** | ✅ | `pip install -U "yt-dlp[default]"` |
 | **Docker & Docker Compose** | ✅ | For production deployment |
+| **Nix** | Local image builds only | CI publishes native amd64 and arm64 images |
 | **ffmpeg** | Recommended | Media muxing and thumbnail extraction |
 | **curl_cffi** | Optional | Browser impersonation for restrictive sites |
 | **Linux** | ✅ | Not tested on Windows |
@@ -251,7 +255,7 @@ make local                 # Generate .env from base.env + local.env
 make pi5                   # Generate .env from base.env + pi5.env
 make pi4                   # Generate .env from base.env + pi4.env
 make env TARGET=pi5        # Regenerate .env for a deployment and validate it
-make build                 # Build without cache
+make build                 # Build the Nix OCI archive and load it into Docker
 make check                 # Validate compose config using generated .env
 make down                  # Stop all containers
 make logs                  # Follow container logs

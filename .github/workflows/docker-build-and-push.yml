@@ -1,133 +1,105 @@
-name: Build and Push Docker Image
-
-# Two entry points, deliberately:
-#
-#   push        — every merge to master, moving `latest`/`master`/`main`.
-#   workflow_call — invoked by release.yml after it cuts a vX.Y.Z tag, to publish the semver
-#                 tags for that release.
-#
-# The `on: push: tags: ["v*"]` this used to carry could not work with an automated release: a
-# tag pushed by a workflow using GITHUB_TOKEN never triggers another workflow (GitHub's
-# recursion guard), so the release tag would silently publish nothing. Being called directly
-# sidesteps that without needing a PAT.
-#
-# Pruning used to live in this job. It now has its own scheduled workflow — see
-# prune-images.yml — because pruning before the build meant a failed build still deleted
-# images, and `keep-last` counted the set before the new push rather than after it.
+name: Build and Push Nix Image
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   workflow_call:
     inputs:
       version:
-        description: "Semver with no leading v (e.g. 1.3.0). When set, publishes X.Y.Z, X.Y and X alongside latest."
+        description: "Semver without a leading v"
         type: string
         required: true
   workflow_dispatch:
 
 env:
-  GHCR_REGISTRY: ghcr.io
-  DOCKERHUB_USERNAME: purevert
-  IMAGE_NAME: ${{ github.repository }}
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  DOCKERHUB_IMAGE: purevert/yt-diff
 
-# A release commit fires this twice: once from `push` (it touched the image) and once from
-# release.yml's call, for the semver tags. One shared group with no cancellation serialises
-# them, so they cannot race for the `latest` pointer. Cancelling is deliberately off: with
-# cancel-in-progress a later merge would kill an in-flight release build, which is the one
-# build that must not be lost. Both runs build the same commit and the second simply re-points
-# the same tags, so the cost is cache-warm CI minutes, not correctness.
 concurrency:
-  group: docker-${{ github.ref }}
+  group: nix-image-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.arch }} with Nix
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            arch: amd64
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build immutable OCI archive
+        run: |
+          nix build --print-build-logs ".#packages.${{ matrix.system }}.container"
+          cp -L result "yt-diff-${{ matrix.arch }}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.arch }}
+          path: yt-diff-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
       id-token: write
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/download-artifact@v5
         with:
-          submodules: true
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
+          pattern: image-*
+          merge-multiple: true
+      - uses: docker/login-action@v4
         with:
-          registry: ${{ env.GHCR_REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v4
+      - uses: docker/login-action@v4
         with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
+          username: purevert
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Extract metadata for GHCR
-        id: meta-ghcr
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
-          # `main` is published alongside `master` on purpose. This repo's default branch is
-          # `master` while manga-tl's is `main`; publishing both aliases in both projects means
-          # neither name can be the wrong guess. A tag is a pointer, so it costs no storage.
-          #
-          # The old `type=schedule` and `type=ref,event=pr` entries are gone: this workflow has
-          # no schedule trigger and no longer runs on pull_request (docker-build-pr.yml does
-          # that, without pushing), so neither ever produced a tag. The stale `pr-1`…`pr-13`
-          # tags in GHCR predate that split and are reclaimed by prune-images.yml.
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=master,enable={{is_default_branch}}
-            type=raw,value=main,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{major}}.{{minor}}.{{patch}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-
-      - name: Extract metadata for Docker Hub
-        id: meta-dockerhub
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.DOCKERHUB_USERNAME }}/yt-diff
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=master,enable={{is_default_branch}}
-            type=raw,value=main,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{major}}.{{minor}}.{{patch}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-
-      - name: Build and push to both registries
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: |
-            ${{ steps.meta-ghcr.outputs.tags }}
-            ${{ steps.meta-dockerhub.outputs.tags }}
-          # Was missing entirely, so the GHCR package carried no
-          # org.opencontainers.image.source and was not linked back to this repository.
-          labels: ${{ steps.meta-ghcr.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
-          # Every push otherwise minted two `unknown/unknown` attestation manifests that no tag
-          # references and nothing reclaims. Drop this line to get SLSA provenance back.
-          provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            VITE_BASE_PATH=/ytdiff
+      - uses: docker/setup-buildx-action@v4
+      - name: Compute image tags
+        id: tags
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          tags="sha-${GITHUB_SHA::7}"
+          if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
+            tags="$tags latest master main"
+          fi
+          if [[ -n "$VERSION" ]]; then
+            tags="$tags $VERSION ${VERSION%.*} ${VERSION%%.*}"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - name: Push architecture images and manifests
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          set -euo pipefail
+          staging="sha-${GITHUB_SHA::7}"
+          for registry in "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"; do
+            for arch in amd64 arm64; do
+              skopeo copy --retry-times 3 \
+                "docker-archive:yt-diff-$arch.tar.gz" \
+                "docker://$registry:$staging-$arch"
+            done
+            for tag in $TAGS; do
+              docker buildx imagetools create \
+                --tag "$registry:$tag" \
+                "$registry:$staging-amd64" "$registry:$staging-arm64"
+            done
+          done
