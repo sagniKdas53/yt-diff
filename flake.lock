@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "frontend": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789541428,
+        "narHash": "sha256-qJOfutqm+IzsN54X5+bMBpgYpyuEl6uwuHDSQ7p+/fA=",
+        "owner": "sagniKdas53",
+        "repo": "yt-diff-react",
+        "rev": "ffa6e8ae3b6029c5e74991856fdeccda52346122",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sagniKdas53",
+        "repo": "yt-diff-react",
+        "rev": "ffa6e8ae3b6029c5e74991856fdeccda52346122",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789921291,
+        "narHash": "sha256-Ft/BRnIqw1MywFoXydKobjjWmDFgDdYtSpJliE8+yUw=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "44a91898084f46797b5fac650c7e8c9ac38c43d4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "frontend": "frontend",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

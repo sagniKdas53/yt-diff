@@ -1,37 +1,26 @@
-name: Build PR Docker Image
+name: Build PR Nix Image
 
 on:
   pull_request:
-    branches:
-      - master
+    branches: [master]
 
 jobs:
-  build-only:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
         with:
-          submodules: true
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile
-          push: false
-          tags: yt-diff:pr-test
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            VITE_BASE_PATH=/ytdiff
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build immutable OCI archive
+        run: nix build --print-build-logs ".#packages.${{ matrix.system }}.container"
