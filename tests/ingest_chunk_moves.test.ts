@@ -1,15 +1,10 @@
 import { assert, assertEquals } from "std/assert/mod.ts";
 import { processStreamingVideoInformation } from "../src/handlers/pipeline/ingest-chunk.ts";
-import type { StreamingVideoMove } from "../src/handlers/pipeline/types.ts";
 import {
   consumePlaylistChunks,
   type ListingRuntime,
 } from "../src/handlers/pipeline/listing.ts";
 import type { ProcessStatus } from "../src/handlers/pipeline/process-manager.ts";
-import {
-  shiftPlaylistTail,
-  uniformPositiveDelta,
-} from "../src/handlers/pipeline/listing.ts";
 import {
   PlaylistVideoMapping,
   sequelize,
@@ -203,8 +198,7 @@ Deno.test("U1 - Start prepend shifts existing rows instead of duplicating", asyn
       result.moves.map((m) => [m.oldPosition, m.newPosition]),
       [[1, 4], [2, 5]],
     );
-    assertEquals(uniformPositiveDelta(result.moves), 3);
-    // Driver shortcut precondition: every known row moved, none exact.
+    // Every known row moved, but the driver still inspects later chunks.
     assertEquals(result.alreadyExistedCount, result.moves.length);
   } finally {
     restore();
@@ -238,8 +232,6 @@ Deno.test("U2 - End head deletion shifts tail rows via updates", async () => {
     assertEquals(createdPositions(calls), []);
     assertEquals(updatedPositions(calls), [2, 3]);
     assertEquals(result.alreadyExistedCount, 3);
-    // Negative shift: no shortcut, the End driver restarts from the top.
-    assertEquals(uniformPositiveDelta(result.moves), null);
   } finally {
     restore();
   }
@@ -360,32 +352,7 @@ Deno.test("U6 - None drift updates the existing row", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// U7 — uniformPositiveDelta unit cases
-// ---------------------------------------------------------------------------
-
-Deno.test("U7 - uniformPositiveDelta accepts only uniform positive shifts", () => {
-  const move = (
-    oldPosition: number,
-    newPosition: number,
-  ): StreamingVideoMove => ({
-    videoUrl: videoUrlOf("X"),
-    mappingId: "id-x",
-    oldPosition,
-    newPosition,
-  });
-
-  assertEquals(uniformPositiveDelta([]), null);
-  assertEquals(uniformPositiveDelta([move(1, 4), move(2, 5)]), 3);
-  assertEquals(uniformPositiveDelta([move(3, 1), move(4, 2)]), null);
-  assertEquals(uniformPositiveDelta([move(1, 4), move(2, 6)]), null);
-});
-
-// ---------------------------------------------------------------------------
-// U8 — shiftPlaylistTail issues one ranged UPDATE excluding moved rows
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// U9 — Start massive prepend (12 new, chunk 10): shortcut after the anchor
+// Stateful multi-chunk driver coverage
 // ---------------------------------------------------------------------------
 
 interface FakeDb {
@@ -396,12 +363,6 @@ interface FakeDb {
     position: number;
     updatedAt: Date;
   }[];
-}
-
-function byDescription(obj: object, name: string): unknown {
-  return (obj as Record<symbol, unknown>)[
-    Object.getOwnPropertySymbols(obj).find((s) => s.description === name)!
-  ];
 }
 
 function installStatefulDb(
@@ -470,32 +431,6 @@ function installStatefulDb(
   ) => {
     await fn(TRANSACTION);
   };
-  // deno-lint-ignore no-explicit-any
-  const realUpdate = (PlaylistVideoMapping as any).update;
-  // deno-lint-ignore no-explicit-any
-  (PlaylistVideoMapping as any).update = (_values: any, options: any) => {
-    counters.updates++;
-    const gte = byDescription(
-      options.where.positionInPlaylist,
-      "gte",
-    ) as number;
-    const excluded = new Set(
-      (byDescription(options.where.id ?? {}, "notIn") ?? []) as string[],
-    );
-    const olderThan = byDescription(options.where.updatedAt, "lt") as Date;
-    let affected = 0;
-    for (const m of db.mappings) {
-      if (
-        m.position >= gte && !excluded.has(m.id) && m.updatedAt < olderThan
-      ) {
-        m.position += 12;
-        m.updatedAt = new Date();
-        affected++;
-      }
-    }
-    return Promise.resolve([affected]);
-  };
-
   return () => {
     // deno-lint-ignore no-explicit-any
     delete (VideoMetadata as any).findAll;
@@ -507,8 +442,6 @@ function installStatefulDb(
     delete (PlaylistVideoMapping as any).bulkCreate;
     // deno-lint-ignore no-explicit-any
     delete (sequelize as any).transaction;
-    // deno-lint-ignore no-explicit-any
-    (PlaylistVideoMapping as any).update = realUpdate;
   };
 }
 
@@ -534,7 +467,7 @@ function fakeRuntime(): ListingRuntime {
   };
 }
 
-Deno.test("U9 - Start walk stops after the bulk tail shift, tail stays correct", async () => {
+Deno.test("U7 - Start prepend walks every chunk and keeps the tail correct", async () => {
   // DB: A..J @1..10. Source: N1..N12 @1..12, A..J @13..22. Chunk size 10.
   const ids = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
   const db: FakeDb = {
@@ -593,9 +526,10 @@ Deno.test("U9 - Start walk stops after the bulk tail shift, tail stays correct",
       monitoringType: "Start",
     });
 
-    // Anchor appears in chunk 2; the third chunk is never pulled.
-    assertEquals(counters.chunksPulled, 2);
-    assertEquals(counters.updates, 1);
+    // A uniformly shifted chunk is not proof that the unseen tail is also a
+    // pure prepend, so the final chunk must still be inspected.
+    assertEquals(counters.chunksPulled, 3);
+    assertEquals(counters.updates, 0);
     assertEquals(result.status, "completed");
 
     const byPosition = new Map(
@@ -615,11 +549,48 @@ Deno.test("U9 - Start walk stops after the bulk tail shift, tail stays correct",
   }
 });
 
+Deno.test("U8 - duplicate occurrences in separate chunks keep separate mappings", async () => {
+  const db: FakeDb = { videos: new Set(), mappings: [] };
+  const counters = { updates: 0, chunksPulled: 0 };
+  const restore = installStatefulDb(db, counters);
+  try {
+    const result = await consumePlaylistChunks(fakeRuntime(), {
+      chunks: (async function* () {
+        counters.chunksPulled++;
+        yield { items: [line("V", 1)], startIndex: 1 };
+        counters.chunksPulled++;
+        yield { items: [line("V", 2)], startIndex: 2 };
+      })(),
+      onEmpty: () => ({ url: PLAYLIST, title: "x", status: "failed" }),
+      onError: (error) => ({
+        url: PLAYLIST,
+        title: "x",
+        status: "failed",
+        error: error.message,
+      }),
+    }, {
+      videoUrl: PLAYLIST,
+      isScheduledUpdate: true,
+      shouldEmitProgress: false,
+      playlistTitle: "P",
+      seekPlaylistListTo: 0,
+      processKey: "k",
+      monitoringType: "Refresh",
+    });
+
+    assertEquals(result.status, "completed");
+    assertEquals(counters.chunksPulled, 2);
+    assertEquals(db.mappings.map((mapping) => mapping.position), [1, 2]);
+  } finally {
+    restore();
+  }
+});
+
 // ---------------------------------------------------------------------------
-// U10 — Start with no overlap: full walk, no shift, all creates
+// U9 — Start with no overlap: full walk, no shift, all creates
 // ---------------------------------------------------------------------------
 
-Deno.test("U10 - Start with the old head missing walks everything", async () => {
+Deno.test("U9 - Start with the old head missing walks everything", async () => {
   const db: FakeDb = {
     videos: new Set([videoUrlOf("OLD")]),
     mappings: [{
@@ -677,10 +648,10 @@ Deno.test("U10 - Start with the old head missing walks everything", async () => 
 });
 
 // ---------------------------------------------------------------------------
-// U11 — End tail window with moves raises the restart flag
+// U10 — End tail window with moves raises the restart flag
 // ---------------------------------------------------------------------------
 
-Deno.test("U11 - End tail moves trigger the restart signal", async () => {
+Deno.test("U10 - End tail moves trigger the restart signal", async () => {
   const { calls, restore } = installSingleChunk(
     [videoUrlOf("C"), videoUrlOf("D")],
     [
@@ -718,61 +689,5 @@ Deno.test("U11 - End tail moves trigger the restart signal", async () => {
     assertEquals(updatedPositions(calls), [7, 8]);
   } finally {
     restore();
-  }
-});
-
-Deno.test("U8 - shiftPlaylistTail renumbers the tail in one statement", async () => {
-  // deno-lint-ignore no-explicit-any
-  const realUpdate = (PlaylistVideoMapping as any).update;
-  interface UpdateCall {
-    // deno-lint-ignore no-explicit-any
-    values: any;
-    // deno-lint-ignore no-explicit-any
-    options: any;
-  }
-  const seen: UpdateCall[] = [];
-  // deno-lint-ignore no-explicit-any
-  (PlaylistVideoMapping as any).update = (
-    // deno-lint-ignore no-explicit-any
-    values: any,
-    // deno-lint-ignore no-explicit-any
-    options: any,
-  ) => {
-    seen.push({ values, options });
-    return Promise.resolve([4]);
-  };
-  try {
-    const runStart = new Date("2026-05-01T00:00:00.000Z");
-    const affected = await shiftPlaylistTail(
-      PLAYLIST,
-      1,
-      12,
-      ["id-a"],
-      runStart,
-    );
-    assertEquals(affected, 4);
-    assertEquals(seen.length, 1);
-    assertEquals(seen[0].options.where.playlistUrl, PLAYLIST);
-    assert(
-      seen[0].values.positionInPlaylist?.val?.includes("+ 12") ?? false,
-      "position must advance by the delta literal",
-    );
-    // Rows this run already wrote are fenced out twice: by id (moved rows)
-    // and by timestamp (created rows, whose ids the caller never learns).
-    const byDescription = (obj: object, name: string) =>
-      (obj as Record<symbol, unknown>)[
-        Object.getOwnPropertySymbols(obj).find((s) => s.description === name)!
-      ];
-    assertEquals(
-      byDescription(seen[0].options.where.id, "notIn"),
-      ["id-a"],
-    );
-    assertEquals(
-      byDescription(seen[0].options.where.updatedAt, "lt"),
-      runStart,
-    );
-  } finally {
-    // deno-lint-ignore no-explicit-any
-    (PlaylistVideoMapping as any).update = realUpdate;
   }
 });
