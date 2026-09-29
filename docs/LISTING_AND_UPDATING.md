@@ -83,13 +83,14 @@ the configured **Monitoring Type**.
 - **Optimization**: To avoid scanning a massive channel perpetually, `yt-diff`
   watches for completely duplicate chunks. If the scanner encounters **two
   consecutive chunks** where every single video parsed already exists at those
-  indices in the database (no moves, no new videos), the process cleanly
-  aborts. A chunk whose known videos moved to new indices does not count —
-  the walk keeps going so the tail is not left stale.
-- **Prepend handling**: When a head chunk shows every moved video shifted by
-  the same positive amount (new videos prepended), the unvisited tail is
-  renumbered in one statement and the walk stops. Mixed moves, deletions, or
-  a head that never appears fall back to a full walk.
+  indices in the database (no moves, no new occurrences), the process cleanly
+  aborts, provided no earlier chunk in this run changed. After a new occurrence
+  or moved row appears, the scanner walks to the end. Unchanged middle chunks
+  cannot establish that the lower part of the playlist is unchanged.
+- **Prepend handling**: New head occurrences are inserted and existing mappings
+  are moved to their observed positions. The scan continues through all chunks
+  after the first change, including when a chunk shows a uniform shift, because
+  a deletion or reorder may appear lower down.
 
 ### `End` Mode (Incremental Append)
 
@@ -105,6 +106,8 @@ the configured **Monitoring Type**.
     what the database previously saved, a `logger.warn()` is triggered notifying
     the administrator that videos higher up in the playlist were likely deleted,
     shifting the index down.
+  - If the overlapping tail window contains moved rows, the updater restarts
+    from the top so earlier rows can be corrected as well.
   - If the scanner fetches the chunk and it returns absolutely zero results when
     it shouldn't have, it aborts the process and logs an error about severe
     playlist deletions.
@@ -179,8 +182,9 @@ YouTube allows the same video at multiple positions in a playlist. `yt-diff`
 matches this behavior:
 
 - **Real playlists**: Duplicates are allowed. Each occurrence creates a separate
-  mapping at its own position. The system does not attempt to de-duplicate or
-  merge mappings for the same video URL.
+  mapping at its own position. A mapping already consumed in one chunk cannot
+  be reused by a later chunk in the same listing. The system does not attempt
+  to de-duplicate or merge mappings for the same video URL.
 - **"None" playlist** (unlisted/unplaylisted videos): Duplicates are **not**
   allowed. If a video already has a mapping, its position is updated instead of
   creating a duplicate entry.

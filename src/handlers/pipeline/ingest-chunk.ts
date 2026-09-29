@@ -153,6 +153,7 @@ export async function processStreamingVideoInformation(
   chunkStartIndex: number,
   isUpdate: boolean,
   monitoringType?: string,
+  consumedMappings: Set<string> = new Set(),
 ): Promise<StreamingVideoProcessingResult> {
   logger.trace("Processing video information chunk", {
     playlistUrl,
@@ -235,10 +236,18 @@ export async function processStreamingVideoInformation(
   const availableMappingsByUrl = new Map<string, Model[]>(
     (() => {
       const grouped = new Map<string, Model[]>();
-      const ordered = [...existingMappings].sort((left, right) =>
-        (left.getDataValue("positionInPlaylist") as number) -
-        (right.getDataValue("positionInPlaylist") as number)
-      );
+      const ordered = existingMappings
+        .filter((mapping) => {
+          const id = mapping.getDataValue("id") as string;
+          const videoUrl = mapping.getDataValue("videoUrl") as string;
+          const position = mapping.getDataValue("positionInPlaylist") as number;
+          return !consumedMappings.has(`id:${id}`) &&
+            !consumedMappings.has(`position:${videoUrl}|${position}`);
+        })
+        .sort((left, right) =>
+          (left.getDataValue("positionInPlaylist") as number) -
+          (right.getDataValue("positionInPlaylist") as number)
+        );
       for (const mapping of ordered) {
         const videoUrl = mapping.getDataValue("videoUrl") as string;
         const queue = grouped.get(videoUrl);
@@ -292,6 +301,9 @@ export async function processStreamingVideoInformation(
     // the source says it is: fast-skip it (except under Refresh, which
     // deliberately re-evaluates everything).
     const exactMapping = takeMappingAt(videoUrl, absoluteIndex);
+    if (exactMapping) {
+      consumedMappings.add(`id:${exactMapping.getDataValue("id") as string}`);
+    }
     if (
       monitoringType !== "Refresh" &&
       existingVideo && exactMapping
@@ -306,6 +318,7 @@ export async function processStreamingVideoInformation(
     // falls through to refresh the metadata below.
     const movedMapping = exactMapping ?? takeEarliestMapping(videoUrl);
     if (movedMapping) {
+      consumedMappings.add(`id:${movedMapping.getDataValue("id") as string}`);
       const oldPosition = movedMapping.getDataValue(
         "positionInPlaylist",
       ) as number;
@@ -337,6 +350,10 @@ export async function processStreamingVideoInformation(
         playlistUrl: playlistUrl,
         positionInPlaylist: absoluteIndex,
       });
+      // The inserted row has no id until the database write completes. Its
+      // source position is stable, so reserve that occurrence for subsequent
+      // chunks in this listing and prevent it from being reused as a move.
+      consumedMappings.add(`position:${videoUrl}|${absoluteIndex}`);
     }
 
     const videoData: VideoUpsertData = {
