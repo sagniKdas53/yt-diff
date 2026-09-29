@@ -1,29 +1,33 @@
 # Bot and player backlog
 
-Eleven loose ideas, read against the code on 2026-09-16 and turned into a plan
-that can be picked up cold. Each item records what already exists, what is
-missing, the traps found while reading, and a size. Nothing here is started.
+Eleven loose ideas, read against the code on 2026-09-16 and re-audited against
+`master` on 2026-09-29. Each item records what already exists, what is missing,
+the traps found while reading, and a size. Item 2 is partly implemented;
+playlist churn is deferred.
 
-Suggested order, by risk-to-data first and then by cheapness:
+Suggested order, by data risk, dependencies, then size:
 
 | #  | Item                                            | Size           | Status      |
 | :- | :---------------------------------------------- | :------------- | :---------- |
 | 10 | Bot loses messages after an outage              | M              | not started |
 | 11 | Sidecar 429s must not fail the download         | M              | not started |
 | 6  | Sliding-window refresh retry loops              | S              | not started |
-| 9  | Playback speed                                  | S              | not started |
-| 5  | Resume at `t=` (index already works)            | S              | not started |
-| 2  | Expiry label + keep in the UI and `/keep <url>` | S              | not started |
 | 8a | Subtitles test                                  | S              | not started |
 | 8b | (i) description dialog                          | S              | not started |
-| 8c | Chapters                                        | S–M            | not started |
-| 8d | Comments                                        | M, maybe never | not started |
-| 4  | Share the player URL from the bot               | S–M            | not started |
+| 9  | Playback speed                                  | S              | not started |
+| 5  | Resume at `t=` (index already works)            | S              | not started |
+| 2  | Expiry label + keep in the UI and `/keep <url>` | S              | partial     |
 | 1  | Cancel a listing or download from the bot       | M              | not started |
+| 4  | Share the player URL from the bot               | S–M            | not started |
+| 8c | Chapters                                        | S–M            | not started |
 | 7  | Player render cost and shortcuts                | M              | not started |
-| 3  | Playlist churn — the "diff" in yt-diff          | L              | not started |
+| 8d | Comments                                        | M, maybe never | not started |
+| 3  | Playlist churn — the "diff" in yt-diff          | L              | deferred    |
 
 Sizes: S = an afternoon, M = a day or two, L = a design pass then several days.
+Item 2 has `/keep <id>` but still needs the URL form, expiry UI, and the
+retention behavior below. Finish it before item 4 chooses player links and
+delivery locations. Item 8d needs a product decision before implementation.
 
 ---
 
@@ -583,39 +587,11 @@ Listings carry the same handle in `listProcesses`.
 
 ## 3. Playlist churn — the "diff" in yt-diff
 
-**What exists.** Only current state:
-`PlaylistVideoMapping (videoUrl,
-playlistUrl, positionInPlaylist)`, overwritten
-on update. Removals are inferred (`logger.warn` in the update path, see
-`docs/LISTING_AND_UPDATING.md`) and never recorded. `VideoMetadata.isAvailable`
-marks videos yt-dlp reports as unavailable.
-
-**Design.**
-
-- New table
-  `playlist_changes (id, playlistUrl, videoUrl, kind: added|moved|
-  removed, fromPosition, toPosition, runId, createdAt)`,
-  written by the ingest path (`ingest-chunk.ts` / `playlist-records.ts`)
-  whenever a mapping is created or its position changes.
-- `removed` can only be asserted by a `Full` run, which sees the whole list;
-  `Start` and `End` modes never can. Record a `runId` per scheduled run and, for
-  Full runs, mark mappings not seen in that run as removed (keep the mapping,
-  flag it, so the row can still be shown red).
-- UI: colour rows relative to a chosen baseline — "since last run" or "since I
-  last opened this playlist" (a per-playlist timestamp in `localStorage`). Green
-  added, red removed, blue moved, matching the git metaphor.
-
-**Plan.**
-
-1. Phase 1 (backend): the table, writes from the ingest path for added/moved in
-   every mode, removed from Full runs; a `/changes` endpoint paged by playlist.
-   Tests alongside `playlist_records.test.ts`.
-2. Phase 2 (frontend): the row colouring and a "changes since" control in
-   `SubList`; a summary line on the playlist row ("+12 −3 ~5 since Monday").
-3. Retention: prune `playlist_changes` older than N days in the existing prune
-   job.
+**Deferred.** The app currently stores playlist mappings, not a change history.
+Skip design and implementation until this item is explicitly resumed.
 
 ---
 
 _Written 2026-09-16 from a read of `master` at `035ff7c`; items 10, 2, 8 and 4
-revised the same day after the 15–16 Sep outage; item 11 added the same day._
+revised the same day after the 15–16 Sep outage; item 11 added the same day.
+Priority and status re-audited 2026-09-29 against `master` at `45ef5f6`._
