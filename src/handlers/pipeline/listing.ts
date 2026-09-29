@@ -406,8 +406,13 @@ async function clearMappingsForReindex(
  * two copies had drifted — one compared the duplicate count against the
  * configured chunk size and the other against the chunk actually received,
  * which differ on a final partial chunk.
+ *
+ * Early exit applies to `Start` only when two chunks contain exact-position
+ * rows and no moves. A uniform shift in one chunk is not enough evidence of a
+ * pure prepend: a deletion or reorder can still appear below that chunk, so
+ * any observed move makes the driver walk the complete listing.
  */
-async function consumePlaylistChunks(
+export async function consumePlaylistChunks(
   rt: ListingRuntime,
   source: PlaylistChunkSource,
   item: {
@@ -418,6 +423,14 @@ async function consumePlaylistChunks(
     seekPlaylistListTo: number;
     processKey: string;
     monitoringType: string;
+    /**
+     * Set by `handlePlaylistStreaming` for `End` tail walks. When the tail
+     * window contains moved rows, per-chunk updates alone cannot repair the
+     * head the window never visited, so the flag asks the caller to restart
+     * the walk from position 1. The YouTube-API path (already a full scan)
+     * never sets it.
+     */
+    reportTailMove?: { triggered: boolean };
   },
 ): Promise<ListingResult> {
   const {
@@ -432,6 +445,11 @@ async function consumePlaylistChunks(
 
   let processedChunks = 0;
   let consecutiveDuplicateChunks = 0;
+  let changedInRun = false;
+  // A mapping represents one occurrence, not merely one video URL. Keep its
+  // consumption state for the entire listing so a duplicate in a later chunk
+  // cannot steal and move an occurrence already observed in an earlier one.
+  const consumedMappings = new Set<string>();
 
   try {
     for await (const chunk of source.chunks) {
@@ -441,6 +459,7 @@ async function consumePlaylistChunks(
         chunk.startIndex,
         isScheduledUpdate,
         monitoringType,
+        consumedMappings,
       );
 
       processedChunks++;
@@ -459,24 +478,32 @@ async function consumePlaylistChunks(
 
       source.onChunkDone?.(processedChunks);
 
-      // "Start" walks a playlist from the top looking for what is new, so
-      // two chunks running with nothing new in them means the walk has
-      // reached ground already covered.
-      if (
-        monitoringType === "Start" &&
-        result.alreadyExistedCount === chunk.items.length
-      ) {
-        consecutiveDuplicateChunks++;
-        if (consecutiveDuplicateChunks >= 2) {
-          logger.info(
-            "Two consecutive chunks were entirely known items; stopping early",
-            { url: videoUrl, processedChunks },
-          );
-          source.stop?.();
-          break;
+      const fullyKnown = result.alreadyExistedCount === chunk.items.length;
+
+      // "Start" walks a playlist from the top looking for what is new.
+      if (monitoringType === "Start") {
+        // Once this run observes a new occurrence or a moved row, unchanged
+        // chunks cannot prove the unseen tail is unchanged. Walk to the end.
+        changedInRun ||= !fullyKnown || result.moves.length > 0;
+        if (!changedInRun && fullyKnown) {
+          consecutiveDuplicateChunks++;
+          if (consecutiveDuplicateChunks >= 2) {
+            logger.info(
+              "Two consecutive chunks were entirely known items; stopping early",
+              { url: videoUrl, processedChunks },
+            );
+            source.stop?.();
+            break;
+          }
+        } else {
+          consecutiveDuplicateChunks = 0;
         }
-      } else {
-        consecutiveDuplicateChunks = 0;
+      } else if (
+        monitoringType === "End" &&
+        item.reportTailMove &&
+        result.moves.length > 0
+      ) {
+        item.reportTailMove.triggered = true;
       }
     }
 
@@ -596,28 +623,61 @@ export async function handlePlaylistStreaming(
     startIndex,
   );
 
-  return await consumePlaylistChunks(rt, {
-    chunks: chunkPlaylistLines(
-      streamProcessor.iterator,
-      chunkSize,
-      startIndex,
-    ),
-    stop: () => streamProcessor.process.kill("SIGTERM"),
-    onEmpty: () => {
-      // A tail walk that starts past the top and finds nothing is not an
-      // empty playlist — the positions it was told about are gone.
-      if (monitoringType === "End" && startIndex > 1) {
-        throw new Error(
-          "End mode index returned empty due to likely deletions.",
-        );
-      }
-      return handleEmptyResponse(rt, videoUrl);
+  // The tail window of an `End` walk never visits the head, so moved rows
+  // in it mean positions above the window shifted too (head deletions,
+  // middle inserts, reorders). The window's own rows are already fixed by
+  // per-chunk updates; the restart below repairs the unvisited head with the
+  // same move logic, one pass, no clearing. Pure appends never set the flag
+  // and stay on the cheap path.
+  const reportTailMove = { triggered: false };
+
+  const tailResult = await consumePlaylistChunks(
+    rt,
+    {
+      chunks: chunkPlaylistLines(
+        streamProcessor.iterator,
+        chunkSize,
+        startIndex,
+      ),
+      stop: () => streamProcessor.process.kill("SIGTERM"),
+      onEmpty: () => {
+        // A tail walk that starts past the top and finds nothing is not an
+        // empty playlist — the positions it was told about are gone.
+        if (monitoringType === "End" && startIndex > 1) {
+          throw new Error(
+            "End mode index returned empty due to likely deletions.",
+          );
+        }
+        return handleEmptyResponse(rt, videoUrl);
+      },
+      onError: (error) =>
+        isDeliberateTermination(error)
+          ? null
+          : handleListingError(rt, error, videoUrl, "playlist"),
     },
-    onError: (error) =>
-      isDeliberateTermination(error)
-        ? null
-        : handleListingError(rt, error, videoUrl, "playlist"),
-  }, item);
+    monitoringType === "End" && startIndex > 1
+      ? { ...item, reportTailMove }
+      : item,
+  );
+
+  if (monitoringType === "End" && reportTailMove.triggered) {
+    logger.info(
+      "End tail window showed moved positions; restarting walk from the top",
+      { url: videoUrl },
+    );
+    const fullStream = streamPlayListItems(rt, videoUrl, processKey, 1);
+    return await consumePlaylistChunks(rt, {
+      chunks: chunkPlaylistLines(fullStream.iterator, chunkSize, 1),
+      stop: () => fullStream.process.kill("SIGTERM"),
+      onEmpty: () => handleEmptyResponse(rt, videoUrl),
+      onError: (error) =>
+        isDeliberateTermination(error)
+          ? null
+          : handleListingError(rt, error, videoUrl, "playlist"),
+    }, item);
+  }
+
+  return tailResult;
 }
 
 async function handlePlaylistViaApi(
