@@ -367,7 +367,7 @@ interface FakeDb {
 
 function installStatefulDb(
   db: FakeDb,
-  counters: { updates: number; chunksPulled: number },
+  _counters: { updates: number; chunksPulled: number },
 ): () => void {
   // deno-lint-ignore no-explicit-any
   (VideoMetadata as any).findAll = () =>
@@ -581,6 +581,110 @@ Deno.test("U8 - duplicate occurrences in separate chunks keep separate mappings"
     assertEquals(result.status, "completed");
     assertEquals(counters.chunksPulled, 2);
     assertEquals(db.mappings.map((mapping) => mapping.position), [1, 2]);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("U8a - End append keeps a second occurrence across chunks", async () => {
+  const db: FakeDb = {
+    videos: new Set([videoUrlOf("V")]),
+    mappings: [{
+      id: "id-v",
+      videoUrl: videoUrlOf("V"),
+      position: 1,
+      updatedAt: new Date("2020-01-01T00:00:00.000Z"),
+    }],
+  };
+  const counters = { updates: 0, chunksPulled: 0 };
+  const restore = installStatefulDb(db, counters);
+  try {
+    const result = await consumePlaylistChunks(fakeRuntime(), {
+      chunks: (async function* () {
+        counters.chunksPulled++;
+        yield { items: [line("V", 1)], startIndex: 1 };
+        counters.chunksPulled++;
+        yield { items: [line("V", 2)], startIndex: 2 };
+      })(),
+      onEmpty: () => ({ url: PLAYLIST, title: "x", status: "failed" }),
+      onError: (error) => ({
+        url: PLAYLIST,
+        title: "x",
+        status: "failed",
+        error: error.message,
+      }),
+    }, {
+      videoUrl: PLAYLIST,
+      isScheduledUpdate: true,
+      shouldEmitProgress: false,
+      playlistTitle: "P",
+      seekPlaylistListTo: 0,
+      processKey: "k",
+      monitoringType: "End",
+    });
+
+    assertEquals(result.status, "completed");
+    assertEquals(counters.chunksPulled, 2);
+    assertEquals(db.mappings.map((mapping) => mapping.position), [1, 2]);
+    assertEquals(db.mappings.map((mapping) => mapping.id), [
+      "id-v",
+      "created-0",
+    ]);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("U8b - Start keeps walking past unchanged chunks after a prepend", async () => {
+  // The initial prepend moves A and B. C and D then appear at their old
+  // positions because X disappeared; the lower F/E reorder must still be read.
+  const oldIds = ["A", "B", "X", "C", "D", "E", "F"];
+  const db: FakeDb = {
+    videos: new Set(oldIds.map(videoUrlOf)),
+    mappings: oldIds.map((id, index) => ({
+      id: `id-${id}`,
+      videoUrl: videoUrlOf(id),
+      position: index + 1,
+      updatedAt: new Date("2020-01-01T00:00:00.000Z"),
+    })),
+  };
+  const counters = { updates: 0, chunksPulled: 0 };
+  const restore = installStatefulDb(db, counters);
+  try {
+    const sourceIds = ["N", "A", "B", "C", "D", "F", "E"];
+    const result = await consumePlaylistChunks(fakeRuntime(), {
+      chunks: (async function* () {
+        for (const [index, id] of sourceIds.entries()) {
+          counters.chunksPulled++;
+          yield { items: [line(id, index + 1)], startIndex: index + 1 };
+        }
+      })(),
+      onEmpty: () => ({ url: PLAYLIST, title: "x", status: "failed" }),
+      onError: (error) => ({
+        url: PLAYLIST,
+        title: "x",
+        status: "failed",
+        error: error.message,
+      }),
+    }, {
+      videoUrl: PLAYLIST,
+      isScheduledUpdate: true,
+      shouldEmitProgress: false,
+      playlistTitle: "P",
+      seekPlaylistListTo: 0,
+      processKey: "k",
+      monitoringType: "Start",
+    });
+
+    assertEquals(result.status, "completed");
+    assertEquals(counters.chunksPulled, sourceIds.length);
+    for (const [index, id] of sourceIds.entries()) {
+      assertEquals(
+        db.mappings.find((mapping) => mapping.videoUrl === videoUrlOf(id))
+          ?.position,
+        index + 1,
+      );
+    }
   } finally {
     restore();
   }

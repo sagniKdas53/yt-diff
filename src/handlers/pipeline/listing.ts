@@ -445,6 +445,7 @@ export async function consumePlaylistChunks(
 
   let processedChunks = 0;
   let consecutiveDuplicateChunks = 0;
+  let changedInRun = false;
   // A mapping represents one occurrence, not merely one video URL. Keep its
   // consumption state for the entire listing so a duplicate in a later chunk
   // cannot steal and move an occurrence already observed in an earlier one.
@@ -481,12 +482,10 @@ export async function consumePlaylistChunks(
 
       // "Start" walks a playlist from the top looking for what is new.
       if (monitoringType === "Start") {
-        // Two chunks running with nothing new and nothing moved in them
-        // means the walk has reached ground already covered. Chunks that are
-        // fully known *but moved* (non-uniform shift, deletions) explicitly
-        // do not count: stopping there would leave the tail stale, so the
-        // walk falls back to covering the whole playlist instead.
-        if (fullyKnown && result.moves.length === 0) {
+        // Once this run observes a new occurrence or a moved row, unchanged
+        // chunks cannot prove the unseen tail is unchanged. Walk to the end.
+        changedInRun ||= !fullyKnown || result.moves.length > 0;
+        if (!changedInRun && fullyKnown) {
           consecutiveDuplicateChunks++;
           if (consecutiveDuplicateChunks >= 2) {
             logger.info(
