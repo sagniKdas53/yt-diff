@@ -82,17 +82,14 @@ services:
       retries: 5
 
   yt-diff:
-    # Pulled from the rootless, immutable Nix image built by CI.
+    # Pulled from CI-built GHCR image; Watchtower keeps it current
+    # CI workflow: yt-diff/.github/workflows/docker-build-and-push.yml
     image: ghcr.io/sagnikdas53/yt-diff:latest
     container_name: yt-diff
     restart: unless-stopped
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,noexec,mode=1777
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - type: bind
         source: ${HOST_SAVE_PATH}

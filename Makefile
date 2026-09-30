@@ -40,9 +40,7 @@ pi4:
 	@$(MAKE) env TARGET=pi4
 
 build:
-	nix build .#container
-	docker load < result
-	docker tag yt-diff:nix ghcr.io/sagnikdas53/yt-diff:latest
+	docker compose build --no-cache
 
 check:
 	docker compose config
