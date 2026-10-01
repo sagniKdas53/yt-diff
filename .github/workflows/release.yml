@@ -39,7 +39,7 @@ jobs:
 
       - name: Compute and push tag
         id: tag
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: mathieudutour/github-tag-action@v7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # No conventional-commit prefix in the range means no release. Without this the
