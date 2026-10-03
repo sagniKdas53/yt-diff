@@ -2,32 +2,41 @@
 
 Eleven loose ideas, read against the code on 2026-09-16 and re-audited against
 `master` on 2026-09-29. Each item records what already exists, what is missing,
-the traps found while reading, and a size. Item 2 is partly implemented;
-playlist churn is deferred.
+the traps found while reading, and a size.
+
+Every item but one is implemented, on `feat/bot-and-player-backlog`. Playlist
+churn — the "diff" in yt-diff — is still deferred, and the comments feature
+has been declined rather than deferred; both decisions are recorded below and
+in `../ISSUES_AND_IMPROVEMENTS.md` §7. The plans are kept as written: they
+say what the problem was, which is what the commit messages refer back to.
 
 Suggested order, by data risk, dependencies, then size:
 
 | #  | Item                                            | Size           | Status      |
 | :- | :---------------------------------------------- | :------------- | :---------- |
-| 10 | Bot loses messages after an outage              | M              | not started |
-| 11 | Sidecar 429s must not fail the download         | M              | not started |
-| 6  | Sliding-window refresh retry loops              | S              | not started |
-| 8a | Subtitles test                                  | S              | not started |
-| 8b | (i) description dialog                          | S              | not started |
-| 9  | Playback speed                                  | S              | not started |
-| 5  | Resume at `t=` (index already works)            | S              | not started |
-| 2  | Expiry label + keep in the UI and `/keep <url>` | S              | partial     |
-| 1  | Cancel a listing or download from the bot       | M              | not started |
-| 4  | Share the player URL from the bot               | S–M            | not started |
-| 8c | Chapters                                        | S–M            | not started |
-| 7  | Player render cost and shortcuts                | M              | not started |
-| 8d | Comments                                        | M, maybe never | not started |
+| 10 | Bot loses messages after an outage              | M              | done        |
+| 11 | Sidecar 429s must not fail the download         | M              | done        |
+| 6  | Sliding-window refresh retry loops              | S              | done        |
+| 8a | Subtitles test                                  | S              | done        |
+| 8b | (i) description dialog                          | S              | done        |
+| 9  | Playback speed                                  | S              | done        |
+| 5  | Resume at `t=` (index already works)            | S              | done        |
+| 2  | Expiry label + keep in the UI and `/keep <url>` | S              | done        |
+| 1  | Cancel a listing or download from the bot       | M              | done        |
+| 4  | Share the player URL from the bot               | S–M            | done        |
+| 8c | Chapters                                        | S–M            | done        |
+| 7  | Player render cost and shortcuts                | M              | done        |
+| 8d | Comments                                        | M, maybe never | declined    |
 | 3  | Playlist churn — the "diff" in yt-diff          | L              | deferred    |
 
+Every item except 3 is implemented. 8d is not "deferred": the decision is
+recorded in `ISSUES_AND_IMPROVEMENTS.md` §7 — a comments feature is not being
+built, and what was broken about it is fixed.
+
 Sizes: S = an afternoon, M = a day or two, L = a design pass then several days.
-Item 2 has `/keep <id>` but still needs the URL form, expiry UI, and the
-retention behavior below. Finish it before item 4 chooses player links and
-delivery locations. Item 8d needs a product decision before implementation.
+Item 2 had `/keep <id>`; it now takes a URL as well, and the row says when
+the reaper will take a file. Item 8d's product decision is made and recorded
+in `ISSUES_AND_IMPROVEMENTS.md` §7.
 
 ---
 
