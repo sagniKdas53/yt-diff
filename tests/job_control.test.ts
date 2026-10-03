@@ -1117,3 +1117,76 @@ Deno.test("cancel - a listing run that was already queued for a slot declines to
     h.restore();
   }
 });
+
+Deno.test("resume - a listing whose request is already being listed stays paused", () => {
+  // A pause releases the single-flight key so a resume cannot join the run it is
+  // killing, which leaves the key free for anyone else. A plain `/list` for the
+  // same URL, monitoring type and scheduled-update state takes it back — and the
+  // resume then joins that run instead of starting one of its own, so the id the
+  // user is tracking is never registered.
+  const resumed: PausedJob[] = [];
+  const h = buildHarness({
+    resumeListing: (job) => {
+      resumed.push(job);
+      return Promise.resolve();
+    },
+  });
+  try {
+    const entry = listingEntry();
+    h.pausedJobs.set(entry.id, pausedListing());
+    h.listingRuntime.inFlight.run(
+      entry.flightKey,
+      () => Promise.resolve({ url: PLAYLIST_URL, status: "success" }),
+    );
+
+    const result = h.control.resumeJob(entry.id);
+
+    assertEquals(result.outcome, "not-allowed");
+    assert(h.pausedJobs.has(entry.id), "the job must stay paused");
+    assertEquals(resumed.length, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("resume - a listing whose key is taken while it waits goes back to paused", async () => {
+  // The same conflict, arriving after the resume was accepted rather than
+  // before. Answering "resumed" and then not starting would leave the user with
+  // a job they cannot see, cancel, or retry.
+  const resumed: PausedJob[] = [];
+  const h = buildHarness({
+    resumeListing: (job) => {
+      resumed.push(job);
+      return Promise.resolve();
+    },
+  });
+  try {
+    const gate = Promise.withResolvers<ListingResult>();
+    const entry = listingEntry();
+    h.listings.set("list-1", entry);
+    h.listingRuntime.inFlight.run(entry.flightKey, () => gate.promise);
+
+    h.control.pauseJob(entry.id);
+    assertEquals(h.control.resumeJob(entry.id).outcome, "resumed");
+
+    // A plain `/list` for the same request takes the released key while the
+    // resume is still waiting for the old run to settle. Left pending on
+    // purpose: a run that settled at once would release the key again through
+    // single-flight's own cleanup before the resume ever looked.
+    const competing = Promise.withResolvers<ListingResult>();
+    h.listingRuntime.inFlight.run(entry.flightKey, () => competing.promise);
+
+    gate.resolve({ url: PLAYLIST_URL, status: "success" });
+    await tick();
+    await tick();
+    competing.resolve({ url: PLAYLIST_URL, status: "success" });
+
+    assertEquals(resumed.length, 0);
+    assert(h.pausedJobs.has(entry.id), "paused again, not lost");
+    const waiting = h.control.getListingSnapshot();
+    assertEquals(waiting.length, 1);
+    assertEquals(waiting[0].state, "paused");
+  } finally {
+    h.restore();
+  }
+});

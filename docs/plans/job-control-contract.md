@@ -199,6 +199,16 @@ leaves a mark that the run itself reads and declines on. Without that second one
 the cancel is accepted and the listing begins anyway the moment a slot frees,
 which is the user asking for it to stop and it not stopping.
 
+Pausing also releases the listing's single-flight key, so that a resume cannot
+join the run it is killing. That leaves the key free, and a plain `/list` for
+the same URL, monitoring type and scheduled-update state can take it straight
+back. The resume would then join _that_ run instead of starting one of its own,
+and the id the user is tracking would never be registered at all. So a resume
+whose key is taken answers `not-allowed` and the job stays paused. If the key is
+taken while a deferred resume is still waiting, the resume is withdrawn and the
+job goes back to paused — the alternative is telling the user it resumed and
+then leaving them with a job they cannot see, cancel, or retry.
+
 Downloads have neither wait. They carry no per-run database state to collide
 with, and a download registers itself before it takes a slot rather than after,
 so it is findable from the moment it is accepted.

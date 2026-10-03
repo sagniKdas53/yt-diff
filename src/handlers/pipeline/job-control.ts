@@ -320,6 +320,25 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
   const deferredResumes = new Map<string, PausedJob>();
 
   /**
+   * True when something else already holds this listing's single-flight key.
+   *
+   * A pause releases the key so a resume cannot join the run it is killing.
+   * That leaves the key free for anyone else, and a plain `/list` for the same
+   * URL, monitoring type and scheduled-update state takes it straight back. The
+   * resume then joins *that* run instead of starting one of its own, so the id
+   * the user is tracking is never registered and the listing they paused never
+   * resumes — told "resumed", then gone from the drawer.
+   *
+   * Only the in-flight map, never `retiringListings`: that map holding the key
+   * is this job's own paused run on its way out, which is exactly the case a
+   * resume is meant to wait for.
+   */
+  function flightKeyTaken(job: PausedJob): boolean {
+    return job.kind === "listing" && job.flightKey !== undefined &&
+      listingRuntime.inFlight.has(job.flightKey);
+  }
+
+  /**
    * What a resume needs, read off a download entry.
    *
    * A pure read, so a cancel can use the same shape without leaving the job
@@ -571,6 +590,17 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       );
     }
 
+    // The listing counterpart, and for the same reason: checked while the paused
+    // record is still there to keep. The deferral below checks again before it
+    // starts, because a `/list` can take the key during the wait as well.
+    if (flightKeyTaken(job)) {
+      return notAllowed(
+        id,
+        "resume",
+        "Another listing for this request is already queued or running, so this one is still paused.",
+      );
+    }
+
     pausedJobs.delete(id);
 
     if (job.kind === "download") {
@@ -599,11 +629,37 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       { id, url: job.url },
     );
 
-    void (retiring === undefined ? resumeListing(job) : retiring.then(() =>
-      // A cancel that took the entry while this waited stops the run here,
-      // before it ever reaches the semaphore.
-      deferredResumes.has(id) ? resumeListing(job) : undefined
-    )).then(
+    /**
+     * Starts the run, unless something in the meantime has taken it away.
+     *
+     * Both reasons leave `deferredResumes` without an entry, which is how the
+     * handler below knows not to claim a resume that did not happen.
+     */
+    const startWhenSafe = (): Promise<unknown> | undefined => {
+      // A cancel that took the entry while this waited stops it here, before it
+      // ever reaches the semaphore.
+      if (!deferredResumes.has(id)) {
+        return undefined;
+      }
+      // A `/list` for the same request took the key during the wait. Joining it
+      // would resume nothing under this id, so the job goes back to paused —
+      // the answer the guard above gives when it is caught earlier, and the
+      // only one that does not leave a job the user cannot see or cancel.
+      if (flightKeyTaken(job)) {
+        deferredResumes.delete(id);
+        pausedJobs.set(id, job);
+        logger.info(
+          "A listing resume was withdrawn: that request is already being listed",
+          { id, url: job.url },
+        );
+        return undefined;
+      }
+      return resumeListing(job);
+    };
+
+    void Promise.resolve(
+      retiring === undefined ? startWhenSafe() : retiring.then(startWhenSafe),
+    ).then(
       () => {
         // Deleting on the run's own settlement: it registers the job before it
         // resolves, so by then the entry is redundant, and if it gave up first
