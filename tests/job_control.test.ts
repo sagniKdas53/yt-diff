@@ -632,7 +632,7 @@ Deno.test("snapshot - positions number only the jobs still waiting", () => {
 Deno.test("progress - the line parses to bytes, eta and speed", () => {
   assertEquals(
     parseProgressLine(
-      "download-title:abc123-42|1048576|10485760|0|524288",
+      " 42.0%|42|1048576|10485760|0|524288",
     ),
     {
       downloadedBytes: 1048576,
@@ -646,7 +646,7 @@ Deno.test("progress - the line parses to bytes, eta and speed", () => {
 Deno.test("progress - NA and an unknown total fall back to the estimate", () => {
   // A live stream: no total, no speed, no eta, and an estimate to stand in.
   assertEquals(
-    parseProgressLine("download-title:abc123-NA|500|NA|1000|NA"),
+    parseProgressLine("  5.0%|NA|500|NA|1000|NA"),
     {
       downloadedBytes: 500,
       totalBytes: 1000,
@@ -657,7 +657,7 @@ Deno.test("progress - NA and an unknown total fall back to the estimate", () => 
 
   // Neither: a transfer with no size at all, which is a null and not a zero.
   assertEquals(
-    parseProgressLine("download-title:abc123-|0|NA|NA|NA"),
+    parseProgressLine("  0.0%||0|NA|NA|NA"),
     {
       downloadedBytes: 0,
       totalBytes: null,
@@ -667,11 +667,29 @@ Deno.test("progress - NA and an unknown total fall back to the estimate", () => 
   );
 });
 
+Deno.test("progress - a chunk carrying several updates reports the last one", () => {
+  // One read from the pipe is not one line. The earlier readings are stale by
+  // the time anyone looks, so the last is the one that belongs on the entry.
+  const chunk = [
+    "[download] Destination: /app/downloads/Slow Transfer/video-slow.mp4",
+    "  6.0%|5|64512|1071444|NA|201325",
+    " 12.1%|6|130048|1071444|NA|134937",
+    "",
+  ].join("\n");
+
+  assertEquals(parseProgressLine(chunk), {
+    downloadedBytes: 130048,
+    totalBytes: 1071444,
+    bytesPerSecond: 134937,
+    etaSeconds: 6,
+  });
+});
+
 Deno.test("progress - a line that is not a progress line is ignored", () => {
   assertEquals(parseProgressLine("title:Some video [abc123]"), null);
   // Nothing is invented from a truncated line either, which is what would put
   // a NaN into the snapshot.
-  assertEquals(parseProgressLine("download-title:abc123-NA|"), null);
+  assertEquals(parseProgressLine(" 42.0%|NA|"), null);
 });
 
 Deno.test("a run's counters and file name land on the entry it was queued as", async () => {
@@ -681,7 +699,7 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
   // helper, and stderr is empty here.
   const stdoutRead = Promise.withResolvers<void>();
   const lines = [
-    "download-title:abc123-12|2048|4096|0|1024",
+    " 50.0%|12|2048|4096|0|1024",
     `post_process:"fileName:${FILE_NAME}"`,
   ];
   const fake = {

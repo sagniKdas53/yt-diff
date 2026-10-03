@@ -114,11 +114,19 @@ export const downloadOptions = [
   "--embed-chapters",
   ...sidecarOptions,
   "--progress-template",
-  // One line per update, carrying the counters the job drawer reads. Every
-  // added field is an integer on purpose: the percent scraper in the download
-  // loop matches any `\d{1,3}\.\d` on the line, so a speed of `1.50` would be
-  // read as 1.5% progress.
-  "download-title:%(info.id)s-%(progress.eta)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
+  // One line per update, carrying the counters the job drawer reads.
+  //
+  // The `download` type, not `download-title`. yt-dlp accepts both and the
+  // latter emits nothing at all for a file transfer — the template that was
+  // here before was never producing a line, so the percent the whole UI reads
+  // was coming from yt-dlp's default output instead. `download` replaces that
+  // default, so the percent has to be carried here now.
+  //
+  // Every counter is `%d`. A float speed puts a decimal point in the line, and
+  // the percent scraper in the download loop takes the first decimal it finds
+  // — so `1163317.2524` reads as 7.2%. The one decimal on the line is the
+  // percent, which is what it is there for.
+  "download:%(progress._percent_str)s|%(progress.eta)s|%(progress.downloaded_bytes)d|%(progress.total_bytes)d|%(progress.total_bytes_estimate)s|%(progress.speed)d",
 ];
 
 if (config.ytdlpSleepRequests > 0) {
@@ -187,15 +195,22 @@ function progressField(field: string): number | null {
  * @returns The transfer's numbers, or null when the line is not one of ours
  */
 export function parseProgressLine(line: string): TransferProgress | null {
-  const match =
-    /download-title:(.+)-([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)/.exec(
-      line,
-    );
+  // A read from the pipe can carry more than one update, and the last line is
+  // the one that is still true — the earlier ones describe a moment the
+  // transfer has already left. Scanned rather than anchored to the start, so a
+  // chunk that begins with anything else still yields its counters.
+  const pattern =
+    /^\s*[\d.]+%[^|\n]*\|([^|\n]*)\|([^|\n]*)\|([^|\n]*)\|([^|\n]*)\|([^|\n]*)/gm;
+  let match: RegExpExecArray | null = null;
+  let latest: RegExpExecArray | null;
+  while ((latest = pattern.exec(line)) !== null) {
+    match = latest;
+  }
   if (!match) {
     return null;
   }
 
-  const [, , eta, downloaded, total, estimate, speed] = match;
+  const [, eta, downloaded, total, estimate, speed] = match;
   const downloadedBytes = progressField(downloaded);
   if (downloadedBytes === null) {
     return null;

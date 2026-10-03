@@ -9,29 +9,29 @@ what is wrong.
 A **job** is one download or one playlist listing the server is running or has
 accepted. Jobs have three states:
 
-| State | Meaning | A yt-dlp process? |
-| :-- | :-- | :-- |
-| `queued` | accepted, waiting for a slot | no |
-| `running` | holding a slot and working | yes |
-| `paused` | stopped on request, resumable | no |
+| State     | Meaning                       | A yt-dlp process? |
+| :-------- | :---------------------------- | :---------------- |
+| `queued`  | accepted, waiting for a slot  | no                |
+| `running` | holding a slot and working    | yes               |
+| `paused`  | stopped on request, resumable | no                |
 
 Three actions, and nothing else:
 
-| Action | Queued | Running | Paused |
-| :-- | :-- | :-- | :-- |
-| `pause` | rejected — nothing to pause | SIGTERM, **partial files kept** | rejected — already paused |
-| `resume` | rejected — not paused | rejected — already running | re-enqueued as the same job id |
+| Action   | Queued                         | Running                            | Paused                               |
+| :------- | :----------------------------- | :--------------------------------- | :----------------------------------- |
+| `pause`  | rejected — nothing to pause    | SIGTERM, **partial files kept**    | rejected — already paused            |
+| `resume` | rejected — not paused          | rejected — already running         | re-enqueued as the same job id       |
 | `cancel` | dropped, **nothing to delete** | SIGTERM, **partial files deleted** | partial files deleted, job forgotten |
 
-The distinction the whole design turns on: **pausing keeps the bytes,
-cancelling throws them away.** yt-dlp resumes from a `.part` file with no
-extra flags, so a pause costs one re-run and a resume costs nothing but time.
-A cancel is the user saying "I don't want this", and leaving half a video on
-disk would be the one outcome they did not ask for.
+The distinction the whole design turns on: **pausing keeps the bytes, cancelling
+throws them away.** yt-dlp resumes from a `.part` file with no extra flags, so a
+pause costs one re-run and a resume costs nothing but time. A cancel is the user
+saying "I don't want this", and leaving half a video on disk would be the one
+outcome they did not ask for.
 
 A queued job has no process and no bytes, so cancelling it is free — that is
-what "cancel at no cost" means, and it is why a queued re-index can be
-cancelled without ceremony.
+what "cancel at no cost" means, and it is why a queued re-index can be cancelled
+without ceremony.
 
 ## `POST /queuestatus`
 
@@ -42,8 +42,8 @@ asserts on it); each entry is now a full job view. `listings` is new.
 {
   "status": "success",
   "generation": 3,
-  "queue": [ /* JobView */ ],
-  "listings": [ /* JobView */ ]
+  "queue": [/* JobView */],
+  "listings": [/* JobView */]
 }
 ```
 
@@ -89,7 +89,10 @@ New endpoint. Same auth, same body convention as every other endpoint
 Request:
 
 ```ts
-{ id: string; action: "pause" | "resume" | "cancel" }
+{
+  id: string;
+  action: "pause" | "resume" | "cancel";
+}
 ```
 
 Response:
@@ -113,19 +116,19 @@ Response:
 ```
 
 `not-allowed` is a normal answer, not an error: the UI offers pause only on a
-running job, so reaching it means the poll was stale. The HTTP status stays
-200 so a client that shows the sentence needs no error branch.
+running job, so reaching it means the poll was stale. The HTTP status stays 200
+so a client that shows the sentence needs no error branch.
 
 `partialDeleted` is the honest report of what was on disk:
 
-| Situation | `partialDeleted` |
-| :-- | :-- |
-| cancel while `queued` | `false` — there was nothing to delete |
-| cancel while `running` | `true` |
+| Situation                                               | `partialDeleted`                                            |
+| :------------------------------------------------------ | :---------------------------------------------------------- |
+| cancel while `queued`                                   | `false` — there was nothing to delete                       |
+| cancel while `running`                                  | `true`                                                      |
 | cancel while `running`, the file name was never printed | `false`, and `detail` says the partial could not be located |
-| cancel while `paused` | `true` — these are the bytes pausing kept |
-| pause | `false` — that is the point of pausing |
-| resume | `null` |
+| cancel while `paused`                                   | `true` — these are the bytes pausing kept                   |
+| pause                                                   | `false` — that is the point of pausing                      |
+| resume                                                  | `null`                                                      |
 
 ## Partial files
 
@@ -143,9 +146,9 @@ deletes exactly those three shapes for that one job:
 Never a wider glob. Two downloads can share a save directory, and "delete
 everything under the folder that looks partial" would take out a neighbour.
 
-If `fileName` has not arrived when the cancel lands, nothing is deleted and
-the response says so. Guessing at partials by directory scan is worse than
-leaving bytes the reaper will clean up.
+If `fileName` has not arrived when the cancel lands, nothing is deleted and the
+response says so. Guessing at partials by directory scan is worse than leaving
+bytes the reaper will clean up.
 
 ## Listings
 
@@ -160,25 +163,34 @@ persists each chunk as it goes. So for a listing:
 
 ## Progress
 
-`src/handlers/pipeline/types.ts` carries one progress template:
+`src/handlers/pipeline/types.ts` carries one progress template. It is the
+`download` type, not `download-title` — yt-dlp accepts both and `download-title`
+emits nothing at all for a file transfer, so the template that was there before
+was never producing a line and the percent the whole UI reads was coming from
+yt-dlp's default output instead. `download` _replaces_ that default, so the
+percent has to be carried explicitly:
 
 ```
-download-title:%(info.id)s-%(progress.eta)s
+download:%(progress._percent_str)s|%(progress.eta)s|%(progress.downloaded_bytes)d|%(progress.total_bytes)d|%(progress.total_bytes_estimate)s|%(progress.speed)d
 ```
 
-Nothing parses that line today, so it is extended rather than replaced — one
-template, one line per update:
+A real line:
 
 ```
-download-title:%(info.id)s-%(progress.eta)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s
+12.1%|6|130048|1071444|NA|134937
 ```
 
-Every added field is an **integer** on purpose. The existing percent scraper
-(`/(\d{1,3}\.\d)/`) matches any decimal in the line, and a speed like `1.50`
-would be read as 1.5% progress.
+Every counter is `%d`. The percent scraper in the download loop
+(`/(\d{1,3}\.\d)/`) takes the first decimal on the line, so a float speed puts
+`1163317.2524` in front of it and 7.2% is read as the progress. The one decimal
+on the line is the percent, which is what it is there for.
 
-`total_bytes` is 0 or NA when the source does not know, in which case
-`totalBytes` is the estimate, and null when neither is available.
+`%(progress.eta)s` renders seconds as a bare integer, not `00:06`. A field that
+is `NA` or empty becomes `null` rather than a zero — a zero eta would say
+"finishing now" about a transfer that has not started.
+
+One read from the pipe can carry several updates. The parser takes the last
+line, because the earlier ones describe a moment the transfer has already left.
 
 ## Polling
 
@@ -190,5 +202,5 @@ The drawer polls `/queuestatus` rather than taking new socket events:
 - immediately after any `/jobaction`
 
 A long-lived 1 s poll would spend a request per second per user forever for a
-badge that changes slowly. `document.hidden` matters because a background tab
-is the normal state of a tab that is not being watched.
+badge that changes slowly. `document.hidden` matters because a background tab is
+the normal state of a tab that is not being watched.
