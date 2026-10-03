@@ -333,6 +333,15 @@ export interface ListingItem {
   reason: string;
   isScheduledUpdate?: boolean;
   /**
+   * Set on a run started by resuming a paused one, never on a first run.
+   *
+   * A `Full` or `Refresh` re-index empties the playlist's mappings before it
+   * starts, which is right for a run beginning from nothing and wrong for one
+   * replacing a run that was part way through: the rows the pause was holding
+   * are exactly the ones it would delete. This is what tells the two apart.
+   */
+  isResumed?: boolean;
+  /**
    * Opt back into per-playlist progress emits even when isScheduledUpdate is
    * set. Batch re-index reuses the scheduled-update listing path but is user
    * initiated, so it still wants the UI to follow along; the nightly cron

@@ -270,6 +270,7 @@ export function resumeListing(
     [{
       ...item,
       jobId: job.id,
+      isResumed: true,
       isScheduledUpdate: job.isScheduledUpdate,
     }],
     job.chunkSize ?? config.chunkSize,
@@ -473,6 +474,7 @@ export async function executeListing(
         seekPlaylistListTo,
         processKey,
         monitoringType: currentMonitoringType,
+        isResumed: item.isResumed === true,
       });
     }
 
@@ -511,12 +513,29 @@ interface PlaylistChunkSource {
   onChunkDone?(processedChunks: number): void;
 }
 
-/** Common to both paths: a re-index starts from an empty mapping table. */
+/**
+ * Common to both paths: a re-index starts from an empty mapping table.
+ *
+ * Except when the run is a resume. A `Full` or `Refresh` empties the table
+ * because it is about to rebuild all of it — but a resumed run is replacing one
+ * that was part way through, and the rows still there are that run's work. The
+ * pause held on to them precisely so they would survive; deleting them here
+ * throws the partial index away and rebuilds from zero, so a replacement that
+ * then fails leaves less behind than the pause had.
+ */
 async function clearMappingsForReindex(
   videoUrl: string,
   monitoringType: string,
+  isResumed: boolean,
 ) {
   if (monitoringType !== "Full" && monitoringType !== "Refresh") return;
+  if (isResumed) {
+    logger.info("Resumed re-index; keeping the mappings already written", {
+      url: videoUrl,
+      monitoringType,
+    });
+    return;
+  }
 
   const deletedCount = await PlaylistVideoMapping.destroy({
     where: { playlistUrl: videoUrl },
@@ -718,6 +737,7 @@ export async function handlePlaylistStreaming(
     seekPlaylistListTo: number;
     processKey: string;
     monitoringType: string;
+    isResumed?: boolean;
   },
 ): Promise<ListingResult> {
   const { videoUrl, chunkSize, processKey, monitoringType } = item;
@@ -747,7 +767,11 @@ export async function handlePlaylistStreaming(
     }
   }
 
-  await clearMappingsForReindex(videoUrl, monitoringType);
+  await clearMappingsForReindex(
+    videoUrl,
+    monitoringType,
+    item.isResumed === true,
+  );
   const startIndex = await resolveStartIndex(
     videoUrl,
     chunkSize,
@@ -830,6 +854,7 @@ async function handlePlaylistViaApi(
     processKey: string;
     monitoringType: string;
     playlistId: string;
+    isResumed?: boolean;
   },
 ): Promise<ListingResult> {
   const { videoUrl, chunkSize, processKey, monitoringType, playlistId } = item;
@@ -839,7 +864,11 @@ async function handlePlaylistViaApi(
     playlistId,
   });
 
-  await clearMappingsForReindex(videoUrl, monitoringType);
+  await clearMappingsForReindex(
+    videoUrl,
+    monitoringType,
+    item.isResumed === true,
+  );
 
   // Tell the cleanup job this key is live work, not a stalled entry. The
   // yt-dlp path gets this from spawning; there is no process here to do it.

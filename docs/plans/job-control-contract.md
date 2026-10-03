@@ -171,6 +171,14 @@ persists each chunk as it goes. So for a listing:
 - resuming re-runs the listing from the top; rows already present dedupe
 - cancelling leaves nothing on disk, so `partialDeleted` is always `false`
 
+One exception to "re-runs from the top", and it is the point of pausing a
+re-index at all. A `Full` or `Refresh` listing empties the playlist's mapping
+table before it starts, because it is about to rebuild all of it. A resumed run
+does not: it is replacing a run that was part way through, and the rows still
+there are that run's work. Emptying them would rebuild from zero and leave less
+behind if the replacement failed than the pause had — the opposite of what
+pausing promised.
+
 Resuming a listing is accepted at once but does not start at once. A pause stops
 yt-dlp with SIGTERM; the run wrapped around it still has the chunk in flight to
 write, so a resume that began immediately would put two runs of one playlist in
