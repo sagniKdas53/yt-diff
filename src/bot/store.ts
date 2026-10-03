@@ -1,4 +1,4 @@
-import { Op, type WhereOptions } from "sequelize";
+import { col, fn, Op, type WhereOptions } from "sequelize";
 
 import {
   BotHeartbeat,
@@ -142,6 +142,17 @@ export interface BotStore {
     idPrefix: string,
   ): Promise<SubmissionRecord | null>;
   /**
+   * Finds one of a chat's submissions by its canonical URL.
+   *
+   * A pasted link carries no chat, so ownership has to be proven before the
+   * link is allowed to act on a file: two chats may name the same video, and
+   * only the one that asked for it may delete it.
+   */
+  findSubmissionByUrl(
+    chatId: string,
+    canonicalUrl: string,
+  ): Promise<SubmissionRecord | null>;
+  /**
    * Makes every delivery of one video permanent, so the reaper leaves the file
    * on disk. Scoped to one chat when `chatId` is given: `/keep` in a shared
    * chat must not keep other people's rows, even though they name the same
@@ -245,10 +256,18 @@ export function createSequelizeBotStore(): BotStore {
 
     async listActiveChatsSince(since) {
       const rows = await BotSubmission.findAll({
-        attributes: ["platform", "chatId"],
+        // Newest first per chat, which is what "most recently used" means for
+        // the outage notice. Aggregated rather than selected: Postgres refuses
+        // to order a GROUP BY by a column that is neither grouped nor
+        // aggregated, and `createdAt` is neither.
+        attributes: [
+          "platform",
+          "chatId",
+          [fn("MAX", col("createdAt")), "lastSeenAt"],
+        ],
         where: { createdAt: { [Op.gte]: since } },
         group: ["platform", "chatId"],
-        order: [["createdAt", "DESC"]],
+        order: [[fn("MAX", col("createdAt")), "DESC"]],
       });
       return rows.map((row) => ({
         platform: row.getDataValue("platform") as BotPlatform,
@@ -373,6 +392,14 @@ export function createSequelizeBotStore(): BotStore {
       });
       // An ambiguous prefix is treated as no match rather than guessing.
       return rows.length === 1 ? toSubmissionRecord(rows[0]) : null;
+    },
+
+    async findSubmissionByUrl(chatId, canonicalUrl) {
+      const row = await BotSubmission.findOne({
+        where: submissionUrlWhere(canonicalUrl, chatId),
+        order: [["createdAt", "DESC"]],
+      });
+      return row ? toSubmissionRecord(row) : null;
     },
 
     async keepSubmissionsByUrl(canonicalUrl, chatId) {

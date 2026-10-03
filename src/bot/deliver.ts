@@ -1,3 +1,4 @@
+import { logger } from "../logger.ts";
 import { exists } from "../utils/fs.ts";
 import { join } from "../utils/path.ts";
 import type { VideoRecord } from "./store.ts";
@@ -124,6 +125,34 @@ export function queuePositionFor(
     fallback;
 }
 
+/**
+ * The link that opens the video in the player, or the one that opens it on
+ * its own when the lookup fails.
+ *
+ * The lookup is a nicety on top of a delivery that has already succeeded, so
+ * it is allowed to fail quietly: the file is uploaded, and losing the playlist
+ * page it sits on is a much smaller loss than marking that upload as failed
+ * and telling the user to send it again.
+ */
+async function buildPlayerLink(
+  rt: BotRuntime,
+  videoUrl: string,
+): Promise<string> {
+  let playlistUrl: string | null = null;
+  let page: number | null = null;
+  try {
+    const location = await rt.deps.locateVideo(videoUrl);
+    playlistUrl = location.playlistUrl;
+    page = location.page;
+  } catch (error) {
+    logger.warn("Could not locate the video for its player link", {
+      videoUrl,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+  return rt.deps.delivery.buildPlayerUrl(videoUrl, playlistUrl, page);
+}
+
 export async function deliverVideo(
   rt: BotRuntime,
   entry: PendingSubmission,
@@ -222,12 +251,11 @@ export async function deliverVideo(
     // Where the file can be watched, not just fetched. One lookup per
     // delivery: the same answer the web UI's own player link uses, so a
     // message and a manual click cannot open two different lists.
-    const location = await rt.deps.locateVideo(videoUrl);
-    const playerUrl = rt.deps.delivery.buildPlayerUrl(
-      videoUrl,
-      location.playlistUrl,
-      location.page,
-    );
+    // The file is already in the user's hands at this point. A lookup that
+    // throws must not reach the outer catch, which would mark an uploaded
+    // delivery as failed and invite a resend of work that succeeded. No
+    // playlist means no player link, and that is a smaller loss.
+    const playerUrl = await buildPlayerLink(rt, videoUrl);
 
     if (outcome.mode === "signed_url") {
       // Always say why a link came back instead of a file. The pre-download

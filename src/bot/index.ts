@@ -22,7 +22,6 @@ export interface BotServiceDependencies {
   /** Defaults to the Sequelize-backed store; injectable for tests. */
   store?: BotStore;
   /** Stamped while polling and on every update; see bot/recovery.ts. */
-  touchLastSeenAt?: (at: Date) => Promise<void>;
   syncExtras: BotCoreDependencies["syncExtras"];
   cancelDownload: BotCoreDependencies["cancelDownload"];
   cancelListing: BotCoreDependencies["cancelListing"];
@@ -129,11 +128,8 @@ export function createBotService(deps: BotServiceDependencies): BotService {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   async function touchHeartbeat() {
-    if (!deps.touchLastSeenAt) {
-      return;
-    }
     try {
-      await deps.touchLastSeenAt(new Date());
+      await store.touchLastSeenAt(new Date());
     } catch (error) {
       logger.error("Could not record the bot heartbeat", {
         error: error instanceof Error ? error.message : "Unknown error",

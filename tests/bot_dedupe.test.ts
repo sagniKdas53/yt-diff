@@ -77,6 +77,7 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     listPlaylists: () => Promise.resolve([]),
     listPlaylistVideos: () => Promise.resolve({ total: 0, items: [] }),
     findSubmissionByPrefix: () => Promise.resolve(null),
+    findSubmissionByUrl: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
     listUnsettledSubmissions: () => Promise.resolve([]),
     listActiveChatsSince: () => Promise.resolve([]),

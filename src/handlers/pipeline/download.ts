@@ -1049,7 +1049,12 @@ export function createDownloadFlow(
       });
 
       const stderrTail: string[] = [];
-      void (async () => {
+      // Held so it can be awaited: `status` resolves when the process exits,
+      // which is not the same moment as the last chunk of stderr arriving. A
+      // reader left detached can still be pushing into `stderrTail` after the
+      // text is built, and the rate-limit line this exists to read is
+      // exactly the kind that arrives last.
+      const stderrRead = (async () => {
         for await (const chunk of streamTextChunks(extrasProcess.stderr)) {
           stderrTail.push(chunk.trim());
           if (stderrTail.length > STDERR_TAIL_LINES) stderrTail.shift();
@@ -1057,6 +1062,7 @@ export function createDownloadFlow(
       })();
 
       const { code } = await extrasProcess.status;
+      await stderrRead;
       const stderrText = stderrTail.join("\n").slice(-STDERR_TAIL_BYTES);
 
       const { metadata, syncStatus } = await discoverFiles(

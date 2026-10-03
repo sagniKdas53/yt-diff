@@ -29,9 +29,10 @@ Suggested order, by data risk, dependencies, then size:
 | 8d | Comments                                        | M, maybe never | declined    |
 | 3  | Playlist churn — the "diff" in yt-diff          | L              | deferred    |
 
-Every item except 3 is implemented. 8d is not "deferred": the decision is
-recorded in `ISSUES_AND_IMPROVEMENTS.md` §7 — a comments feature is not being
-built, and what was broken about it is fixed.
+Every item is implemented except the two marked otherwise above: **3** is
+deferred, and **8d** is declined rather than deferred — the decision is recorded
+in `ISSUES_AND_IMPROVEMENTS.md` §7. A comments feature is not being built; what
+was broken about it is fixed.
 
 Sizes: S = an afternoon, M = a day or two, L = a design pass then several days.
 Item 2 had `/keep <id>`; it now takes a URL as well, and the row says when

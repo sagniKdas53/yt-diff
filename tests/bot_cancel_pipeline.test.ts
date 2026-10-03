@@ -143,8 +143,15 @@ Deno.test("cancelListing - a running listing is killed, a queued one is not foun
 
   assertEquals(cancelListing(rt, URL), "killed");
   assertEquals(process.killed, true);
+
+  // Now the queued entry is the only one left for this URL, so the next call
+  // is decided by it. With the running entry still present the lookup would
+  // answer from that one instead and never reach the queued case at all.
+  listProcesses.delete("running_1");
   // A listing waiting for a slot has nothing of it to stop, and saying so is
   // better than pretending a cancellation happened.
+  assertEquals(cancelListing(rt, URL), "not-found");
+  // And a URL nobody is listing is the same answer, for a different reason.
   assertEquals(cancelListing(rt, "https://example.com/other"), "not-found");
 });
 

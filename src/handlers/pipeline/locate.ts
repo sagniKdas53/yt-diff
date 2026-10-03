@@ -54,7 +54,13 @@ export async function locateVideo(
     }],
     where: { videoUrl, playlistUrl: location.playlistUrl },
   });
-  const position = mapping?.positionInPlaylist ?? 0;
+  if (!mapping) {
+    // The video belongs to the list but no row records where it sits, so the
+    // page it opens on is unknown. Page 0 would be a claim, not a fact: the
+    // player would open the front of the list and quietly drop `v=`.
+    return { videoUrl, playlistUrl: location.playlistUrl, page: null };
+  }
+  const position = mapping.positionInPlaylist;
   const pageSize = options.pageSize && options.pageSize > 0
     ? Math.floor(options.pageSize)
     : config.chunkSize;
@@ -63,7 +69,7 @@ export async function locateVideo(
     ? await downloadedFirstIndex(
       location.playlistUrl,
       position,
-      !!mapping?.video_metadatum?.downloadStatus,
+      !!mapping.video_metadatum?.downloadStatus,
     )
     : await PlaylistVideoMapping.count({
       where: {

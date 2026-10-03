@@ -118,6 +118,21 @@ export async function handleRemove(
 ) {
   if (isHttpUrl(argument)) {
     const canonicalUrl = rt.deps.normalizeUrl(argument);
+    // A bare URL carries no chat, and any allowed chat may paste one it was
+    // given. Without a submission of this chat's own, "my file" is unproven —
+    // so the link resolves to nothing and nothing is deleted.
+    const owned = await rt.deps.store.findSubmissionByUrl(
+      target.chatId,
+      canonicalUrl,
+    );
+    if (!owned) {
+      await reply(
+        adapter,
+        target,
+        "No submission of yours for that link — send it here first, or use /history.",
+      );
+      return;
+    }
     const purged = await rt.deps.store.purgeVideoFiles(canonicalUrl);
     if (!purged) {
       await reply(adapter, target, "Some files could not be removed.");
@@ -191,12 +206,16 @@ export async function handleCancel(
   // The bot's own maps are keyed by the same canonical URL the pipeline uses,
   // and are what make the reply specific: a download the bot is not waiting
   // on is not something it should claim to have stopped.
-  if (rt.pending.has(requested)) {
+  // Keyed by URL, which two chats can share, so ownership is checked against
+  // the entry rather than assumed from the map lookup.
+  const pendingEntry = rt.pending.get(requested);
+  if (pendingEntry?.target.chatId === target.chatId) {
     const outcome = rt.deps.cancelDownload(requested);
     await reply(adapter, target, cancelWording(outcome, "download"));
     return;
   }
-  if (rt.listings.has(requested)) {
+  const listingEntry = rt.listings.get(requested);
+  if (listingEntry?.target.chatId === target.chatId) {
     const outcome = rt.deps.cancelListing(requested);
     await reply(adapter, target, cancelWording(outcome, "listing"));
     return;

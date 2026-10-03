@@ -48,6 +48,8 @@ interface Options {
   kept?: number;
   /** Submission the /history code resolves to; null for "no such id". */
   submission?: { canonicalUrl: string | null } | null;
+  /** Whether this chat ever submitted the pasted link; false tests the guard. */
+  owned?: boolean;
   retentionMode?: "ephemeral" | "persistent";
   retentionHours?: number;
 }
@@ -118,6 +120,20 @@ function harness(options: Options = {}): Harness {
             ...options.submission,
           }
           : null,
+      ),
+    // Ownership lookup for a pasted link. `options.owned` decides whether this
+    // chat ever asked for it, so a test can prove the guard rather than
+    // assert against a stub that always says yes.
+    findSubmissionByUrl: (_chatId: string, url: string) =>
+      Promise.resolve(
+        options.owned === false || url !== "https://www.youtube.com/watch?v=zzz"
+          ? null
+          : {
+            id: ID,
+            status: "delivered",
+            requestedUrl: URL,
+            canonicalUrl: url,
+          },
       ),
     keepSubmissionsByUrl: (url: string, chatId?: string) => {
       kept.push({ url, chatId });
@@ -308,6 +324,46 @@ Deno.test("/rm <url> - deletes the files and reaps this chat's rows", async () =
   assertEquals(h.purged, ["https://www.youtube.com/watch?v=zzz"]);
   assertEquals(h.reaped, ["https://www.youtube.com/watch?v=zzz"]);
   assertEquals(h.edits, ["Removed."]);
+});
+
+Deno.test("/rm <url> - a link this chat never asked for deletes nothing", async () => {
+  const h = harness({ owned: false });
+  await h.handle(`/rm ${OTHER_URL}`);
+
+  // The guard is the whole point of the lookup: a link pasted into this chat
+  // from someone else's is not this chat's file to delete, and saying
+  // "Removed." would be a lie about a file still on disk.
+  assertEquals(h.purged, []);
+  assertEquals(h.reaped, []);
+  assertEquals(h.edits, [
+    "No submission of yours for that link — send it here first, or use /history.",
+  ]);
+});
+
+Deno.test("/cancel <id> - leaves another chat's download alone", async () => {
+  const h = harness({ submission: { canonicalUrl: URL } });
+  // Same URL, different chat. The map is keyed by URL, so without an ownership
+  // check this chat could stop work it never asked for.
+  h.runtime.pending.set(URL, {
+    submissionId: ID,
+    adapter: h.adapter,
+    target: { platform: "telegram", chatId: "some-other-chat" },
+    ack: REF,
+    mode: "file",
+    startedAt: Date.now(),
+    estimatedSize: 0,
+    lastProgressAt: 0,
+    lastProgressText: "",
+    watchdog: null,
+    settled: false,
+  });
+
+  await h.handle(`/cancel ${ID}`);
+
+  assertEquals(h.cancelledDownloads, []);
+  assertEquals(h.edits, [
+    "Nothing of yours is running for that — it may already be finished.",
+  ]);
 });
 
 Deno.test("/cancel <id> - stops the download that submission is waiting on", async () => {

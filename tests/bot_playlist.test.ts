@@ -123,6 +123,7 @@ function harness(options: HarnessOptions = {}): Harness {
         items: entries.slice(start, start + limit),
       }),
     findSubmissionByPrefix: () => Promise.resolve(null),
+    findSubmissionByUrl: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
     listUnsettledSubmissions: () => Promise.resolve([]),
     listActiveChatsSince: () => Promise.resolve([]),

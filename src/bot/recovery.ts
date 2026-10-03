@@ -60,9 +60,17 @@ function formatStamp(at: Date): string {
  */
 export function buildOutageNotice(lastSeenAt: Date, now: Date): string {
   const cutoff = new Date(now.getTime() - TELEGRAM_UPDATE_RETENTION_MS);
-  return `I was offline from ${formatStamp(lastSeenAt)} to ${
+  const gap = `I was offline from ${formatStamp(lastSeenAt)} to ${
     formatStamp(now)
-  }. Anything you sent before ${
+  }.`;
+  // Asking people to resend work that was never lost is worse than saying
+  // nothing: they cannot tell a resend from a duplicate. Only an outage that
+  // reaches back past Telegram's own retention window has genuinely dropped
+  // messages, and that is the only case where a resend is the answer.
+  if (lastSeenAt.getTime() >= cutoff.getTime()) {
+    return `${gap} Nothing was lost — links sent while I was down are being picked up now.`;
+  }
+  return `${gap} Anything you sent before ${
     formatStamp(cutoff)
   } never reached me — please resend it. Links from after that are being picked up now.`;
 }

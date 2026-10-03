@@ -105,6 +105,7 @@ function harness(options: HarnessOptions): Harness {
     listPlaylists: () => Promise.resolve([]),
     listPlaylistVideos: () => Promise.resolve({ total: 0, items: [] }),
     findSubmissionByPrefix: () => Promise.resolve(null),
+    findSubmissionByUrl: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
     listUnsettledSubmissions: () => Promise.resolve(options.unsettled),
     listActiveChatsSince: () => Promise.resolve(options.chats),
@@ -244,6 +245,30 @@ Deno.test({
       );
       assertEquals(text.includes("never reached me"), true);
     }
+  },
+});
+
+Deno.test({
+  name: "recovery - an outage shorter than Telegram's window loses nothing",
+  async fn() {
+    const now = new Date("2026-09-16T09:56:00Z");
+    // Ten minutes ago: well inside the 24 h Telegram keeps updates for, so
+    // every message sent during the gap was still queued and has now been
+    // replayed. Nothing was lost, so nothing should be asked for again.
+    const h = harness({
+      lastSeenAt: new Date(now.getTime() - 10 * 60 * 1000),
+      unsettled: [],
+      chats: [{ platform: "telegram", chatId: CHAT }],
+    });
+
+    const summary = await h.recover(now);
+
+    assertEquals(summary.announcedChats, 1);
+    const text = h.sent[0];
+    // The gap is still reported - the user was waiting - but a resend request
+    // here would make them duplicate work that already completed.
+    assertEquals(text.includes("Nothing was lost"), true);
+    assertEquals(text.includes("never reached me"), false);
   },
 });
 
