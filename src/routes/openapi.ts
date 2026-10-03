@@ -83,11 +83,30 @@ export const PlaylistDisplayRowSchema = z.object({
   updatedAt: z.string().optional(),
 });
 
-export const QueueEntrySchema = z.object({
+const TransferProgressSchema = z.object({
+  downloadedBytes: z.number(),
+  totalBytes: z.number().nullable(),
+  bytesPerSecond: z.number().nullable(),
+  etaSeconds: z.number().nullable(),
+});
+
+/**
+ * One job as `/queuestatus` reports it.
+ *
+ * `state` is the whole of availability: a client offers pause on a running
+ * job, resume on a paused one and a free cancel on a queued one, so a
+ * `pausable` flag here would be a second thing to keep in step with it.
+ */
+const JobViewSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["download", "listing"]),
   url: z.string(),
   title: z.string(),
-  status: z.string(),
+  state: z.enum(["queued", "running", "paused"]),
   queuePosition: z.number(),
+  progress: TransferProgressSchema.nullable(),
+  itemsIndexed: z.number().nullable(),
+  startedAt: z.number(),
 });
 
 const TokenResponseSchema = z.object({
@@ -159,6 +178,9 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
       title: z.string(),
       saveDirectory: z.string(),
       videoId: z.string(),
+      // Minted on acceptance, and what the drawer addresses this job's
+      // actions by before it has polled for it.
+      id: z.string(),
     })),
   }),
   "/watch": z.object({
@@ -237,7 +259,10 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
   "/queuestatus": z.object({
     status: z.literal("success"),
     generation: z.union([z.string(), z.number()]),
-    queue: z.array(QueueEntrySchema),
+    // `queue` stays the downloads: the E2E suite asserts on it, and it was
+    // always that list.
+    queue: z.array(JobViewSchema),
+    listings: z.array(JobViewSchema),
   }),
   "/syncextras": z.object({
     url: z.string(),
@@ -255,6 +280,22 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
     url: z.string(),
     kind: z.enum(["download", "list"]),
     outcome: z.enum(["killed", "queued", "not-found"]),
+  }),
+  "/jobaction": z.object({
+    status: z.literal("success"),
+    id: z.string(),
+    action: z.enum(["pause", "resume", "cancel"]),
+    // `not-allowed` is an answer, not an error: the UI offers pause only on a
+    // running job, so reaching it means the poll it acted on was stale.
+    outcome: z.enum([
+      "paused",
+      "resumed",
+      "cancelled",
+      "not-allowed",
+      "not-found",
+    ]),
+    partialDeleted: z.boolean().nullable(),
+    detail: z.string().optional(),
   }),
   "/locate": z.object({
     videoUrl: z.string(),

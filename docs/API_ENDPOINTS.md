@@ -90,9 +90,14 @@ dependencies minimal.
   - **Authentication**: Required.
 
 - **`/queuestatus`**
-  - **Description**: Returns the current snapshot of active and pending download processes in the queue along with their queue positions.
+  - **Description**: Returns every job the server currently knows about, as a
+    full job view each. `queue` stays the downloads — the E2E suite asserts on
+    it — and `listings` is the playlist listings. A job is `queued`, `running`
+    or `paused`; availability is derived from that by the client, never sent as
+    a flag of its own. `queuePosition` is 1-based among jobs of the same kind
+    still waiting, and 0 for a running or paused one, which holds no slot.
   - **Request body**: `{}`
-  - **Response**: `{ status: "success", generation: number, queue: Array<{ url: string, title: string, status: string, queuePosition: number }> }`
+  - **Response**: `{ status: "success", generation: number, queue: JobView[], listings: JobView[] }` where `JobView` is `{ id, kind, url, title, state, queuePosition, progress, itemsIndexed, startedAt }`; `progress` is `{ downloadedBytes, totalBytes, bytesPerSecond, etaSeconds }` for downloads and null otherwise, `itemsIndexed` counts persisted rows for listings.
   - **Authentication**: Required.
 
 - **`/syncextras`**
@@ -125,6 +130,25 @@ dependencies minimal.
     stop. Cancelling a listing keeps whatever it had already indexed.
   - **Request body**: `{ url: string, kind: "download" | "list" }`
   - **Response**: `{ status: "success", url, kind, outcome }`
+  - **Authentication**: Required.
+
+- **`/jobaction`**
+  - **Description**: Pauses, resumes or cancels one job by the `id` the job
+    view carries. The distinction the whole design turns on is bytes: pausing
+    kills the process and **keeps** the partial files — yt-dlp resumes from a
+    `.part` with no extra flags — while cancelling deletes exactly
+    `<savePath>/<fileName>.part`, `<fileName>.part-Frag*` and `<fileName>.ytdl`
+    for that one job, and nothing else in the folder. A queued job has no
+    process and no bytes, so cancelling it is free.
+  - **Request body**: `{ id: string, action: "pause" | "resume" | "cancel" }`
+  - **Response**: `{ status: "success", id, action, outcome, partialDeleted, detail? }`
+    where `outcome` is `paused`, `resumed`, `cancelled`, `not-allowed` (the
+    action does not apply to that state) or `not-found`. `not-allowed` is a
+    normal 200 answer, not an error: the UI only offers pause on a running job,
+    so reaching it means the poll was stale. `partialDeleted` is the honest
+    report of the disk — `false` for a queued cancel and for a pause, `true` for
+    a running or paused one, and `false` with a `detail` when the file name was
+    never printed so the partial could not be located.
   - **Authentication**: Required.
 
 - **`/locate`**

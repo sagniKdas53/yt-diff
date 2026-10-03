@@ -73,14 +73,21 @@ function buildFlow(): Flow {
 }
 
 function entry(url: string, overrides: Partial<DownloadProcessEntry> = {}) {
+  const now = Date.now();
   return {
+    id: "job-1",
     url,
     title: "A video",
+    item: { url, title: "A video", saveDirectory: "", videoId: "abc123" },
     queuePosition: 1,
+    progress: null,
+    itemsIndexed: null,
+    paused: false,
+    startedAt: now,
     spawnType: "download",
-    lastActivity: Date.now(),
-    lastStdoutActivity: Date.now(),
-    spawnTimeStamp: Date.now(),
+    lastActivity: now,
+    lastStdoutActivity: now,
+    spawnTimeStamp: now,
     status: "pending",
     ...overrides,
   } satisfies DownloadProcessEntry;
@@ -123,9 +130,25 @@ Deno.test("cancelDownload - a finished entry is left alone", () => {
 Deno.test("cancelListing - a running listing is killed, a queued one is not found", () => {
   const process = pendingProcess();
   const running: ListingProcessEntry = {
+    id: "job-2",
     url: URL,
+    title: "",
     type: "playlist",
     monitoringType: "N/A",
+    item: {
+      url: URL,
+      type: "playlist",
+      currentMonitoringType: "N/A",
+      reason: "test",
+    },
+    chunkSize: 10,
+    isScheduledUpdate: false,
+    flightKey: "running_1",
+    queuePosition: 0,
+    progress: null,
+    itemsIndexed: 0,
+    paused: false,
+    startedAt: 0,
     spawnType: "list",
     lastActivity: 0,
     lastStdoutActivity: 0,

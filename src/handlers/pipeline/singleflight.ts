@@ -32,7 +32,9 @@ export function createSingleFlight<T>() {
       if (existing) return existing;
 
       const started = work().finally(() => {
-        inFlight.delete(key);
+        if (inFlight.get(key) === started) {
+          inFlight.delete(key);
+        }
       });
       inFlight.set(key, started);
       return started;
@@ -46,6 +48,18 @@ export function createSingleFlight<T>() {
     /** True when `key` is already running or queued. */
     has(key: string): boolean {
       return inFlight.has(key);
+    },
+
+    /**
+     * Releases a key while its run is still going.
+     *
+     * A pause needs this: the run it killed is still in flight when the kill
+     * lands, and a resume arriving before it settles would join the dying run
+     * and silently do nothing. The cleanup in `run` is identity-guarded, so an
+     * abandoned run finishing later cannot delete its replacement's entry.
+     */
+    forget(key: string): void {
+      inFlight.delete(key);
     },
   };
 }

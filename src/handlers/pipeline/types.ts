@@ -114,7 +114,11 @@ export const downloadOptions = [
   "--embed-chapters",
   ...sidecarOptions,
   "--progress-template",
-  "download-title:%(info.id)s-%(progress.eta)s",
+  // One line per update, carrying the counters the job drawer reads. Every
+  // added field is an integer on purpose: the percent scraper in the download
+  // loop matches any `\d{1,3}\.\d` on the line, so a speed of `1.50` would be
+  // read as 1.5% progress.
+  "download-title:%(info.id)s-%(progress.eta)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
 ];
 
 if (config.ytdlpSleepRequests > 0) {
@@ -161,6 +165,55 @@ export function parseOfferedExtras(
   if (comments === "1") offered.add("comments");
   if (chapters === "1") offered.add("chapters");
   return offered;
+}
+
+/**
+ * Reads one field of the progress line, or null when yt-dlp said it does not
+ * know. `NA` and an empty field are answers, not zeroes: a speed of 0 would
+ * render as a stalled transfer that is really running.
+ */
+function progressField(field: string): number | null {
+  const trimmed = field.trim();
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+}
+
+/**
+ * Reads the counters off one `download-title:` progress line.
+ *
+ * `total_bytes` is 0 or NA when the source does not know the size, in which
+ * case the estimate stands in; when neither is there the transfer has no
+ * total at all, which is a null rather than a zero.
+ *
+ * @returns The transfer's numbers, or null when the line is not one of ours
+ */
+export function parseProgressLine(line: string): TransferProgress | null {
+  const match =
+    /download-title:(.+)-([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)/.exec(
+      line,
+    );
+  if (!match) {
+    return null;
+  }
+
+  const [, , eta, downloaded, total, estimate, speed] = match;
+  const downloadedBytes = progressField(downloaded);
+  if (downloadedBytes === null) {
+    return null;
+  }
+
+  const totalBytes = progressField(total);
+  const estimatedBytes = progressField(estimate);
+
+  return {
+    downloadedBytes,
+    totalBytes: totalBytes && totalBytes > 0
+      ? totalBytes
+      : estimatedBytes && estimatedBytes > 0
+      ? estimatedBytes
+      : null,
+    bytesPerSecond: progressField(speed),
+    etaSeconds: progressField(eta),
+  };
 }
 
 /** Why a run came up short, as far as the last stderr lines can say. */
@@ -236,6 +289,20 @@ export interface DownloadRequestBody {
   playListUrl?: string;
 }
 
+/**
+ * A job's opaque identity.
+ *
+ * Minted when the pipeline accepts the job and never regenerated: the drawer
+ * polls by it and addresses actions by it, so a pause that changed it would
+ * hand the user a button for a job the server no longer knows about.
+ */
+export function newJobId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 export interface ListingItem {
   url: string;
   type: string;
@@ -250,6 +317,14 @@ export interface ListingItem {
    * leaves this unset and stays silent.
    */
   emitProgress?: boolean;
+
+  /**
+   * The id this listing was accepted under.
+   *
+   * Set only when a paused listing is re-enqueued, so it comes back as the
+   * same job rather than a new one; an ordinary submission mints its own.
+   */
+  jobId?: string;
 }
 
 export interface ListingResult {
@@ -268,6 +343,124 @@ export interface DownloadItem {
   title: string;
   saveDirectory: string;
   videoId: string;
+}
+
+/**
+ * A download as the queue accepted it: the item, where it stands in line, and
+ * the id every later state is addressed by.
+ */
+export interface QueuedDownloadItem extends DownloadItem {
+  queuePosition: number;
+  id: string;
+}
+
+/** Where a transfer got to, as the last progress line reported it. */
+export interface TransferProgress {
+  downloadedBytes: number;
+  /** Null when the source never said — a live stream, or nothing yet. */
+  totalBytes: number | null;
+  bytesPerSecond: number | null;
+  /** Null when yt-dlp reported NA. */
+  etaSeconds: number | null;
+}
+
+export type JobKind = "download" | "listing";
+
+/**
+ * The three states a job is offered in.
+ *
+ * Availability is derived from this rather than sent as its own flag: what a
+ * job can be asked to do is a fact about its state, so a second field saying
+ * so would be a second thing to keep in step.
+ */
+export type JobState = "queued" | "running" | "paused";
+
+/** What every job carries whichever state it is in. */
+export interface JobIdentity {
+  id: string;
+  url: string;
+  title: string;
+  /** The process entry's own status; the job's state is derived from it. */
+  status: string;
+  /** Set once the job has been stopped on request and kept for resume. */
+  paused: boolean;
+  /** Where it stands among the jobs of its kind still waiting. */
+  queuePosition: number;
+  /** When the job was first accepted; epoch ms. */
+  startedAt: number;
+  /** Downloads only; null until the first progress line arrives. */
+  progress: TransferProgress | null;
+  /** Listings only; rows persisted so far. */
+  itemsIndexed: number | null;
+}
+
+/**
+ * One job as the download manager sees it.
+ *
+ * Its own interface rather than the entry's identity fields plus two: the
+ * drawer is answered about a job's state, not about the bookkeeping the
+ * pipeline keeps behind it.
+ */
+export interface JobView {
+  /** Opaque, stable across queued → running → paused → queued. */
+  id: string;
+  kind: JobKind;
+  url: string;
+  title: string;
+  state: JobState;
+  /** 1-based among jobs of the same kind still waiting. Running jobs: 0. */
+  queuePosition: number;
+  /** Downloads only; null until the first progress line arrives. */
+  progress: TransferProgress | null;
+  /** Listings only; rows persisted so far. */
+  itemsIndexed: number | null;
+  /** When the job was first accepted; epoch ms. */
+  startedAt: number;
+}
+
+/**
+ * A stopped job, kept until it is resumed or thrown away.
+ *
+ * It is held here rather than in either process map because a paused job has
+ * no process: those maps are swept on staleness clocks, and a job that is
+ * only waiting for the user to press resume is not wedged.
+ */
+export interface PausedJob extends JobIdentity {
+  kind: JobKind;
+  /** What resume re-enqueues: a `DownloadItem` or a `ListingItem`. */
+  item: DownloadItem | ListingItem;
+  /** Downloads: where the partial files for `fileName` are. */
+  savePath?: string;
+  fileName?: string | null;
+  /** Listings: the knobs the original submission ran with. */
+  chunkSize?: number;
+  isScheduledUpdate?: boolean;
+}
+
+/** What a caller can ask of a job, and nothing else. */
+export type JobAction = "pause" | "resume" | "cancel";
+
+export type JobActionOutcome =
+  | "paused"
+  | "resumed"
+  | "cancelled"
+  | "not-allowed"
+  | "not-found";
+
+/** The body of `/jobaction`, minus the `status` the route adds. */
+export interface JobActionResult {
+  id: string;
+  action: JobAction;
+  outcome: JobActionOutcome;
+  /** What happened to the partial files. Null when the action did not run. */
+  partialDeleted: boolean | null;
+  /** One sentence for the user when the outcome is not the happy path. */
+  detail?: string;
+}
+
+export interface JobActionRequestBody {
+  id: string;
+  action: JobAction;
 }
 
 export interface DownloadResult {
@@ -413,10 +606,13 @@ export interface DownloadCompletionUpdates extends DiscoveredMetadata {
   chapters?: Chapter[] | null;
 }
 
-export interface DownloadProcessEntry extends ProcessLike {
-  url: string;
-  title: string;
-  queuePosition: number;
+export interface DownloadProcessEntry extends ProcessLike, JobIdentity {
+  /** What resume re-enqueues; the item this entry was accepted for. */
+  item: DownloadItem;
+  /** Where yt-dlp was told to write, and where its partial files are. */
+  savePath?: string;
+  /** Parsed from the run's own `fileName:` line; null until it arrives. */
+  fileName?: string | null;
   /**
    * Set by `cancelDownload` while this entry is still queued for a slot.
    *
@@ -426,10 +622,21 @@ export interface DownloadProcessEntry extends ProcessLike {
   cancelled?: boolean;
 }
 
-export interface ListingProcessEntry extends ProcessLike {
-  url: string;
+export interface ListingProcessEntry extends ProcessLike, JobIdentity {
   type: string;
   monitoringType: string;
+  /** What resume re-runs. */
+  item: ListingItem;
+  chunkSize: number;
+  isScheduledUpdate: boolean;
+  /**
+   * The single-flight key this run holds.
+   *
+   * A pause has to release it: the killed run's promise is still in flight
+   * when the kill lands, and a resume arriving before it settles would join
+   * the dying run instead of listing the playlist again.
+   */
+  flightKey: string;
 }
 
 export type SafeEmit = (event: string, payload: unknown) => void;

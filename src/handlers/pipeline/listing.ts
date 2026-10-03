@@ -9,13 +9,14 @@ import {
 } from "../youtube-api.ts";
 import { Semaphore } from "./semaphore.ts";
 import { config } from "../../config.ts";
-import { ListingProcessError, playlistRegex } from "./types.ts";
+import { ListingProcessError, newJobId, playlistRegex } from "./types.ts";
 import type {
   CancelOutcome,
   ListingItem,
   ListingProcessEntry,
   ListingResult,
   ManagedProcess,
+  PausedJob,
   PipelineHandlerDependencies,
 } from "./types.ts";
 import { ProcessExitCodes } from "./types.ts";
@@ -227,7 +228,28 @@ function listOnce(
 
   return rt.inFlight.run(
     key,
-    () => listWithSemaphore(rt, item, chunkSize, isScheduledUpdate),
+    () => listWithSemaphore(rt, item, chunkSize, isScheduledUpdate, key),
+  );
+}
+
+/**
+ * Re-runs a paused listing from the top, under the id it was paused as.
+ *
+ * From the top, not from where it stopped: rows already written are on
+ * record, and re-listing a playlist that is already indexed is a cheap no-op
+ * rather than a second pass worth resuming halfway.
+ */
+export function resumeListing(rt: ListingRuntime, job: PausedJob): void {
+  const item = job.item as ListingItem;
+  void listItemsConcurrently(
+    rt,
+    [{
+      ...item,
+      jobId: job.id,
+      isScheduledUpdate: job.isScheduledUpdate,
+    }],
+    job.chunkSize ?? config.chunkSize,
+    job.isScheduledUpdate === true,
   );
 }
 
@@ -236,6 +258,7 @@ async function listWithSemaphore(
   item: ListingItem,
   chunkSize: number,
   isScheduledUpdate: boolean,
+  flightKey: string,
 ): Promise<ListingResult> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
@@ -244,10 +267,28 @@ async function listWithSemaphore(
   try {
     const { url: videoUrl, type: itemType, currentMonitoringType } = item;
     const now = Date.now();
+    const resolvedIsScheduledUpdate = item.isScheduledUpdate === true ||
+      isScheduledUpdate;
     const listEntry: ListingProcessEntry = {
+      id: item.jobId ?? newJobId(),
       url: videoUrl,
+      // Empty until the run resolves the playlist's own title, which is the
+      // first thing it learns from the database.
+      title: "",
       type: itemType,
       monitoringType: currentMonitoringType,
+      item,
+      chunkSize,
+      isScheduledUpdate: resolvedIsScheduledUpdate,
+      flightKey,
+      // Where it stands in line is its registration time: a listing only
+      // registers once it holds a slot, so this is an ordering key rather
+      // than a position anybody waits on, and equal times keep arrival order.
+      queuePosition: now,
+      progress: null,
+      itemsIndexed: 0,
+      paused: false,
+      startedAt: now,
       spawnType: "list",
       lastActivity: now,
       lastStdoutActivity: now,
@@ -263,7 +304,7 @@ async function listWithSemaphore(
       item,
       entryKey,
       chunkSize,
-      item.isScheduledUpdate === true || isScheduledUpdate,
+      resolvedIsScheduledUpdate,
     );
 
     listEntry.spawnedProcess = null;
@@ -375,6 +416,13 @@ export async function executeListing(
         );
         playlistTitle = newPlaylist.title;
         seekPlaylistListTo = newPlaylist.sortOrder;
+      }
+
+      // The drawer shows a listing by name, and the entry is registered
+      // before anything knows what the playlist is called.
+      const titled = rt.listProcesses.get(processKey);
+      if (titled) {
+        titled.title = playlistTitle;
       }
 
       return await handlePlaylistStreaming(rt, {
@@ -506,6 +554,14 @@ export async function consumePlaylistChunks(
       );
 
       processedChunks++;
+      // A real count of rows this run wrote, not chunks times the chunk size:
+      // the final chunk of a playlist is nearly always a partial one, and an
+      // estimate would over-report every listing by the size of one chunk.
+      const listingEntry = rt.listProcesses.get(processKey);
+      if (listingEntry) {
+        listingEntry.itemsIndexed = (listingEntry.itemsIndexed ?? 0) +
+          chunk.items.length;
+      }
       rt.updateProcessActivity(processKey, true);
 
       if (!isScheduledUpdate) {
