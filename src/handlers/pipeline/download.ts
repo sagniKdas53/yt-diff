@@ -562,12 +562,16 @@ export function createDownloadFlow(
                   trackedEntry.progress = transfer;
                 }
 
-                // The output path, named before the transfer starts. A cancel
-                // that has this can delete the partial it left; one that only
-                // has the post_process file name — which arrives after the
-                // download is over — has nothing to delete, which is the
-                // opposite of what cancelling a running download is for.
-                const destination = /Destination:\s*(.+)/m.exec(output);
+                // The output path, resolved before the transfer starts. A
+                // cancel that has this can delete the partial it left; one
+                // that only has the post_process file name — which arrives
+                // after the download is over — has nothing to delete, which is
+                // the opposite of what cancelling a running download is for.
+                //
+                // Read from our own `filePath:` print rather than yt-dlp's
+                // `Destination:` line: a `--print` among the arguments
+                // suppresses that one entirely, and there is one there.
+                const destination = /filePath:(.+)/.exec(output);
                 if (
                   trackedEntry && destination?.[1] && !trackedEntry.destination
                 ) {

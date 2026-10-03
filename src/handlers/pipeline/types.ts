@@ -98,6 +98,13 @@ const sidecarOptions: string[] = [
   fileNameTemplate(),
   "--print",
   "before_dl:title:%(title)s [%(id)s]",
+  // The output name, resolved, before a byte moves. A cancel that only learns
+  // the name from the `post_process:` print below learns it once the download
+  // is over, and so has nothing left to delete. `%(filename)s` is the
+  // outtmpl already applied, so this says where the file is rather than
+  // restating the pattern that decides it.
+  "--print",
+  "before_dl:filePath:%(filename)s",
   // Prints 1 or 0 per sidecar, so every extractor answers the same question
   // the same way and there is no per-site table anywhere.
   "--print",
@@ -631,8 +638,8 @@ export interface DownloadProcessEntry extends ProcessLike, JobIdentity {
   /** Parsed from the run's own `fileName:` line; null until it arrives. */
   fileName?: string | null;
   /**
-   * The full path yt-dlp named for its output, from the `Destination:` line it
-   * prints before the transfer starts.
+   * The full path yt-dlp resolved for its output, from the `before_dl:filePath:`
+   * print in the options above.
    *
    * This and not `fileName` is what a cancel deletes by. `fileName` comes from
    * a `post_process:` print, which yt-dlp emits once the download is *over* —

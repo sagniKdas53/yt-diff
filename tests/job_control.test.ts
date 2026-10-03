@@ -754,8 +754,8 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
   });
 
   const lines = [
-    // What yt-dlp prints before it starts, and what a cancel deletes by.
-    `[download] Destination: ${h.savePath}/${FILE_NAME}`,
+    // What yt-dlp resolves before it starts, and what a cancel deletes by.
+    `filePath:${h.savePath}/${FILE_NAME}`,
     " 50.0%|12|2048|4096|0|1024",
     `post_process:"fileName:${FILE_NAME}"`,
   ];
