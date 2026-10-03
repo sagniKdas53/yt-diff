@@ -132,21 +132,27 @@ so a client that shows the sentence needs no error branch.
 
 ## Partial files
 
-yt-dlp writes `<fileName>.part` while a transfer runs, keeps `<fileName>.ytdl`
-beside it for resume, and names fragments `<fileName>.part-FragN`. The server
-already parses `fileName:` out of yt-dlp's `before_dl:` output, so a cancel
-deletes exactly those three shapes for that one job:
+yt-dlp writes `<name>.part` while a transfer runs, keeps `<name>.ytdl` beside it
+for resume, and names fragments `<name>.part-FragN`. A cancel deletes exactly
+those three shapes for that one job, where `<name>` is the output path yt-dlp
+printed in its `Destination:` line:
 
 ```
-<savePath>/<fileName>.part
-<savePath>/<fileName>.part-Frag*
-<savePath>/<fileName>.ytdl
+<destination>.part
+<destination>.part-Frag*
+<destination>.ytdl
 ```
 
 Never a wider glob. Two downloads can share a save directory, and "delete
 everything under the folder that looks partial" would take out a neighbour.
 
-If `fileName` has not arrived when the cancel lands, nothing is deleted and the
+**The name comes from `Destination:`, not from `fileName:`.** The server also
+parses a `fileName:` out of yt-dlp's `post_process:` output, and that arrives
+once the download is _over_ — so scoping a cancel by it meant a cancel of a
+running download had nothing to delete by the time it looked. `Destination:` is
+printed before the first byte moves.
+
+If neither has arrived when the cancel lands, nothing is deleted and the
 response says so. Guessing at partials by directory scan is worse than leaving
 bytes the reaper will clean up.
 

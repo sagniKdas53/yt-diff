@@ -74,6 +74,23 @@ export function basename(value: string): string {
   return segments.at(-1) || "";
 }
 
+/**
+ * The directory part of a path, or "/" when there is nothing left of it.
+ *
+ * The sibling of {@linkcode basename} and built the same way, so the two split
+ * a path at the same place: taking the name and then the folder of one string
+ * has to give that string back.
+ */
+export function dirname(value: string): string {
+  const normalized = normalize(value);
+  if (normalized === "/") {
+    return "/";
+  }
+  const segments = splitSegments(normalized);
+  segments.pop();
+  return segments.length ? `/${segments.join("/")}` : "/";
+}
+
 export function extname(value: string): string {
   const base = basename(value);
   const lastDot = base.lastIndexOf(".");

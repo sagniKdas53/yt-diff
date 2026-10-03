@@ -2,28 +2,28 @@
 
 `yt-diff` uses [`node-cron`](https://www.npmjs.com/package/cron) to run
 background jobs on configurable schedules. Three always run; a fourth is
-registered only when the chat bot is enabled. All jobs start automatically when the
-server boots and are logged with their next scheduled run time.
+registered only when the chat bot is enabled. All jobs start automatically when
+the server boots and are logged with their next scheduled run time.
 
 ---
 
 ## Job Overview
 
-| Job         | Default Schedule              | Env Var            | Purpose                                    |
-| :---------- | :---------------------------- | :----------------- | :----------------------------------------- |
-| **Cleanup** | `*/10 * * * *` (every 10 min) | `CLEANUP_INTERVAL` | Kill stale/zombie `yt-dlp` child processes |
-| **Update**  | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED` | Re-scan monitored playlists for new videos |
-| **Prune**   | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`   | Remove or relocate orphaned video records  |
-| **Bot Retention** | `0 * * * *` (hourly)    | `BOT_REAP_INTERVAL` | Delete expired ephemeral chat-bot downloads |
+| Job               | Default Schedule              | Env Var             | Purpose                                     |
+| :---------------- | :---------------------------- | :------------------ | :------------------------------------------ |
+| **Cleanup**       | `*/10 * * * *` (every 10 min) | `CLEANUP_INTERVAL`  | Kill stale/zombie `yt-dlp` child processes  |
+| **Update**        | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED`  | Re-scan monitored playlists for new videos  |
+| **Prune**         | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`    | Remove or relocate orphaned video records   |
+| **Bot Retention** | `0 * * * *` (hourly)          | `BOT_REAP_INTERVAL` | Delete expired ephemeral chat-bot downloads |
 
 > [!NOTE]
 > **Bot Retention only exists when `BOT_ENABLED=true`.** It is constructed in
 > `createJobs` behind that flag, so a disabled bot registers no reaper at all.
 
 > [!NOTE]
-> All schedules use standard
-> [cron syntax](https://crontab.guru/). The timezone is controlled by the
-> `TZ_PREFERRED` environment variable (default: `Asia/Kolkata`).
+> All schedules use standard [cron syntax](https://crontab.guru/). The timezone
+> is controlled by the `TZ_PREFERRED` environment variable (default:
+> `Asia/Kolkata`).
 
 ---
 
@@ -69,9 +69,9 @@ videos that were added since the last check.
 4. For YouTube playlists/channels, uses the YouTube Data API if credentials are
    configured (completes in seconds instead of hours). Falls back to `yt-dlp`
    for non-YouTube URLs or when API credentials are missing.
-5. Feeds all items into `listItemsConcurrently()` in this order:
-   **Start → End → Full** — cheaper incremental scans run first so they don't
-   get blocked behind expensive full re-scans.
+5. Feeds all items into `listItemsConcurrently()` in this order: **Start → End →
+   Full** — cheaper incremental scans run first so they don't get blocked behind
+   expensive full re-scans.
 6. Logs the total number of completed updates and the next scheduled run.
 
 ### Monitoring Types Recap
@@ -110,17 +110,18 @@ are no longer referenced by any playlist mapping.
    - **Downloaded** (`downloadStatus = true`): Creates a new mapping to the
      **"None"** playlist with the next available `positionInPlaylist` index.
      This preserves downloaded content so it's never silently lost.
-   - **Not downloaded** (`downloadStatus = false`): Destroys the
-     `VideoMetadata` row entirely — there's no data to preserve.
+   - **Not downloaded** (`downloadStatus = false`): Destroys the `VideoMetadata`
+     row entirely — there's no data to preserve.
 3. Logs the count of moved vs. pruned videos and the next scheduled run.
 
 ### When Orphans Appear
 
 Orphaned videos are created when:
+
 - A playlist is deleted (its mappings are cascade-deleted, but shared videos may
   remain).
-- Video mappings are removed via `/delsub` with `deleteVideoMappings = true`
-  but `deleteVideosInDB = false`.
+- Video mappings are removed via `/delsub` with `deleteVideoMappings = true` but
+  `deleteVideosInDB = false`.
 - A platform-side deletion during a re-scan causes stale mapping entries.
 
 > [!TIP]
@@ -150,7 +151,7 @@ Jobs continue running for the lifetime of the server process.
 
 ## 4. Bot Retention Job (Reaper)
 
-**Purpose**: Deletes the files of expired *ephemeral* chat-bot downloads, so a
+**Purpose**: Deletes the files of expired _ephemeral_ chat-bot downloads, so a
 bot used as a "fetch me this video" tool does not slowly fill the disk.
 
 Registered only when `BOT_ENABLED=true`. Implemented in `src/bot/retention.ts`.
@@ -170,7 +171,7 @@ canonicalUrl    IS NOT NULL
 ### Three guards, all load-bearing
 
 1. **`downloadedByBot = true` only.** When the bot is asked for something that
-   was *already on disk*, it delivers the existing file and records
+   was _already on disk_, it delivers the existing file and records
    `downloadedByBot = false, expiresAt = null`. The reaper therefore never
    deletes a file the bot did not fetch — this covers web-UI downloads and
    re-sends of anything fetched earlier.
@@ -221,19 +222,20 @@ considered=2 reaped=2 skipped=0
 
 These are often confused. They are unrelated and both correct:
 
-| | Signed download links | Downloaded files |
-| :-- | :-- | :-- |
-| Stored in | Redis (`signed:<uuid>`) | `SAVE_PATH` on disk |
-| Expires via | Redis key TTL — **self-evicting** | Bot Retention job |
-| Controlled by | `CACHE_MAX_AGE` (default 1h) | `BOT_RETENTION_HOURS` (default 24h) |
-| On expiry | the link 404s | the file is deleted, row reset |
+|               | Signed download links             | Downloaded files                    |
+| :------------ | :-------------------------------- | :---------------------------------- |
+| Stored in     | Redis (`signed:<uuid>`)           | `SAVE_PATH` on disk                 |
+| Expires via   | Redis key TTL — **self-evicting** | Bot Retention job                   |
+| Controlled by | `CACHE_MAX_AGE` (default 1h)      | `BOT_RETENTION_HOURS` (default 24h) |
+| On expiry     | the link 404s                     | the file is deleted, row reset      |
 
 **Signed URLs need no cleanup code.** Redis evicts the key on its own when the
-TTL lapses; nothing scans for stale links. The TTL *slides* on each access, so a
+TTL lapses; nothing scans for stale links. The TTL _slides_ on each access, so a
 link that is being used stays alive.
 
 Bot links and web-UI links share one lifetime. There used to be a separate
-`BOT_SIGNED_URL_TTL`, removed because an expired bot link costs one `/link
+`BOT_SIGNED_URL_TTL`, removed because an expired bot link costs one
+`/link
 <url>` to regenerate — and because two of the three renewal paths
 (`refreshSignedUrl`, `refreshSignedUrls`) ignored the per-entry TTL anyway, so
 the longer lifetime was never reliably honoured.
@@ -259,8 +261,9 @@ Both are already set in the `deno task bot` / `deno task bot:proxy` tasks.
 Production defaults in `envs/base.env` remain hourly / 24h.
 
 > [!NOTE]
-> A sweep that finds nothing logs `No expired bot downloads found to reap`.
-> A silent sweep would be indistinguishable from a broken one.
+> A sweep that finds nothing logs `No expired bot downloads found to reap`. A
+> silent sweep would be indistinguishable from a broken one.
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_

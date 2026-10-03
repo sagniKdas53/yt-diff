@@ -1,10 +1,12 @@
 # YouTube Authentication & Scraping Behavior
 
-This document describes how yt-diff decides which method to use when listing (indexing) and downloading YouTube content.
+This document describes how yt-diff decides which method to use when listing
+(indexing) and downloading YouTube content.
 
 ## Overview
 
-yt-diff supports three authentication methods for YouTube, each suited to different use cases:
+yt-diff supports three authentication methods for YouTube, each suited to
+different use cases:
 
 | Method      | Env Vars                                                              | Use Case                                                              |
 | ----------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -16,7 +18,8 @@ yt-diff supports three authentication methods for YouTube, each suited to differ
 
 ## Listing (Indexing Playlist/Channel Items)
 
-When a URL is submitted for listing, the following decision flow determines the method used:
+When a URL is submitted for listing, the following decision flow determines the
+method used:
 
 ```mermaid
 flowchart TD
@@ -34,11 +37,13 @@ flowchart TD
 
 ### YouTube Data API Path (Fast)
 
-Used for **all YouTube playlists and channels** when API credentials are configured.
+Used for **all YouTube playlists and channels** when API credentials are
+configured.
 
 - Fetches items via `playlistItems.list` endpoint (50 items/page)
 - A 5,000-item playlist completes in ~50 seconds
-- Channel URLs (`/@handle/videos`) are resolved to their uploads playlist via `channels.list`
+- Channel URLs (`/@handle/videos`) are resolved to their uploads playlist via
+  `channels.list`
 - Items are converted to yt-dlp-compatible format for seamless DB integration
 - Falls back to yt-dlp on any API failure
 
@@ -48,18 +53,23 @@ Used as a fallback, or when no API credentials are configured.
 
 - Fetches full metadata per video via `yt-dlp --dump-json`
 - A 5,000-item playlist takes ~5 hours
-- Protected by the smarter cleanup logic that prevents premature process termination
+- Protected by the smarter cleanup logic that prevents premature process
+  termination
 - Requires `COOKIES_FILE` for private content
 
 ### System Playlists (WL, LL)
 
-Google intentionally blocked API access to Watch Later and Liked Videos in 2016. These always return 0 items via the API, even with valid OAuth2 credentials. They **must** use yt-dlp with cookies.
+Google intentionally blocked API access to Watch Later and Liked Videos in 2016.
+These always return 0 items via the API, even with valid OAuth2 credentials.
+They **must** use yt-dlp with cookies.
 
 ## Downloading (Fetching Video Files)
 
-Downloads **always use yt-dlp**, regardless of API configuration. The YouTube Data API cannot download video files.
+Downloads **always use yt-dlp**, regardless of API configuration. The YouTube
+Data API cannot download video files.
 
-If `COOKIES_FILE` is set, yt-dlp receives `--cookies <file>` for YouTube URLs. This is needed for:
+If `COOKIES_FILE` is set, yt-dlp receives `--cookies <file>` for YouTube URLs.
+This is needed for:
 
 - Age-restricted videos
 - Members-only content
@@ -75,11 +85,13 @@ Channel URLs are resolved to their uploads playlist via the YouTube Data API:
 | `/channel/UCxxxx` | `/channel/UC1234`       | Direct conversion: `UC1234` → `UU1234`                           |
 | `/c/name`         | `/c/ChannelName/videos` | `channels.list?forHandle=ChannelName` → uploads playlist `UU...` |
 
-The resolved uploads playlist is then fetched using the same `playlistItems.list` pagination as regular playlists.
+The resolved uploads playlist is then fetched using the same
+`playlistItems.list` pagination as regular playlists.
 
 ## Cookie Files
 
-Cookie files use the Netscape format and are configured via environment variables. Each site can have its own cookie file, with a global fallback:
+Cookie files use the Netscape format and are configured via environment
+variables. Each site can have its own cookie file, with a global fallback:
 
 | Env Var                | Applies To                 | Notes                                                       |
 | ---------------------- | -------------------------- | ----------------------------------------------------------- |
@@ -88,10 +100,14 @@ Cookie files use the Netscape format and are configured via environment variable
 | `COOKIES_FILE`         | Any site (global fallback) | Used when no site-specific var is set                       |
 
 **Resolution order per site:**
+
 - **x.com**: `X_COOKIES_FILE` → `COOKIES_FILE`
 - **YouTube**: `YOUTUBE_COOKIES_FILE` → `COOKIES_FILE`
 
-This means you can safely set `X_COOKIES_FILE` for x.com without cookies being passed to YouTube, and vice versa. If you only want cookies for x.com and YouTube API for playlists, just set `X_COOKIES_FILE` — YouTube won't receive any cookies.
+This means you can safely set `X_COOKIES_FILE` for x.com without cookies being
+passed to YouTube, and vice versa. If you only want cookies for x.com and
+YouTube API for playlists, just set `X_COOKIES_FILE` — YouTube won't receive any
+cookies.
 
 ### Cookie file format
 
@@ -101,7 +117,10 @@ This means you can safely set `X_COOKIES_FILE` for x.com without cookies being p
 .x.com          TRUE    /    TRUE     0    auth_token <value>
 ```
 
-> **Note:** Even within a single cookie file, yt-dlp only sends cookies to their matching domain. YouTube cookies are never sent to x.com and vice versa. The per-site env vars are an extra layer of control over which sites receive cookies at all.
+> **Note:** Even within a single cookie file, yt-dlp only sends cookies to their
+> matching domain. YouTube cookies are never sent to x.com and vice versa. The
+> per-site env vars are an extra layer of control over which sites receive
+> cookies at all.
 
 ## API Quota
 
@@ -116,10 +135,14 @@ This allows ~100 full scrapes of 5,000-item playlists per day.
 
 ## Playlist Duplicate Handling
 
-YouTube allows the same video at multiple positions in a playlist. yt-diff matches this behavior:
+YouTube allows the same video at multiple positions in a playlist. yt-diff
+matches this behavior:
 
-- **Real playlists**: Duplicates are allowed. Each occurrence creates a separate mapping at its own position.
-- **"None" playlist** (unlisted/unplaylisted videos): Duplicates are **not** allowed. Adding a video that already exists updates its position instead of creating a duplicate.
+- **Real playlists**: Duplicates are allowed. Each occurrence creates a separate
+  mapping at its own position.
+- **"None" playlist** (unlisted/unplaylisted videos): Duplicates are **not**
+  allowed. Adding a video that already exists updates its position instead of
+  creating a duplicate.
 
 ## Configuration Examples
 
@@ -169,4 +192,5 @@ environment:
 ```
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_

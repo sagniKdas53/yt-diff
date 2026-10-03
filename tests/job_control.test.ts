@@ -345,6 +345,7 @@ Deno.test("cancel - a running download deletes exactly its own partials", async 
         spawnedProcess: process,
         savePath: h.savePath,
         fileName: FILE_NAME,
+        destination: `${h.savePath}/${FILE_NAME}`,
       }),
     );
     write(h.savePath, [
@@ -405,6 +406,7 @@ Deno.test("cancel - the partial outlives the process it belongs to", async () =>
         spawnedProcess: process,
         savePath: h.savePath,
         fileName: FILE_NAME,
+        destination: `${h.savePath}/${FILE_NAME}`,
       }),
     );
     write(h.savePath, [`${FILE_NAME}.part`]);
@@ -443,6 +445,36 @@ Deno.test("cancel - a queued download costs nothing", async () => {
     // download starting when its slot finally comes round.
     assertEquals(entry.cancelled, true);
     assertEquals(remaining(h.savePath), [`${FILE_NAME}.part`]);
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("cancel - a running download is deleted by its destination alone", async () => {
+  // The post_process `fileName:` print arrives once the download is *over*, so
+  // a cancel that waits for it has nothing to delete by the time it looks.
+  // yt-dlp names the file before it starts, and that is what a cancel uses.
+  const process = pendingProcess();
+  const h = buildHarness();
+  try {
+    h.downloads.set(
+      "running_1",
+      downloadEntry({
+        status: "running",
+        spawnedProcess: process,
+        destination: `${h.savePath}/${FILE_NAME}`,
+        // Deliberately no fileName, which is the state a running download is
+        // actually in.
+        fileName: null,
+      }),
+    );
+    write(h.savePath, [`${FILE_NAME}.part`, `${FILE_NAME}.ytdl`]);
+
+    const result = await h.control.cancelJob("job-1");
+
+    assertEquals(result.outcome, "cancelled");
+    assertEquals(result.partialDeleted, true);
+    assertEquals(remaining(h.savePath), []);
   } finally {
     h.restore();
   }
@@ -698,22 +730,11 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
   // that takes. Scoped to stdout because the flow reads stderr with the same
   // helper, and stderr is empty here.
   const stdoutRead = Promise.withResolvers<void>();
-  const lines = [
-    " 50.0%|12|2048|4096|0|1024",
-    `post_process:"fileName:${FILE_NAME}"`,
-  ];
-  const fake = {
-    ...pendingProcess(),
-    stdout: new ReadableStream<Uint8Array>({
-      start(controller) {
-        for (const line of lines) {
-          controller.enqueue(new TextEncoder().encode(`${line}\n`));
-        }
-        controller.close();
-      },
-    }),
-  } satisfies ManagedProcess;
 
+  // Built before the harness and filled in after it: the lines name the
+  // harness's own temp directory, and the harness wants the process that
+  // reads them.
+  let fake: ManagedProcess;
   const h = buildHarness({
     installVideoTable: true,
     spawnPythonProcess: () => fake,
@@ -731,6 +752,25 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
         }
       })(),
   });
+
+  const lines = [
+    // What yt-dlp prints before it starts, and what a cancel deletes by.
+    `[download] Destination: ${h.savePath}/${FILE_NAME}`,
+    " 50.0%|12|2048|4096|0|1024",
+    `post_process:"fileName:${FILE_NAME}"`,
+  ];
+
+  fake = {
+    ...pendingProcess(),
+    stdout: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of lines) {
+          controller.enqueue(new TextEncoder().encode(`${line}\n`));
+        }
+        controller.close();
+      },
+    }),
+  } satisfies ManagedProcess;
 
   try {
     const { items } = await h.flow.resolveAndEnqueue([URL], "None");
@@ -751,6 +791,7 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
     });
 
     assertEquals(entry.fileName, FILE_NAME);
+    assertEquals(entry.destination, `${h.savePath}/${FILE_NAME}`);
     assertEquals(entry.savePath, h.savePath);
   } finally {
     h.restore();

@@ -562,6 +562,18 @@ export function createDownloadFlow(
                   trackedEntry.progress = transfer;
                 }
 
+                // The output path, named before the transfer starts. A cancel
+                // that has this can delete the partial it left; one that only
+                // has the post_process file name — which arrives after the
+                // download is over — has nothing to delete, which is the
+                // opposite of what cancelling a running download is for.
+                const destination = /Destination:\s*(.+)/m.exec(output);
+                if (
+                  trackedEntry && destination?.[1] && !trackedEntry.destination
+                ) {
+                  trackedEntry.destination = destination[1].trim();
+                }
+
                 const itemTitle = /title:(.+)/m.exec(output);
                 if (itemTitle?.[1] && !capturedFileName) {
                   capturedTitle = itemTitle[1].trim();

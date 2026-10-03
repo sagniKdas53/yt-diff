@@ -7,31 +7,59 @@ For the full-tree audit that produced the current security and structural
 findings — including severities, evidence, and the suggested fix order — see
 [`SECURITY_AND_QUALITY_AUDIT.md`](./SECURITY_AND_QUALITY_AUDIT.md).
 
-*Note: Following recent extensive refactoring phases, major architecture, routing, rate-limiting, and input validation issues have been successfully addressed. The remaining items represent long-term goals.*
+_Note: Following recent extensive refactoring phases, major architecture,
+routing, rate-limiting, and input validation issues have been successfully
+addressed. The remaining items represent long-term goals._
 
 ## Future Milestones
 
 ### 1. Hardcoded Process Operations
 
-Raw array pushes like `downloadOptions.push('--trim-filenames')` are fine currently, but can become unruly over time if the scope of `yt-dlp` arguments grows dynamically per-video rather than globally. Consider abstracting `yt-dlp` argument generation into a more flexible builder pattern or isolated configuration mapper.
+Raw array pushes like `downloadOptions.push('--trim-filenames')` are fine
+currently, but can become unruly over time if the scope of `yt-dlp` arguments
+grows dynamically per-video rather than globally. Consider abstracting `yt-dlp`
+argument generation into a more flexible builder pattern or isolated
+configuration mapper.
 
 ### 2. Active Monkey Patches
 
-The codebase contains one active workaround for an upstream bug. See [`MONKEY_PATCHES.md`](./MONKEY_PATCHES.md) for full details, implementation snippets, and removal conditions.
+The codebase contains one active workaround for an upstream bug. See
+[`MONKEY_PATCHES.md`](./MONKEY_PATCHES.md) for full details, implementation
+snippets, and removal conditions.
 
-- **`curl_cffi` Segfault** (`index.ts`) — `curl_cffi.Curl.reset` is patched to a no-op at runtime via `python3 -c` to prevent `SIGABRT` crashes when `--impersonate` is used. Remove once `curl_cffi` fixes `Curl.reset` safety upstream.
+- **`curl_cffi` Segfault** (`index.ts`) — `curl_cffi.Curl.reset` is patched to a
+  no-op at runtime via `python3 -c` to prevent `SIGABRT` crashes when
+  `--impersonate` is used. Remove once `curl_cffi` fixes `Curl.reset` safety
+  upstream.
 
 ### 3. Large JSONB Payload Storage
 
-The `raw_metadata` column on `VideoMetadata` currently stores heavily nested JSONB structures. While bulky arrays (formats/thumbnails) are pruned, accumulating this across thousands of videos might bloat PostgreSQL storage unnecessarily if the fields are never queried.
+The `raw_metadata` column on `VideoMetadata` currently stores heavily nested
+JSONB structures. While bulky arrays (formats/thumbnails) are pruned,
+accumulating this across thousands of videos might bloat PostgreSQL storage
+unnecessarily if the fields are never queried.
 
-- **Suggested Improvement**: Periodically review whether `raw_metadata` is actively utilized. If not, consider extracting only specific metadata keys explicitly rather than a catch-all JSON dump, or offload this archival data to file-based cache.
+- **Suggested Improvement**: Periodically review whether `raw_metadata` is
+  actively utilized. If not, consider extracting only specific metadata keys
+  explicitly rather than a catch-all JSON dump, or offload this archival data to
+  file-based cache.
 
 ### 4. Playlist Indexing Pipe Buffer Deadlock (resolved)
 
-Probing playlist titles via `addPlaylist` (`playlist-records.ts`) read only the first stdout line and awaited `.status` without draining or killing the `yt-dlp` subprocess. When subsequent videos outputted additional JSON metadata, the Linux 64 KB pipe buffer saturated and deadlocked the process, freezing both `ListingSemaphore` and Telegram polling. See [`RCA_PLAYLIST_INDEXING_DEADLOCK.md`](./RCA_PLAYLIST_INDEXING_DEADLOCK.md) for full root cause analysis, empirical reproduction, and suggested remediation.
+Probing playlist titles via `addPlaylist` (`playlist-records.ts`) read only the
+first stdout line and awaited `.status` without draining or killing the `yt-dlp`
+subprocess. When subsequent videos outputted additional JSON metadata, the Linux
+64 KB pipe buffer saturated and deadlocked the process, freezing both
+`ListingSemaphore` and Telegram polling. See
+[`RCA_PLAYLIST_INDEXING_DEADLOCK.md`](./RCA_PLAYLIST_INDEXING_DEADLOCK.md) for
+full root cause analysis, empirical reproduction, and suggested remediation.
 
-- **Resolved on 2026-09-04**: `streamTextChunks` now cancels its reader when a consumer stops early (`src/utils/streams.ts`), the title probe kills itself and enforces a `TITLE_PROBE_TIMEOUT` deadline, bot messages are handled off the polling loop by `src/bot/dispatcher.ts`, and `cleanupStaleProcesses` reaps every non-terminal status rather than only `"running"`. See section 6 of the RCA.
+- **Resolved on 2026-09-04**: `streamTextChunks` now cancels its reader when a
+  consumer stops early (`src/utils/streams.ts`), the title probe kills itself
+  and enforces a `TITLE_PROBE_TIMEOUT` deadline, bot messages are handled off
+  the polling loop by `src/bot/dispatcher.ts`, and `cleanupStaleProcesses` reaps
+  every non-terminal status rather than only `"running"`. See section 6 of the
+  RCA.
 
 ---
 
@@ -40,7 +68,7 @@ Probing playlist titles via `addPlaylist` (`playlist-records.ts`) read only the 
 Rate limiting used to default to off. `config.cache.reqPerIP` was built as
 `parseInt(Deno.env.get("RATE_LIMIT_GLOBAL_MAX_REQUESTS") ?? "0", 10)` and
 `rateLimit` treated `0` as "disabled", so an instance that never set the
-variable had no throttling at all. `envs/base.env` set the *global* limit to
+variable had no throttling at all. `envs/base.env` set the _global_ limit to
 `10`, but shipped `RATE_LIMIT_ACTION_MAX_REQUESTS=0` — meaning the limiter in
 front of `/list` and `/download` was off in every stock deployment.
 
@@ -69,14 +97,14 @@ load — it is unbounded queue depth. A single `/list` carrying 200 URLs with
 as one request.
 
 The algorithm is GCRA (the approach behind `redis-cell` and `throttled`): one
-timestamp per key, budget that refills smoothly instead of resetting on a
-window edge, per-request cost as a first-class input, and a single atomic Lua
-call. Rejections carry `Retry-After`.
+timestamp per key, budget that refills smoothly instead of resetting on a window
+edge, per-request cost as a first-class input, and a single atomic Lua call.
+Rejections carry `Retry-After`.
 
 Defaults are set well above realistic interactive use and above what the E2E
 suite generates. `0` remains an explicit opt-out, but it is no longer what an
-operator gets by omitting a variable. See `docs/GETTING_STARTED.md` for the
-full variable list and weights.
+operator gets by omitting a variable. See `docs/GETTING_STARTED.md` for the full
+variable list and weights.
 
 ---
 
@@ -109,20 +137,19 @@ Two reasons, neither of which is a missing-effort problem:
 
 - **It is a paging and virtualisation project, not a dialog.** The reference
   video in the backlog has 3,562 comments; long-tail videos have tens of
-  thousands. Rendering that in the player means server-side paging by
-  `parent`, incremental loading, and windowed rendering — a project in its own
-  right, competing with the player work that actually closes the gap against
-  YouTube.
+  thousands. Rendering that in the player means server-side paging by `parent`,
+  incremental loading, and windowed rendering — a project in its own right,
+  competing with the player work that actually closes the gap against YouTube.
 - **`--write-comments` is where rate limits bite first.** yt-dlp pages through
-  every comment thread before the run finishes, which adds minutes per video
-  and multiplies the request count exactly where YouTube is already throttling
+  every comment thread before the run finishes, which adds minutes per video and
+  multiplies the request count exactly where YouTube is already throttling
   sidecars. A deployment that turned it on would trade a video that always
   downloads for one that sometimes does not.
 
 The one bug in this area is fixed regardless: `discoverFiles` looked for
 `<base>.info.json`, but the download options only passed `--write-comments`,
-which puts comments *inside* the infojson without writing it — so
-`commentsFile` could never be found and nothing noticed. `--write-info-json`,
+which puts comments _inside_ the infojson without writing it — so `commentsFile`
+could never be found and nothing noticed. `--write-info-json`,
 `--no-write-playlist-metafiles` and a bounded `youtube:max_comments` now come
 with it, and `commentsFile` is in the `/getsub` row so a deployment that does
 opt in can see what landed.
@@ -133,4 +160,5 @@ once (cached against the file's mtime), returns top-level comments only, and
 loads replies on demand. The infojson must never be shipped to the browser.
 
 ---
-*Last updated at: 2026-10-03*
+
+_Last updated at: 2026-10-03_

@@ -2,7 +2,7 @@ import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { readdir, rm } from "../../utils/fs.ts";
 import { json } from "../../utils/http.ts";
-import { join } from "../../utils/path.ts";
+import { basename, dirname, join } from "../../utils/path.ts";
 import type { ListingRuntime } from "./listing.ts";
 import type {
   DownloadProcessEntry,
@@ -155,25 +155,31 @@ function isPartialOf(name: string, fileName: string): boolean {
  */
 async function deletePartials(
   jobId: string,
-  savePath: string | undefined,
-  fileName: string | null | undefined,
+  job: PausedJob,
 ): Promise<boolean> {
-  if (!savePath || !fileName) {
+  // The destination is the whole path yt-dlp named before it started, so the
+  // folder is its own directory rather than one assembled from a save path and
+  // a file name that arrived too late to be useful.
+  const destination = job.destination ?? null;
+  const folder = destination ? dirname(destination) : job.savePath ?? undefined;
+  const fileName = destination ? basename(destination) : job.fileName;
+
+  if (!folder || !fileName) {
     logger.warn("Could not locate a job's partial files", {
       jobId,
-      savePath,
-      fileName,
+      savePath: job.savePath,
+      destination,
     });
     return false;
   }
 
   let names: string[];
   try {
-    names = await readdir(savePath);
+    names = await readdir(folder);
   } catch (error) {
     logger.error("Could not read a job's folder to clear its partials", {
       jobId,
-      savePath,
+      savePath: folder,
       error: (error as Error).message,
     });
     return false;
@@ -181,7 +187,7 @@ async function deletePartials(
 
   const removed: string[] = [];
   for (const name of names.filter((name) => isPartialOf(name, fileName))) {
-    const path = join(savePath, name);
+    const path = join(folder, name);
     try {
       await rm(path);
       removed.push(path);
@@ -276,6 +282,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       item: entry.item,
       savePath: entry.savePath,
       fileName: entry.fileName ?? null,
+      destination: entry.destination ?? null,
     };
   }
 
@@ -532,7 +539,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     id: string,
     job: PausedJob,
   ): Promise<JobActionResult> {
-    const partialDeleted = await deletePartials(id, job.savePath, job.fileName);
+    const partialDeleted = await deletePartials(id, job);
     return {
       id,
       action: "cancel",

@@ -5,29 +5,29 @@ Eleven loose ideas, read against the code on 2026-09-16 and re-audited against
 the traps found while reading, and a size.
 
 Every item but one is implemented, on `feat/bot-and-player-backlog`. Playlist
-churn — the "diff" in yt-diff — is still deferred, and the comments feature
-has been declined rather than deferred; both decisions are recorded below and
-in `../ISSUES_AND_IMPROVEMENTS.md` §7. The plans are kept as written: they
-say what the problem was, which is what the commit messages refer back to.
+churn — the "diff" in yt-diff — is still deferred, and the comments feature has
+been declined rather than deferred; both decisions are recorded below and in
+`../ISSUES_AND_IMPROVEMENTS.md` §7. The plans are kept as written: they say what
+the problem was, which is what the commit messages refer back to.
 
 Suggested order, by data risk, dependencies, then size:
 
-| #  | Item                                            | Size           | Status      |
-| :- | :---------------------------------------------- | :------------- | :---------- |
-| 10 | Bot loses messages after an outage              | M              | done        |
-| 11 | Sidecar 429s must not fail the download         | M              | done        |
-| 6  | Sliding-window refresh retry loops              | S              | done        |
-| 8a | Subtitles test                                  | S              | done        |
-| 8b | (i) description dialog                          | S              | done        |
-| 9  | Playback speed                                  | S              | done        |
-| 5  | Resume at `t=` (index already works)            | S              | done        |
-| 2  | Expiry label + keep in the UI and `/keep <url>` | S              | done        |
-| 1  | Cancel a listing or download from the bot       | M              | done        |
-| 4  | Share the player URL from the bot               | S–M            | done        |
-| 8c | Chapters                                        | S–M            | done        |
-| 7  | Player render cost and shortcuts                | M              | done        |
-| 8d | Comments                                        | M, maybe never | declined    |
-| 3  | Playlist churn — the "diff" in yt-diff          | L              | deferred    |
+| #  | Item                                            | Size           | Status   |
+| :- | :---------------------------------------------- | :------------- | :------- |
+| 10 | Bot loses messages after an outage              | M              | done     |
+| 11 | Sidecar 429s must not fail the download         | M              | done     |
+| 6  | Sliding-window refresh retry loops              | S              | done     |
+| 8a | Subtitles test                                  | S              | done     |
+| 8b | (i) description dialog                          | S              | done     |
+| 9  | Playback speed                                  | S              | done     |
+| 5  | Resume at `t=` (index already works)            | S              | done     |
+| 2  | Expiry label + keep in the UI and `/keep <url>` | S              | done     |
+| 1  | Cancel a listing or download from the bot       | M              | done     |
+| 4  | Share the player URL from the bot               | S–M            | done     |
+| 8c | Chapters                                        | S–M            | done     |
+| 7  | Player render cost and shortcuts                | M              | done     |
+| 8d | Comments                                        | M, maybe never | declined |
+| 3  | Playlist churn — the "diff" in yt-diff          | L              | deferred |
 
 Every item is implemented except the two marked otherwise above: **3** is
 deferred, and **8d** is declined rather than deferred — the decision is recorded
@@ -35,9 +35,9 @@ in `ISSUES_AND_IMPROVEMENTS.md` §7. A comments feature is not being built; what
 was broken about it is fixed.
 
 Sizes: S = an afternoon, M = a day or two, L = a design pass then several days.
-Item 2 had `/keep <id>`; it now takes a URL as well, and the row says when
-the reaper will take a file. Item 8d's product decision is made and recorded
-in `ISSUES_AND_IMPROVEMENTS.md` §7.
+Item 2 had `/keep <id>`; it now takes a URL as well, and the row says when the
+reaper will take a file. Item 8d's product decision is made and recorded in
+`ISSUES_AND_IMPROVEMENTS.md` §7.
 
 ---
 

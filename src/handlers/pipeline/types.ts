@@ -444,9 +444,11 @@ export interface PausedJob extends JobIdentity {
   kind: JobKind;
   /** What resume re-enqueues: a `DownloadItem` or a `ListingItem`. */
   item: DownloadItem | ListingItem;
-  /** Downloads: where the partial files for `fileName` are. */
+  /** Downloads: where the partial files for this job are. */
   savePath?: string;
   fileName?: string | null;
+  /** The output path yt-dlp named before it started; see the entry field. */
+  destination?: string | null;
   /** Listings: the knobs the original submission ran with. */
   chunkSize?: number;
   isScheduledUpdate?: boolean;
@@ -628,6 +630,17 @@ export interface DownloadProcessEntry extends ProcessLike, JobIdentity {
   savePath?: string;
   /** Parsed from the run's own `fileName:` line; null until it arrives. */
   fileName?: string | null;
+  /**
+   * The full path yt-dlp named for its output, from the `Destination:` line it
+   * prints before the transfer starts.
+   *
+   * This and not `fileName` is what a cancel deletes by. `fileName` comes from
+   * a `post_process:` print, which yt-dlp emits once the download is *over* —
+   * so a cancel of a running download had no name to scope the deletion to and
+   * deleted nothing, which is the opposite of what cancelling one is for. The
+   * destination is known before a byte moves.
+   */
+  destination?: string | null;
   /**
    * Set by `cancelDownload` while this entry is still queued for a slot.
    *
