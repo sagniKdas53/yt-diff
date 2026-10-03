@@ -6,17 +6,21 @@ import type { HttpRequestLike, HttpResponseLike } from "../transport/http.ts";
 import {
   BulkRefreshSignedUrlsRequestBodySchema,
   BulkSignedFilesRequestBodySchema,
+  CancelRequestBodySchema,
   DedupRequestBodySchema,
   DeletePlaylistRequestBodySchema,
   DeleteVideosRequestBodySchema,
   DownloadRequestBodySchema,
+  KeepFileRequestBodySchema,
   ListingRequestBodySchema,
+  LocateRequestBodySchema,
   PlaylistDisplayRequestSchema,
   QueueStatusRequestBodySchema,
   RefreshSignedUrlRequestBodySchema,
   ReindexAllRequestBodySchema,
   SignedFileRequestBodySchema,
   SubListRequestSchema,
+  SyncExtrasRequestBodySchema,
   UpdatePlaylistMonitoringRequestSchema,
 } from "../middleware/validator.ts";
 
@@ -78,6 +82,14 @@ export interface AuthenticatedHandlers {
   processQueueStatusRequest: BodyHandler<
     Body<typeof QueueStatusRequestBodySchema>
   >;
+  processSyncExtrasRequest: BodyHandler<
+    Body<typeof SyncExtrasRequestBodySchema>
+  >;
+  processKeepFileRequest: BodyHandler<
+    Body<typeof KeepFileRequestBodySchema>
+  >;
+  processCancelRequest: BodyHandler<Body<typeof CancelRequestBodySchema>>;
+  processLocateRequest: BodyHandler<Body<typeof LocateRequestBodySchema>>;
 }
 
 /**
@@ -287,6 +299,48 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
     summary: "Report the current listing and download queues.",
     handler: "processQueueStatusRequest",
     schema: QueueStatusRequestBodySchema,
+    admission: "none",
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/syncextras",
+    summary: "Fetch only the sidecars a previous download missed.",
+    handler: "processSyncExtrasRequest",
+    schema: SyncExtrasRequestBodySchema,
+    admission: "action",
+    cost: downloadCost,
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/keepfile",
+    summary: "Make one video's bot downloads permanent, as /keep does in chat.",
+    handler: "processKeepFileRequest",
+    schema: KeepFileRequestBodySchema,
+    // No cost: this is a two-column update on a row the caller is already
+    // looking at. Charging work units would price a label click like a yt-dlp
+    // run and teach the UI to route around the endpoint.
+    admission: "none",
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/cancel",
+    summary: "Stop one queued or running download or playlist listing.",
+    handler: "processCancelRequest",
+    schema: CancelRequestBodySchema,
+    // Also uncosted, and for the same reason: cancelling spends less than
+    // doing. It removes work rather than adding any.
+    admission: "none",
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/locate",
+    summary: "Find the playlist a video opens in, and its page in that list.",
+    handler: "processLocateRequest",
+    schema: LocateRequestBodySchema,
     admission: "none",
   },
   {

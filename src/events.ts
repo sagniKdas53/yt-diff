@@ -1,4 +1,5 @@
 import { logger } from "./logger.ts";
+import type { ExtraKind, PartialReason } from "./handlers/pipeline/types.ts";
 
 /**
  * Typed in-process event bus.
@@ -25,7 +26,11 @@ export interface DownloadingPercentUpdatePayload {
 }
 
 /**
- * Emitted when a download exits successfully (`download.ts`).
+ * Emitted when a download produced its media file (`download.ts`).
+ *
+ * "Done" no longer means "exit code 0": a sidecar that failed after the video
+ * landed is a success with `partial` set, because the video file is the
+ * download and everything beside it is allowed to fail.
  *
  * Everything except `url` and `saveDirectory` is optional because the
  * error-fallback emit site sends a reduced payload.
@@ -39,9 +44,16 @@ export interface DownloadDonePayload {
   thumbNailFile?: string | null;
   subTitleFile?: string | null;
   descriptionFile?: string | null;
+  /** True when sidecars this run was expected to fetch did not arrive. */
+  partial?: boolean;
+  missingExtras?: ExtraKind[] | null;
+  /** Set on a partial run: "rate-limited" is worth retrying, "error" is not. */
+  reason?: PartialReason | null;
 }
 
-/** Emitted when a download exits non-zero or is killed (`download.ts`). */
+/**
+ * Emitted when a download produced no media file (`download.ts`), or was killed.
+ */
 export interface DownloadFailedPayload {
   url: string;
   title?: string | null;

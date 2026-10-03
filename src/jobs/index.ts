@@ -15,6 +15,7 @@ import {
   type CleanupStaleProcesses,
   type ListItemsConcurrently,
   type ProcessLike,
+  type SyncExtrasResult,
 } from "../handlers/pipeline/index.ts";
 
 interface JobDependencies {
@@ -22,6 +23,38 @@ interface JobDependencies {
   downloadProcesses: Map<string, ProcessLike>;
   listProcesses: Map<string, ProcessLike>;
   listItemsConcurrently: ListItemsConcurrently;
+  /** Fetches only the sidecars a rate-limited run missed. */
+  syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
+}
+
+/**
+ * Rows one sweep will touch, and the most it will spend on retries.
+ *
+ * Both are deliberately small: the point is to catch the videos a throttled
+ * run left behind while YouTube has cooled off, not to re-download a library
+ * every hour.
+ */
+const RETRY_BATCH_LIMIT = 20;
+
+/** After this many attempts the row is left alone; the chip stays. */
+const RETRY_ATTEMPT_LIMIT = 3;
+
+/** Rows younger than this have not been out long enough to be retried. */
+const RETRY_MIN_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Picks the rows worth retrying: a video is missing something, the reason was
+ * a rate limit rather than a real error, the last try was over an hour ago, and
+ * it has not already had its three.
+ */
+export function buildRetryableVideosWhere(now: Date) {
+  return {
+    downloadStatus: true,
+    missingExtras: { [Op.ne]: null },
+    downloadFailureReason: "rate-limited",
+    extrasSyncAttempts: { [Op.lt]: RETRY_ATTEMPT_LIMIT },
+    updatedAt: { [Op.lte]: new Date(now.getTime() - RETRY_MIN_AGE_MS) },
+  };
 }
 
 /**
@@ -29,9 +62,14 @@ interface JobDependencies {
  * a disabled bot registers no reaper. startJobs iterates Object.entries and
  * needs no change.
  */
-export type AppJobs = Record<"cleanup" | "update" | "prune", CronJob> & {
-  botRetention?: CronJob;
-};
+export type AppJobs =
+  & Record<
+    "cleanup" | "update" | "prune" | "extrasRetry",
+    CronJob
+  >
+  & {
+    botRetention?: CronJob;
+  };
 
 function formatNextRun(job: CronJob) {
   return job.nextDate().toLocaleString(
@@ -51,6 +89,7 @@ export function createJobs({
   downloadProcesses,
   listProcesses,
   listItemsConcurrently,
+  syncExtras,
 }: JobDependencies): AppJobs {
   const jobs = {} as AppJobs;
 
@@ -271,6 +310,52 @@ export function createJobs({
           logger.error("DB prune process failed", {
             error: (err as Error).message,
             stack: (err as Error).stack,
+          });
+        }
+      })();
+    },
+    null,
+    true,
+    config.timeZone,
+  );
+
+  jobs.extrasRetry = new CronJob(
+    config.extrasRetryInterval,
+    () => {
+      void (async () => {
+        try {
+          const rows = await VideoMetadata.findAll({
+            where: buildRetryableVideosWhere(new Date()),
+            attributes: ["videoUrl"],
+            limit: RETRY_BATCH_LIMIT,
+            order: [["updatedAt", "ASC"]],
+          });
+
+          if (rows.length === 0) {
+            return;
+          }
+
+          let recovered = 0;
+          for (const row of rows) {
+            const result = await syncExtras(
+              row.getDataValue("videoUrl") as string,
+            );
+            if (result.status === "recovered") {
+              recovered++;
+            }
+            // Sequential on purpose: syncExtras takes a download slot, and a
+            // batch fired at once is how the retry becomes the next 429.
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+
+          logger.info("Completed scheduled extras retry", {
+            considered: rows.length,
+            recovered,
+            nextRun: formatNextRun(jobs.extrasRetry),
+          });
+        } catch (error) {
+          logger.error("Scheduled extras retry failed", {
+            error: (error as Error).message,
           });
         }
       })();

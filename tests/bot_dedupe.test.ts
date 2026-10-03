@@ -77,7 +77,14 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     listPlaylists: () => Promise.resolve([]),
     listPlaylistVideos: () => Promise.resolve({ total: 0, items: [] }),
     findSubmissionByPrefix: () => Promise.resolve(null),
+    findSubmissionByUrl: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
+    listUnsettledSubmissions: () => Promise.resolve([]),
+    listActiveChatsSince: () => Promise.resolve([]),
+    getLastSeenAt: () => Promise.resolve(null),
+    touchLastSeenAt: () => Promise.resolve(),
+    keepSubmissionsByUrl: () => Promise.resolve(0),
+    markSubmissionsReapedByUrl: () => Promise.resolve(0),
   };
 
   const core = createBotCore({
@@ -107,6 +114,17 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     getQueueSnapshot: () => [],
     getListingQueueDepth: () => 0,
     setPlaylistMonitoring: () => Promise.resolve(),
+    cancelDownload: () => "not-found" as const,
+    cancelListing: () => "not-found" as const,
+    locateVideo: () => Promise.resolve({ playlistUrl: null, page: null }),
+    syncExtras: () =>
+      Promise.resolve({
+        url: "",
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
     store,
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,

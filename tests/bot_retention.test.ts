@@ -2,11 +2,11 @@ import { assertEquals } from "std/assert/mod.ts";
 import { Op } from "sequelize";
 import {
   buildExpiredSubmissionWhere,
-  MONITORED_TYPES,
   type ReapCandidate,
   reapExpiredSubmissions,
   type RetentionStore,
 } from "../src/bot/retention.ts";
+import { MONITORED_TYPES } from "../src/handlers/pipeline/types.ts";
 
 const NOW = new Date("2026-08-02T12:00:00.000Z");
 

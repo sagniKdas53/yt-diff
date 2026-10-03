@@ -8,6 +8,7 @@ import type {
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
+import type { Chapter } from "../handlers/pipeline/chapters.ts";
 
 export const sequelize = new Sequelize({
   host: config.db.host,
@@ -43,6 +44,23 @@ export class VideoMetadata extends Model<
   declare commentsFile: CreationOptional<string | null>;
   declare descriptionFile: CreationOptional<string | null>;
   declare isMetaDataSynced: CreationOptional<boolean>;
+  /**
+   * Sidecars the source offered, this deployment asked for, and that did not
+   * land. Null means complete: an extra the source never had is not missing.
+   */
+  declare missingExtras: CreationOptional<string[] | null>;
+  /** Tail of the last failed run's stderr; the exit code says nothing. */
+  declare lastDownloadError: CreationOptional<string | null>;
+  /** "rate-limited" or "error", or null for a complete run. */
+  declare downloadFailureReason: CreationOptional<string | null>;
+  /** How many times the sidecar retry has run against this row. */
+  declare extrasSyncAttempts: CreationOptional<number>;
+  /**
+   * Chapters read out of the media file with ffprobe, as
+   * `[{start, end, title}]`. Null when the file has none — which is most
+   * files, and is not a gap to complain about.
+   */
+  declare chapters: CreationOptional<Chapter[] | null>;
   declare saveDirectory: CreationOptional<string | null>;
   declare raw_metadata: CreationOptional<unknown>;
   declare createdAt: CreationOptional<Date>;
@@ -120,6 +138,39 @@ VideoMetadata.init({
     defaultValue: false,
     comment:
       "This will serve as a marker for other processes to know if they need to sync metadata from downloaded files",
+  },
+  missingExtras: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      'JSON array of "subtitles" | "thumbnail" | "description" | "comments" | "chapters" that were expected and not fetched. Null when complete.',
+  },
+  lastDownloadError: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment:
+      "Last ~500 bytes of yt-dlp stderr, so a rate-limited sidecar is recoverable after the log has moved on",
+  },
+  downloadFailureReason: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      'Why a run came up short: "rate-limited" or "error". Null when the run was complete.',
+  },
+  extrasSyncAttempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment:
+      "How many times the scheduled sidecar retry has run against this row",
+  },
+  chapters: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      'Chapters read out of the media file with ffprobe, as [{"start": seconds, "end": seconds, "title": string}]. Null when the file has none.',
   },
   saveDirectory: {
     type: DataTypes.STRING,
@@ -353,6 +404,13 @@ export class BotSubmission extends Model<
   declare playlistUrl: CreationOptional<string | null>;
   declare status: CreationOptional<string>;
   declare deliveryMode: CreationOptional<string | null>;
+  /**
+   * What the user asked for when the row was opened: "file", "link" or
+   * "store". Distinct from `deliveryMode`, which records how the file
+   * actually reached them and is written at the end. This one is read back on
+   * boot so a resumed download is delivered the way it was requested.
+   */
+  declare requestedDeliveryMode: CreationOptional<string | null>;
   declare retention: CreationOptional<string>;
   declare downloadedByBot: CreationOptional<boolean>;
   declare expiresAt: CreationOptional<Date | null>;
@@ -422,6 +480,12 @@ BotSubmission.init({
     allowNull: true,
     comment: 'How the file reached the user: "upload" or "signed_url"',
   },
+  requestedDeliveryMode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      'What was asked for when the row was opened: "file", "link" or "store". Lets a resumed download be delivered the same way.',
+  },
   retention: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -468,6 +532,52 @@ BotSubmission.init({
   ],
 });
 
+/**
+ * One row, one fact: when the bot was last alive.
+ *
+ * A power cut leaves no trace in the process's own memory, so the only way to
+ * know whether an outage happened — and therefore whether Telegram may have
+ * dropped updates past its 24 h retention window — is to compare the current
+ * boot time against a timestamp that survived the restart. Stamped once a
+ * minute while polling and on every update.
+ */
+export class BotHeartbeat extends Model<
+  InferAttributes<BotHeartbeat>,
+  InferCreationAttributes<BotHeartbeat>
+> {
+  /** Fixed to HEARTBEAT_ROW_ID; the table holds exactly one row. */
+  declare id: CreationOptional<string>;
+  declare lastSeenAt: CreationOptional<Date>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+BotHeartbeat.init({
+  id: {
+    type: DataTypes.STRING,
+    primaryKey: true,
+    allowNull: false,
+    defaultValue: "bot",
+    comment: "Fixed key; this table is a single row",
+  },
+  lastSeenAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    comment: "Last time the bot polled or handled an update",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: "bot_heartbeat",
+});
+
 PlaylistVideoMapping.belongsTo(VideoMetadata, {
   foreignKey: "videoUrl",
 });
@@ -511,6 +621,7 @@ export async function initializeDatabase() {
         PlaylistMetadata.name,
         PlaylistVideoMapping.name,
         BotSubmission.name,
+        BotHeartbeat.name,
       ]),
     });
 

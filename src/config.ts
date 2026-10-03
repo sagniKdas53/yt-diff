@@ -282,11 +282,21 @@ export interface AppConfig {
   chunkSize: number;
   scheduledUpdateStr: string;
   pruneInterval: string;
+  /** Cron for the hourly rate-limited sidecar retry. */
+  extrasRetryInterval: string;
   timeZone: string;
   saveSubs: boolean;
   saveDescription: boolean;
+  /** Off by default; see ISSUES_AND_IMPROVEMENTS.md §7. */
   saveComments: boolean;
   saveThumbnail: boolean;
+  /**
+   * Seconds yt-dlp waits between HTTP requests, or 0 for no pacing.
+   *
+   * Off by default because it slows every playlist run, not just the ones
+   * being rate limited. Raising it is the cheap answer to a 429-heavy box.
+   */
+  ytdlpSleepRequests: number;
   restrictFilenames: boolean;
   maxFileNameLength: number;
   forceOverwrites: boolean;
@@ -453,11 +463,26 @@ export const config: AppConfig = {
   chunkSize: +(Deno.env.get("CHUNK_SIZE_DEFAULT") || 10),
   scheduledUpdateStr: Deno.env.get("UPDATE_SCHEDULED") || "*/10 * * * *",
   pruneInterval: Deno.env.get("PRUNE_INTERVAL") || "*/10 * * * *",
+  // Off the hour on purpose: every other job in this file fires on a ten or
+  // fifteen minute boundary, and a retry that piles onto them helps nobody.
+  extrasRetryInterval: Deno.env.get("EXTRAS_RETRY_INTERVAL") || "7 * * * *",
   timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
   saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
   saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
-  saveComments: Deno.env.get("SAVE_COMMENTS") !== "false",
+  // Off unless asked for. Comments are where the 429s come from: yt-dlp
+  // pages through every thread before the run finishes, which costs minutes
+  // per video exactly where YouTube is already throttling sidecars. See
+  // ISSUES_AND_IMPROVEMENTS.md §7.
+  saveComments: Deno.env.get("SAVE_COMMENTS") === "true",
   saveThumbnail: Deno.env.get("SAVE_THUMBNAIL") !== "false",
+  // Any value that is not a usable non-negative number means "no pacing",
+  // which is the safe reading: a typo here should not fail the boot.
+  ytdlpSleepRequests: (() => {
+    const raw = Deno.env.get("YTDLP_SLEEP_REQUESTS");
+    if (raw === undefined || raw.trim() === "") return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  })(),
   restrictFilenames: Deno.env.get("RESTRICT_FILENAMES") !== "false",
   maxFileNameLength: +(Deno.env.get("MAX_FILENAME_LENGTH") || NaN),
   forceOverwrites: Deno.env.get("FORCE_OVERWRITES") === "true",

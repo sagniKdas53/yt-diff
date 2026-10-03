@@ -99,4 +99,38 @@ replaced with `gitsubmodule`.
 > `deno outdated` to review them.
 
 ---
-*Last updated at: 2026-08-21*
+
+### 7. Comments — declined, not deferred
+
+**Decision: the comments feature is not being built. `SAVE_COMMENTS` stays off
+by default and no comments UI will be added.**
+
+Two reasons, neither of which is a missing-effort problem:
+
+- **It is a paging and virtualisation project, not a dialog.** The reference
+  video in the backlog has 3,562 comments; long-tail videos have tens of
+  thousands. Rendering that in the player means server-side paging by
+  `parent`, incremental loading, and windowed rendering — a project in its own
+  right, competing with the player work that actually closes the gap against
+  YouTube.
+- **`--write-comments` is where rate limits bite first.** yt-dlp pages through
+  every comment thread before the run finishes, which adds minutes per video
+  and multiplies the request count exactly where YouTube is already throttling
+  sidecars. A deployment that turned it on would trade a video that always
+  downloads for one that sometimes does not.
+
+The one bug in this area is fixed regardless: `discoverFiles` looked for
+`<base>.info.json`, but the download options only passed `--write-comments`,
+which puts comments *inside* the infojson without writing it — so
+`commentsFile` could never be found and nothing noticed. `--write-info-json`,
+`--no-write-playlist-metafiles` and a bounded `youtube:max_comments` now come
+with it, and `commentsFile` is in the `/getsub` row so a deployment that does
+opt in can see what landed.
+
+If this is ever revisited, the only shape that works is a
+`/comments?videoUrl&offset&limit&sort=likes` endpoint that parses the infojson
+once (cached against the file's mtime), returns top-level comments only, and
+loads replies on demand. The infojson must never be shipped to the browser.
+
+---
+*Last updated at: 2026-10-03*

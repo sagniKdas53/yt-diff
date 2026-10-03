@@ -1,3 +1,4 @@
+import { logger } from "../logger.ts";
 import { exists } from "../utils/fs.ts";
 import { join } from "../utils/path.ts";
 import type { VideoRecord } from "./store.ts";
@@ -67,6 +68,53 @@ export function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
+/**
+ * The line a partial download earns, or null when nothing was left out.
+ *
+ * It rides along in the delivery message rather than going out on its own: a
+ * second message saying "some extras are missing" is a thing to read after the
+ * file has already arrived, and by then the user has usually moved on.
+ */
+export function partialNote(
+  partial: boolean | undefined,
+  // Named the way the user would write them, not the way the column stores
+  // them: "subtitles, thumbnail".
+  missing: readonly string[] | null | undefined,
+  submissionId: string,
+  reason: string | null | undefined,
+): string | null {
+  if (!partial) {
+    return null;
+  }
+  const which = missing && missing.length > 0 ? missing.join(", ") : null;
+  return [
+    reason === "rate-limited"
+      ? `Got the video, but YouTube rate-limited the extras${
+        which ? ` (${which})` : ""
+      }.`
+      : `Got the video, but the extras didn't come through${
+        which ? ` (${which})` : ""
+      }.`,
+    `\`/sync ${submissionId}\` fetches them later.`,
+  ].join("\n");
+}
+
+/**
+ * The clock a reaped file is on, in the units a person would use for it.
+ *
+ * Spelled out rather than left as a timestamp because the only useful reading
+ * of an expiry is "how long have I got", and `BOT_RETENTION_HOURS` is allowed
+ * to be a fraction — 0.25 is a quarter of an hour, which as "0.25 h" would
+ * read as a bug. The `/keep <link>` beside it is what makes the sentence
+ * actionable rather than a warning about something unavoidable.
+ */
+function expiryNote(expiresAt: Date, videoUrl: string): string {
+  const hours = Math.max(0, (expiresAt.getTime() - Date.now()) / 3_600_000);
+  const span = hours >= 1
+    ? `${Math.round(hours)} h`
+    : `${Math.max(1, Math.round(hours * 60))} min`;
+  return `Expires in ${span} — \`/keep ${videoUrl}\` to keep it.`;
+}
 export function queuePositionFor(
   rt: BotRuntime,
   url: string,
@@ -77,17 +125,78 @@ export function queuePositionFor(
     fallback;
 }
 
+/**
+ * The link that opens the video in the player, or the one that opens it on
+ * its own when the lookup fails.
+ *
+ * The lookup is a nicety on top of a delivery that has already succeeded, so
+ * it is allowed to fail quietly: the file is uploaded, and losing the playlist
+ * page it sits on is a much smaller loss than marking that upload as failed
+ * and telling the user to send it again.
+ */
+async function buildPlayerLink(
+  rt: BotRuntime,
+  videoUrl: string,
+): Promise<string> {
+  let playlistUrl: string | null = null;
+  let page: number | null = null;
+  try {
+    const location = await rt.deps.locateVideo(videoUrl);
+    playlistUrl = location.playlistUrl;
+    page = location.page;
+  } catch (error) {
+    logger.warn("Could not locate the video for its player link", {
+      videoUrl,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+  return rt.deps.delivery.buildPlayerUrl(videoUrl, playlistUrl, page);
+}
+
 export async function deliverVideo(
   rt: BotRuntime,
   entry: PendingSubmission,
   canonicalUrl: string,
   video: {
+    /** The canonical URL, when the caller has one; `canonicalUrl` otherwise. */
+    videoUrl?: string | null;
     title?: string | null;
     fileName?: string | null;
     saveDirectory?: string | null;
+    /** Set when this run produced the video but not all of its sidecars. */
+    partial?: boolean;
+    missingExtras?: readonly string[] | null;
+    reason?: string | null;
   },
   downloadedByBot: boolean,
 ) {
+  // One line, computed once: it goes in the upload caption, in the link
+  // message and in the /download receipt alike, so the user reads it wherever
+  // the file itself landed. Null for every download that got what it asked
+  // for, which is why the non-partial wording below is untouched.
+  const videoUrl = video.videoUrl ?? canonicalUrl;
+
+  // Only files the bot actually fetched are ever eligible for reaping, and
+  // only when retention is ephemeral. A file pulled out of an unmonitored
+  // playlist is on exactly the same clock as one nobody filed anywhere, so
+  // the delivery has to say so — the reaper's rule stays where it is, and the
+  // user is told the one thing that lets them opt out of it.
+  const expiresAt = downloadedByBot && rt.deps.retentionMode === "ephemeral"
+    ? new Date(Date.now() + rt.deps.retentionHours * 3600 * 1000)
+    : null;
+
+  const notes = [
+    partialNote(
+      video.partial,
+      video.missingExtras,
+      entry.submissionId,
+      video.reason,
+    ),
+    expiresAt ? expiryNote(expiresAt, videoUrl) : null,
+  ].filter((line): line is string => line !== null);
+  const withNote = (text: string) =>
+    notes.length > 0 ? `${text}\n\n${notes.join("\n\n")}` : text;
+
   if (!video.fileName) {
     await fail(
       rt,
@@ -112,9 +221,11 @@ export async function deliverVideo(
     });
     await editAck(
       entry,
-      `Downloaded: ${
-        video.title || video.fileName
-      }\nIt's on the server — /get sends it here.`,
+      withNote(
+        `Downloaded: ${
+          video.title || video.fileName
+        }\nIt's on the server — /get sends it here.`,
+      ),
     );
     return;
   }
@@ -125,24 +236,26 @@ export async function deliverVideo(
       to: entry.target,
       saveDirectory: video.saveDirectory || "",
       fileName: video.fileName,
-      caption: video.title || video.fileName,
+      caption: withNote(video.title || video.fileName),
       forceLink: entry.mode === "link",
     });
-
-    // Only files the bot actually fetched are ever eligible for reaping, and
-    // only when retention is ephemeral.
-    const reapable = downloadedByBot &&
-      rt.deps.retentionMode === "ephemeral";
 
     await settle(rt, entry, canonicalUrl, {
       status: "delivered",
       deliveryMode: outcome.mode,
       downloadedByBot,
       retention: rt.deps.retentionMode,
-      expiresAt: reapable
-        ? new Date(Date.now() + rt.deps.retentionHours * 3600 * 1000)
-        : null,
+      expiresAt,
     });
+
+    // Where the file can be watched, not just fetched. One lookup per
+    // delivery: the same answer the web UI's own player link uses, so a
+    // message and a manual click cannot open two different lists.
+    // The file is already in the user's hands at this point. A lookup that
+    // throws must not reach the outer catch, which would mark an uploaded
+    // delivery as failed and invite a resend of work that succeeded. No
+    // playlist means no player link, and that is a smaller loss.
+    const playerUrl = await buildPlayerLink(rt, videoUrl);
 
     if (outcome.mode === "signed_url") {
       // Always say why a link came back instead of a file. The pre-download
@@ -158,9 +271,15 @@ export async function deliverVideo(
         : outcome.reason === "upload_failed"
         ? `Upload failed, so here's a download link instead (${size}).`
         : `Download link (${size}).`;
-      await editAck(entry, `${why}\n${outcome.url}`);
+      await editAck(
+        entry,
+        withNote(`${why}\n${outcome.url}\n\nWatch it: ${playerUrl}`),
+      );
     } else {
-      await editAck(entry, video.title || "Done");
+      await editAck(
+        entry,
+        withNote(`${video.title || "Done"}\n\nWatch it: ${playerUrl}`),
+      );
     }
   } catch (error) {
     await fail(

@@ -1,6 +1,7 @@
 import { assertEquals } from "std/assert/mod.ts";
-import { createJobs } from "../src/jobs/index.ts";
-import { PlaylistMetadata } from "../src/db/models.ts";
+import { buildRetryableVideosWhere, createJobs } from "../src/jobs/index.ts";
+import { PlaylistMetadata, VideoMetadata } from "../src/db/models.ts";
+import { Op } from "sequelize";
 import type {
   ListingItem,
   ListingResult,
@@ -57,6 +58,14 @@ async function runUpdateTick(
       calls.push({ items, chunkSize, isScheduledUpdate });
       return Promise.resolve([]);
     },
+    syncExtras: (videoUrl: string) =>
+      Promise.resolve({
+        url: videoUrl,
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
   });
 
   try {
@@ -156,4 +165,69 @@ Deno.test("jobs - unmonitored playlists are never scheduled", async () => {
   ]);
 
   assertEquals(calls[0].items.map((item) => item.url), ["url_start"]);
+});
+
+Deno.test("jobs - the sidecar retry only picks rate-limited rows with budget left", () => {
+  const now = new Date("2026-09-16T12:00:00Z");
+  const where = buildRetryableVideosWhere(now);
+
+  // A video with something missing, because one that has nothing is not worth
+  // a yt-dlp process.
+  assertEquals(where.downloadStatus, true);
+  assertEquals(where.missingExtras[Op.ne], null);
+  // A real error is not retried on a schedule; asking again changes nothing.
+  assertEquals(where.downloadFailureReason, "rate-limited");
+  // Three attempts, then the chip stays and the manual path is the only one left.
+  assertEquals(where.extrasSyncAttempts[Op.lt], 3);
+  // An hour, so a video that was just throttled is not retried immediately.
+  assertEquals(
+    (where.updatedAt[Op.lte] as Date).toISOString(),
+    new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+  );
+});
+
+Deno.test("jobs - the sidecar retry fires at most a batch at a time", async () => {
+  const synced: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  (VideoMetadata as any).findAll = (opts: { limit?: number }) => {
+    // The selection already bounded the rows; the job must not widen it.
+    assertEquals(opts.limit, 20);
+    return Promise.resolve(
+      Array.from({ length: 3 }, (_, i) => ({
+        getDataValue: (key: string) => key === "videoUrl" ? `url_${i}` : null,
+      })),
+    );
+  };
+
+  const jobs = createJobs({
+    cleanupStaleProcesses: () => 0,
+    downloadProcesses: new Map(),
+    listProcesses: new Map(),
+    listItemsConcurrently: () => Promise.resolve([]),
+    syncExtras: (videoUrl: string) => {
+      synced.push(videoUrl);
+      return Promise.resolve({
+        url: videoUrl,
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      });
+    },
+  });
+
+  try {
+    await jobs.extrasRetry.fireOnTick();
+    for (let i = 0; i < 400 && synced.length < 3; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  } finally {
+    for (const job of Object.values(jobs)) job?.stop();
+    // deno-lint-ignore no-explicit-any
+    delete (VideoMetadata as any).findAll;
+  }
+
+  // Sequential, not fired at once: each row takes a download slot and the job
+  // sleeps between them, because a batch at the same instant is the next 429.
+  assertEquals(synced, ["url_0", "url_1", "url_2"]);
 });
