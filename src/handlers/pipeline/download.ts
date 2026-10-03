@@ -12,6 +12,7 @@ import {
   resolve,
   sep,
 } from "../../utils/path.ts";
+import { readChapters } from "./chapters.ts";
 import { Semaphore } from "./semaphore.ts";
 import { resolveVideoPlaylist } from "./download-location.ts";
 import type {
@@ -677,6 +678,15 @@ export function createDownloadFlow(
               };
 
               Object.assign(updates, metadata);
+
+              // The chapters are already in the container — `--embed-chapters`
+              // has been in the options all along — and nothing could read
+              // them. One sub-second ffprobe per download, while the file the
+              // pipeline has just written is still in hand.
+              const chapters = metadata.fileName
+                ? await readChapters(join(savePath, metadata.fileName))
+                : [];
+              updates.chapters = chapters.length > 0 ? chapters : null;
 
               if (missing.length > 0) {
                 logger.info("Download landed with sidecars missing", {

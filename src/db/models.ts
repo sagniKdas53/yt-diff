@@ -8,6 +8,7 @@ import type {
 
 import { config } from "../config.ts";
 import { logger } from "../logger.ts";
+import type { Chapter } from "../handlers/pipeline/chapters.ts";
 
 export const sequelize = new Sequelize({
   host: config.db.host,
@@ -54,6 +55,12 @@ export class VideoMetadata extends Model<
   declare downloadFailureReason: CreationOptional<string | null>;
   /** How many times the sidecar retry has run against this row. */
   declare extrasSyncAttempts: CreationOptional<number>;
+  /**
+   * Chapters read out of the media file with ffprobe, as
+   * `[{start, end, title}]`. Null when the file has none — which is most
+   * files, and is not a gap to complain about.
+   */
+  declare chapters: CreationOptional<Chapter[] | null>;
   declare saveDirectory: CreationOptional<string | null>;
   declare raw_metadata: CreationOptional<unknown>;
   declare createdAt: CreationOptional<Date>;
@@ -157,6 +164,13 @@ VideoMetadata.init({
     defaultValue: 0,
     comment:
       "How many times the scheduled sidecar retry has run against this row",
+  },
+  chapters: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      'Chapters read out of the media file with ffprobe, as [{"start": seconds, "end": seconds, "title": string}]. Null when the file has none.',
   },
   saveDirectory: {
     type: DataTypes.STRING,

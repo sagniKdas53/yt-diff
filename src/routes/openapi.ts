@@ -50,6 +50,16 @@ export const SubListVideoRowSchema = z.object({
     onlineThumbnail: z.string().nullable().optional(),
     subTitleFile: z.string().nullable().optional(),
     commentsFile: z.string().nullable().optional(),
+    chapters: z
+      .array(
+        z.object({
+          start: z.number(),
+          end: z.number(),
+          title: z.string(),
+        }),
+      )
+      .nullable()
+      .optional(),
     descriptionFile: z.string().nullable().optional(),
     isMetaDataSynced: z.boolean().optional(),
     saveDirectory: z.string().nullable().optional(),

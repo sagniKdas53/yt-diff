@@ -690,6 +690,35 @@
                                   }
                                 ]
                               },
+                              "chapters": {
+                                "anyOf": [
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "start": {
+                                          "type": "number"
+                                        },
+                                        "end": {
+                                          "type": "number"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "start",
+                                        "end",
+                                        "title"
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "descriptionFile": {
                                 "anyOf": [
                                   {

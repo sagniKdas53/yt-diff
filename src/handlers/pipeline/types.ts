@@ -1,5 +1,6 @@
 import { Model } from "sequelize";
 import { type AppConfig, config } from "../../config.ts";
+import type { Chapter } from "./chapters.ts";
 
 export const playlistRegex = /(?:playlist|list=|creators|videos$)\b/i;
 
@@ -408,6 +409,8 @@ export interface DownloadCompletionUpdates extends DiscoveredMetadata {
   downloadFailureReason: PartialReason | null;
   /** Bumped by every sidecar retry, so one row cannot be retried forever. */
   extrasSyncAttempts: number;
+  /** Chapters read out of the media file; null when it has none. */
+  chapters?: Chapter[] | null;
 }
 
 export interface DownloadProcessEntry extends ProcessLike {

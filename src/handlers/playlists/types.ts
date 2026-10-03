@@ -1,5 +1,7 @@
 import { Op } from "sequelize";
 
+import type { Chapter } from "../pipeline/chapters.ts";
+
 export interface PlaylistDisplayRequest {
   start?: number;
   stop?: number;
@@ -61,6 +63,7 @@ export interface PlaylistVideoRowShape {
     descriptionFile?: string | null;
     isMetaDataSynced?: boolean;
     commentsFile?: string | null;
+    chapters?: Chapter[] | null;
     saveDirectory?: string | null;
     missingExtras?: string[] | null;
     lastDownloadError?: string | null;
@@ -82,6 +85,7 @@ export interface SafePlaylistVideoMeta {
   saveDirectory?: string | null;
   missingExtras?: string[] | null;
   commentsFile?: string | null;
+  chapters?: Chapter[] | null;
   /**
    * When the reaper will take this file, if it will — the clock behind the
    * UI's "expires in 3 h" chip. Only files the bot fetched in ephemeral mode
