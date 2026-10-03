@@ -9,13 +9,14 @@ import {
 } from "../youtube-api.ts";
 import { Semaphore } from "./semaphore.ts";
 import { config } from "../../config.ts";
-import { ListingProcessError, playlistRegex } from "./types.ts";
+import { ListingProcessError, newJobId, playlistRegex } from "./types.ts";
 import type {
   CancelOutcome,
   ListingItem,
   ListingProcessEntry,
   ListingResult,
   ManagedProcess,
+  PausedJob,
   PipelineHandlerDependencies,
 } from "./types.ts";
 import { ProcessExitCodes } from "./types.ts";
@@ -52,6 +53,17 @@ export interface ListingRuntime {
    * listing is invisible and the same URL can be queued repeatedly.
    */
   inFlight: SingleFlight<ListingResult>;
+  /**
+   * Job ids cancelled while their run was still queued for a slot.
+   *
+   * A listing registers itself only after it acquires, so between a resume
+   * being accepted and its run becoming findable there is no entry to look up
+   * and no process to signal. This is what a cancel leaves behind for that
+   * window; the run reads its own id and declines to start.
+   */
+  abandoned: Set<string>;
+  /** Marks a job as cancelled before its run has taken a slot. */
+  abandon(jobId: string): void;
   updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
   setProcessStatus: (
     processKey: string,
@@ -86,7 +98,13 @@ export function createListingRuntime(
     streamLines,
   } = deps;
 
+  const abandoned = new Set<string>();
+
   return {
+    abandoned,
+    abandon(jobId: string) {
+      abandoned.add(jobId);
+    },
     safeEmit,
     launchYtDlp: createYtDlpLauncher({ buildSiteArgs, spawnPythonProcess }),
     streamLines,
@@ -227,7 +245,36 @@ function listOnce(
 
   return rt.inFlight.run(
     key,
-    () => listWithSemaphore(rt, item, chunkSize, isScheduledUpdate),
+    () => listWithSemaphore(rt, item, chunkSize, isScheduledUpdate, key),
+  );
+}
+
+/**
+ * Re-runs a paused listing from the top, under the id it was paused as.
+ *
+ * From the top, not from where it stopped: rows already written are on
+ * record, and re-listing a playlist that is already indexed is a cheap no-op
+ * rather than a second pass worth resuming halfway.
+ */
+export function resumeListing(
+  rt: ListingRuntime,
+  job: PausedJob,
+): Promise<ListingResult[]> {
+  const item = job.item as ListingItem;
+  // Handed back rather than swallowed. A listing registers itself only after
+  // it takes a semaphore slot, so until this settles the job exists only to
+  // whoever is waiting on it, and a caller that has to be able to find it in
+  // that window needs to know when the window closes.
+  return listItemsConcurrently(
+    rt,
+    [{
+      ...item,
+      jobId: job.id,
+      isResumed: true,
+      isScheduledUpdate: job.isScheduledUpdate,
+    }],
+    job.chunkSize ?? config.chunkSize,
+    job.isScheduledUpdate === true,
   );
 }
 
@@ -236,6 +283,7 @@ async function listWithSemaphore(
   item: ListingItem,
   chunkSize: number,
   isScheduledUpdate: boolean,
+  flightKey: string,
 ): Promise<ListingResult> {
   logger.trace(`Starting listing with semaphore: ${JSON.stringify(item)}`);
 
@@ -243,11 +291,44 @@ async function listWithSemaphore(
 
   try {
     const { url: videoUrl, type: itemType, currentMonitoringType } = item;
+
+    // A cancel that arrived while this run was queued for a slot. Checked
+    // after the wait rather than before it because the wait is the whole
+    // window: there is no entry to look up and no process to signal until one
+    // exists, so without this the cancel is taken and then the listing starts
+    // anyway the moment a slot frees. The id is consumed — one cancel, one
+    // decline — so it cannot strand a later run under the same id.
+    if (item.jobId !== undefined && rt.abandoned.has(item.jobId)) {
+      rt.abandoned.delete(item.jobId);
+      logger.info("A listing was cancelled before it took a slot", {
+        id: item.jobId,
+        url: videoUrl,
+      });
+      return { url: videoUrl, status: "cancelled" };
+    }
     const now = Date.now();
+    const resolvedIsScheduledUpdate = item.isScheduledUpdate === true ||
+      isScheduledUpdate;
     const listEntry: ListingProcessEntry = {
+      id: item.jobId ?? newJobId(),
       url: videoUrl,
+      // Empty until the run resolves the playlist's own title, which is the
+      // first thing it learns from the database.
+      title: "",
       type: itemType,
       monitoringType: currentMonitoringType,
+      item,
+      chunkSize,
+      isScheduledUpdate: resolvedIsScheduledUpdate,
+      flightKey,
+      // Where it stands in line is its registration time: a listing only
+      // registers once it holds a slot, so this is an ordering key rather
+      // than a position anybody waits on, and equal times keep arrival order.
+      queuePosition: now,
+      progress: null,
+      itemsIndexed: 0,
+      paused: false,
+      startedAt: now,
       spawnType: "list",
       lastActivity: now,
       lastStdoutActivity: now,
@@ -263,7 +344,7 @@ async function listWithSemaphore(
       item,
       entryKey,
       chunkSize,
-      item.isScheduledUpdate === true || isScheduledUpdate,
+      resolvedIsScheduledUpdate,
     );
 
     listEntry.spawnedProcess = null;
@@ -377,6 +458,13 @@ export async function executeListing(
         seekPlaylistListTo = newPlaylist.sortOrder;
       }
 
+      // The drawer shows a listing by name, and the entry is registered
+      // before anything knows what the playlist is called.
+      const titled = rt.listProcesses.get(processKey);
+      if (titled) {
+        titled.title = playlistTitle;
+      }
+
       return await handlePlaylistStreaming(rt, {
         videoUrl,
         chunkSize,
@@ -386,6 +474,7 @@ export async function executeListing(
         seekPlaylistListTo,
         processKey,
         monitoringType: currentMonitoringType,
+        isResumed: item.isResumed === true,
       });
     }
 
@@ -424,12 +513,29 @@ interface PlaylistChunkSource {
   onChunkDone?(processedChunks: number): void;
 }
 
-/** Common to both paths: a re-index starts from an empty mapping table. */
+/**
+ * Common to both paths: a re-index starts from an empty mapping table.
+ *
+ * Except when the run is a resume. A `Full` or `Refresh` empties the table
+ * because it is about to rebuild all of it — but a resumed run is replacing one
+ * that was part way through, and the rows still there are that run's work. The
+ * pause held on to them precisely so they would survive; deleting them here
+ * throws the partial index away and rebuilds from zero, so a replacement that
+ * then fails leaves less behind than the pause had.
+ */
 async function clearMappingsForReindex(
   videoUrl: string,
   monitoringType: string,
+  isResumed: boolean,
 ) {
   if (monitoringType !== "Full" && monitoringType !== "Refresh") return;
+  if (isResumed) {
+    logger.info("Resumed re-index; keeping the mappings already written", {
+      url: videoUrl,
+      monitoringType,
+    });
+    return;
+  }
 
   const deletedCount = await PlaylistVideoMapping.destroy({
     where: { playlistUrl: videoUrl },
@@ -506,6 +612,14 @@ export async function consumePlaylistChunks(
       );
 
       processedChunks++;
+      // A real count of rows this run wrote, not chunks times the chunk size:
+      // the final chunk of a playlist is nearly always a partial one, and an
+      // estimate would over-report every listing by the size of one chunk.
+      const listingEntry = rt.listProcesses.get(processKey);
+      if (listingEntry) {
+        listingEntry.itemsIndexed = (listingEntry.itemsIndexed ?? 0) +
+          chunk.items.length;
+      }
       rt.updateProcessActivity(processKey, true);
 
       if (!isScheduledUpdate) {
@@ -623,6 +737,7 @@ export async function handlePlaylistStreaming(
     seekPlaylistListTo: number;
     processKey: string;
     monitoringType: string;
+    isResumed?: boolean;
   },
 ): Promise<ListingResult> {
   const { videoUrl, chunkSize, processKey, monitoringType } = item;
@@ -652,7 +767,11 @@ export async function handlePlaylistStreaming(
     }
   }
 
-  await clearMappingsForReindex(videoUrl, monitoringType);
+  await clearMappingsForReindex(
+    videoUrl,
+    monitoringType,
+    item.isResumed === true,
+  );
   const startIndex = await resolveStartIndex(
     videoUrl,
     chunkSize,
@@ -735,6 +854,7 @@ async function handlePlaylistViaApi(
     processKey: string;
     monitoringType: string;
     playlistId: string;
+    isResumed?: boolean;
   },
 ): Promise<ListingResult> {
   const { videoUrl, chunkSize, processKey, monitoringType, playlistId } = item;
@@ -744,7 +864,11 @@ async function handlePlaylistViaApi(
     playlistId,
   });
 
-  await clearMappingsForReindex(videoUrl, monitoringType);
+  await clearMappingsForReindex(
+    videoUrl,
+    monitoringType,
+    item.isResumed === true,
+  );
 
   // Tell the cleanup job this key is live work, not a stalled entry. The
   // yt-dlp path gets this from spawning; there is no process here to do it.

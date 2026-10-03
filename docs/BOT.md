@@ -1,7 +1,8 @@
 # Chat Bot
 
-Send a video link to a Telegram chat and get the **video file back in the chat**.
-A download link is the fallback for files too big to upload, not the norm.
+Send a video link to a Telegram chat and get the **video file back in the
+chat**. A download link is the fallback for files too big to upload, not the
+norm.
 
 The bot adds no new yt-dlp logic. It is an intake and delivery layer over the
 existing pipeline — the same listing, download queue, semaphores, cookies and
@@ -30,9 +31,9 @@ Started update job     schedule="*/10 * * * *"
 Started prune job      schedule="*/10 * * * *"
 ```
 
-The `bot_submissions` table is still created by `sequelize.sync({ alter: true })`
-because the model is always registered. Adding a table is safe under `alter`, it
-stays empty, and it costs nothing.
+The `bot_submissions` table is still created by
+`sequelize.sync({ alter: true })` because the model is always registered. Adding
+a table is safe under `alter`, it stays empty, and it costs nothing.
 
 > [!IMPORTANT]
 > **Upgrading an existing instance:** the `bot_token` secret in
@@ -101,7 +102,8 @@ That is `PROTOCOL://HOSTNAME`, plus `:PORT` unless `HIDE_PORTS=true` — the sam
 Set it only when that origin is not reachable from a phone:
 
 - `HOSTNAME` is a container-internal name rather than the external one
-- a reverse proxy answers on a different hostname than the app is configured with
+- a reverse proxy answers on a different hostname than the app is configured
+  with
 
 The `Chat bot started` line reports which source was used (`server origin` vs
 `BOT_PUBLIC_BASE_URL`), so a wrong link is visible at boot rather than at the
@@ -154,8 +156,7 @@ existing file, are recorded `downloadedByBot=false` and are untouchable.
 `BOT_RETENTION_HOURS` accepts fractions — `0.25` is 15 minutes, useful for
 testing.
 
-A download the bot fetched says so when it arrives, with the link that keeps
-it:
+A download the bot fetched says so when it arrives, with the link that keeps it:
 
 > That's ~120 MB. It expires in 24 h — `/keep <link>` to keep it.
 
@@ -193,36 +194,36 @@ reap, so:
 Either way you never need the old `fileId`; it is gone from Redis and there is
 nothing to refresh.
 
-| Situation | Command | Re-downloads? |
-| :-- | :-- | :-- |
-| File on disk, link expired | `/link <url>` | No |
-| File on disk, want the file itself | `<url>` | No |
-| File reaped | `<url>` or `/get <url>` | Yes (no re-index) |
+| Situation                          | Command                 | Re-downloads?     |
+| :--------------------------------- | :---------------------- | :---------------- |
+| File on disk, link expired         | `/link <url>`           | No                |
+| File on disk, want the file itself | `<url>`                 | No                |
+| File reaped                        | `<url>` or `/get <url>` | Yes (no re-index) |
 
 ---
 
 ## 5. Commands
 
-| Input | Behaviour |
-| :-- | :-- |
-| `<video-link>` | index → download → send the file back |
-| `<playlist-link>` | index the playlist — see §5.1; nothing is downloaded |
-| `/get <link>` | same as pasting the link, spelled out |
-| `/link <link>` | always reply with a download link, never upload |
-| `/download <link>` | download it to the server and send **nothing** back |
-| `/index <link>` | catalogue only — searchable, **not** downloaded |
-| `/index <playlist-link> Start\|End\|Full` | also monitor it for updates |
-| `/index <playlist-link> N/A` | stop monitoring it |
-| `/search <text>` | search indexed videos by title or link |
-| `/list` | the playlists the bot knows about |
-| `/list <playlist-link> [start] [count]` | one page of a playlist's entries |
-| `/history [n]` | recent submissions; the short code is the `<id>` |
-| `/status` | current download queue |
-| `/sync <id\|link>` | fetch the sidecars a partial download missed — §5.2 |
-| `/keep <id\|link>` | make an ephemeral submission persistent |
-| `/rm <id\|link>` | delete a submission's files now |
-| `/cancel <id\|link>` | stop a download or playlist index still running |
-| `/help` | command list |
+| Input                                     | Behaviour                                            |
+| :---------------------------------------- | :--------------------------------------------------- |
+| `<video-link>`                            | index → download → send the file back                |
+| `<playlist-link>`                         | index the playlist — see §5.1; nothing is downloaded |
+| `/get <link>`                             | same as pasting the link, spelled out                |
+| `/link <link>`                            | always reply with a download link, never upload      |
+| `/download <link>`                        | download it to the server and send **nothing** back  |
+| `/index <link>`                           | catalogue only — searchable, **not** downloaded      |
+| `/index <playlist-link> Start\|End\|Full` | also monitor it for updates                          |
+| `/index <playlist-link> N/A`              | stop monitoring it                                   |
+| `/search <text>`                          | search indexed videos by title or link               |
+| `/list`                                   | the playlists the bot knows about                    |
+| `/list <playlist-link> [start] [count]`   | one page of a playlist's entries                     |
+| `/history [n]`                            | recent submissions; the short code is the `<id>`     |
+| `/status`                                 | current download queue                               |
+| `/sync <id\|link>`                        | fetch the sidecars a partial download missed — §5.2  |
+| `/keep <id\|link>`                        | make an ephemeral submission persistent              |
+| `/rm <id\|link>`                          | delete a submission's files now                      |
+| `/cancel <id\|link>`                      | stop a download or playlist index still running      |
+| `/help`                                   | command list                                         |
 
 `<id>` values come from `/history` — the eight-character code at the start of
 each entry. Every command that takes one also takes the link itself, so you can
@@ -252,9 +253,9 @@ Then /get <video-link> for anything you want downloaded.
 ```
 
 The progress line is driven by the pipeline's per-chunk listing events, at most
-one message per 20 seconds. Before this the bot went quiet for the whole
-listing and then failed with "produced no video entry", because a playlist has
-no single video row to hand to the download queue.
+one message per 20 seconds. Before this the bot went quiet for the whole listing
+and then failed with "produced no video entry", because a playlist has no single
+video row to hand to the download queue.
 
 A playlist the bot indexes gets **watch mode `N/A`** — the same value the web UI
 shows for a playlist nobody is watching. `Start`/`End`/`Full` are only ever set
@@ -283,17 +284,17 @@ comes back saying so, naming what is missing:
 > Got the video, but YouTube rate-limited the extras (subtitles, thumbnail).
 > `/sync <id>` fetches them later.
 
-`/sync` re-runs yt-dlp for the sidecars only. It takes a download slot like
-any other run, so it cannot pile onto a rate limit, and it drops each extra
-from the list as it arrives — what did not come back stays on the list, and
-the same message in the web UI keeps offering the button.
+`/sync` re-runs yt-dlp for the sidecars only. It takes a download slot like any
+other run, so it cannot pile onto a rate limit, and it drops each extra from the
+list as it arrives — what did not come back stays on the list, and the same
+message in the web UI keeps offering the button.
 
 Without an id, `/sync <link>` does the same thing for a link you have to hand.
 
-An hourly job retries these on its own, up to three times per video and only
-for rows the reason was a rate limit — an error is not retried, because asking
-again changes nothing. Whatever is still missing after that stays on the list
-for the manual path above.
+An hourly job retries these on its own, up to three times per video and only for
+rows the reason was a rate limit — an error is not retried, because asking again
+changes nothing. Whatever is still missing after that stays on the list for the
+manual path above.
 
 ### 5.3 Downloading without receiving
 
@@ -339,7 +340,7 @@ size:
 > That's 65 MB — too big to upload here (limit 48 MB), so here's a download link
 > instead.
 
-`BOT_LARGE_FILE_WARN` (default 100 MB) additionally warns *before* downloading,
+`BOT_LARGE_FILE_WARN` (default 100 MB) additionally warns _before_ downloading,
 but only when yt-dlp actually provides an estimate.
 
 > [!NOTE]
@@ -363,24 +364,25 @@ before it to finish.
 
 Two limits shape what happens next:
 
-| Limit | Default | What it bounds |
-| :-- | :-- | :-- |
-| `BOT_MAX_CONCURRENT_MESSAGES` | 20 | Link submissions worked on at once. Extras queue in the order they were sent — none are dropped. |
-| `BOT_MAX_PENDING_PER_CHAT` | 20 | Downloads plus playlist listings one chat may have in flight. Past this the reply is *"You already have the maximum number of requests in flight"*. |
+| Limit                         | Default | What it bounds                                                                                                                                      |
+| :---------------------------- | :------ | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOT_MAX_CONCURRENT_MESSAGES` | 20      | Link submissions worked on at once. Extras queue in the order they were sent — none are dropped.                                                    |
+| `BOT_MAX_PENDING_PER_CHAT`    | 20      | Downloads plus playlist listings one chat may have in flight. Past this the reply is _"You already have the maximum number of requests in flight"_. |
 
 Questions — `/status`, `/list`, `/search`, `/history`, `/help` — are answered
 straight away and never queue behind downloads, because they are a database read
 and a reply.
 
-Note that `MAX_LISTINGS` and `MAX_DOWNLOADS` (both 1 by default) still decide how
-much yt-dlp runs at once. Twenty accepted submissions are twenty acknowledgements
-and a queue, not twenty parallel downloads; the ack says how many are ahead.
+Note that `MAX_LISTINGS` and `MAX_DOWNLOADS` (both 1 by default) still decide
+how much yt-dlp runs at once. Twenty accepted submissions are twenty
+acknowledgements and a queue, not twenty parallel downloads; the ack says how
+many are ahead.
 
 > [!NOTE]
 > Before 2026-09-04 a single slow submission stopped the bot reading Telegram at
-> all — grammy awaits each update's handler before fetching the next batch, and a
-> playlist probe that wedged inside yt-dlp took the whole bot down with it for an
-> hour. See
+> all — grammy awaits each update's handler before fetching the next batch, and
+> a playlist probe that wedged inside yt-dlp took the whole bot down with it for
+> an hour. See
 > [`RCA_PLAYLIST_INDEXING_DEADLOCK.md`](./RCA_PLAYLIST_INDEXING_DEADLOCK.md).
 
 ---
@@ -411,17 +413,17 @@ If a link works in the web UI it works in the bot, and vice versa.
 
 Two different things get lost, and only one of them is ours to fix.
 
-**Telegram's 24-hour window.** Bot API long polling keeps an undelivered
-update for 24 hours and then drops it. On 2026-09-15/16 four links were sent
-during a power cut; the three that were more than 24 hours old when the box
-came back never arrived at the bot at all, and the one inside the window was
-processed. Nothing on this side can get an older message back — a bot cannot
-read chat history — so the cutoff is `boot − 24 h` and that is exactly what
-the bot tells you:
+**Telegram's 24-hour window.** Bot API long polling keeps an undelivered update
+for 24 hours and then drops it. On 2026-09-15/16 four links were sent during a
+power cut; the three that were more than 24 hours old when the box came back
+never arrived at the bot at all, and the one inside the window was processed.
+Nothing on this side can get an older message back — a bot cannot read chat
+history — so the cutoff is `boot − 24 h` and that is exactly what the bot tells
+you:
 
 > I was offline from 2026-09-15 07:10 to 2026-09-16 09:56. Anything you sent
-> before 2026-09-15 09:56 never reached me — please resend it. Links from
-> after that are being picked up now.
+> before 2026-09-15 09:56 never reached me — please resend it. Links from after
+> that are being picked up now.
 
 That message goes once per chat per outage, before the backlog replies, so the
 chat reads in the order things happened. A restart under five minutes old says
@@ -431,9 +433,9 @@ nothing — there was no gap to report.
 `downloading` when the process died are replayed on boot, oldest first, on the
 original chat, each reusing its own row so one request stays one request. The
 dedupe tiers make the replay idempotent: a file that finished downloading just
-before the crash is delivered rather than downloaded twice, and a link that
-was never indexed is indexed now. Every replayed link ends in a file, a link,
-or a "failed: &lt;reason&gt;" line — the bot does not go quiet.
+before the crash is delivered rather than downloaded twice, and a link that was
+never indexed is indexed now. Every replayed link ends in a file, a link, or a
+"failed: &lt;reason&gt;" line — the bot does not go quiet.
 
 So: **an outage under 24 hours loses nothing. A longer one loses the older
 links, and the bot says so.**
@@ -462,4 +464,5 @@ docker inspect -f '{{.RestartCount}}' yt-diff
   [`TODO.md`](./TODO.md) item 23.
 
 ---
-*Last updated at: 2026-10-03*
+
+_Last updated at: 2026-10-03_

@@ -12,6 +12,7 @@
  * with chapters is never touched twice.
  */
 
+import { Op } from "sequelize";
 import { config } from "../src/config.ts";
 import {
   initializeDatabase,
@@ -27,23 +28,58 @@ import { join } from "../src/utils/path.ts";
 const BATCH_LIMIT = 200;
 
 /**
+ * Where the last batch stopped, so the next one starts after it rather than
+ * over it.
+ *
+ * A cursor and not an offset: a row this pass fills in gets a new `updatedAt`
+ * and would slide backwards under an offset, reappearing in every later batch
+ * forever. Keyed on `(updatedAt, videoUrl)` because `updatedAt` alone is not
+ * unique and a page boundary landing inside a tie would drop the rest of it.
+ */
+let cursor: { updatedAt: Date; videoUrl: string } | null = null;
+
+/**
  * Probes one batch, and reports whether there may be more.
  *
  * Rows that turn out to have no chapters are left null on purpose: that is
- * what "this file has none" looks like, and re-probing them on the next pass
- * is one ffprobe each, which is cheaper than a second column that says so.
+ * what "this file has none" looks like, and re-probing them costs one ffprobe
+ * each, which is cheaper than a second column that says so. Re-probing them on
+ * a later *run* is the intent; re-probing them in the next *batch* is a loop
+ * that never reaches the rows behind them, which is why the batch advances a
+ * cursor past everything it looked at rather than starting from the top.
  */
 async function backfillBatch(): Promise<boolean> {
   const rows = await VideoMetadata.findAll({
-    where: { downloadStatus: true, chapters: null },
-    attributes: ["videoUrl", "saveDirectory", "fileName"],
-    order: [["updatedAt", "ASC"]],
+    where: {
+      downloadStatus: true,
+      chapters: null,
+      ...(cursor === null ? {} : {
+        [Op.or]: [
+          { updatedAt: { [Op.gt]: cursor.updatedAt } },
+          {
+            updatedAt: cursor.updatedAt,
+            videoUrl: { [Op.gt]: cursor.videoUrl },
+          },
+        ],
+      }),
+    },
+    attributes: ["videoUrl", "saveDirectory", "fileName", "updatedAt"],
+    order: [["updatedAt", "ASC"], ["videoUrl", "ASC"]],
     limit: BATCH_LIMIT,
   });
 
   if (rows.length === 0) {
     return false;
   }
+
+  // Taken before anything is written. A row filled in below gets a new
+  // `updatedAt`, and a cursor read afterwards would point past rows this pass
+  // never looked at.
+  const last = rows.at(-1)!;
+  const nextCursor = {
+    updatedAt: last.getDataValue("updatedAt") as Date,
+    videoUrl: last.getDataValue("videoUrl") as string,
+  };
 
   let withChapters = 0;
   for (const row of rows) {
@@ -79,6 +115,8 @@ async function backfillBatch(): Promise<boolean> {
     considered: rows.length,
     withChapters,
   });
+
+  cursor = nextCursor;
 
   // A full batch means there may be more; a short one means this was the last.
   return rows.length === BATCH_LIMIT;

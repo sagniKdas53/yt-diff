@@ -31,26 +31,26 @@ of individual videos, independent of any playlist.
 | **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                                                                                                                                                                                                   |
 
 > [!IMPORTANT]
-> **Ephemeral Thumbnail Handling**: Facebook and Instagram CDN thumbnail
-> URLs (`fbcdn.net` / `cdninstagram.com`) contain signed authentication tokens
+> **Ephemeral Thumbnail Handling**: Facebook and Instagram CDN thumbnail URLs
+> (`fbcdn.net` / `cdninstagram.com`) contain signed authentication tokens
 > (`_nc_ohc`, `_nc_oc`, `_nc_sid`) that expire within hours to days, after which
 > the URL returns `403 Forbidden`. Because storing these URLs would result in
 > broken images, the `hasEphemeralThumbnails()` helper detects FB/IG video URLs
 > and sets `onlineThumbnail` to `null` at ingestion time. Thumbnails from other
 > platforms are **permanent** and safe to store:
 >
-> | Platform    | Thumbnail Host                   | Ephemeral? | Stored? |
-> | :---------- | :------------------------------- | :--------- | :------ |
-> | YouTube     | `i.ytimg.com`                 | No      | ✅ Yes  |
-> | X / Twitter | `pbs.twimg.com`               | No      | ✅ Yes  |
-> | LinkedIn    | `dms.licdn.com`               | No      | ✅ Yes  |
-> | Bluesky     | `video.bsky.app`              | No      | ✅ Yes  |
-> | Reddit      | `external-preview.redd.it`    | No      | ✅ Yes  |
-> | Bilibili    | `i2.hdslb.com`                | No      | ✅ Yes  |
-> | Rumble      | `hugh.cdn.rumble.cloud`       | No      | ✅ Yes  |
-> | Odysee      | `thumbs.odycdn.com`           | No      | ✅ Yes  |
-> | Facebook    | `scontent-*.xx.fbcdn.net`     | **Yes** | ❌ Skip |
-> | Instagram   | `scontent-*.cdninstagram.com` | **Yes** | ❌ Skip |
+> | Platform    | Thumbnail Host                | Ephemeral? | Stored? |
+> | :---------- | :---------------------------- | :--------- | :------ |
+> | YouTube     | `i.ytimg.com`                 | No         | ✅ Yes  |
+> | X / Twitter | `pbs.twimg.com`               | No         | ✅ Yes  |
+> | LinkedIn    | `dms.licdn.com`               | No         | ✅ Yes  |
+> | Bluesky     | `video.bsky.app`              | No         | ✅ Yes  |
+> | Reddit      | `external-preview.redd.it`    | No         | ✅ Yes  |
+> | Bilibili    | `i2.hdslb.com`                | No         | ✅ Yes  |
+> | Rumble      | `hugh.cdn.rumble.cloud`       | No         | ✅ Yes  |
+> | Odysee      | `thumbs.odycdn.com`           | No         | ✅ Yes  |
+> | Facebook    | `scontent-*.xx.fbcdn.net`     | **Yes**    | ❌ Skip |
+> | Instagram   | `scontent-*.cdninstagram.com` | **Yes**    | ❌ Skip |
 
 ---
 
@@ -62,10 +62,13 @@ write. This prevents duplicate records when the same video is indexed via
 different URL forms.
 
 **Normalization pipeline (applied to every inbound URL):**
+
 1. Force `https://` protocol
 2. Strip trailing slashes from pathname
-3. Remove tracking/noise query parameters (`utm_*`, `fbclid`, `gclid`, `si`, `pp`)
-4. Apply the first matching **site-specific canonicalizer** from the registry in `process-manager.ts`
+3. Remove tracking/noise query parameters (`utm_*`, `fbclid`, `gclid`, `si`,
+   `pp`)
+4. Apply the first matching **site-specific canonicalizer** from the registry in
+   `process-manager.ts`
 
 **Built-in site rules:**
 
@@ -75,16 +78,15 @@ different URL forms.
 | iwara.tv           | Strip trailing title slug: `/video/{id}/{slug}` → `/video/{id}`                                                  |
 | All sites          | `m.` → `www.` for YouTube mobile; force `https`; strip tracking params                                           |
 
-**Fallback deduplication lookup:**
-If an incoming URL does not match any existing `videoUrl` PK after normalization,
-a secondary lookup fires using the `videoId` field, scoped to the same domain.
-This catches edge cases where normalization rules are incomplete, preventing
-a duplicate `VideoMetadata` row from being created.
+**Fallback deduplication lookup:** If an incoming URL does not match any
+existing `videoUrl` PK after normalization, a secondary lookup fires using the
+`videoId` field, scoped to the same domain. This catches edge cases where
+normalization rules are incomplete, preventing a duplicate `VideoMetadata` row
+from being created.
 
-**Retroactive deduplication:**
-Use the `POST /dedup` endpoint to scan for and merge existing duplicate groups
-(same `videoId`, different `videoUrl` values). See
-[API_ENDPOINTS.md](API_ENDPOINTS.md) for the request/response format.
+**Retroactive deduplication:** Use the `POST /dedup` endpoint to scan for and
+merge existing duplicate groups (same `videoId`, different `videoUrl` values).
+See [API_ENDPOINTS.md](API_ENDPOINTS.md) for the request/response format.
 
 ---
 
@@ -104,9 +106,14 @@ or generic collections.
 | **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                              |
 
 > [!NOTE]
-> **Pseudo-Playlists**: There are a few reserved `playlistUrl` values that do not represent actual playlists:
-> - **`None`**: Used for individual videos that were downloaded without a playlist context (unlisted).
-> - **`init`**: A frontend-only placeholder value signifying that no specific playlist needs to be loaded by default. This should not be treated as a real playlist in backend processing.
+> **Pseudo-Playlists**: There are a few reserved `playlistUrl` values that do
+> not represent actual playlists:
+>
+> - **`None`**: Used for individual videos that were downloaded without a
+>   playlist context (unlisted).
+> - **`init`**: A frontend-only placeholder value signifying that no specific
+>   playlist needs to be loaded by default. This should not be treated as a real
+>   playlist in backend processing.
 
 ---
 
@@ -150,29 +157,29 @@ One chat-bot request, from the message that arrived to the file that was
 delivered. Only written when the chat bot is enabled; the table is created
 regardless and stays empty otherwise. See [`BOT.md`](./BOT.md).
 
-| Field                 | Type      | Description                                                                                  |
-| :-------------------- | :-------- | :------------------------------------------------------------------------------------------- |
+| Field                 | Type      | Description                                                                                      |
+| :-------------------- | :-------- | :----------------------------------------------------------------------------------------------- |
 | **`id`**              | `UUID`    | **(Primary Key)** Autogenerated UUIDv4. The first 8 chars are the `<id>` used by `/keep`, `/rm`. |
-| **`platform`**        | `STRING`  | Originating chat platform: `telegram` or `discord`.                                          |
-| **`chatId`**          | `STRING`  | Platform chat the request came from; matched against `BOT_ALLOWED_CHAT_IDS`.                 |
-| **`messageId`**       | `STRING`  | Acknowledgement message, edited in place as the request advances.                            |
-| **`requestedUrl`**    | `STRING`  | URL exactly as the user typed it.                                                            |
-| **`canonicalUrl`**    | `STRING`  | Result of `normalizeUrl()`. **FK → `video_metadata.videoUrl`, `ON DELETE SET NULL`.**        |
-| **`kind`**            | `STRING`  | `video` or `playlist`.                                                                       |
-| **`playlistUrl`**     | `STRING`  | Owning playlist, when applicable.                                                            |
-| **`status`**          | `STRING`  | `pending` → `indexing` → `downloading` → `delivered`, or `failed` / `reaped`.                |
-| **`deliveryMode`**    | `STRING`  | How the file reached the user: `upload` or `signed_url`.                                     |
-| **`retention`**       | `STRING`  | `ephemeral` or `persistent`, captured at delivery time.                                      |
-| **`downloadedByBot`** | `BOOLEAN` | **False when the file already existed.** The reaper only ever deletes rows where this is true. |
-| **`expiresAt`**       | `DATE`    | When the file becomes reapable. `NULL` when persistent or `downloadedByBot = false`.         |
-| **`errorMessage`**    | `TEXT`    | Reason recorded alongside `status = 'failed'`.                                               |
+| **`platform`**        | `STRING`  | Originating chat platform: `telegram` or `discord`.                                              |
+| **`chatId`**          | `STRING`  | Platform chat the request came from; matched against `BOT_ALLOWED_CHAT_IDS`.                     |
+| **`messageId`**       | `STRING`  | Acknowledgement message, edited in place as the request advances.                                |
+| **`requestedUrl`**    | `STRING`  | URL exactly as the user typed it.                                                                |
+| **`canonicalUrl`**    | `STRING`  | Result of `normalizeUrl()`. **FK → `video_metadata.videoUrl`, `ON DELETE SET NULL`.**            |
+| **`kind`**            | `STRING`  | `video` or `playlist`.                                                                           |
+| **`playlistUrl`**     | `STRING`  | Owning playlist, when applicable.                                                                |
+| **`status`**          | `STRING`  | `pending` → `indexing` → `downloading` → `delivered`, or `failed` / `reaped`.                    |
+| **`deliveryMode`**    | `STRING`  | How the file reached the user: `upload` or `signed_url`.                                         |
+| **`retention`**       | `STRING`  | `ephemeral` or `persistent`, captured at delivery time.                                          |
+| **`downloadedByBot`** | `BOOLEAN` | **False when the file already existed.** The reaper only ever deletes rows where this is true.   |
+| **`expiresAt`**       | `DATE`    | When the file becomes reapable. `NULL` when persistent or `downloadedByBot = false`.             |
+| **`errorMessage`**    | `TEXT`    | Reason recorded alongside `status = 'failed'`.                                                   |
 
 **Indexes**
 
-| Index | Purpose |
-| :-- | :-- |
+| Index                 | Purpose                                 |
+| :-------------------- | :-------------------------------------- |
 | `(status, expiresAt)` | drives the retention reaper's selection |
-| `(canonicalUrl)` | drives the submit-path dedupe lookup |
+| `(canonicalUrl)`      | drives the submit-path dedupe lookup    |
 
 > [!IMPORTANT]
 > The foreign key is **`SET NULL`, not `CASCADE`**. Deleting a video from the
@@ -185,4 +192,5 @@ regardless and stays empty otherwise. See [`BOT.md`](./BOT.md).
 > [`DELETION_BEHAVIOR.md`](./DELETION_BEHAVIOR.md).
 
 ---
-*Last updated at: 2026-08-02*
+
+_Last updated at: 2026-08-02_

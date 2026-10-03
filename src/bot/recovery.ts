@@ -3,7 +3,7 @@ import { logger } from "../logger.ts";
 import { reply } from "./replies.ts";
 import type { BotRuntime, DeliveryMode } from "./runtime.ts";
 import { handleSubmission } from "./submissions.ts";
-import type { BotStore } from "./store.ts";
+import type { BotStore, UnsettledSubmissionRecord } from "./store.ts";
 import type { DeliveryTarget } from "./types.ts";
 
 /**
@@ -24,8 +24,15 @@ export const OUTAGE_AFTER_MS = 5 * 60 * 1000;
 /** Chats older than this are not told about an outage they slept through. */
 const OUTAGE_CHAT_LOOKBACK_DAYS = 30;
 
-/** Backlog replay bound, so a pathological table cannot hold boot forever. */
-const RESUME_LIMIT = 100;
+/**
+ * How many submissions one pass of the backlog reads.
+ *
+ * A page size and not a total: the replay walks every page until the backlog
+ * runs out, so a long outage's hundred-and-first message is replayed in the
+ * same boot as the first. Sized so each page is one query's worth of work and
+ * one batch's worth of log lines.
+ */
+const RESUME_PAGE_SIZE = 100;
 
 /**
  * The slice of the store the boot replay needs. Narrower than `BotStore` on
@@ -114,14 +121,58 @@ export async function runBootRecovery(
   // that never happened.
   await store.touchLastSeenAt(now);
 
-  const unsettled = await store.listUnsettledSubmissions(RESUME_LIMIT);
-  if (unsettled.length > 0) {
-    logger.info("Replaying submissions that were in flight at shutdown", {
-      count: unsettled.length,
-    });
+  // Paged rather than read once. A backlog larger than RESUME_PAGE_SIZE is not a
+  // hypothetical — a long outage queues every message the chat sent, and the
+  // first hundred were all this replayed, so everything past them waited for a
+  // second restart that might never come.
+  let cursor: { createdAt: Date; id: string } | null = null;
+  let visited = 0;
+  while (true) {
+    const page = await store.listUnsettledSubmissions(RESUME_PAGE_SIZE, cursor);
+    if (page.length === 0) {
+      break;
+    }
+    if (visited === 0 && page.length > 0) {
+      logger.info("Replaying submissions that were in flight at shutdown", {
+        count: page.length,
+      });
+    }
+
+    // Advanced before anything on the page is replayed. A row that has no
+    // adapter, comes from a chat off the allowlist, or throws on the way
+    // through still has to move the cursor: otherwise the next page selects it
+    // again and the submissions behind it are never reached.
+    const last = page.at(-1)!;
+    cursor = { createdAt: last.createdAt, id: last.id };
+    visited += page.length;
+
+    await replayPage(rt, page, summary);
+
+    // A short page means the backlog is exhausted.
+    if (page.length < RESUME_PAGE_SIZE) {
+      break;
+    }
   }
 
-  for (const row of unsettled) {
+  if (visited > 0) {
+    logger.info("Replayed the in-flight backlog", { visited });
+  }
+
+  return summary;
+}
+
+/**
+ * Replays one page of in-flight submissions, oldest first.
+ *
+ * Every failure is contained: one submission that cannot be replayed is logged
+ * and left behind, because the ones after it are still somebody's waiting.
+ */
+async function replayPage(
+  rt: BotRuntime,
+  page: readonly UnsettledSubmissionRecord[],
+  summary: RecoverySummary,
+): Promise<void> {
+  for (const row of page) {
     const adapter = rt.adaptersByPlatform.get(row.platform);
     if (!adapter) {
       logger.warn("Skipping resumed submission with no adapter", {
@@ -172,8 +223,6 @@ export async function runBootRecovery(
       });
     }
   }
-
-  return summary;
 }
 
 /**

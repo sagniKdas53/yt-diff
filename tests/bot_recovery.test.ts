@@ -11,7 +11,7 @@ import type {
   UnsettledSubmissionRecord,
   VideoRecord,
 } from "../src/bot/store.ts";
-import type { BotAdapter, MessageRef } from "../src/bot/types.ts";
+import type { BotAdapter, BotPlatform, MessageRef } from "../src/bot/types.ts";
 import { createEventBus } from "../src/events.ts";
 import type { AppEventBus } from "../src/events.ts";
 
@@ -107,7 +107,31 @@ function harness(options: HarnessOptions): Harness {
     findSubmissionByPrefix: () => Promise.resolve(null),
     findSubmissionByUrl: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
-    listUnsettledSubmissions: () => Promise.resolve(options.unsettled),
+    // Paged and ordered the way the real query is, so a test about the
+    // backlog being walked in pages is testing the walk rather than a stub
+    // that hands the whole table over at once.
+    listUnsettledSubmissions: (
+      limit: number,
+      after?: { createdAt: Date; id: string } | null,
+    ) => {
+      const rows = [...(options.unsettled ?? [])].sort((a, b) =>
+        a.createdAt.getTime() - b.createdAt.getTime() ||
+        a.id.localeCompare(b.id)
+      );
+      const start = after == null
+        ? 0
+        : rows.findIndex((row) =>
+          row.createdAt.getTime() > after.createdAt.getTime() ||
+          (row.createdAt.getTime() === after.createdAt.getTime() &&
+            row.id > after.id)
+        );
+      return Promise.resolve(
+        rows.slice(
+          start === -1 ? rows.length : start,
+          start === -1 ? rows.length : start + limit,
+        ),
+      );
+    },
     listActiveChatsSince: () => Promise.resolve(options.chats),
     getLastSeenAt: () => Promise.resolve(options.lastSeenAt),
     touchLastSeenAt: (at) => {
@@ -245,6 +269,48 @@ Deno.test({
       );
       assertEquals(text.includes("never reached me"), true);
     }
+  },
+});
+
+Deno.test({
+  name: "recovery - a backlog larger than one page is walked to the end",
+  async fn() {
+    // 250 rows against a 100-row page. A long outage queues every message the
+    // chat sent, so this is the ordinary case, not a corner one: the first
+    // hundred used to be replayed and the rest waited for a second restart
+    // that might never come.
+    const rows = Array.from({ length: 250 }, (_, i) =>
+      unsettled({
+        id: `sub-${String(i).padStart(3, "0")}`,
+        requestedUrl: `${URL}?v=${i}`,
+        createdAt: new Date(Date.UTC(2026, 8, 16, 7, 0, i)),
+      }));
+    const h = harness({ lastSeenAt: null, unsettled: rows, chats: [] });
+
+    const summary = await h.recover(new Date("2026-09-16T09:56:00Z"));
+
+    assertEquals(summary.resumed, 250);
+  },
+});
+
+Deno.test({
+  name: "recovery - a row it cannot replay does not block the ones behind it",
+  async fn() {
+    // The oldest row is un-replayable and stays unsettled forever. If the walk
+    // started from the top each time, it would be selected again on every page
+    // and the other 149 would never be reached.
+    const rows = Array.from({ length: 150 }, (_, i) =>
+      unsettled({
+        id: `sub-${String(i).padStart(3, "0")}`,
+        requestedUrl: `${URL}?v=${i}`,
+        createdAt: new Date(Date.UTC(2026, 8, 16, 7, 0, i)),
+        platform: i === 0 ? ("discord" as BotPlatform) : "telegram",
+      }));
+    const h = harness({ lastSeenAt: null, unsettled: rows, chats: [] });
+
+    const summary = await h.recover(new Date("2026-09-16T09:56:00Z"));
+
+    assertEquals(summary.resumed, 149);
   },
 });
 

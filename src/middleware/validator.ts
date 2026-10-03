@@ -207,6 +207,14 @@ export const CancelRequestBodySchema = z.object({
   kind: z.enum(["download", "list"]),
 });
 
+export const JobActionRequestBodySchema = z.object({
+  // Opaque, and the only handle a caller has on a job: the drawer reads it
+  // off `/queuestatus` and sends it straight back.
+  id: z.string().min(1, "Job id is required"),
+  /** The three things a job can be asked to do, and nothing else. */
+  action: z.enum(["pause", "resume", "cancel"]),
+});
+
 export const LocateRequestBodySchema = z.object({
   videoUrl: HttpUrlSchema,
   // The page size the caller is paging `/getsub` with; the handler falls back

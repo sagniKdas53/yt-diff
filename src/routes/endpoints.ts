@@ -11,6 +11,7 @@ import {
   DeletePlaylistRequestBodySchema,
   DeleteVideosRequestBodySchema,
   DownloadRequestBodySchema,
+  JobActionRequestBodySchema,
   KeepFileRequestBodySchema,
   ListingRequestBodySchema,
   LocateRequestBodySchema,
@@ -89,6 +90,7 @@ export interface AuthenticatedHandlers {
     Body<typeof KeepFileRequestBodySchema>
   >;
   processCancelRequest: BodyHandler<Body<typeof CancelRequestBodySchema>>;
+  processJobActionRequest: BodyHandler<Body<typeof JobActionRequestBodySchema>>;
   processLocateRequest: BodyHandler<Body<typeof LocateRequestBodySchema>>;
 }
 
@@ -332,6 +334,19 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
     schema: CancelRequestBodySchema,
     // Also uncosted, and for the same reason: cancelling spends less than
     // doing. It removes work rather than adding any.
+    admission: "none",
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/jobaction",
+    summary: "Pause, resume or cancel one job by id.",
+    handler: "processJobActionRequest",
+    schema: JobActionRequestBodySchema,
+    // Also uncosted, for the same reason `/cancel` is: pausing and resuming
+    // give work back rather than adding any, and cancelling spends less than
+    // doing. Charging work units would price a button in a drawer like a
+    // yt-dlp run.
     admission: "none",
   },
   {

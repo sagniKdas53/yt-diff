@@ -2,6 +2,7 @@ import { assert, assertEquals } from "std/assert/mod.ts";
 import { processStreamingVideoInformation } from "../src/handlers/pipeline/ingest-chunk.ts";
 import {
   consumePlaylistChunks,
+  handlePlaylistStreaming,
   type ListingRuntime,
 } from "../src/handlers/pipeline/listing.ts";
 import type { ProcessStatus } from "../src/handlers/pipeline/process-manager.ts";
@@ -462,6 +463,8 @@ function fakeRuntime(): ListingRuntime {
     semaphore: null as any,
     // deno-lint-ignore no-explicit-any
     inFlight: null as any,
+    abandoned: new Set<string>(),
+    abandon: (_jobId: string) => {},
     updateProcessActivity: (_key: string, _stdout?: boolean) => {},
     setProcessStatus: (_key: string, _status: ProcessStatus) => true,
   };
@@ -793,5 +796,53 @@ Deno.test("U10 - End tail moves trigger the restart signal", async () => {
     assertEquals(updatedPositions(calls), [7, 8]);
   } finally {
     restore();
+  }
+});
+
+Deno.test("U9 - a resumed Full re-index keeps the mappings the pause held", async () => {
+  // A `Full` or `Refresh` re-index empties the playlist's mapping table
+  // because it is about to rebuild all of it. A resumed run is replacing one
+  // that was part way through, and the rows still there are that run's work —
+  // the pause kept them for exactly this. Deleting them rebuilds from zero, so
+  // a replacement that then fails leaves less behind than the pause had.
+  //
+  // Driven past the clear on purpose: the throw from the stubbed launcher is
+  // not what is under test, and only the clear touches the database first.
+  let cleared = 0;
+  // deno-lint-ignore no-explicit-any
+  (PlaylistVideoMapping as any).destroy = (
+    // deno-lint-ignore no-explicit-any
+    options: any,
+  ) => {
+    if (options?.where?.playlistUrl) cleared++;
+    return Promise.resolve(cleared);
+  };
+
+  const reindex = (isResumed: boolean) =>
+    handlePlaylistStreaming(fakeRuntime(), {
+      videoUrl: PLAYLIST,
+      chunkSize: 10,
+      isScheduledUpdate: false,
+      shouldEmitProgress: false,
+      playlistTitle: "",
+      seekPlaylistListTo: 0,
+      processKey: "pending_test",
+      monitoringType: "Full",
+      isResumed,
+    }).catch(() => undefined);
+
+  try {
+    await reindex(false);
+    await reindex(true);
+    await reindex(true);
+
+    assertEquals(
+      cleared,
+      1,
+      "only the first run empties the table; a resume rebuilds onto what is there",
+    );
+  } finally {
+    // deno-lint-ignore no-explicit-any
+    delete (PlaylistVideoMapping as any).destroy;
   }
 });

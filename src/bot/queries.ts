@@ -19,7 +19,11 @@ export async function handleStatus(
     return;
   }
   const lines = snapshot.map((item) =>
-    `${item.queuePosition}. ${item.title || item.url} — ${item.status}`
+    // A running job holds no place in line, so 0 is "not waiting" rather than
+    // "first".
+    `${item.queuePosition > 0 ? `${item.queuePosition}. ` : ""}${
+      item.title || item.url
+    } — ${item.state}`
   );
   await reply(adapter, target, lines.join("\n"));
 }

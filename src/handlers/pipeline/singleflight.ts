@@ -32,7 +32,9 @@ export function createSingleFlight<T>() {
       if (existing) return existing;
 
       const started = work().finally(() => {
-        inFlight.delete(key);
+        if (inFlight.get(key) === started) {
+          inFlight.delete(key);
+        }
       });
       inFlight.set(key, started);
       return started;
@@ -46,6 +48,32 @@ export function createSingleFlight<T>() {
     /** True when `key` is already running or queued. */
     has(key: string): boolean {
       return inFlight.has(key);
+    },
+
+    /**
+     * Releases a key while its run is still going.
+     *
+     * A pause needs this: the run it killed is still in flight when the kill
+     * lands, and a resume arriving before it settles would join the dying run
+     * and silently do nothing. The cleanup in `run` is identity-guarded, so an
+     * abandoned run finishing later cannot delete its replacement's entry.
+     */
+    forget(key: string): void {
+      inFlight.delete(key);
+    },
+
+    /**
+     * The run under way for `key`, if there is one, without releasing it.
+     *
+     * Read this before `forget` when the point is to wait for a run rather than
+     * to escape it. A pause calls `forget` so a resume does not join the run it
+     * is killing — but the run does not stop being in flight when the key goes,
+     * and a job resumed in that window still needs it to be over before it can
+     * safely start. Handing back the promise is what makes that wait possible;
+     * without it the only handle on the old run is the one being dropped.
+     */
+    current(key: string): Promise<T> | undefined {
+      return inFlight.get(key);
     },
   };
 }

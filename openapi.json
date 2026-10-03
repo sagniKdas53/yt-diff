@@ -189,13 +189,17 @@
                           },
                           "videoId": {
                             "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
                           }
                         },
                         "required": [
                           "url",
                           "title",
                           "saveDirectory",
-                          "videoId"
+                          "videoId",
+                          "id"
                         ]
                       }
                     }
@@ -1775,24 +1779,218 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "download",
+                              "listing"
+                            ]
+                          },
                           "url": {
                             "type": "string"
                           },
                           "title": {
                             "type": "string"
                           },
-                          "status": {
-                            "type": "string"
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "running",
+                              "paused"
+                            ]
                           },
                           "queuePosition": {
+                            "type": "number"
+                          },
+                          "progress": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "downloadedBytes": {
+                                    "type": "number"
+                                  },
+                                  "totalBytes": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "bytesPerSecond": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "etaSeconds": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "downloadedBytes",
+                                  "totalBytes",
+                                  "bytesPerSecond",
+                                  "etaSeconds"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemsIndexed": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
                             "type": "number"
                           }
                         },
                         "required": [
+                          "id",
+                          "kind",
                           "url",
                           "title",
-                          "status",
-                          "queuePosition"
+                          "state",
+                          "queuePosition",
+                          "progress",
+                          "itemsIndexed",
+                          "startedAt"
+                        ]
+                      }
+                    },
+                    "listings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "download",
+                              "listing"
+                            ]
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "running",
+                              "paused"
+                            ]
+                          },
+                          "queuePosition": {
+                            "type": "number"
+                          },
+                          "progress": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "downloadedBytes": {
+                                    "type": "number"
+                                  },
+                                  "totalBytes": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "bytesPerSecond": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "etaSeconds": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "downloadedBytes",
+                                  "totalBytes",
+                                  "bytesPerSecond",
+                                  "etaSeconds"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemsIndexed": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "url",
+                          "title",
+                          "state",
+                          "queuePosition",
+                          "progress",
+                          "itemsIndexed",
+                          "startedAt"
                         ]
                       }
                     }
@@ -1800,7 +1998,8 @@
                   "required": [
                     "status",
                     "generation",
-                    "queue"
+                    "queue",
+                    "listings"
                   ]
                 }
               }
@@ -2128,6 +2327,129 @@
                 "required": [
                   "url",
                   "kind"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/jobaction": {
+      "post": {
+        "operationId": "processJobActionRequest",
+        "summary": "Pause, resume or cancel one job by id.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "success"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "pause",
+                        "resume",
+                        "cancel"
+                      ]
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "paused",
+                        "resumed",
+                        "cancelled",
+                        "not-allowed",
+                        "not-found"
+                      ]
+                    },
+                    "partialDeleted": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "id",
+                    "action",
+                    "outcome",
+                    "partialDeleted"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "pause",
+                      "resume",
+                      "cancel"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "action"
                 ]
               }
             }

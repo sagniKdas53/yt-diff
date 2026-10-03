@@ -405,8 +405,10 @@ const {
   cancelDownload,
   cancelListing,
   processCancelRequest,
+  processJobActionRequest,
   resolveAndEnqueue,
   getQueueSnapshot,
+  getListingSnapshot,
   syncExtras,
   getListingQueueDepth,
 } = createPipelineHandlers({
@@ -504,6 +506,7 @@ function processQueueStatusRequest(
     status: "success",
     generation: connectionGeneration,
     queue: getQueueSnapshot(),
+    listings: getListingSnapshot(),
   });
 }
 
@@ -698,6 +701,7 @@ const apiRoutes = createApiRoutes({
     // bridged here rather than by loosening either signature.
     processKeepFileRequest: (body, res) => processKeepFileRequest(body, res),
     processCancelRequest,
+    processJobActionRequest,
     processLocateRequest,
     updatePlaylistMonitoring,
     getPlaylistsForDisplay,

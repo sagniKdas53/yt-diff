@@ -104,9 +104,16 @@ export interface BotStore {
    * Submissions still in flight when the process died — status pending,
    * indexing or downloading — oldest first, so a restart replays a burst in
    * the order it was sent.
+   *
+   * `after` is a cursor rather than an offset, and is what makes the backlog
+   * finite: a row that cannot be replayed still has to move the cursor, or it
+   * is selected again on the next page and everything behind it is never
+   * reached. Keyed on `(createdAt, id)` because `createdAt` alone is not
+   * unique, and a page boundary landing inside a tie would drop the rest of it.
    */
   listUnsettledSubmissions(
     limit: number,
+    after?: { createdAt: Date; id: string } | null,
   ): Promise<UnsettledSubmissionRecord[]>;
   /** Distinct platform/chat pairs with a submission in the window. */
   listActiveChatsSince(
@@ -243,12 +250,20 @@ export function createSequelizeBotStore(): BotStore {
       return { id: row.id };
     },
 
-    async listUnsettledSubmissions(limit) {
+    async listUnsettledSubmissions(limit, after) {
       const rows = await BotSubmission.findAll({
-        where: { status: { [Op.in]: UNSETTLED_STATUSES } },
+        where: {
+          status: { [Op.in]: UNSETTLED_STATUSES },
+          ...(after == null ? {} : {
+            [Op.or]: [
+              { createdAt: { [Op.gt]: after.createdAt } },
+              { createdAt: after.createdAt, id: { [Op.gt]: after.id } },
+            ],
+          }),
+        },
         // Oldest first, so a burst Telegram replays comes back out in the
         // order it went in.
-        order: [["createdAt", "ASC"]],
+        order: [["createdAt", "ASC"], ["id", "ASC"]],
         limit,
       });
       return rows.map(toUnsettledSubmissionRecord);

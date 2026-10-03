@@ -115,14 +115,21 @@ function expiryNote(expiresAt: Date, videoUrl: string): string {
     : `${Math.max(1, Math.round(hours * 60))} min`;
   return `Expires in ${span} — \`/keep ${videoUrl}\` to keep it.`;
 }
+
+/**
+ * Where a video is waiting, for the "queued for download — position N" ack.
+ *
+ * A job that is already running reports 0, because running is not a place in
+ * line; the caller's own fallback from the enqueue is the better answer then.
+ */
 export function queuePositionFor(
   rt: BotRuntime,
   url: string,
   fallback: number,
 ): number {
   const snapshot = rt.deps.getQueueSnapshot();
-  return snapshot.find((entry) => entry.url === url)?.queuePosition ??
-    fallback;
+  const position = snapshot.find((entry) => entry.url === url)?.queuePosition;
+  return position && position > 0 ? position : fallback;
 }
 
 /**

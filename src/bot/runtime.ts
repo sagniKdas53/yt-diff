@@ -3,6 +3,7 @@ import type { AppEventBus } from "../events.ts";
 // `POST /syncextras` answers with; `events.ts` already imports it the same way.
 import type {
   CancelOutcome,
+  JobView,
   SyncExtrasResult,
 } from "../handlers/pipeline/types.ts";
 import type { Delivery } from "./delivery.ts";
@@ -37,12 +38,8 @@ export interface BotCoreDependencies {
     items: { url: string; queuePosition: number }[];
     notIndexed: string[];
   }>;
-  getQueueSnapshot: () => {
-    url: string;
-    title: string;
-    status: string;
-    queuePosition: number;
-  }[];
+  /** The live job views; the drawer reads the same shape off `/queuestatus`. */
+  getQueueSnapshot: () => JobView[];
   /** True listing backlog: in-flight plus queued. See getListingQueueDepth. */
   getListingQueueDepth: () => number;
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;

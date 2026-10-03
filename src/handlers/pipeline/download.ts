@@ -25,7 +25,9 @@ import type {
   DownloadResult,
   FileSyncStatus,
   HttpError,
+  PausedJob,
   PipelineHandlerDependencies,
+  QueuedDownloadItem,
   SyncExtrasResult,
   VideoEntryRecord,
 } from "./types.ts";
@@ -35,7 +37,9 @@ import {
   downloadOptions,
   ExtraKind,
   extrasOnlyOptions,
+  newJobId,
   parseOfferedExtras,
+  parseProgressLine,
   ProcessExitCodes,
 } from "./types.ts";
 import { json } from "../../utils/http.ts";
@@ -62,15 +66,11 @@ export interface DownloadFlow {
     urlList: string[],
     playlistUrl: string,
   ) => Promise<{
-    items: (DownloadItem & { queuePosition: number })[];
+    items: QueuedDownloadItem[];
     notIndexed: string[];
   }>;
-  getQueueSnapshot: () => {
-    url: string;
-    title: string;
-    status: string;
-    queuePosition: number;
-  }[];
+  /** Re-enters the queue for a paused download, under the id it was given. */
+  resumeDownload: (job: PausedJob) => void;
   syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
   cancelDownload: (url: string) => CancelOutcome;
 }
@@ -120,7 +120,7 @@ export function createDownloadFlow(
     urlList: string[],
     playlistUrl: string,
   ): Promise<{
-    items: (DownloadItem & { queuePosition: number })[];
+    items: QueuedDownloadItem[];
     notIndexed: string[];
   }> {
     const videosToDownload: DownloadItem[] = [];
@@ -184,12 +184,17 @@ export function createDownloadFlow(
       uniqueUrls.add(videoUrl);
     }
 
-    // Assign queue positions before starting downloads so they can be
-    // included in both the HTTP response and the socket events.
-    const itemsWithPositions = videosToDownload.map((item) => ({
-      ...item,
-      queuePosition: ++queueSequence,
-    }));
+    // Assign queue positions and ids before starting downloads, so both are
+    // included in the HTTP response and the socket events: the id is what the
+    // drawer's pause, resume and cancel are addressed by from the moment the
+    // job is accepted.
+    const itemsWithPositions: QueuedDownloadItem[] = videosToDownload.map(
+      (item) => ({
+        ...item,
+        queuePosition: ++queueSequence,
+        id: newJobId(),
+      }),
+    );
 
     void downloadItemsConcurrently(
       itemsWithPositions,
@@ -238,7 +243,7 @@ export function createDownloadFlow(
   }
 
   async function downloadItemsConcurrently(
-    items: (DownloadItem & { queuePosition: number })[],
+    items: QueuedDownloadItem[],
     maxConcurrent: number = 2,
   ): Promise<boolean> {
     logger.trace(
@@ -269,6 +274,9 @@ export function createDownloadFlow(
     downloadResults.forEach((result) => {
       if (result.status === "success") {
         logger.info(`Downloaded ${result.title} successfully`);
+      } else if (result.status === "paused") {
+        // Neither a success nor a failure: it is waiting for a resume.
+        logger.info(`Paused ${result.title}; partial files kept`);
       } else {
         logger.error(`Failed to download ${result.title}: ${result.error}`);
       }
@@ -277,19 +285,40 @@ export function createDownloadFlow(
     return allSuccessful;
   }
 
+  /**
+   * Re-enters the queue for a paused download.
+   *
+   * The same path a fresh submission takes, with one difference: the id is the
+   * one the paused job already answered to, so the drawer keeps tracking the
+   * job it paused rather than losing it to a new one. The place in line is
+   * not carried over — the job is behind everything queued since it stopped.
+   */
+  function resumeDownload(job: PausedJob): void {
+    const item = job.item as DownloadItem;
+    void downloadItemsConcurrently([
+      { ...item, queuePosition: ++queueSequence, id: job.id },
+    ], config.queue.maxDownloads);
+  }
+
   async function downloadWithSemaphore(
-    downloadItem: DownloadItem & { queuePosition: number },
+    downloadItem: QueuedDownloadItem,
   ): Promise<DownloadResult> {
     logger.trace(
       `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
     );
 
-    const { url: videoUrl, title: videoTitle, queuePosition } = downloadItem;
+    const { url: videoUrl, title: videoTitle } = downloadItem;
     const now = Date.now();
     const downloadEntry: DownloadProcessEntry = {
+      id: downloadItem.id,
       url: videoUrl,
       title: videoTitle,
-      queuePosition,
+      item: downloadItem,
+      queuePosition: downloadItem.queuePosition,
+      progress: null,
+      itemsIndexed: null,
+      paused: false,
+      startedAt: now,
       spawnType: "download",
       lastActivity: now,
       lastStdoutActivity: now,
@@ -324,7 +353,7 @@ export function createDownloadFlow(
           };
         }
 
-        return await executeDownload(downloadItem, entryKey);
+        return await executeDownload(downloadItem, entryKey, downloadEntry);
       } finally {
         DownloadSemaphore.release();
       }
@@ -378,8 +407,9 @@ export function createDownloadFlow(
   }
 
   async function executeDownload(
-    downloadItem: DownloadItem & { queuePosition: number },
+    downloadItem: QueuedDownloadItem,
     processKey: string,
+    downloadEntry: DownloadProcessEntry,
   ): Promise<DownloadResult> {
     const {
       url: videoUrl,
@@ -394,10 +424,18 @@ export function createDownloadFlow(
 
       logger.debug(`Downloading to path: ${savePath}`);
 
+      // Written to the entry rather than kept in this closure: a cancel that
+      // lands mid-transfer has no other way to learn where this job's partial
+      // files are, and it may be answered by a request that never went through
+      // this function.
+      const trackedEntry = downloadProcesses.get(processKey);
+      if (trackedEntry) {
+        trackedEntry.savePath = savePath;
+      }
+
       if (savePath !== config.saveLocation && !(await exists(savePath))) {
         await mkdir(savePath, { recursive: true });
       }
-
       return new Promise<DownloadResult>((resolve, reject) => {
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
@@ -495,6 +533,7 @@ export function createDownloadFlow(
               try {
                 const output = data.toString().trim();
                 const percentMatch = /(\d{1,3}\.\d)/.exec(output);
+
                 if (percentMatch) {
                   const percent = parseFloat(percentMatch[0]);
                   const progressBlock = Math.floor(percent / 10);
@@ -513,6 +552,30 @@ export function createDownloadFlow(
                     url: videoUrl,
                     percentage: percent,
                   });
+                }
+
+                // The counters the job drawer polls for. Read here rather
+                // than at the end because the run reporting them is the one
+                // still transferring; by completion there is nothing to read.
+                const transfer = parseProgressLine(output);
+                if (transfer && trackedEntry) {
+                  trackedEntry.progress = transfer;
+                }
+
+                // The output path, resolved before the transfer starts. A
+                // cancel that has this can delete the partial it left; one
+                // that only has the post_process file name — which arrives
+                // after the download is over — has nothing to delete, which is
+                // the opposite of what cancelling a running download is for.
+                //
+                // Read from our own `filePath:` print rather than yt-dlp's
+                // `Destination:` line: a `--print` among the arguments
+                // suppresses that one entirely, and there is one there.
+                const destination = /filePath:(.+)/.exec(output);
+                if (
+                  trackedEntry && destination?.[1] && !trackedEntry.destination
+                ) {
+                  trackedEntry.destination = destination[1].trim();
                 }
 
                 const itemTitle = /title:(.+)/m.exec(output);
@@ -536,6 +599,12 @@ export function createDownloadFlow(
                 if (fileNameInDest?.[1]) {
                   const finalFileName = fileNameInDest[1].trim();
                   capturedFileName = basename(finalFileName);
+                  // Also on the entry: a cancel deletes exactly the partials
+                  // of this one file name, and this is the only place the run
+                  // ever names it.
+                  if (trackedEntry) {
+                    trackedEntry.fileName = capturedFileName;
+                  }
                   logger.debug(
                     `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
                     { pid: downloadProcess.pid },
@@ -736,6 +805,24 @@ export function createDownloadFlow(
                 url: videoUrl,
                 title: updates.title,
                 status: "success",
+              });
+            } else if (downloadEntry.paused) {
+              // A pause, not a failure. The kill a pause sends and the one a
+              // cancellation sends are the same signal, so the entry is what
+              // tells them apart: recording an error here would tell the UI a
+              // video is broken when it is sitting in the queue waiting to be
+              // resumed, and emitting `download-failed` would retire a job the
+              // user has not finished with. The partial files are deliberately
+              // still on disk.
+              logger.info("Download paused; its partial files are kept", {
+                url: videoUrl,
+                id: downloadEntry.id,
+              });
+              cleanupProcess(processKey, downloadProcess.pid);
+              resolve({
+                url: videoUrl,
+                title: videoTitle,
+                status: "paused",
               });
             } else {
               const errorMsg = code === ProcessExitCodes.SIGTERM
@@ -1159,23 +1246,11 @@ export function createDownloadFlow(
     }
   }
 
-  function getQueueSnapshot() {
-    const sortedEntries = Array.from(downloadProcesses.values())
-      .sort((a, b) => a.queuePosition - b.queuePosition);
-
-    return sortedEntries.map((entry, index) => ({
-      url: entry.url,
-      title: entry.title,
-      status: entry.status,
-      queuePosition: index + 1,
-    }));
-  }
-
   return {
     processDownloadRequest,
     processSyncExtrasRequest,
     resolveAndEnqueue,
-    getQueueSnapshot,
+    resumeDownload,
     syncExtras,
     cancelDownload,
   } satisfies DownloadFlow;

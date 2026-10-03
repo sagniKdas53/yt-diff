@@ -73,37 +73,61 @@ dependencies minimal.
 ### 4. Maintenance & Administration
 
 - **`/reindexall`**
-  - **Description**: Re-runs the listing pipeline for all tracked videos (or a filtered subset) to refresh their metadata from yt-dlp. Accepts `start`, `stop`, `siteFilter`, and `chunkSize` parameters.
+  - **Description**: Re-runs the listing pipeline for all tracked videos (or a
+    filtered subset) to refresh their metadata from yt-dlp. Accepts `start`,
+    `stop`, `siteFilter`, and `chunkSize` parameters.
   - **Request body**: `{ start?, stop?, siteFilter?, chunkSize? }`
 
 - **`/dedup-unlisted`**
-  - **Description**: Canonicalizes URLs in the `None` playlist in-place. Then scans `video_metadata` for records that share the same `videoId` but live under different `videoUrl` primary keys. In dry-run mode it only reports what would change; when `dryRun: false` it merges the duplicates and re-homes all `playlist_video_mappings` to the canonical URL.
-  - **Merge priority**: prefers records that belong to a real playlist over the "None" bucket; among equals, keeps the most recently updated record.
+  - **Description**: Canonicalizes URLs in the `None` playlist in-place. Then
+    scans `video_metadata` for records that share the same `videoId` but live
+    under different `videoUrl` primary keys. In dry-run mode it only reports
+    what would change; when `dryRun: false` it merges the duplicates and
+    re-homes all `playlist_video_mappings` to the canonical URL.
+  - **Merge priority**: prefers records that belong to a real playlist over the
+    "None" bucket; among equals, keeps the most recently updated record.
   - **Request body**: `{ dryRun?: boolean (default true), siteFilter?: string }`
-  - **Response**: `{ status, videoDuplicatesFound, videoMergedCount, videoDetails[] }`
+  - **Response**:
+    `{ status, videoDuplicatesFound, videoMergedCount, videoDetails[] }`
   - **Authentication**: Required.
 
 - **`/dedup-playlists`**
-  - **Description**: Scans `playlist_metadata` for duplicate playlists via canoncialized URLs. Keeps the playlist with a non-empty `saveDirectory` or the most recently updated. Merges `playlist_video_mappings` to the canonical playlist URL.
+  - **Description**: Scans `playlist_metadata` for duplicate playlists via
+    canoncialized URLs. Keeps the playlist with a non-empty `saveDirectory` or
+    the most recently updated. Merges `playlist_video_mappings` to the canonical
+    playlist URL.
   - **Request body**: `{ dryRun?: boolean (default true), siteFilter?: string }`
-  - **Response**: `{ status, playlistDuplicatesFound, playlistMergedCount, playlistDetails[] }`
+  - **Response**:
+    `{ status, playlistDuplicatesFound, playlistMergedCount, playlistDetails[] }`
   - **Authentication**: Required.
 
 - **`/queuestatus`**
-  - **Description**: Returns the current snapshot of active and pending download processes in the queue along with their queue positions.
+  - **Description**: Returns every job the server currently knows about, as a
+    full job view each. `queue` stays the downloads — the E2E suite asserts on
+    it — and `listings` is the playlist listings. A job is `queued`, `running`
+    or `paused`; availability is derived from that by the client, never sent as
+    a flag of its own. `queuePosition` is 1-based among jobs of the same kind
+    still waiting, and 0 for a running or paused one, which holds no slot.
   - **Request body**: `{}`
-  - **Response**: `{ status: "success", generation: number, queue: Array<{ url: string, title: string, status: string, queuePosition: number }> }`
+  - **Response**:
+    `{ status: "success", generation: number, queue: JobView[], listings: JobView[] }`
+    where `JobView` is
+    `{ id, kind, url, title, state, queuePosition, progress, itemsIndexed, startedAt }`;
+    `progress` is `{ downloadedBytes, totalBytes, bytesPerSecond, etaSeconds }`
+    for downloads and null otherwise, `itemsIndexed` counts persisted rows for
+    listings.
   - **Authentication**: Required.
 
 - **`/syncextras`**
   - **Description**: Fetches only the sidecars a previous download missed —
     subtitles, thumbnail, description, comments — for one already-downloaded
     video. Runs yt-dlp with `--skip-download` into the same directory with the
-    same output template and the same download slot, so a retry cannot pile
-    onto a rate limit. Whatever turned up is dropped from the row's
-    `missingExtras`; whatever did not stays, and so does the UI chip.
+    same output template and the same download slot, so a retry cannot pile onto
+    a rate limit. Whatever turned up is dropped from the row's `missingExtras`;
+    whatever did not stays, and so does the UI chip.
   - **Request body**: `{ videoUrl: string }`
-  - **Response**: `{ url, status: "recovered" | "unchanged" | "failed", recovered: string[], stillMissing: string[], reason: string | null }`
+  - **Response**:
+    `{ url, status: "recovered" | "unchanged" | "failed", recovered: string[], stillMissing: string[], reason: string | null }`
   - **Authentication**: Required.
 
 - **`/keepfile`**
@@ -127,17 +151,39 @@ dependencies minimal.
   - **Response**: `{ status: "success", url, kind, outcome }`
   - **Authentication**: Required.
 
+- **`/jobaction`**
+  - **Description**: Pauses, resumes or cancels one job by the `id` the job view
+    carries. The distinction the whole design turns on is bytes: pausing kills
+    the process and **keeps** the partial files — yt-dlp resumes from a `.part`
+    with no extra flags — while cancelling deletes exactly
+    `<savePath>/<fileName>.part`, `<fileName>.part-Frag*` and `<fileName>.ytdl`
+    for that one job, and nothing else in the folder. A queued job has no
+    process and no bytes, so cancelling it is free.
+  - **Request body**: `{ id: string, action: "pause" | "resume" | "cancel" }`
+  - **Response**:
+    `{ status: "success", id, action, outcome, partialDeleted, detail? }` where
+    `outcome` is `paused`, `resumed`, `cancelled`, `not-allowed` (the action
+    does not apply to that state) or `not-found`. `not-allowed` is a normal 200
+    answer, not an error: the UI only offers pause on a running job, so reaching
+    it means the poll was stale. `partialDeleted` is the honest report of the
+    disk — `false` for a queued cancel and for a pause, `true` for a running or
+    paused one, and `false` with a `detail` when the file name was never printed
+    so the partial could not be located.
+  - **Authentication**: Required.
+
 - **`/locate`**
-  - **Description**: For one video, the playlist it should be opened in and
-    the page it sits on there. The playlist comes from the same helper the
-    download queue uses to pick a save directory, so a player link opens the
-    list the file actually landed in rather than an arbitrary one the video
-    also appears in. `playlistUrl` is `null` for a video in no real playlist
-    (open it under Unlisted), and `page` is then `null` too.
-  - **Request body**: `{ videoUrl: string, pageSize?: number, sortDownloaded?: boolean }`
-    — `pageSize` and `sortDownloaded` mirror `/getsub`, and the default page
-    size is the same one `/getsub` defaults to.
-  - **Response**: `{ videoUrl: string, playlistUrl: string | null, page: number | null }`
+  - **Description**: For one video, the playlist it should be opened in and the
+    page it sits on there. The playlist comes from the same helper the download
+    queue uses to pick a save directory, so a player link opens the list the
+    file actually landed in rather than an arbitrary one the video also appears
+    in. `playlistUrl` is `null` for a video in no real playlist (open it under
+    Unlisted), and `page` is then `null` too.
+  - **Request body**:
+    `{ videoUrl: string, pageSize?: number, sortDownloaded?: boolean }` —
+    `pageSize` and `sortDownloaded` mirror `/getsub`, and the default page size
+    is the same one `/getsub` defaults to.
+  - **Response**:
+    `{ videoUrl: string, playlistUrl: string | null, page: number | null }`
   - **Authentication**: Required.
 
 ### 5. Authentication
@@ -145,7 +191,8 @@ dependencies minimal.
 - **`/login`**
   - **Description**: Authenticates a user and returns a JWT token.
   - **Request body**: `{ username: string, password: string }`
-  - **Response**: `{ status: "success", token: string, expiresAt: number | null }`
+  - **Response**:
+    `{ status: "success", token: string, expiresAt: number | null }`
   - **`expiresAt`** is the token's `exp` claim in epoch seconds. The client
     schedules its renewal off this rather than decoding a JWT it cannot verify.
   - **Token lifetime** is decided by the server (`TOKEN_EXPIRY`, default `24h`).
@@ -160,7 +207,8 @@ dependencies minimal.
   - **Request body**: `{}` — the handler reads nothing from it, but the body
     must be a JSON object: `parseRequestJson` rejects an empty body with a 400
     before any handler runs.
-  - **Response**: `{ status: "success", token: string, expiresAt: number | null }`
+  - **Response**:
+    `{ status: "success", token: string, expiresAt: number | null }`
   - **Authentication**: Required. It runs behind the same `authenticateRequest`
     as every other authenticated route, so an **expired** token gets a 401 here
     too: this extends a live session, it cannot revive a dead one. A tab asleep
@@ -174,15 +222,17 @@ dependencies minimal.
   - **Description**: Creates a new user account when registration is enabled and
     the user cap has not been reached.
   - **Request body**: `{ username: string, password: string }`
-  - **Response**: `{ status: "success", message: "User registered successfully" }`
+  - **Response**:
+    `{ status: "success", message: "User registered successfully" }`
   - **Frontend Usage**: `Signup.jsx` calls this on form submission.
 
 - **`/isregallowed`**
-  - **Description**: Checks whether new user registrations are currently permitted
-    based on server configuration and the existing user count.
+  - **Description**: Checks whether new user registrations are currently
+    permitted based on server configuration and the existing user count.
   - **Request body**: `{ sendStats?: boolean }` (an empty `{}` is valid)
   - **Response** (default): `{ registrationAllowed: boolean }`
-  - **Response** (`sendStats: true`): `{ registrationAllowed: boolean, currentUsers: number, maxUsers: number }`
+  - **Response** (`sendStats: true`):
+    `{ registrationAllowed: boolean, currentUsers: number, maxUsers: number }`
   - **Frontend Usage**: `Login.jsx` queries this on mount to show or hide the
     signup option.
 
@@ -195,7 +245,11 @@ dependencies minimal.
 
 ## URL Normalization
 
-All URLs submitted via `/list` or `/download` (or discovered automatically by yt-dlp) pass through a strict canonicalization pipeline before being stored as primary keys (`videoUrl` or `playlistUrl`). This ensures the database prevents duplicate records at the point of entry when the same content is added via different URL formats.
+All URLs submitted via `/list` or `/download` (or discovered automatically by
+yt-dlp) pass through a strict canonicalization pipeline before being stored as
+primary keys (`videoUrl` or `playlistUrl`). This ensures the database prevents
+duplicate records at the point of entry when the same content is added via
+different URL formats.
 
 ### Canonicalization Rules
 
@@ -205,15 +259,19 @@ All URLs submitted via `/list` or `/download` (or discovered automatically by yt
 | **Iwara**       | `https://www.iwara.tv/video/ID/slug` | `https://www.iwara.tv/video/ID`      | Strips trailing title slug.                                                                            |
 | **X / Twitter** | `https://x.com/user/status/ID`       | `https://x.com/user/status/ID?s=20`  | Appends/retains `?s=20` as it remains structurally constant.                                           |
 
-The normalizer is registry-based—new sites can be added to `SITE_CANONICALIZERS` in `process-manager.ts` and `dedup.ts`.
+The normalizer is registry-based—new sites can be added to `SITE_CANONICALIZERS`
+in `process-manager.ts` and `dedup.ts`.
 
 ## WebSockets
 
 - **Socket.io Connection**: Handled at `config.urlBase + "/socket.io/"`.
-- **Events**: Utilizes `connection`, `acknowledge`, and `disconnect` events. The `init` event also passes a `generation` timestamp to identify the current server session.
+- **Events**: Utilizes `connection`, `acknowledge`, and `disconnect` events. The
+  `init` event also passes a `generation` timestamp to identify the current
+  server session.
 - **Frontend Interaction**: The frontend subscribes to socket events to receive
   real-time progress updates of active background downloads and metadata listing
   processes, ensuring the UI stays fresh without constant polling.
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_
