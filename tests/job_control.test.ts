@@ -96,8 +96,14 @@ function buildHarness(
     spawnPythonProcess?: () => ManagedProcess;
     streamTextChunks?: StreamTextChunks;
     installVideoTable?: boolean;
-    /** Spied on instead of the real thing, to see a resume being scheduled. */
-    resumeListing?: (job: PausedJob) => void;
+    /**
+     * Spied on instead of the real thing, to see a resume being scheduled.
+     *
+     * Resolves when told to, so a test can hold a resumed listing in the
+     * window between asking it to start and its run settling — which is the
+     * window a cancel has to work through.
+     */
+    resumeListing?: (job: PausedJob) => Promise<unknown>;
   } = {},
 ): Harness {
   const savePath = Deno.makeTempDirSync();
@@ -133,6 +139,7 @@ function buildHarness(
     resumeDownload: flow.resumeDownload,
     resumeListing: deps.resumeListing ??
       ((job: PausedJob) => resumeListing(listingRuntime, job)),
+    abandonListing: (id: string) => listingRuntime.abandon(id),
   });
 
   let videoUpdates: Record<string, unknown>[] = [];
@@ -906,7 +913,12 @@ Deno.test("resume - a listing waits for the run its pause released before starti
   // keeps writing rows, and a second run starting beside it can insert a
   // mapping for a video the first is already inserting one for.
   const resumed: PausedJob[] = [];
-  const h = buildHarness({ resumeListing: (job) => void resumed.push(job) });
+  const h = buildHarness({
+    resumeListing: (job) => {
+      resumed.push(job);
+      return Promise.resolve();
+    },
+  });
   try {
     const gate = Promise.withResolvers<ListingResult>();
     const entry = listingEntry();
@@ -993,7 +1005,12 @@ Deno.test("cancel - a listing cancelled while its resume is waiting never starts
   // cancel sent into it used to answer `not-found` and the listing went ahead
   // regardless — the user asked for it to stop and it did not.
   const resumed: PausedJob[] = [];
-  const h = buildHarness({ resumeListing: (job) => void resumed.push(job) });
+  const h = buildHarness({
+    resumeListing: (job) => {
+      resumed.push(job);
+      return Promise.resolve();
+    },
+  });
   try {
     const gate = Promise.withResolvers<ListingResult>();
     const entry = listingEntry();
@@ -1014,6 +1031,13 @@ Deno.test("cancel - a listing cancelled while its resume is waiting never starts
     assertEquals(result.outcome, "cancelled");
     assertEquals(result.partialDeleted, false);
     assertEquals(h.control.getListingSnapshot().length, 0);
+    // Marked as well as untracked: by the time a cancel can arrive the resume
+    // may already have been asked to start and be parked on the semaphore, and
+    // the tombstone is gone by then. Only the mark reaches that run.
+    assert(
+      h.listingRuntime.abandoned.has(entry.id),
+      "the run must be told it was cancelled, not only untracked",
+    );
 
     gate.resolve({ url: PLAYLIST_URL, status: "success" });
     await tick();
@@ -1034,7 +1058,12 @@ Deno.test("pause and resume - a listing waiting to start again is not a missing 
   // job had gone, which is the opposite of what happened — and neither attempt
   // may take it out of the wait.
   const resumed: PausedJob[] = [];
-  const h = buildHarness({ resumeListing: (job) => void resumed.push(job) });
+  const h = buildHarness({
+    resumeListing: (job) => {
+      resumed.push(job);
+      return Promise.resolve();
+    },
+  });
   try {
     const gate = Promise.withResolvers<ListingResult>();
     const entry = listingEntry();
@@ -1055,6 +1084,34 @@ Deno.test("pause and resume - a listing waiting to start again is not a missing 
       resumed.length,
       1,
       "neither refused action may cancel the resume that is waiting",
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("cancel - a listing run that was already queued for a slot declines to start", async () => {
+  // The other half of the mark. `listWithSemaphore` registers a listing only
+  // after it takes a slot, so between the resume and the slot there is no entry
+  // to find and no process to signal — and the run is already under way. The
+  // only thing that can still stop it is the run itself reading the mark.
+  const h = buildHarness();
+  try {
+    const job = pausedListing({ id: "list-9" });
+    h.listingRuntime.abandon(job.id);
+
+    const results = await resumeListing(h.listingRuntime, job);
+
+    assertEquals(results[0].status, "cancelled");
+    assertEquals(
+      h.listings.size,
+      0,
+      "a declined listing must not register itself",
+    );
+    assertEquals(
+      h.listingRuntime.abandoned.has(job.id),
+      false,
+      "the mark is consumed, so it cannot strand a later run under the same id",
     );
   } finally {
     h.restore();

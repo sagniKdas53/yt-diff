@@ -177,15 +177,23 @@ write, so a resume that began immediately would put two runs of one playlist in
 the database at once, and both reading an unmapped video can each decide it
 needs a mapping. The replacement waits for the old run to settle.
 
-The job is not in the queue yet, but it is not lost either: for the length of
-the wait it reports in `listings` as `queued`, under the same id, which is what
-puts a Cancel — and only a Cancel — on it in the drawer. A cancel sent during
-the wait answers `cancelled`, and the replacement does not start when the wait
-ends. Reporting it as nothing at all would leave the user watching a row
-disappear, with no way to stop what they just started.
+The job is not in the queue yet, but it is not lost either: for the whole time
+before its run registers, it reports in `listings` as `queued`, under the same
+id, which is what puts a Cancel — and only a Cancel — on it in the drawer.
+Reporting it as nothing at all would leave the user watching a row disappear,
+with no way to stop what they just started.
 
-Downloads have no such wait. They carry no per-run database state to collide
-with, and a paused download's slot was released at pause time.
+That covers two waits, and a cancel has to work through both. First the run it
+replaced is still settling — there, the cancel simply finds nothing waiting to
+start it. Then the run is queued for a semaphore slot — and there is no entry to
+look up, no process to signal, and the run is already under way, so the cancel
+leaves a mark that the run itself reads and declines on. Without that second one
+the cancel is accepted and the listing begins anyway the moment a slot frees,
+which is the user asking for it to stop and it not stopping.
+
+Downloads have neither wait. They carry no per-run database state to collide
+with, and a download registers itself before it takes a slot rather than after,
+so it is findable from the moment it is accepted.
 
 `itemsIndexed` is a real counter of rows persisted by the run, not an estimate.
 

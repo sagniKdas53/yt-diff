@@ -226,8 +226,23 @@ export interface JobControlDependencies {
   pausedJobs: Map<string, PausedJob>;
   /** Re-enters the download queue under a paused job's own id. */
   resumeDownload: (job: PausedJob) => void;
-  /** Re-runs a paused listing under its own id. */
-  resumeListing: (job: PausedJob) => void;
+  /**
+   * Re-runs a paused listing under its own id.
+   *
+   * Awaitable on purpose. A listing registers itself only once it holds a
+   * semaphore slot, so between the resume being accepted and the run being
+   * findable in `listProcesses` the job is held only by the caller — which is
+   * the window a cancel has to keep working through.
+   */
+  resumeListing: (job: PausedJob) => Promise<unknown>;
+  /**
+   * Marks a listing as cancelled while its run is still queued for a slot.
+   *
+   * Separate from the tombstone because the run outlives it: once the run is
+   * parked on the semaphore there is no entry to find and no process to
+   * signal, and only the run itself can still say no.
+   */
+  abandonListing: (id: string) => void;
 }
 
 /** What the routes, the drawer and the tests can ask of a job. */
@@ -269,6 +284,7 @@ function pausedIdentity(
 
 export function createJobControl(deps: JobControlDependencies): JobControl {
   const {
+    abandonListing,
     downloadProcesses,
     listProcesses,
     listingRuntime,
@@ -556,47 +572,61 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     }
 
     pausedJobs.delete(id);
-    const start = () => {
-      if (job.kind === "download") {
-        resumeDownload(job);
-      } else {
-        resumeListing(job);
-      }
-      logger.info("Resumed a paused job", { id, kind: job.kind, url: job.url });
-    };
 
-    const retiring = job.kind === "listing" && job.flightKey !== undefined
-      ? retiringListings.get(job.flightKey)
-      : undefined;
-    if (retiring === undefined) {
-      start();
-    } else {
-      // Tracked, not just awaited. Without a record of it the job sits in
-      // neither map while it waits: the drawer's row vanishes on the click and
-      // comes back on its own a moment later, and a cancel sent into that gap
-      // answers `not-found` while the listing goes ahead and starts anyway —
-      // the user asked for it to stop and it does not. Holding the job here
-      // makes it visible as queued (it is: waiting, and cancel is all that can
-      // be done to it) and gives the cancel something to find.
-      deferredResumes.set(id, job);
-      logger.info(
-        "A resumed listing waits for the run it replaced to finish",
-        { id, url: job.url },
-      );
-      void retiring.then(() => {
-        // The delete is the check: it only reports true for the resume that put
-        // the entry here, so a cancel that has already taken it stops this.
-        if (deferredResumes.delete(id)) {
-          start();
+    if (job.kind === "download") {
+      // No window: a download registers itself before it takes a slot, so it is
+      // findable from the moment it is accepted.
+      resumeDownload(job);
+      logger.info("Resumed a paused job", { id, kind: job.kind, url: job.url });
+      return { id, action: "resume", outcome: "resumed", partialDeleted: null };
+    }
+
+    // Held until the run settles, not until it is asked to start. A listing
+    // registers itself only once it holds a semaphore slot, so from here until
+    // then it is in neither map: the drawer's row would vanish on the click, and
+    // a cancel sent into that gap would answer `not-found` while the listing
+    // went ahead and started anyway. Reporting it as queued is what puts a
+    // Cancel — and only a Cancel — on it.
+    deferredResumes.set(id, job);
+
+    const retiring = job.flightKey === undefined
+      ? undefined
+      : retiringListings.get(job.flightKey);
+    logger.info(
+      retiring === undefined
+        ? "A resumed listing is waiting for a slot"
+        : "A resumed listing waits for the run it replaced to finish",
+      { id, url: job.url },
+    );
+
+    void (retiring === undefined ? resumeListing(job) : retiring.then(() =>
+      // A cancel that took the entry while this waited stops the run here,
+      // before it ever reaches the semaphore.
+      deferredResumes.has(id) ? resumeListing(job) : undefined
+    )).then(
+      () => {
+        // Deleting on the run's own settlement: it registers the job before it
+        // resolves, so by then the entry is redundant, and if it gave up first
+        // there is no job left for the entry to stand for. A cancel that took
+        // it in between finds nothing to delete, which is how a cancelled
+        // resume knows not to claim it started.
+        if (!deferredResumes.delete(id)) {
+          return;
         }
-      }).catch((error: unknown) => {
+        logger.info("Resumed a paused job", {
+          id,
+          kind: job.kind,
+          url: job.url,
+        });
+      },
+      (error: unknown) => {
         deferredResumes.delete(id);
-        logger.error("A deferred listing resume failed to start", {
+        logger.error("A resumed listing failed", {
           id,
           error: error instanceof Error ? error.message : String(error),
         });
-      });
-    }
+      },
+    );
 
     // Null rather than false: nothing was deleted, because nothing was asked
     // to be.
@@ -698,11 +728,15 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
 
     const deferred = deferredResumes.get(id);
     if (deferred !== undefined) {
-      // Taking it out of the map is the whole cancel: the resume waiting on the
-      // retiring run finds nothing when it looks, and does not start. There is
-      // no process to signal and no bytes to delete — a listing writes rows,
-      // and this one had not started writing any.
+      // Two stages, two stops. If the run is still waiting on the run it
+      // replaced, it has not been asked to start and the delete alone is enough.
+      // If it has, it is parked on the semaphore with nothing to find it by, so
+      // the abandon mark is what it reads and declines on — without which the
+      // cancel would be accepted and the listing would begin anyway the moment a
+      // slot freed. Either way there is no process to signal and no bytes to
+      // delete: a listing writes rows, and this one had not started any.
       deferredResumes.delete(id);
+      abandonListing(id);
       logger.info("Cancelled a listing that had not started again yet", {
         id,
         url: deferred.url,

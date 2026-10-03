@@ -462,6 +462,8 @@ function fakeRuntime(): ListingRuntime {
     semaphore: null as any,
     // deno-lint-ignore no-explicit-any
     inFlight: null as any,
+    abandoned: new Set<string>(),
+    abandon: (_jobId: string) => {},
     updateProcessActivity: (_key: string, _stdout?: boolean) => {},
     setProcessStatus: (_key: string, _status: ProcessStatus) => true,
   };

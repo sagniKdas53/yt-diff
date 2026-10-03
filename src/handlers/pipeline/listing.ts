@@ -53,6 +53,17 @@ export interface ListingRuntime {
    * listing is invisible and the same URL can be queued repeatedly.
    */
   inFlight: SingleFlight<ListingResult>;
+  /**
+   * Job ids cancelled while their run was still queued for a slot.
+   *
+   * A listing registers itself only after it acquires, so between a resume
+   * being accepted and its run becoming findable there is no entry to look up
+   * and no process to signal. This is what a cancel leaves behind for that
+   * window; the run reads its own id and declines to start.
+   */
+  abandoned: Set<string>;
+  /** Marks a job as cancelled before its run has taken a slot. */
+  abandon(jobId: string): void;
   updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
   setProcessStatus: (
     processKey: string,
@@ -87,7 +98,13 @@ export function createListingRuntime(
     streamLines,
   } = deps;
 
+  const abandoned = new Set<string>();
+
   return {
+    abandoned,
+    abandon(jobId: string) {
+      abandoned.add(jobId);
+    },
     safeEmit,
     launchYtDlp: createYtDlpLauncher({ buildSiteArgs, spawnPythonProcess }),
     streamLines,
@@ -239,9 +256,16 @@ function listOnce(
  * record, and re-listing a playlist that is already indexed is a cheap no-op
  * rather than a second pass worth resuming halfway.
  */
-export function resumeListing(rt: ListingRuntime, job: PausedJob): void {
+export function resumeListing(
+  rt: ListingRuntime,
+  job: PausedJob,
+): Promise<ListingResult[]> {
   const item = job.item as ListingItem;
-  void listItemsConcurrently(
+  // Handed back rather than swallowed. A listing registers itself only after
+  // it takes a semaphore slot, so until this settles the job exists only to
+  // whoever is waiting on it, and a caller that has to be able to find it in
+  // that window needs to know when the window closes.
+  return listItemsConcurrently(
     rt,
     [{
       ...item,
@@ -266,6 +290,21 @@ async function listWithSemaphore(
 
   try {
     const { url: videoUrl, type: itemType, currentMonitoringType } = item;
+
+    // A cancel that arrived while this run was queued for a slot. Checked
+    // after the wait rather than before it because the wait is the whole
+    // window: there is no entry to look up and no process to signal until one
+    // exists, so without this the cancel is taken and then the listing starts
+    // anyway the moment a slot frees. The id is consumed — one cancel, one
+    // decline — so it cannot strand a later run under the same id.
+    if (item.jobId !== undefined && rt.abandoned.has(item.jobId)) {
+      rt.abandoned.delete(item.jobId);
+      logger.info("A listing was cancelled before it took a slot", {
+        id: item.jobId,
+        url: videoUrl,
+      });
+      return { url: videoUrl, status: "cancelled" };
+    }
     const now = Date.now();
     const resolvedIsScheduledUpdate = item.isScheduledUpdate === true ||
       isScheduledUpdate;
