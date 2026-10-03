@@ -287,6 +287,7 @@ export interface AppConfig {
   timeZone: string;
   saveSubs: boolean;
   saveDescription: boolean;
+  /** Off by default; see ISSUES_AND_IMPROVEMENTS.md §7. */
   saveComments: boolean;
   saveThumbnail: boolean;
   /**
@@ -468,7 +469,11 @@ export const config: AppConfig = {
   timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
   saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
   saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
-  saveComments: Deno.env.get("SAVE_COMMENTS") !== "false",
+  // Off unless asked for. Comments are where the 429s come from: yt-dlp
+  // pages through every thread before the run finishes, which costs minutes
+  // per video exactly where YouTube is already throttling sidecars. See
+  // ISSUES_AND_IMPROVEMENTS.md §7.
+  saveComments: Deno.env.get("SAVE_COMMENTS") === "true",
   saveThumbnail: Deno.env.get("SAVE_THUMBNAIL") !== "false",
   // Any value that is not a usable non-negative number means "no pacing",
   // which is the safe reading: a typo here should not fail the boot.
