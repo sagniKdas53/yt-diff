@@ -351,7 +351,50 @@ If a link works in the web UI it works in the bot, and vice versa.
 
 ---
 
-## 8. Known gaps
+## 8. Outages and known gaps
+
+### 8.1 When the server is down
+
+Two different things get lost, and only one of them is ours to fix.
+
+**Telegram's 24-hour window.** Bot API long polling keeps an undelivered
+update for 24 hours and then drops it. On 2026-09-15/16 four links were sent
+during a power cut; the three that were more than 24 hours old when the box
+came back never arrived at the bot at all, and the one inside the window was
+processed. Nothing on this side can get an older message back — a bot cannot
+read chat history — so the cutoff is `boot − 24 h` and that is exactly what
+the bot tells you:
+
+> I was offline from 2026-09-15 07:10 to 2026-09-16 09:56. Anything you sent
+> before 2026-09-15 09:56 never reached me — please resend it. Links from
+> after that are being picked up now.
+
+That message goes once per chat per outage, before the backlog replies, so the
+chat reads in the order things happened. A restart under five minutes old says
+nothing — there was no gap to report.
+
+**Work that was already in flight.** Rows still at `pending`, `indexing` or
+`downloading` when the process died are replayed on boot, oldest first, on the
+original chat, each reusing its own row so one request stays one request. The
+dedupe tiers make the replay idempotent: a file that finished downloading just
+before the crash is delivered rather than downloaded twice, and a link that
+was never indexed is indexed now. Every replayed link ends in a file, a link,
+or a "failed: &lt;reason&gt;" line — the bot does not go quiet.
+
+So: **an outage under 24 hours loses nothing. A longer one loses the older
+links, and the bot says so.**
+
+Confirming from the box:
+
+```
+# what actually reached the bot after the outage
+docker logs --since 2026-09-16T09:50:00 yt-diff 2>&1 | grep -c 'Indexing'
+# a dropped queue entry used to kill the process instead of reporting it
+docker logs yt-diff 2>&1 | grep -c 'Process entry not found'
+docker inspect -f '{{.RestartCount}}' yt-diff
+```
+
+### 8.2 Known gaps
 
 - **`--audio` and quality flags are not supported.** `downloadOptions` is frozen
   at import time (`pipeline/types.ts`), built once from global config, so
@@ -365,4 +408,4 @@ If a link works in the web UI it works in the bot, and vice versa.
   [`TODO.md`](./TODO.md) item 23.
 
 ---
-*Last updated at: 2026-09-04*
+*Last updated at: 2026-10-03*

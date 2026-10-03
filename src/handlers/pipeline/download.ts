@@ -313,6 +313,34 @@ export function createDownloadFlow(
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
+
+        // Checked before anything irreversible happens. Spawning first and
+        // only then finding the entry is gone left a live subprocess that
+        // nothing would ever reap, and rejecting there took the whole server
+        // down with it: the rejection climbed through Promise.all in
+        // downloadItemsConcurrently, which resolveAndEnqueue invokes with
+        // `void`, so nothing caught it. The fix belongs here rather than in a
+        // handler — every link that reaches the bot now ends in a file, a
+        // link, or a "failed: <reason>" line on the original chat.
+        if (!downloadProcesses.has(processKey)) {
+          const reason = "Download was dropped before it started";
+          logger.warn("Download entry is gone before spawn", {
+            processKey,
+            url: videoUrl,
+          });
+          safeEmit("download-failed", {
+            title: videoTitle,
+            url: videoUrl,
+            error: reason,
+          });
+          return resolve({
+            url: videoUrl,
+            title: videoTitle,
+            status: "failed",
+            error: reason,
+          });
+        }
+
         safeEmit("download-started", {
           url: videoUrl,
           percentage: 101,
@@ -326,14 +354,39 @@ export function createDownloadFlow(
           context: { title: videoTitle, savePath },
         });
 
-        // Fatal if the entry is gone: the subprocess is running and nothing
-        // would ever reap it.
+        // Still fatal, but no longer fatal to the process. The subprocess is
+        // running and nothing would ever reap it, so it is killed here and
+        // the download reported as failed instead of thrown.
         if (
           !setProcessStatus(processKey, "running", {
             spawnedProcess: downloadProcess,
           })
         ) {
-          return reject(new Error(`Process entry not found: ${processKey}`));
+          const reason = "Download was dropped before it started";
+          try {
+            downloadProcess.kill("SIGKILL");
+          } catch (error) {
+            logger.warn("Could not kill an untracked download process", {
+              pid: downloadProcess.pid,
+              error: (error as Error).message,
+            });
+          }
+          logger.error("Process entry not found", {
+            processKey,
+            url: videoUrl,
+            pid: downloadProcess.pid,
+          });
+          safeEmit("download-failed", {
+            title: videoTitle,
+            url: videoUrl,
+            error: reason,
+          });
+          return resolve({
+            url: videoUrl,
+            title: videoTitle,
+            status: "failed",
+            error: reason,
+          });
         }
 
         void (async () => {

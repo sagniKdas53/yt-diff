@@ -353,6 +353,13 @@ export class BotSubmission extends Model<
   declare playlistUrl: CreationOptional<string | null>;
   declare status: CreationOptional<string>;
   declare deliveryMode: CreationOptional<string | null>;
+  /**
+   * What the user asked for when the row was opened: "file", "link" or
+   * "store". Distinct from `deliveryMode`, which records how the file
+   * actually reached them and is written at the end. This one is read back on
+   * boot so a resumed download is delivered the way it was requested.
+   */
+  declare requestedDeliveryMode: CreationOptional<string | null>;
   declare retention: CreationOptional<string>;
   declare downloadedByBot: CreationOptional<boolean>;
   declare expiresAt: CreationOptional<Date | null>;
@@ -422,6 +429,12 @@ BotSubmission.init({
     allowNull: true,
     comment: 'How the file reached the user: "upload" or "signed_url"',
   },
+  requestedDeliveryMode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      'What was asked for when the row was opened: "file", "link" or "store". Lets a resumed download be delivered the same way.',
+  },
   retention: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -468,6 +481,52 @@ BotSubmission.init({
   ],
 });
 
+/**
+ * One row, one fact: when the bot was last alive.
+ *
+ * A power cut leaves no trace in the process's own memory, so the only way to
+ * know whether an outage happened — and therefore whether Telegram may have
+ * dropped updates past its 24 h retention window — is to compare the current
+ * boot time against a timestamp that survived the restart. Stamped once a
+ * minute while polling and on every update.
+ */
+export class BotHeartbeat extends Model<
+  InferAttributes<BotHeartbeat>,
+  InferCreationAttributes<BotHeartbeat>
+> {
+  /** Fixed to HEARTBEAT_ROW_ID; the table holds exactly one row. */
+  declare id: CreationOptional<string>;
+  declare lastSeenAt: CreationOptional<Date>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+BotHeartbeat.init({
+  id: {
+    type: DataTypes.STRING,
+    primaryKey: true,
+    allowNull: false,
+    defaultValue: "bot",
+    comment: "Fixed key; this table is a single row",
+  },
+  lastSeenAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    comment: "Last time the bot polled or handled an update",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: "bot_heartbeat",
+});
+
 PlaylistVideoMapping.belongsTo(VideoMetadata, {
   foreignKey: "videoUrl",
 });
@@ -511,6 +570,7 @@ export async function initializeDatabase() {
         PlaylistMetadata.name,
         PlaylistVideoMapping.name,
         BotSubmission.name,
+        BotHeartbeat.name,
       ]),
     });
 

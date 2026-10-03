@@ -137,5 +137,7 @@ export function createBotCore(deps: BotCoreDependencies) {
     handleMessage: (message: IncomingMessage) => handleMessage(rt, message),
     subscribe,
     unsubscribe,
+    /** Exposed for the boot replay in bot/recovery.ts; not for handlers. */
+    runtime: rt,
   };
 }

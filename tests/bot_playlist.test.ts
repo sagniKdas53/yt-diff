@@ -124,6 +124,10 @@ function harness(options: HarnessOptions = {}): Harness {
       }),
     findSubmissionByPrefix: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
+    listUnsettledSubmissions: () => Promise.resolve([]),
+    listActiveChatsSince: () => Promise.resolve([]),
+    getLastSeenAt: () => Promise.resolve(null),
+    touchLastSeenAt: () => Promise.resolve(),
   };
 
   const events = createEventBus();

@@ -1,12 +1,24 @@
 import { Op } from "sequelize";
 
 import {
+  BotHeartbeat,
   BotSubmission,
   PlaylistMetadata,
   PlaylistVideoMapping,
   VideoMetadata,
 } from "../db/models.ts";
 import { removeVideoFiles } from "../handlers/videoFiles.ts";
+import type { BotPlatform } from "./types.ts";
+
+/**
+ * Statuses that mean "the process died before this settled". Anything else —
+ * delivered, failed, reaped, downloaded — is a finished job, and a restart
+ * must not repeat it.
+ */
+const UNSETTLED_STATUSES = ["pending", "indexing", "downloading"];
+
+/** The single row of bot_heartbeat. */
+const HEARTBEAT_ROW_ID = "bot";
 
 /**
  * The subset of a video row the bot actually reads.
@@ -30,6 +42,20 @@ export interface SubmissionRecord {
   status: string;
   requestedUrl: string;
   canonicalUrl: string | null;
+}
+
+/**
+ * A submission that never reached a terminal status, with everything needed
+ * to pick it back up: where to reply, what was asked for, and when it arrived.
+ */
+export interface UnsettledSubmissionRecord {
+  id: string;
+  platform: BotPlatform;
+  chatId: string;
+  requestedUrl: string;
+  kind: string;
+  requestedDeliveryMode: string | null;
+  createdAt: Date;
 }
 
 /** One entry of a playlist, in playlist order. */
@@ -56,11 +82,29 @@ export interface CreateSubmissionFields {
   requestedUrl: string;
   kind: string;
   retention: string;
+  /** What the user asked for; written now so a resumed download matches. */
+  requestedDeliveryMode: string;
 }
 
 /** Every database interaction BotCore needs, behind one injectable seam. */
 export interface BotStore {
   createSubmission(fields: CreateSubmissionFields): Promise<{ id: string }>;
+  /**
+   * Submissions still in flight when the process died — status pending,
+   * indexing or downloading — oldest first, so a restart replays a burst in
+   * the order it was sent.
+   */
+  listUnsettledSubmissions(
+    limit: number,
+  ): Promise<UnsettledSubmissionRecord[]>;
+  /** Distinct platform/chat pairs with a submission in the window. */
+  listActiveChatsSince(
+    since: Date,
+  ): Promise<{ platform: BotPlatform; chatId: string }[]>;
+  /** When the bot last polled or handled an update; null if never booted. */
+  getLastSeenAt(): Promise<Date | null>;
+  /** Stamps the heartbeat row. */
+  touchLastSeenAt(at: Date): Promise<void>;
   updateSubmission(id: string, fields: Record<string, unknown>): Promise<void>;
   findVideoByUrl(videoUrl: string): Promise<VideoRecord | null>;
   findVideosByVideoId(videoId: string): Promise<VideoRecord[]>;
@@ -131,6 +175,22 @@ function toSubmissionRecord(row: BotSubmission): SubmissionRecord {
   };
 }
 
+function toUnsettledSubmissionRecord(
+  row: BotSubmission,
+): UnsettledSubmissionRecord {
+  return {
+    id: row.id,
+    // The column is a plain string; only the two platforms in BotPlatform have
+    // ever written it, and the replay skips anything with no adapter.
+    platform: row.platform as BotPlatform,
+    chatId: row.chatId,
+    requestedUrl: row.requestedUrl,
+    kind: row.kind,
+    requestedDeliveryMode: row.requestedDeliveryMode ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
 /** Sequelize-backed implementation used in production. */
 export function createSequelizeBotStore(): BotStore {
   return {
@@ -141,6 +201,41 @@ export function createSequelizeBotStore(): BotStore {
         status: "pending",
       });
       return { id: row.id };
+    },
+
+    async listUnsettledSubmissions(limit) {
+      const rows = await BotSubmission.findAll({
+        where: { status: { [Op.in]: UNSETTLED_STATUSES } },
+        // Oldest first, so a burst Telegram replays comes back out in the
+        // order it went in.
+        order: [["createdAt", "ASC"]],
+        limit,
+      });
+      return rows.map(toUnsettledSubmissionRecord);
+    },
+
+    async listActiveChatsSince(since) {
+      const rows = await BotSubmission.findAll({
+        attributes: ["platform", "chatId"],
+        where: { createdAt: { [Op.gte]: since } },
+        group: ["platform", "chatId"],
+        order: [["createdAt", "DESC"]],
+      });
+      return rows.map((row) => ({
+        platform: row.getDataValue("platform") as BotPlatform,
+        chatId: row.getDataValue("chatId") as string,
+      }));
+    },
+
+    async getLastSeenAt() {
+      const row = await BotHeartbeat.findByPk(HEARTBEAT_ROW_ID);
+      return row ? row.lastSeenAt : null;
+    },
+
+    async touchLastSeenAt(at) {
+      // One row, so an upsert: find-then-create would race with the minute
+      // timer and with every update arriving at the same time.
+      await BotHeartbeat.upsert({ id: HEARTBEAT_ROW_ID, lastSeenAt: at });
     },
 
     async updateSubmission(id, fields) {

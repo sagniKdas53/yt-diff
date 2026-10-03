@@ -175,3 +175,76 @@ Deno.test("cleanupStaleProcesses - a list process still producing output is spar
   assertEquals(cleaned, 0);
   assertEquals(map.size, 1);
 });
+
+Deno.test("cleanupStaleProcesses - a queued download past the idle limit is spared", () => {
+  // Downloads register their entry before taking a semaphore slot, so
+  // lastActivity is frozen at enqueue time for as long as they wait. Reaping
+  // on that clock deletes a download that is merely queued; when its turn
+  // came, executeDownload found no entry and the download died.
+  const stale = ago(20 * 60 * 1000);
+  const map = new Map<string, ProcessLike>([
+    [
+      "pending_https://example.com/v_1",
+      entry({
+        status: "pending",
+        spawnType: "download",
+        lastActivity: stale,
+        lastStdoutActivity: stale,
+        spawnTimeStamp: stale,
+        spawnedProcess: null,
+      }),
+    ],
+  ]);
+
+  const cleaned = cleanupStaleProcesses(
+    map,
+    {
+      maxIdleTime: 5 * 60 * 1000,
+      maxLifetime: 15 * 60 * 1000,
+      forceKill: true,
+    },
+    "download",
+  );
+
+  assertEquals(cleaned, 0);
+  assertEquals(map.size, 1);
+});
+
+Deno.test("cleanupStaleProcesses - a running download past the idle limit is reaped", () => {
+  // The skip is for entries that are still queued. One that has a process is
+  // genuinely running and has to stay reapable.
+  const stale = ago(20 * 60 * 1000);
+  const signals: string[] = [];
+  const map = new Map<string, ProcessLike>([
+    [
+      "pending_https://example.com/v_2",
+      entry({
+        status: "running",
+        spawnType: "download",
+        lastActivity: stale,
+        lastStdoutActivity: stale,
+        spawnTimeStamp: stale,
+        spawnedProcess: {
+          kill: (signal: string) => {
+            signals.push(signal);
+            return true;
+          },
+        },
+      }),
+    ],
+  ]);
+
+  const cleaned = cleanupStaleProcesses(
+    map,
+    {
+      maxIdleTime: 5 * 60 * 1000,
+      maxLifetime: 15 * 60 * 1000,
+      forceKill: true,
+    },
+    "download",
+  );
+
+  assertEquals(cleaned, 1);
+  assertEquals(signals, ["SIGKILL"]);
+  assertEquals(map.size, 0);
+});

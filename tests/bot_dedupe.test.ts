@@ -78,6 +78,10 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     listPlaylistVideos: () => Promise.resolve({ total: 0, items: [] }),
     findSubmissionByPrefix: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
+    listUnsettledSubmissions: () => Promise.resolve([]),
+    listActiveChatsSince: () => Promise.resolve([]),
+    getLastSeenAt: () => Promise.resolve(null),
+    touchLastSeenAt: () => Promise.resolve(),
   };
 
   const core = createBotCore({
