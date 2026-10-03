@@ -61,6 +61,8 @@ export interface PlaylistVideoRowShape {
     descriptionFile?: string | null;
     isMetaDataSynced?: boolean;
     saveDirectory?: string | null;
+    missingExtras?: string[] | null;
+    lastDownloadError?: string | null;
   };
 }
 
@@ -77,6 +79,8 @@ export interface SafePlaylistVideoMeta {
   descriptionFile?: string | null;
   isMetaDataSynced?: boolean;
   saveDirectory?: string | null;
+  missingExtras?: string[] | null;
+  lastDownloadError?: string | null;
 }
 
 export interface SafePlaylistVideoRow {

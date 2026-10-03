@@ -398,8 +398,10 @@ const {
   listItemsConcurrently,
   processDownloadRequest,
   processListingRequest,
+  processSyncExtrasRequest,
   resolveAndEnqueue,
   getQueueSnapshot,
+  syncExtras,
   getListingQueueDepth,
 } = createPipelineHandlers({
   safeEmit,
@@ -684,6 +686,7 @@ const apiRoutes = createApiRoutes({
     refreshAuthToken,
     processListingRequest,
     processDownloadRequest,
+    processSyncExtrasRequest,
     updatePlaylistMonitoring,
     getPlaylistsForDisplay,
     processDeletePlaylistRequest,
@@ -710,6 +713,7 @@ const jobs = createJobs({
   downloadProcesses: downloadProcesses as Map<string, ProcessLike>,
   listProcesses: listProcesses as Map<string, ProcessLike>,
   listItemsConcurrently,
+  syncExtras,
 });
 
 /**
@@ -766,6 +770,7 @@ const botService = createBotService({
   listItemsConcurrently,
   resolveAndEnqueue,
   getQueueSnapshot,
+  syncExtras,
   getListingQueueDepth,
   setPlaylistMonitoring,
   createSignedUrlForPath,

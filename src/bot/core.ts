@@ -8,6 +8,7 @@ import {
   handleRemove,
   handleSearch,
   handleStatus,
+  handleSync,
 } from "./queries.ts";
 import { handleIndex } from "./indexing.ts";
 import { reply } from "./replies.ts";
@@ -70,6 +71,9 @@ export async function handleMessage(
         return;
       case "remove":
         await handleRemove(rt, adapter, target, command.id);
+        return;
+      case "sync":
+        await handleSync(rt, adapter, target, command.target);
         return;
       case "index":
         await handleIndex(

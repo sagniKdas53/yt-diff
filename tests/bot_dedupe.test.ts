@@ -111,6 +111,14 @@ function harness(video: VideoRecord | null, saveLocation: string): Harness {
     getQueueSnapshot: () => [],
     getListingQueueDepth: () => 0,
     setPlaylistMonitoring: () => Promise.resolve(),
+    syncExtras: () =>
+      Promise.resolve({
+        url: "",
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
     store,
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,

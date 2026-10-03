@@ -43,6 +43,17 @@ export class VideoMetadata extends Model<
   declare commentsFile: CreationOptional<string | null>;
   declare descriptionFile: CreationOptional<string | null>;
   declare isMetaDataSynced: CreationOptional<boolean>;
+  /**
+   * Sidecars the source offered, this deployment asked for, and that did not
+   * land. Null means complete: an extra the source never had is not missing.
+   */
+  declare missingExtras: CreationOptional<string[] | null>;
+  /** Tail of the last failed run's stderr; the exit code says nothing. */
+  declare lastDownloadError: CreationOptional<string | null>;
+  /** "rate-limited" or "error", or null for a complete run. */
+  declare downloadFailureReason: CreationOptional<string | null>;
+  /** How many times the sidecar retry has run against this row. */
+  declare extrasSyncAttempts: CreationOptional<number>;
   declare saveDirectory: CreationOptional<string | null>;
   declare raw_metadata: CreationOptional<unknown>;
   declare createdAt: CreationOptional<Date>;
@@ -120,6 +131,32 @@ VideoMetadata.init({
     defaultValue: false,
     comment:
       "This will serve as a marker for other processes to know if they need to sync metadata from downloaded files",
+  },
+  missingExtras: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      'JSON array of "subtitles" | "thumbnail" | "description" | "comments" | "chapters" that were expected and not fetched. Null when complete.',
+  },
+  lastDownloadError: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment:
+      "Last ~500 bytes of yt-dlp stderr, so a rate-limited sidecar is recoverable after the log has moved on",
+  },
+  downloadFailureReason: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      'Why a run came up short: "rate-limited" or "error". Null when the run was complete.',
+  },
+  extrasSyncAttempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment:
+      "How many times the scheduled sidecar retry has run against this row",
   },
   saveDirectory: {
     type: DataTypes.STRING,

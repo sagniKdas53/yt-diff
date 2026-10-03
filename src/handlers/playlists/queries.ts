@@ -212,6 +212,8 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
             "descriptionFile",
             "isMetaDataSynced",
             "saveDirectory",
+            "missingExtras",
+            "lastDownloadError",
           ],
           where: videoMetadataWhere,
           required: !!(searchQuery && searchQuery.length > 0),
@@ -255,6 +257,8 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
           descriptionFile: vm?.descriptionFile,
           isMetaDataSynced: vm?.isMetaDataSynced,
           saveDirectory: vm?.saveDirectory,
+          missingExtras: vm?.missingExtras ?? null,
+          lastDownloadError: vm?.lastDownloadError ?? null,
         };
 
         return {

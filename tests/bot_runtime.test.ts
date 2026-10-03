@@ -49,6 +49,14 @@ function deps(overrides: Partial<BotCoreDependencies> = {}) {
     getQueueSnapshot: () => [],
     getListingQueueDepth: () => 0,
     setPlaylistMonitoring: () => Promise.resolve(),
+    syncExtras: () =>
+      Promise.resolve({
+        url: "",
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
     store: {} as BotCoreDependencies["store"],
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,

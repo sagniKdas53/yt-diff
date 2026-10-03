@@ -114,12 +114,15 @@ Deno.test("api contract - the credential endpoints share the auth budget", () =>
   assertEquals(authBucketed, ["/login", "/refresh", "/register"]);
 });
 
-Deno.test("api contract - only the two queueing endpoints are charged for work", () => {
+Deno.test("api contract - only the endpoints that start work are charged for it", () => {
   const charged = API_ENDPOINTS
     .filter((e) => e.kind === "authenticated" && e.cost)
     .map((e) => e.path).sort();
 
-  assertEquals(charged, ["/download", "/list"]);
+  // A yt-dlp process is work, whatever prompted it: /syncextras spawns one
+  // like /download does, so it is charged like /download rather than being a
+  // free way to make the box fetch.
+  assertEquals(charged, ["/download", "/list", "/syncextras"]);
 });
 
 Deno.test("api contract - an authenticated route runs auth before its handler", async () => {
@@ -132,10 +135,10 @@ Deno.test("api contract - an authenticated route runs auth before its handler", 
 });
 
 Deno.test("api contract - a charged route is wrapped against the work budget", () => {
-  // Two records carry a cost, so exactly two wrappers are built. The work
-  // budget is the per-user one; the admission budget it sits behind is not.
+  // One wrapper is built per record carrying a cost. The work budget is the
+  // per-user one; the admission budget it sits behind is not.
   const { buildCalls } = probeRoutes();
-  assertEquals(buildCalls, ["withCost:work", "withCost:work"]);
+  assertEquals(buildCalls, ["withCost:work", "withCost:work", "withCost:work"]);
 });
 
 Deno.test("api contract - a charged route prices the body before validating it", async () => {

@@ -199,6 +199,31 @@ Deno.test("parseCommand - /keep and /rm need an id", () => {
   assertEquals(parseCommand("/keep"), { kind: "unknown", text: "/keep" });
 });
 
+Deno.test("parseCommand - /sync takes an id or a link, nothing else", () => {
+  // Both forms matter: the id is what the partial-delivery line quotes, and
+  // the link is what a user has when they only kept the message.
+  assertEquals(parseCommand("/sync abc123"), {
+    kind: "sync",
+    target: "abc123",
+  });
+  assertEquals(
+    parseCommand("/sync https://www.youtube.com/watch?v=abc123"),
+    { kind: "sync", target: "https://www.youtube.com/watch?v=abc123" },
+  );
+  assertEquals(
+    parseCommand("/sync@yt_diff_bot abc123"),
+    { kind: "sync", target: "abc123" },
+  );
+
+  assertEquals(parseCommand("/sync"), { kind: "unknown", text: "/sync" });
+  // Neither an id nor a URL can contain a space, so a second word is junk
+  // rather than an argument to ignore.
+  assertEquals(parseCommand("/sync abc123 https://youtu.be/x"), {
+    kind: "unknown",
+    text: "/sync abc123 https://youtu.be/x",
+  });
+});
+
 Deno.test("parseCommand - /history clamps and defaults its limit", () => {
   assertEquals(parseCommand("/history"), { kind: "history", limit: 10 });
   assertEquals(parseCommand("/history 3"), { kind: "history", limit: 3 });

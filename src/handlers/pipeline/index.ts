@@ -49,6 +49,7 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
         isScheduledUpdate,
       ),
     processDownloadRequest: downloadFlow.processDownloadRequest,
+    processSyncExtrasRequest: downloadFlow.processSyncExtrasRequest,
     resolveAndEnqueue: downloadFlow.resolveAndEnqueue,
     processListingRequest: (
       requestBody: Parameters<typeof processListingRequest>[1],
@@ -70,6 +71,7 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
         response,
       ),
     getQueueSnapshot: downloadFlow.getQueueSnapshot,
+    syncExtras: downloadFlow.syncExtras,
     getListingQueueDepth: () => getListingQueueDepth(listingRuntime),
   };
 }

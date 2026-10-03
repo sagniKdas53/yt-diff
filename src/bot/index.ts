@@ -23,6 +23,7 @@ export interface BotServiceDependencies {
   store?: BotStore;
   /** Stamped while polling and on every update; see bot/recovery.ts. */
   touchLastSeenAt?: (at: Date) => Promise<void>;
+  syncExtras: BotCoreDependencies["syncExtras"];
   createSignedUrlForPath: (
     absPath: string,
     ttlSeconds?: number,
@@ -43,7 +44,7 @@ export interface BotService {
  * other command is a database read and a reply — see the dispatcher's two
  * lanes for why the difference is worth naming.
  */
-const SLOW_COMMANDS = new Set(["get", "link", "download", "index"]);
+const SLOW_COMMANDS = new Set(["get", "link", "download", "index", "sync"]);
 
 /**
  * Builds the chat bot, or a no-op service when it is disabled.
@@ -101,6 +102,7 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     getQueueSnapshot: deps.getQueueSnapshot,
     getListingQueueDepth: deps.getListingQueueDepth,
     setPlaylistMonitoring: deps.setPlaylistMonitoring,
+    syncExtras: deps.syncExtras,
     store,
     normalizeUrl: deps.normalizeUrl,
     isPlaylistUrl: deps.isPlaylistUrl,

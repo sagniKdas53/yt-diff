@@ -28,12 +28,53 @@ import type {
   FileSyncStatus,
   HttpError,
   PipelineHandlerDependencies,
+  SyncExtrasResult,
   VideoEntryRecord,
 } from "./types.ts";
-import { downloadOptions, ProcessExitCodes } from "./types.ts";
+import {
+  classifyStderrReason,
+  configuredExtras,
+  downloadOptions,
+  ExtraKind,
+  extrasOnlyOptions,
+  parseOfferedExtras,
+  ProcessExitCodes,
+} from "./types.ts";
 import { json } from "../../utils/http.ts";
 import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
 import { createYtDlpLauncher } from "./ytdlp.ts";
+
+/** How many stderr lines to keep as evidence of a partial run. */
+const STDERR_TAIL_LINES = 20;
+
+/** How much of that tail is worth storing. */
+const STDERR_TAIL_BYTES = 500;
+
+/** What the download pipeline exposes to the routes, the bot and the jobs. */
+export interface DownloadFlow {
+  processDownloadRequest: (
+    requestBody: DownloadRequestBody,
+    response: HttpResponseLike,
+  ) => Promise<unknown>;
+  processSyncExtrasRequest: (
+    requestBody: { videoUrl: string },
+    response: HttpResponseLike,
+  ) => Promise<unknown>;
+  resolveAndEnqueue: (
+    urlList: string[],
+    playlistUrl: string,
+  ) => Promise<{
+    items: (DownloadItem & { queuePosition: number })[];
+    notIndexed: string[];
+  }>;
+  getQueueSnapshot: () => {
+    url: string;
+    title: string;
+    status: string;
+    queuePosition: number;
+  }[];
+  syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
+}
 
 export function createDownloadFlow(
   deps: PipelineHandlerDependencies,
@@ -313,6 +354,12 @@ export function createDownloadFlow(
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
+        // What the source said it had, read from the same run. Null until the
+        // before_dl extras line arrives.
+        let offeredExtras: Set<ExtraKind> | null = null;
+        // A ring buffer rather than a log line: stderr is where the reason a
+        // sidecar failed lives, and by the time anyone asks it has scrolled.
+        const stderrTail: string[] = [];
 
         // Checked before anything irreversible happens. Spawning first and
         // only then finding the entry is gone left a live subprocess that
@@ -389,7 +436,12 @@ export function createDownloadFlow(
           });
         }
 
-        void (async () => {
+        // Held so the completion handler can wait for them: the verdict is
+        // taken from what these two read (the file name, the extras line, the
+        // stderr tail), and `process.status` resolving does not mean the last
+        // chunk has been consumed. Deciding first lost the filename often
+        // enough that every run looked like it had produced no file.
+        const stdoutRead = (async () => {
           try {
             for await (const data of streamTextChunks(downloadProcess.stdout)) {
               try {
@@ -423,6 +475,15 @@ export function createDownloadFlow(
                   });
                 }
 
+                const extrasInDest = parseOfferedExtras(output);
+                if (extrasInDest) {
+                  offeredExtras = extrasInDest;
+                  logger.debug(
+                    `Source offers: ${[...extrasInDest].join(", ")}`,
+                    { pid: downloadProcess.pid },
+                  );
+                }
+
                 const fileNameInDest = /fileName:(.+)"/m.exec(output);
                 if (fileNameInDest?.[1]) {
                   const finalFileName = fileNameInDest[1].trim();
@@ -452,11 +513,16 @@ export function createDownloadFlow(
           }
         })();
 
-        void (async () => {
+        const stderrRead = (async () => {
           for await (const error of streamTextChunks(downloadProcess.stderr)) {
             logger.error(`Download error: ${error}`, {
               pid: downloadProcess.pid,
             });
+            stderrTail.push(error.trim());
+            // Bounded on purpose: the tail is evidence, not a transcript.
+            if (stderrTail.length > STDERR_TAIL_LINES) {
+              stderrTail.shift();
+            }
             updateProcessActivity(processKey);
           }
         })();
@@ -464,14 +530,86 @@ export function createDownloadFlow(
         void (async () => {
           const { code } = await downloadProcess.status;
           try {
+            // Both pipes are closed by the time the process has exited, so
+            // these settle; awaiting them is what makes the captured values
+            // above complete rather than merely started.
+            await Promise.all([stdoutRead, stderrRead]);
             const videoEntry = await VideoMetadata.findOne({
               where: { videoUrl: videoUrl },
             });
+            const videoEntryForDiscovery = videoEntry
+              ? {
+                downloadStatus: Boolean(
+                  videoEntry.getDataValue("downloadStatus"),
+                ),
+                fileName: videoEntry.getDataValue("fileName") as
+                  | string
+                  | null,
+              }
+              : null;
 
-            if (code === ProcessExitCodes.SUCCESS) {
+            // The filesystem decides, not the exit code. yt-dlp exits 1
+            // whenever it reported anything at all, so a thumbnail 429 after
+            // the video was written used to be recorded as a failed download
+            // of a file that was sitting on disk.
+            const { metadata, syncStatus } = await discoverFiles(
+              capturedFileName,
+              savePath,
+              videoEntryForDiscovery,
+            );
+            const mediaLanded = syncStatus.videoFileFound ||
+              (capturedFileName !== null &&
+                await exists(join(savePath, capturedFileName)));
+
+            if (code !== ProcessExitCodes.SUCCESS) {
+              logger.info("yt-dlp exited non-zero", {
+                code,
+                mediaLanded,
+                url: videoUrl,
+              });
+            }
+
+            if (code === ProcessExitCodes.SUCCESS || mediaLanded) {
               const unhelpfulTitle = videoTitle === videoId ||
                 videoTitle === "NA";
               const fallbackTitle = capturedTitle || videoTitle;
+              const stderrText = stderrTail.join("\n").slice(
+                -STDERR_TAIL_BYTES,
+              );
+
+              // Chapters are embedded in the container by the same run that
+              // wrote the media file, so there is no separate file to look
+              // for; their presence is the media file's presence.
+              const foundByKind: Record<ExtraKind, boolean> = {
+                subtitles: syncStatus.subTitleFileFound,
+                thumbnail: syncStatus.thumbNailFileFound,
+                description: syncStatus.descriptionFileFound,
+                comments: syncStatus.commentsFileFound,
+                chapters: syncStatus.videoFileFound,
+              };
+
+              // `expected = configured ∩ offered`. An extra the source never
+              // had is not missing, which is why the offered set has to come
+              // from the same run rather than from a guess. When the line
+              // never arrived — an older yt-dlp, a run killed before the
+              // download — the configured set stands in, so the worst case is
+              // today's behaviour rather than a silent "complete".
+              const configured = configuredExtras();
+              const expected = offeredExtras
+                ? configured.filter((kind) => offeredExtras!.has(kind))
+                : configured;
+              if (!offeredExtras) {
+                logger.warn(
+                  "No extras line from yt-dlp; assuming every configured sidecar was expected",
+                  { url: videoUrl },
+                );
+              }
+
+              const missing = expected.filter((kind) => !foundByKind[kind]);
+              const reason = missing.length > 0
+                ? classifyStderrReason(stderrText)
+                : null;
+
               const updates: DownloadCompletionUpdates = {
                 downloadStatus: true,
                 isAvailable: true,
@@ -481,41 +619,22 @@ export function createDownloadFlow(
                 commentsFile: null,
                 subTitleFile: null,
                 thumbNailFile: null,
-                isMetaDataSynced: true,
+                isMetaDataSynced: missing.length === 0,
                 saveDirectory: computeSaveDirectory(savePath),
+                missingExtras: missing.length > 0 ? missing : null,
+                lastDownloadError: stderrText || null,
+                downloadFailureReason: reason,
+                // A fresh download starts the retry budget over; otherwise a
+                // re-download after three failures could never be retried.
+                extrasSyncAttempts: 0,
               };
-
-              const videoEntryForDiscovery = videoEntry
-                ? {
-                  downloadStatus: Boolean(
-                    videoEntry.getDataValue("downloadStatus"),
-                  ),
-                  fileName: videoEntry.getDataValue("fileName") as
-                    | string
-                    | null,
-                }
-                : null;
-              const { metadata, syncStatus } = await discoverFiles(
-                capturedFileName,
-                savePath,
-                videoEntryForDiscovery,
-              );
 
               Object.assign(updates, metadata);
 
-              const allExtraFilesFound = syncStatus.videoFileFound &&
-                syncStatus.descriptionFileFound &&
-                syncStatus.commentsFileFound &&
-                syncStatus.subTitleFileFound &&
-                syncStatus.thumbNailFileFound;
-
-              if (allExtraFilesFound) {
-                logger.info("All extra files found", {
-                  updates: JSON.stringify(updates),
-                });
-              } else {
-                logger.info("Some of the expected files are not found", {
-                  updates: JSON.stringify(updates),
+              if (missing.length > 0) {
+                logger.info("Download landed with sidecars missing", {
+                  missing: missing.join(","),
+                  url: videoUrl,
                 });
               }
 
@@ -536,6 +655,9 @@ export function createDownloadFlow(
                   thumbNailFile: updates.thumbNailFile,
                   subTitleFile: updates.subTitleFile,
                   descriptionFile: updates.descriptionFile,
+                  partial: missing.length > 0,
+                  missingExtras: updates.missingExtras,
+                  reason,
                 });
               } catch (e) {
                 logger.error("Error computing save directory, using fallback", {
@@ -546,6 +668,8 @@ export function createDownloadFlow(
                   title: updates.title,
                   fileName: updates.fileName,
                   saveDirectory: "",
+                  partial: missing.length > 0,
+                  missingExtras: updates.missingExtras,
                 });
               }
 
@@ -560,6 +684,13 @@ export function createDownloadFlow(
               const errorMsg = code === ProcessExitCodes.SIGTERM
                 ? "Process was killed (likely by user or timeout)"
                 : `Process exited with code ${code}`;
+
+              if (videoEntry) {
+                await videoEntry.update({
+                  lastDownloadError: stderrTail.join("\n")
+                    .slice(-STDERR_TAIL_BYTES) || errorMsg,
+                });
+              }
 
               // `error` is additive: existing socket consumers ignore it, while
               // in-process consumers get the reason without having to await the
@@ -808,6 +939,163 @@ export function createDownloadFlow(
     }
   }
 
+  /**
+   * Fetches only the sidecars a previous run missed.
+   *
+   * Same options, same output template, same directory and the same semaphore
+   * slot a download takes, so a retry cannot pile onto a rate limit and lands
+   * beside the file that is already there. Whichever gap closed is dropped from
+   * `missingExtras`; the rest stay, and the chip stays too.
+   */
+  async function syncExtras(videoUrl: string): Promise<SyncExtrasResult> {
+    const videoEntry = await VideoMetadata.findOne({
+      where: { videoUrl },
+    });
+    const missing = Array.isArray(videoEntry?.getDataValue("missingExtras"))
+      ? videoEntry!.getDataValue("missingExtras") as ExtraKind[]
+      : [];
+
+    if (!videoEntry || missing.length === 0) {
+      return {
+        url: videoUrl,
+        status: "unchanged",
+        recovered: [],
+        stillMissing: missing,
+        reason: null,
+      };
+    }
+
+    const fileName = videoEntry.getDataValue("fileName") as string | null;
+    if (!fileName) {
+      return {
+        url: videoUrl,
+        status: "failed",
+        recovered: [],
+        stillMissing: missing,
+        reason: null,
+      };
+    }
+
+    const savePath = join(
+      config.saveLocation,
+      (videoEntry.getDataValue("saveDirectory") ?? "").trim(),
+    );
+
+    await DownloadSemaphore.acquire();
+    try {
+      const { process: extrasProcess } = launchYtDlp({
+        url: videoUrl,
+        options: extrasOnlyOptions,
+        flags: ["-P", "home:" + savePath],
+        reason: `Fetching missing extras for ${videoUrl}`,
+        context: { savePath },
+      });
+
+      const stderrTail: string[] = [];
+      void (async () => {
+        for await (const chunk of streamTextChunks(extrasProcess.stderr)) {
+          stderrTail.push(chunk.trim());
+          if (stderrTail.length > STDERR_TAIL_LINES) stderrTail.shift();
+        }
+      })();
+
+      const { code } = await extrasProcess.status;
+      const stderrText = stderrTail.join("\n").slice(-STDERR_TAIL_BYTES);
+
+      const { metadata, syncStatus } = await discoverFiles(
+        fileName,
+        savePath,
+        {
+          downloadStatus: true,
+          fileName,
+        },
+      );
+
+      const foundByKind: Record<ExtraKind, boolean> = {
+        subtitles: syncStatus.subTitleFileFound,
+        thumbnail: syncStatus.thumbNailFileFound,
+        description: syncStatus.descriptionFileFound,
+        comments: syncStatus.commentsFileFound,
+        chapters: syncStatus.videoFileFound,
+      };
+      const recovered = missing.filter((kind) => foundByKind[kind]);
+      const stillMissing = missing.filter((kind) => !foundByKind[kind]);
+
+      const updates: Record<string, unknown> = {
+        isMetaDataSynced: stillMissing.length === 0,
+        missingExtras: stillMissing.length > 0 ? stillMissing : null,
+        lastDownloadError: stderrText || null,
+        downloadFailureReason: stillMissing.length > 0
+          ? classifyStderrReason(stderrText)
+          : null,
+        extrasSyncAttempts: (videoEntry.getDataValue("extrasSyncAttempts") ??
+          0) as number + 1,
+      };
+      // Only the file columns that actually turned up, so a retry that got the
+      // subtitles does not blank a thumbnail it never touched.
+      for (const [column, value] of Object.entries(metadata)) {
+        if (value !== null) updates[column] = value;
+      }
+      await videoEntry.update(updates);
+
+      const result: SyncExtrasResult = {
+        url: videoUrl,
+        status: recovered.length > 0 ? "recovered" : "unchanged",
+        recovered,
+        stillMissing,
+        reason: classifyStderrReason(stderrText),
+      };
+      logger.info("Extras sync finished", {
+        url: videoUrl,
+        exitCode: code,
+        recovered: recovered.join(","),
+        stillMissing: stillMissing.join(","),
+      });
+      return result;
+    } catch (error) {
+      logger.error("Could not fetch missing extras", {
+        url: videoUrl,
+        error: (error as Error).message,
+      });
+      return {
+        url: videoUrl,
+        status: "failed",
+        recovered: [],
+        stillMissing: missing,
+        reason: null,
+      };
+    } finally {
+      DownloadSemaphore.release();
+    }
+  }
+
+  /**
+   * The HTTP shape of `syncExtras`.
+   *
+   * Answers with what came back rather than a bare 200: the caller has to tell
+   * "recovered everything" from "still rate limited" to decide whether the chip
+   * goes away, and that difference is the whole point of the endpoint.
+   */
+  async function processSyncExtrasRequest(
+    requestBody: { videoUrl: string },
+    response: HttpResponseLike,
+  ) {
+    try {
+      const result = await syncExtras(requestBody.videoUrl);
+      json(response, result.status === "failed" ? 500 : 200, result);
+    } catch (error) {
+      logger.error("Extras sync request failed", {
+        videoUrl: requestBody.videoUrl,
+        error: (error as Error).message,
+      });
+      const statusCode = (error as HttpError).status || 500;
+      json(response, statusCode, {
+        status: "error",
+        message: he.escape((error as Error).message),
+      });
+    }
+  }
+
   function getQueueSnapshot() {
     const sortedEntries = Array.from(downloadProcesses.values())
       .sort((a, b) => a.queuePosition - b.queuePosition);
@@ -820,5 +1108,11 @@ export function createDownloadFlow(
     }));
   }
 
-  return { processDownloadRequest, resolveAndEnqueue, getQueueSnapshot };
+  return {
+    processDownloadRequest,
+    processSyncExtrasRequest,
+    resolveAndEnqueue,
+    getQueueSnapshot,
+    syncExtras,
+  } satisfies DownloadFlow;
 }

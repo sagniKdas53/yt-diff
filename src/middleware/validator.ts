@@ -186,3 +186,9 @@ export const DedupRequestBodySchema = z.object({
 });
 
 export const QueueStatusRequestBodySchema = z.object({});
+
+export const SyncExtrasRequestBodySchema = z.object({
+  // Same URL rules as every other route that reaches the pipeline: this value
+  // is handed to yt-dlp.
+  videoUrl: HttpUrlSchema,
+});

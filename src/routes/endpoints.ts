@@ -17,6 +17,7 @@ import {
   ReindexAllRequestBodySchema,
   SignedFileRequestBodySchema,
   SubListRequestSchema,
+  SyncExtrasRequestBodySchema,
   UpdatePlaylistMonitoringRequestSchema,
 } from "../middleware/validator.ts";
 
@@ -77,6 +78,9 @@ export interface AuthenticatedHandlers {
   >;
   processQueueStatusRequest: BodyHandler<
     Body<typeof QueueStatusRequestBodySchema>
+  >;
+  processSyncExtrasRequest: BodyHandler<
+    Body<typeof SyncExtrasRequestBodySchema>
   >;
 }
 
@@ -288,6 +292,16 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
     handler: "processQueueStatusRequest",
     schema: QueueStatusRequestBodySchema,
     admission: "none",
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/syncextras",
+    summary: "Fetch only the sidecars a previous download missed.",
+    handler: "processSyncExtrasRequest",
+    schema: SyncExtrasRequestBodySchema,
+    admission: "action",
+    cost: downloadCost,
   },
   {
     kind: "authenticated",

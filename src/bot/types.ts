@@ -67,6 +67,15 @@ export type BotCommand =
   | { kind: "playlists"; limit: number }
   | { kind: "search"; query: string; limit: number }
   | { kind: "remove"; id: string }
+  /**
+   * Retry the sidecars a partial download left behind.
+   *
+   * `target` is either the short submission id from `/history` or a bare
+   * http(s) link: both are things a user can read straight off the message a
+   * partial delivery left them, so neither is worth splitting into two
+   * commands.
+   */
+  | { kind: "sync"; target: string }
   | { kind: "status" }
   | { kind: "history"; limit: number }
   | { kind: "help" }

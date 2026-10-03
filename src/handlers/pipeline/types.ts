@@ -3,33 +3,184 @@ import { type AppConfig, config } from "../../config.ts";
 
 export const playlistRegex = /(?:playlist|list=|creators|videos$)\b/i;
 
-export const downloadOptions = [
-  "--progress",
-  "--embed-metadata",
-  "--embed-chapters",
+/**
+ * The one language the sidecar flags and the extras probe both read from.
+ *
+ * `--sub-langs en` and `%(subtitles.en&1|0)s` have to agree: the second asks
+ * whether the language the first will actually fetch is there, and a mismatch
+ * makes every video look like it is missing subtitles.
+ */
+export const SUBTITLE_LANGS = "en";
+
+/**
+ * Sidecars that can fail on their own without the media download caring.
+ *
+ * This is the vocabulary `missingExtras` is written in. "chapters" is here
+ * because `--embed-chapters` is unconditional and its absence is still a gap,
+ * even though it lands inside the media file rather than beside it.
+ */
+export const EXTRA_KINDS = [
+  "subtitles",
+  "thumbnail",
+  "description",
+  "comments",
+  "chapters",
+] as const;
+
+export type ExtraKind = (typeof EXTRA_KINDS)[number];
+
+/** Which sidecars this deployment asked for, from the SAVE_* switches. */
+export function configuredExtras(): readonly ExtraKind[] {
+  const wanted: ExtraKind[] = [];
+  if (config.saveSubs) wanted.push("subtitles");
+  if (config.saveThumbnail) wanted.push("thumbnail");
+  if (config.saveDescription) wanted.push("description");
+  if (config.saveComments) wanted.push("comments");
+  // --embed-chapters is not behind a switch.
+  wanted.push("chapters");
+  return wanted;
+}
+
+/** The file name template, shared by a download and by an extras-only retry. */
+function fileNameTemplate() {
+  return config.restrictFilenames
+    ? "%(id)s.%(ext)s"
+    : "%(title)s[%(id)s].%(ext)s";
+}
+
+/**
+ * Options that only fetch sidecars. Shared by a download and by the
+ * extras-only retry, so a retry asks for exactly what the first run asked
+ * for and lands in the same place.
+ */
+const sidecarOptions: string[] = [
+  // A sidecar failure becomes a warning instead of an error, so a subtitle
+  // 429 no longer stops yt-dlp before it fetches the video at all. The
+  // filesystem, not the exit code, decides whether a download succeeded.
+  "--ignore-errors",
   config.saveSubs ? "--write-subs" : "",
   config.saveSubs ? "--write-auto-subs" : "",
   config.saveSubs ? "--sub-langs" : "",
-  config.saveSubs ? "en" : "",
+  config.saveSubs ? SUBTITLE_LANGS : "",
   config.saveSubs ? "--convert-subs" : "",
   config.saveSubs ? "vtt" : "",
+  // The timedtext endpoint is what YouTube throttles first, so space those
+  // requests out even when the general pacing knob is off.
+  config.saveSubs ? "--sleep-subtitles" : "",
+  config.saveSubs ? "1" : "",
   config.saveDescription ? "--write-description" : "",
+  // --write-comments puts the comments in the infojson; without
+  // --write-info-json there is no file to find and commentsFile never flips.
   config.saveComments ? "--write-comments" : "",
+  config.saveComments ? "--write-info-json" : "",
+  config.saveComments ? "--no-write-playlist-metafiles" : "",
+  // Page through every comment thread otherwise, which is where the 429s
+  // come from in the first place.
+  config.saveComments ? "--extractor-args" : "",
+  config.saveComments ? "youtube:max_comments=100" : "",
   config.saveThumbnail ? "--write-thumbnail" : "",
   config.restrictFilenames ? "--restrict-filenames" : "",
   "-P",
   "temp:/tmp",
   "-o",
-  config.restrictFilenames ? "%(id)s.%(ext)s" : "%(title)s[%(id)s].%(ext)s",
+  fileNameTemplate(),
   "--print",
   "before_dl:title:%(title)s [%(id)s]",
+  // Prints 1 or 0 per sidecar, so every extractor answers the same question
+  // the same way and there is no per-site table anywhere.
+  "--print",
+  `before_dl:extras:subs=%(subtitles.${SUBTITLE_LANGS}&1|0)s autosubs=%(automatic_captions.${SUBTITLE_LANGS}&1|0)s chapters=%(chapters&1|0)s comments=%(comment_count&1|0)s description=%(description&1|0)s thumbnail=%(thumbnail&1|0)s`,
   "--print",
   config.restrictFilenames
     ? 'post_process:"fileName:%(id)s.%(ext)s"'
     : 'post_process:"fileName:%(title)s[%(id)s].%(ext)s"',
+].filter(Boolean) as string[];
+
+export const downloadOptions = [
+  "--progress",
+  "--embed-metadata",
+  "--embed-chapters",
+  ...sidecarOptions,
   "--progress-template",
   "download-title:%(info.id)s-%(progress.eta)s",
-].filter(Boolean) as string[];
+];
+
+if (config.ytdlpSleepRequests > 0) {
+  // Off by default: it slows every playlist run, not just a rate-limited one.
+  downloadOptions.splice(downloadOptions.length - 2, 0, "--sleep-requests");
+  downloadOptions.splice(
+    downloadOptions.length - 2,
+    0,
+    String(
+      config.ytdlpSleepRequests,
+    ),
+  );
+}
+
+/**
+ * The same sidecar request without the media, for recovering what a run
+ * missed. `-P home:<savePath>` and the caller's URL complete it, so the
+ * output template resolves to exactly the files the download would have.
+ */
+export const extrasOnlyOptions = ["--skip-download", ...sidecarOptions];
+
+/**
+ * Reads the `extras:` line yt-dlp prints before the download starts.
+ *
+ * @returns The sidecars the source has, or null when the line never arrived
+ */
+export function parseOfferedExtras(
+  line: string,
+): Set<ExtraKind> | null {
+  const match =
+    /extras:subs=(\d)\s+autosubs=(\d)\s+chapters=(\d)\s+comments=(\d)\s+description=(\d)\s+thumbnail=(\d)/
+      .exec(line);
+  if (!match) {
+    return null;
+  }
+
+  const [, subs, autosubs, chapters, comments, description, thumbnail] = match;
+  const offered = new Set<ExtraKind>();
+  // Auto-captions count: a video with only rolling auto-transcripts has
+  // subtitles for our purposes, and --write-auto-subs will fetch them.
+  if (subs === "1" || autosubs === "1") offered.add("subtitles");
+  if (thumbnail === "1") offered.add("thumbnail");
+  if (description === "1") offered.add("description");
+  if (comments === "1") offered.add("comments");
+  if (chapters === "1") offered.add("chapters");
+  return offered;
+}
+
+/** Why a run came up short, as far as the last stderr lines can say. */
+export type PartialReason = "rate-limited" | "error";
+
+/** What one extras-only retry managed to bring back. */
+export interface SyncExtrasResult {
+  url: string;
+  /** "recovered" clears the last gap; "unchanged" leaves the chip where it was. */
+  status: "recovered" | "unchanged" | "failed";
+  recovered: ExtraKind[];
+  stillMissing: ExtraKind[];
+  reason: PartialReason | null;
+}
+
+/**
+ * Classifies the tail of a run's stderr.
+ *
+ * YouTube answers a throttled sidecar with `HTTP Error 429` or `Too Many
+ * Requests`; anything else is just an error. The distinction is what makes a
+ * scheduled retry worth running, so it is decided once, here.
+ */
+export function classifyStderrReason(
+  stderrTail: string,
+): PartialReason | null {
+  if (!stderrTail.trim()) {
+    return null;
+  }
+  return /HTTP Error 429|Too Many Requests/i.test(stderrTail)
+    ? "rate-limited"
+    : "error";
+}
 
 if (!isNaN(config.maxFileNameLength) && config.maxFileNameLength > 0) {
   downloadOptions.push("--trim-filenames");
@@ -221,6 +372,21 @@ export interface DownloadCompletionUpdates extends DiscoveredMetadata {
   title: string;
   isMetaDataSynced: boolean;
   saveDirectory: string;
+  /**
+   * Sidecars the source offered, this deployment asked for, and that did not
+   * land. Null when the run was complete — an extra that never existed is not
+   * a gap.
+   */
+  missingExtras: ExtraKind[] | null;
+  /**
+   * The tail of the run's stderr, kept because nothing else survives it: the
+   * exit code says "1" and the log has scrolled away by morning.
+   */
+  lastDownloadError: string | null;
+  /** Classified once, here, so the retry job does not re-read the text. */
+  downloadFailureReason: PartialReason | null;
+  /** Bumped by every sidecar retry, so one row cannot be retried forever. */
+  extrasSyncAttempts: number;
 }
 
 export interface DownloadProcessEntry extends ProcessLike {

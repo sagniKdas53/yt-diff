@@ -52,6 +52,8 @@ export const SubListVideoRowSchema = z.object({
     descriptionFile: z.string().nullable().optional(),
     isMetaDataSynced: z.boolean().optional(),
     saveDirectory: z.string().nullable().optional(),
+    missingExtras: z.array(z.string()).nullable().optional(),
+    lastDownloadError: z.string().nullable().optional(),
   }),
 });
 
@@ -222,6 +224,13 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
     status: z.literal("success"),
     generation: z.union([z.string(), z.number()]),
     queue: z.array(QueueEntrySchema),
+  }),
+  "/syncextras": z.object({
+    url: z.string(),
+    status: z.enum(["recovered", "unchanged", "failed"]),
+    recovered: z.array(z.string()),
+    stillMissing: z.array(z.string()),
+    reason: z.string().nullable(),
   }),
   "/refresh": TokenResponseSchema,
   "/login": TokenResponseSchema,

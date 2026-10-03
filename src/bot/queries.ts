@@ -1,5 +1,8 @@
-import { reply } from "./replies.ts";
-import type { BotRuntime } from "./runtime.ts";
+import type { SyncExtrasResult } from "../handlers/pipeline/types.ts";
+import { isHttpUrl } from "../utils/url.ts";
+import { resolveIndexedVideo } from "./deliver.ts";
+import { reply, speaker } from "./replies.ts";
+import { type BotRuntime, pendingCountForChat } from "./runtime.ts";
 import type { BotAdapter, DeliveryTarget } from "./types.ts";
 
 export async function handleStatus(
@@ -213,4 +216,120 @@ export async function handleSearch(
     return `${mark} ${row.title}\n${row.videoUrl}`;
   });
   await reply(adapter, target, lines.join("\n\n"));
+}
+
+/**
+ * Fetches the sidecars a partial download left out.
+ *
+ * The argument is either the short id from /history or the link itself, and
+ * both end up as the canonical video URL the pipeline stores: `syncExtras`
+ * looks the row up by `videoUrl`, so passing anything else would silently
+ * report "unchanged" against nothing. A URL the bot has never indexed says so
+ * rather than guessing at a row.
+ */
+export async function handleSync(
+  rt: BotRuntime,
+  adapter: BotAdapter,
+  target: DeliveryTarget,
+  argument: string,
+) {
+  // Same backpressure as /get: an extras fetch is a yt-dlp run, and the
+  // per-chat cap exists so one chat cannot occupy the whole pipeline.
+  if (pendingCountForChat(rt, target.chatId) >= rt.deps.maxPendingPerChat) {
+    await reply(
+      adapter,
+      target,
+      "You already have the maximum number of requests in flight. Wait for one to finish.",
+    );
+    return;
+  }
+
+  let requested: string;
+  if (isHttpUrl(argument)) {
+    requested = rt.deps.normalizeUrl(argument);
+  } else {
+    const submission = await rt.deps.store.findSubmissionByPrefix(
+      target.chatId,
+      argument,
+    );
+    if (!submission) {
+      await reply(adapter, target, "No single submission matches that id.");
+      return;
+    }
+    if (!submission.canonicalUrl) {
+      await reply(
+        adapter,
+        target,
+        "That submission has no video yet — /sync needs one indexed.",
+      );
+      return;
+    }
+    requested = submission.canonicalUrl;
+  }
+
+  const indexed = await resolveIndexedVideo(rt, requested);
+  if (!indexed) {
+    await reply(
+      adapter,
+      target,
+      `I haven't indexed that one. Send me the link${
+        isHttpUrl(argument) ? "" : " for that submission"
+      } and I'll fetch it, then /sync will do the rest.`,
+    );
+    return;
+  }
+
+  // Edited in place rather than sent twice: an extras fetch can take as long
+  // as the download did, and the user only wants the outcome.
+  const say = speaker(
+    adapter,
+    target,
+    await reply(adapter, target, "Fetching the missing extras…"),
+  );
+
+  let result: SyncExtrasResult;
+  try {
+    result = await rt.deps.syncExtras(indexed.videoUrl);
+  } catch (error) {
+    await say(
+      `Couldn't fetch the extras: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return;
+  }
+
+  const stillMissing = result.stillMissing.length > 0
+    ? `\nStill missing: ${result.stillMissing.join(", ")}.`
+    : "";
+
+  if (result.status === "failed") {
+    await say(
+      `Couldn't fetch the extras — ${
+        result.reason === "rate-limited"
+          ? "YouTube is rate-limiting this video right now. Try again later."
+          : "yt-dlp failed. /sync it again once things calm down."
+      }${stillMissing}`,
+    );
+    return;
+  }
+
+  if (result.recovered.length === 0) {
+    await say(
+      `Nothing new arrived${
+        result.reason === "rate-limited"
+          ? " — YouTube is still rate-limiting this video. Try again later."
+          : "."
+      }${stillMissing}`,
+    );
+    return;
+  }
+
+  await say(
+    `Fetched ${result.recovered.join(", ")}.${
+      result.stillMissing.length === 0
+        ? " That's everything that was missing."
+        : ""
+    }${stillMissing}`,
+  );
 }

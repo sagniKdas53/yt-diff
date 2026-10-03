@@ -167,6 +167,14 @@ function harness(options: HarnessOptions = {}): Harness {
       monitoringSet.push({ url, monitoringType });
       return Promise.resolve();
     },
+    syncExtras: () =>
+      Promise.resolve({
+        url: "",
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
     store,
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: (url: string) => url.includes("playlist?list="),

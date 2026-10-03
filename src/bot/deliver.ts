@@ -67,6 +67,37 @@ export function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
+/**
+ * The line a partial download earns, or null when nothing was left out.
+ *
+ * It rides along in the delivery message rather than going out on its own: a
+ * second message saying "some extras are missing" is a thing to read after the
+ * file has already arrived, and by then the user has usually moved on.
+ */
+export function partialNote(
+  partial: boolean | undefined,
+  // Named the way the user would write them, not the way the column stores
+  // them: "subtitles, thumbnail".
+  missing: readonly string[] | null | undefined,
+  submissionId: string,
+  reason: string | null | undefined,
+): string | null {
+  if (!partial) {
+    return null;
+  }
+  const which = missing && missing.length > 0 ? missing.join(", ") : null;
+  return [
+    reason === "rate-limited"
+      ? `Got the video, but YouTube rate-limited the extras${
+        which ? ` (${which})` : ""
+      }.`
+      : `Got the video, but the extras didn't come through${
+        which ? ` (${which})` : ""
+      }.`,
+    `\`/sync ${submissionId}\` fetches them later.`,
+  ].join("\n");
+}
+
 export function queuePositionFor(
   rt: BotRuntime,
   url: string,
@@ -85,9 +116,24 @@ export async function deliverVideo(
     title?: string | null;
     fileName?: string | null;
     saveDirectory?: string | null;
+    /** Set when this run produced the video but not all of its sidecars. */
+    partial?: boolean;
+    missingExtras?: readonly string[] | null;
+    reason?: string | null;
   },
   downloadedByBot: boolean,
 ) {
+  // One line, computed once: it goes in the upload caption, in the link
+  // message and in the /download receipt alike, so the user reads it wherever
+  // the file itself landed. Null for every download that got what it asked
+  // for, which is why the non-partial wording below is untouched.
+  const note = partialNote(
+    video.partial,
+    video.missingExtras,
+    entry.submissionId,
+    video.reason,
+  );
+  const withNote = (text: string) => (note ? `${text}\n\n${note}` : text);
   if (!video.fileName) {
     await fail(
       rt,
@@ -112,9 +158,11 @@ export async function deliverVideo(
     });
     await editAck(
       entry,
-      `Downloaded: ${
-        video.title || video.fileName
-      }\nIt's on the server — /get sends it here.`,
+      withNote(
+        `Downloaded: ${
+          video.title || video.fileName
+        }\nIt's on the server — /get sends it here.`,
+      ),
     );
     return;
   }
@@ -125,7 +173,7 @@ export async function deliverVideo(
       to: entry.target,
       saveDirectory: video.saveDirectory || "",
       fileName: video.fileName,
-      caption: video.title || video.fileName,
+      caption: withNote(video.title || video.fileName),
       forceLink: entry.mode === "link",
     });
 
@@ -158,9 +206,9 @@ export async function deliverVideo(
         : outcome.reason === "upload_failed"
         ? `Upload failed, so here's a download link instead (${size}).`
         : `Download link (${size}).`;
-      await editAck(entry, `${why}\n${outcome.url}`);
+      await editAck(entry, withNote(`${why}\n${outcome.url}`));
     } else {
-      await editAck(entry, video.title || "Done");
+      await editAck(entry, withNote(video.title || "Done"));
     }
   } catch (error) {
     await fail(

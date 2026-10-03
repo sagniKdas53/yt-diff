@@ -95,6 +95,17 @@ dependencies minimal.
   - **Response**: `{ status: "success", generation: number, queue: Array<{ url: string, title: string, status: string, queuePosition: number }> }`
   - **Authentication**: Required.
 
+- **`/syncextras`**
+  - **Description**: Fetches only the sidecars a previous download missed —
+    subtitles, thumbnail, description, comments — for one already-downloaded
+    video. Runs yt-dlp with `--skip-download` into the same directory with the
+    same output template and the same download slot, so a retry cannot pile
+    onto a rate limit. Whatever turned up is dropped from the row's
+    `missingExtras`; whatever did not stays, and so does the UI chip.
+  - **Request body**: `{ videoUrl: string }`
+  - **Response**: `{ url, status: "recovered" | "unchanged" | "failed", recovered: string[], stillMissing: string[], reason: string | null }`
+  - **Authentication**: Required.
+
 ### 5. Authentication
 
 - **`/login`**

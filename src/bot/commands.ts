@@ -139,6 +139,18 @@ export function parseCommand(raw: string): BotCommand {
       return command === "keep" ? { kind: "keep", id } : { kind: "remove", id };
     }
 
+    case "sync": {
+      // Either the short id from /history or the link itself: both are things
+      // the user has in front of them, and the handler resolves them the same
+      // way /keep and /rm resolve an id. Anything else — including a second
+      // word, which no id or URL can contain — is not a request we can act on.
+      const target = args[0];
+      if (!target || args.length > 1) {
+        return { kind: "unknown", text };
+      }
+      return { kind: "sync", target };
+    }
+
     case "status":
       return { kind: "status" };
 
@@ -193,6 +205,11 @@ export const HELP_TEXT = [
   "MANAGE FILES",
   "/keep <id>      stop this file being auto-deleted later",
   "/rm <id>        delete this file now",
+  "",
+  "MISSING EXTRAS",
+  "/sync <id>      fetch the subtitles, thumbnail, description, comments or",
+  "                chapters YouTube rate-limited away on a partial download",
+  "/sync <link>    same thing, if you have the link rather than the id",
   "",
   "The <id> is the short code at the start of each /history line.",
 ].join("\n");

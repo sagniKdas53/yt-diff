@@ -1,4 +1,7 @@
 import type { AppEventBus } from "../events.ts";
+// The pipeline's own result shape, so the bot cannot drift from what
+// `POST /syncextras` answers with; `events.ts` already imports it the same way.
+import type { SyncExtrasResult } from "../handlers/pipeline/types.ts";
 import type { Delivery } from "./delivery.ts";
 import type { BotStore } from "./store.ts";
 import type { BotAdapter, DeliveryTarget, MessageRef } from "./types.ts";
@@ -41,6 +44,12 @@ export interface BotCoreDependencies {
   getListingQueueDepth: () => number;
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;
   store: BotStore;
+  /**
+   * Refetches only the sidecars a partial download left behind. It takes the
+   * same semaphore slot a download does, so the bot does not have to work out
+   * when it is safe to call.
+   */
+  syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
   normalizeUrl: (url: string) => string;
   isPlaylistUrl: (url: string) => boolean;
   allowedChatIds: string[];
