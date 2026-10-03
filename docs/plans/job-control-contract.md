@@ -115,20 +115,26 @@ Response:
 }
 ```
 
-`not-allowed` is a normal answer, not an error: the UI offers pause only on a
-running job, so reaching it means the poll was stale. The HTTP status stays 200
-so a client that shows the sentence needs no error branch.
+`not-allowed` is a normal answer, not an error, and it means the action would
+not have done what the caller asked. Mostly the poll was stale — the UI offers
+pause only on a running job. One case is not staleness: a download resume
+answers `not-allowed` while another download for the same video is queued or
+running, because the pipeline deduplicates by URL and would have discarded the
+resumed item silently. The paused job is kept, so the resume can be retried once
+the other download finishes. The HTTP status stays 200 so a client that shows
+the sentence needs no error branch.
 
 `partialDeleted` is the honest report of what was on disk:
 
-| Situation                                               | `partialDeleted`                                            |
-| :------------------------------------------------------ | :---------------------------------------------------------- |
-| cancel while `queued`                                   | `false` — there was nothing to delete                       |
-| cancel while `running`                                  | `true`                                                      |
-| cancel while `running`, the file name was never printed | `false`, and `detail` says the partial could not be located |
-| cancel while `paused`                                   | `true` — these are the bytes pausing kept                   |
-| pause                                                   | `false` — that is the point of pausing                      |
-| resume                                                  | `null`                                                      |
+| Situation                                                       | `partialDeleted`                                            |
+| :-------------------------------------------------------------- | :---------------------------------------------------------- |
+| cancel while `queued`                                           | `false` — there was nothing to delete                       |
+| cancel while `running`                                          | `true`                                                      |
+| cancel while `running`, the file name was never printed         | `false`, and `detail` says the partial could not be located |
+| cancel while `running`, the process would not confirm it exited | `false`, and `detail` says the partial was left in place    |
+| cancel while `paused`                                           | `true` — these are the bytes pausing kept                   |
+| pause                                                           | `false` — that is the point of pausing                      |
+| resume                                                          | `null`                                                      |
 
 ## Partial files
 
@@ -164,6 +170,18 @@ persists each chunk as it goes. So for a listing:
 - pausing keeps everything already indexed, which is the partial index
 - resuming re-runs the listing from the top; rows already present dedupe
 - cancelling leaves nothing on disk, so `partialDeleted` is always `false`
+
+Resuming a listing is accepted at once but does not start at once. A pause stops
+yt-dlp with SIGTERM; the run wrapped around it still has the chunk in flight to
+write, so a resume that began immediately would put two runs of one playlist in
+the database at once, and both reading an unmapped video can each decide it
+needs a mapping. The replacement waits for the old run to settle — and because a
+listing registers only once it holds a semaphore slot, which the old run may
+still be holding, `resumed` means "accepted", not "in the queue". The drawer
+shows it on the next poll that finds it.
+
+Downloads have no such wait. They carry no per-run database state to collide
+with, and a paused download's slot was released at pause time.
 
 `itemsIndexed` is a real counter of rows persisted by the run, not an estimate.
 

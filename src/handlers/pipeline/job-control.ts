@@ -268,6 +268,23 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
   } = deps;
 
   /**
+   * Listing runs a pause stopped but did not wait for, by flight key.
+   *
+   * SIGTERM stops yt-dlp; it does not stop the run wrapped around it, which
+   * still has the chunk in flight to finish writing. The single-flight key that
+   * run held is released at pause time so a resume cannot join it, which means
+   * nothing else is holding the promise — so a resume arriving before it
+   * settles would start a second run of the same playlist, and with
+   * `maxListings` above 1 the free slot is available to it. Two runs reading
+   * the same unmapped video can both decide it needs a mapping, and the second
+   * insert is the duplicate this map exists to prevent.
+   *
+   * Entries are dropped as soon as the run settles, so an absent key means the
+   * run is already over and a resume can start at once.
+   */
+  const retiringListings = new Map<string, Promise<void>>();
+
+  /**
    * What a resume needs, read off a download entry.
    *
    * A pure read, so a cancel can use the same shape without leaving the job
@@ -297,6 +314,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       item: entry.item,
       chunkSize: entry.chunkSize,
       isScheduledUpdate: entry.isScheduledUpdate,
+      flightKey: entry.flightKey,
     };
   }
 
@@ -315,33 +333,40 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
   }
 
   /**
-   * Waits for a signalled process to actually be gone.
+   * Waits for a signalled process to actually be gone, and says whether it is.
    *
    * The exit code is not what is being waited for; the file handles are. A
    * cancel deletes the partial file the process was writing to, and deleting it
    * while yt-dlp still has it open lets a last buffered write put it straight
    * back — the one outcome a cancel is not allowed to produce. SIGTERM is what
-   * yt-dlp exits on, so this normally returns at once; the escalation is for
-   * the case where it does not, and it is bounded so a cancel can never hang.
+   * yt-dlp exits on, so this normally returns at once; the escalation is for the
+   * case where it does not, and it is bounded so a cancel can never hang.
+   *
+   * False means the handles may still be open, which is why the caller must not
+   * touch the partial file. Sending SIGKILL makes a process unlikely to still be
+   * writing, not certain, and the difference between the two is the difference
+   * between "cancelled" and "cancelled, and the bytes may reappear".
    */
   async function awaitExit(
     id: string,
     process: NonNullable<ProcessLike["spawnedProcess"]>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // A listing's process is only ever a `kill` handle, so there is nothing
     // to wait on for one — and nothing it could be writing a partial with.
     const status = (process as { status?: Promise<Deno.CommandStatus> }).status;
-    if (!status) return;
+    if (!status) return true;
 
     let grace: ReturnType<typeof setTimeout> | undefined;
     try {
-      await Promise.race([
-        status,
-        // Resolves either way once the grace period is up, so a process that
+      return await Promise.race([
+        // A rejected status is a process this could not account for, which is
+        // the same thing as one that has not been shown to have exited.
+        status.then(() => true, () => false),
+        // Settles either way once the grace period is up, so a process that
         // takes no notice of SIGKILL cannot hold a cancel open forever. What
         // is being waited for is the handles closing, and after SIGKILL there
         // is nothing further this can usefully do about them.
-        new Promise<void>((resolve) => {
+        new Promise<boolean>((resolve) => {
           grace = setTimeout(() => {
             logger.warn("A signalled job did not exit; sending SIGKILL", {
               id,
@@ -354,7 +379,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
                 error: (error as Error).message,
               });
             }
-            resolve();
+            resolve(false);
           }, TERMINATION_GRACE_MS);
         }),
       ]);
@@ -363,6 +388,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
         id,
         error: (error as Error).message,
       });
+      return false;
     } finally {
       // Cleared rather than unref'd. While this is waiting the loop is held on
       // purpose, and a pending timer that does not count would let the runtime
@@ -419,8 +445,25 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       }
       // Released before the kill: the run being abandoned is still in flight,
       // and a resume arriving before it settles would join it instead of
-      // listing the playlist again.
+      // listing the playlist again. Read before releasing it — after the
+      // `forget` there is no handle left on the run at all.
+      const retiring = listingRuntime.inFlight.current(entry.flightKey);
       listingRuntime.inFlight.forget(entry.flightKey);
+      if (retiring !== undefined) {
+        // Normalised so the resume waiting on it is never skipped by a throw
+        // out of the run being replaced, and dropped on settle so the key is
+        // absent — and a resume free to start — the moment it is really over.
+        const settled: Promise<void> = retiring.then(
+          () => undefined,
+          () => undefined,
+        );
+        retiringListings.set(entry.flightKey, settled);
+        void settled.then(() => {
+          if (retiringListings.get(entry.flightKey) === settled) {
+            retiringListings.delete(entry.flightKey);
+          }
+        });
+      }
       entry.paused = true;
       const paused = pausedListing(entry);
       pausedJobs.set(paused.id, paused);
@@ -456,13 +499,60 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
         : notFound(id, "resume");
     }
 
-    pausedJobs.delete(id);
-    if (job.kind === "download") {
-      resumeDownload(job);
-    } else {
-      resumeListing(job);
+    // Checked before the paused job is dropped, because dropping it is the one
+    // thing here that cannot be undone. `resumeDownload` goes through the same
+    // duplicate filter a fresh submission does, and that filter silently
+    // discards an item whose URL is already queued or running — so a resume
+    // that raced a second request for the same video would answer "resumed"
+    // with no download behind it and no paused job to fall back on. The user
+    // would watch a job vanish from the drawer and never come back.
+    if (
+      job.kind === "download" &&
+      Array.from(downloadProcesses.values()).some((process) =>
+        process.url === job.url &&
+        ["running", "pending"].includes(process.status)
+      )
+    ) {
+      return notAllowed(
+        id,
+        "resume",
+        "Another download for that video is already queued or running, so this one is still paused.",
+      );
     }
-    logger.info("Resumed a paused job", { id, kind: job.kind, url: job.url });
+
+    pausedJobs.delete(id);
+    const start = () => {
+      if (job.kind === "download") {
+        resumeDownload(job);
+      } else {
+        resumeListing(job);
+      }
+      logger.info("Resumed a paused job", { id, kind: job.kind, url: job.url });
+    };
+
+    const retiring = job.kind === "listing" && job.flightKey !== undefined
+      ? retiringListings.get(job.flightKey)
+      : undefined;
+    if (retiring === undefined) {
+      start();
+    } else {
+      // The answer is still "resumed": the job has been accepted and will
+      // start on its own. Starting it now instead would put two runs of one
+      // playlist in the database at once, which is the one thing the wait is
+      // for. A listing registers only once it holds a semaphore slot anyway,
+      // so the drawer has always shown a resumed listing a moment after the
+      // click rather than on it.
+      logger.info(
+        "A resumed listing waits for the run it replaced to finish",
+        { id, url: job.url },
+      );
+      void retiring.then(start).catch((error: unknown) => {
+        logger.error("A deferred listing resume failed to start", {
+          id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
 
     // Null rather than false: nothing was deleted, because nothing was asked
     // to be.
@@ -501,7 +591,21 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       const job = pausedDownload(entry);
       downloadProcesses.delete(key);
       terminate(entry.id, entry.spawnedProcess);
-      await awaitExit(entry.id, entry.spawnedProcess);
+      if (!await awaitExit(entry.id, entry.spawnedProcess)) {
+        // Not deleted on purpose. The process was sent SIGKILL and has not been
+        // seen to leave, so it may still hold the partial open — and deleting
+        // under an open handle is how a cancelled download grows its .part
+        // back. The job is stopped either way; what is unconfirmed is whether
+        // the bytes are gone, which is what this says.
+        return {
+          id,
+          action: "cancel",
+          outcome: "cancelled",
+          partialDeleted: false,
+          detail:
+            "That job was stopped, but it did not confirm it had exited, so its partial file was left where it was.",
+        };
+      }
       return await cancelledDownload(id, job);
     }
 
@@ -529,6 +633,22 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     const paused = pausedJobs.get(id);
     if (paused) {
       pausedJobs.delete(id);
+      if (paused.kind === "listing") {
+        // Same reason as a running listing above, and without this the paused
+        // job falls through to the download path, which reports a partial file
+        // it never had — telling the user a listing could not be located on a
+        // disk it never wrote to.
+        logger.info("Cancelled a paused listing; nothing to delete", {
+          id,
+          url: paused.url,
+        });
+        return {
+          id,
+          action: "cancel",
+          outcome: "cancelled",
+          partialDeleted: false,
+        };
+      }
       return await cancelledDownload(id, paused);
     }
 

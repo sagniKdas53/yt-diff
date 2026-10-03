@@ -61,6 +61,20 @@ export function createSingleFlight<T>() {
     forget(key: string): void {
       inFlight.delete(key);
     },
+
+    /**
+     * The run under way for `key`, if there is one, without releasing it.
+     *
+     * Read this before `forget` when the point is to wait for a run rather than
+     * to escape it. A pause calls `forget` so a resume does not join the run it
+     * is killing — but the run does not stop being in flight when the key goes,
+     * and a job resumed in that window still needs it to be over before it can
+     * safely start. Handing back the promise is what makes that wait possible;
+     * without it the only handle on the old run is the one being dropped.
+     */
+    current(key: string): Promise<T> | undefined {
+      return inFlight.get(key);
+    },
   };
 }
 

@@ -8,6 +8,7 @@ import {
 } from "../src/handlers/pipeline/job-control.ts";
 import {
   createListingRuntime,
+  type ListingRuntime,
   resumeListing,
 } from "../src/handlers/pipeline/listing.ts";
 import { createProcessManager } from "../src/handlers/pipeline/process-manager.ts";
@@ -15,6 +16,7 @@ import type {
   DownloadItem,
   DownloadProcessEntry,
   ListingProcessEntry,
+  ListingResult,
   ManagedProcess,
   PausedJob,
   StreamTextChunks,
@@ -35,6 +37,7 @@ import {
 
 const URL = "https://www.youtube.com/watch?v=abc123";
 const VIDEO_ID = "abc123";
+const PLAYLIST_URL = "https://mock-tube/playlist/some-playlist.rss";
 const FILE_NAME = "Some video[abc123].mp4";
 
 /**
@@ -79,6 +82,8 @@ interface Harness {
   downloads: Map<string, DownloadProcessEntry>;
   listings: Map<string, ListingProcessEntry>;
   pausedJobs: Map<string, PausedJob>;
+  /** The real listing runtime, so a test can hold a run in flight. */
+  listingRuntime: ListingRuntime;
   emitted: { event: string; payload: Record<string, unknown> }[];
   savePath: string;
   /** What the flow wrote to the video row. Empty without installVideoTable. */
@@ -91,6 +96,8 @@ function buildHarness(
     spawnPythonProcess?: () => ManagedProcess;
     streamTextChunks?: StreamTextChunks;
     installVideoTable?: boolean;
+    /** Spied on instead of the real thing, to see a resume being scheduled. */
+    resumeListing?: (job: PausedJob) => void;
   } = {},
 ): Harness {
   const savePath = Deno.makeTempDirSync();
@@ -124,7 +131,8 @@ function buildHarness(
     listingRuntime,
     pausedJobs,
     resumeDownload: flow.resumeDownload,
-    resumeListing: (job: PausedJob) => resumeListing(listingRuntime, job),
+    resumeListing: deps.resumeListing ??
+      ((job: PausedJob) => resumeListing(listingRuntime, job)),
   });
 
   let videoUpdates: Record<string, unknown>[] = [];
@@ -143,6 +151,7 @@ function buildHarness(
     downloads,
     listings,
     pausedJobs,
+    listingRuntime,
     emitted,
     savePath,
     videoUpdates,
@@ -229,6 +238,70 @@ function downloadEntry(
     status: "pending",
     ...overrides,
   };
+}
+
+function listingEntry(
+  overrides: Partial<ListingProcessEntry> = {},
+): ListingProcessEntry {
+  const now = Date.now();
+  return {
+    id: "list-1",
+    url: PLAYLIST_URL,
+    title: "Some playlist",
+    type: "playlist",
+    monitoringType: "None",
+    item: {
+      url: PLAYLIST_URL,
+      type: "playlist",
+      currentMonitoringType: "None",
+      reason: "added",
+    },
+    chunkSize: 10,
+    isScheduledUpdate: true,
+    flightKey: "flight-1",
+    queuePosition: now,
+    progress: null,
+    itemsIndexed: 0,
+    paused: false,
+    startedAt: now,
+    spawnType: "list",
+    lastActivity: now,
+    lastStdoutActivity: now,
+    spawnTimeStamp: now,
+    status: "running",
+    spawnedProcess: pendingProcess(),
+    ...overrides,
+  };
+}
+
+function pausedListing(
+  overrides: Partial<PausedJob> = {},
+): PausedJob {
+  return {
+    ...listingEntry(),
+    kind: "listing",
+    chunkSize: 10,
+    isScheduledUpdate: true,
+    flightKey: "flight-1",
+    ...overrides,
+  } as PausedJob;
+}
+
+function pausedDownload(
+  overrides: Partial<PausedJob> = {},
+): PausedJob {
+  return {
+    ...downloadEntry(),
+    kind: "download",
+    item: downloadItem(),
+    savePath: "",
+    ...overrides,
+  } as PausedJob;
+}
+
+/** Lets queued microtasks and zero-delay timers run. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function write(savePath: string, names: string[]) {
@@ -733,11 +806,13 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
 
   // Built before the harness and filled in after it: the lines name the
   // harness's own temp directory, and the harness wants the process that
-  // reads them.
-  let fake: ManagedProcess;
+  // reads them. A holder rather than a `let` because the two closures below
+  // read it before it is assigned, and `prefer-const` is right that a `let`
+  // written once and never again is not one.
+  const ref: { fake?: ManagedProcess } = {};
   const h = buildHarness({
     installVideoTable: true,
-    spawnPythonProcess: () => fake,
+    spawnPythonProcess: () => ref.fake!,
     streamTextChunks: (stream) =>
       (async function* () {
         const reader = stream.getReader();
@@ -745,7 +820,9 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            if (stream === fake.stdout) stdoutRead.resolve();
+            if (ref.fake !== undefined && stream === ref.fake.stdout) {
+              stdoutRead.resolve();
+            }
             return;
           }
           yield decoder.decode(value);
@@ -760,7 +837,7 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
     `post_process:"fileName:${FILE_NAME}"`,
   ];
 
-  fake = {
+  ref.fake = {
     ...pendingProcess(),
     stdout: new ReadableStream<Uint8Array>({
       start(controller) {
@@ -793,6 +870,119 @@ Deno.test("a run's counters and file name land on the entry it was queued as", a
     assertEquals(entry.fileName, FILE_NAME);
     assertEquals(entry.destination, `${h.savePath}/${FILE_NAME}`);
     assertEquals(entry.savePath, h.savePath);
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("resume - a paused download is kept when its url is already being downloaded", () => {
+  // The duplicate filter drops an item whose url is already queued or running.
+  // A resume that reaches it is discarded without a word, so without the check
+  // below the paused job is deleted, nothing is enqueued, and the user watches
+  // a job leave the drawer with no download to replace it.
+  const h = buildHarness();
+  try {
+    h.downloads.set(
+      "dup",
+      downloadEntry({ id: "dup-1", url: URL, status: "running" }),
+    );
+    h.pausedJobs.set("job-1", pausedDownload({ savePath: h.savePath }));
+
+    const result = h.control.resumeJob("job-1");
+
+    assertEquals(result.outcome, "not-allowed");
+    assert(
+      h.pausedJobs.has("job-1"),
+      "a refused resume must leave the paused job where it was",
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("resume - a listing waits for the run its pause released before starting", async () => {
+  // SIGTERM stops yt-dlp, not the run around it. The pause releases the
+  // single-flight key so the resume cannot join the dying run — but the run
+  // keeps writing rows, and a second run starting beside it can insert a
+  // mapping for a video the first is already inserting one for.
+  const resumed: PausedJob[] = [];
+  const h = buildHarness({ resumeListing: (job) => void resumed.push(job) });
+  try {
+    const gate = Promise.withResolvers<ListingResult>();
+    const entry = listingEntry();
+    h.listings.set("list-1", entry);
+    h.listingRuntime.inFlight.run(entry.flightKey, () => gate.promise);
+
+    assertEquals(h.control.pauseJob(entry.id).outcome, "paused");
+    assertEquals(h.control.resumeJob(entry.id).outcome, "resumed");
+
+    await tick();
+    assertEquals(
+      resumed.length,
+      0,
+      "the replacement must not start while the run it replaced is in flight",
+    );
+
+    gate.resolve({ url: PLAYLIST_URL, status: "success" });
+    await tick();
+    await tick();
+    assertEquals(resumed.length, 1);
+    assertEquals(resumed[0].id, entry.id);
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("cancel - a running download that will not confirm it exited keeps its partial", async () => {
+  // SIGTERM is ignored here, so the grace period runs out and SIGKILL goes out
+  // too. A kill makes a process unlikely to still be writing, not certain, and
+  // deleting under an open handle is how a cancelled download grows its .part
+  // back — so the bytes stay and the answer says so.
+  const h = buildHarness();
+  try {
+    const stubborn = {
+      ...pendingProcess(),
+      status: new Promise<Deno.CommandStatus>(() => {}),
+    };
+    h.downloads.set(
+      "pending_" + URL,
+      downloadEntry({
+        id: "job-1",
+        savePath: h.savePath,
+        fileName: FILE_NAME,
+        destination: `${h.savePath}/${FILE_NAME}`,
+        spawnedProcess: stubborn,
+      }),
+    );
+    write(h.savePath, [`${FILE_NAME}.part`, `${FILE_NAME}.ytdl`]);
+
+    const result = await h.control.cancelJob("job-1");
+
+    assertEquals(result.outcome, "cancelled");
+    assertEquals(result.partialDeleted, false);
+    assertEquals(
+      remaining(h.savePath),
+      [`${FILE_NAME}.part`, `${FILE_NAME}.ytdl`],
+      "an unconfirmed exit must leave the partial files alone",
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("cancel - a paused listing says it has nothing to delete, not that a partial is missing", async () => {
+  // A listing writes rows, not files. Falling through to the download path made
+  // it report a partial file it could not locate — on a disk it never wrote to.
+  const h = buildHarness();
+  try {
+    h.pausedJobs.set("list-1", pausedListing({ savePath: undefined }));
+
+    const result = await h.control.cancelJob("list-1");
+
+    assertEquals(result.outcome, "cancelled");
+    assertEquals(result.partialDeleted, false);
+    assertEquals(result.detail, undefined);
+    assert(!h.pausedJobs.has("list-1"));
   } finally {
     h.restore();
   }

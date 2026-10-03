@@ -459,6 +459,13 @@ export interface PausedJob extends JobIdentity {
   /** Listings: the knobs the original submission ran with. */
   chunkSize?: number;
   isScheduledUpdate?: boolean;
+  /**
+   * Listings: the single-flight key the run being paused held.
+   *
+   * A resume needs it to find the run that pause released but did not stop,
+   * so the replacement can wait for it instead of racing it.
+   */
+  flightKey?: string;
 }
 
 /** What a caller can ask of a job, and nothing else. */
