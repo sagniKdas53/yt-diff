@@ -175,10 +175,14 @@ Resuming a listing is accepted at once but does not start at once. A pause stops
 yt-dlp with SIGTERM; the run wrapped around it still has the chunk in flight to
 write, so a resume that began immediately would put two runs of one playlist in
 the database at once, and both reading an unmapped video can each decide it
-needs a mapping. The replacement waits for the old run to settle — and because a
-listing registers only once it holds a semaphore slot, which the old run may
-still be holding, `resumed` means "accepted", not "in the queue". The drawer
-shows it on the next poll that finds it.
+needs a mapping. The replacement waits for the old run to settle.
+
+The job is not in the queue yet, but it is not lost either: for the length of
+the wait it reports in `listings` as `queued`, under the same id, which is what
+puts a Cancel — and only a Cancel — on it in the drawer. A cancel sent during
+the wait answers `cancelled`, and the replacement does not start when the wait
+ends. Reporting it as nothing at all would leave the user watching a row
+disappear, with no way to stop what they just started.
 
 Downloads have no such wait. They carry no per-run database state to collide
 with, and a paused download's slot was released at pause time.

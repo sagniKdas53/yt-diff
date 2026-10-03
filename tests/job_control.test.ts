@@ -987,3 +987,43 @@ Deno.test("cancel - a paused listing says it has nothing to delete, not that a p
     h.restore();
   }
 });
+
+Deno.test("cancel - a listing cancelled while its resume is waiting never starts", async () => {
+  // The window between an accepted listing resume and the run it starts. A
+  // cancel sent into it used to answer `not-found` and the listing went ahead
+  // regardless — the user asked for it to stop and it did not.
+  const resumed: PausedJob[] = [];
+  const h = buildHarness({ resumeListing: (job) => void resumed.push(job) });
+  try {
+    const gate = Promise.withResolvers<ListingResult>();
+    const entry = listingEntry();
+    h.listings.set("list-1", entry);
+    h.listingRuntime.inFlight.run(entry.flightKey, () => gate.promise);
+
+    h.control.pauseJob(entry.id);
+    h.control.resumeJob(entry.id);
+
+    // Still a job: reported as queued, which is what puts a Cancel — and only
+    // a Cancel — on it in the drawer.
+    const waiting = h.control.getListingSnapshot();
+    assertEquals(waiting.length, 1);
+    assertEquals(waiting[0].id, entry.id);
+    assertEquals(waiting[0].state, "queued");
+
+    const result = await h.control.cancelJob(entry.id);
+    assertEquals(result.outcome, "cancelled");
+    assertEquals(result.partialDeleted, false);
+    assertEquals(h.control.getListingSnapshot().length, 0);
+
+    gate.resolve({ url: PLAYLIST_URL, status: "success" });
+    await tick();
+    await tick();
+    assertEquals(
+      resumed.length,
+      0,
+      "a listing cancelled while waiting must not start when the wait ends",
+    );
+  } finally {
+    h.restore();
+  }
+});

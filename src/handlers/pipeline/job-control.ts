@@ -114,18 +114,28 @@ function numberQueued(views: JobView[]): JobView[] {
  *
  * Paused jobs are read from their own map: they hold no process, so they have
  * no business in the process maps the cleanup job sweeps, but they are still
- * jobs the user can see and act on.
+ * jobs the user can see and act on. `resuming` is the same idea for a job that
+ * has been accepted and has not started — it is in neither map yet either.
  */
 function snapshot(
   entries: Iterable<JobIdentity>,
   kind: JobKind,
   pausedJobs: Map<string, PausedJob>,
+  resuming: Iterable<PausedJob> = [],
 ): JobView[] {
   const views = Array.from(entries, (entry) => jobView(entry, kind));
   for (const job of pausedJobs.values()) {
     if (job.kind === kind) {
       views.push(jobView(job, kind));
     }
+  }
+  for (const job of resuming) {
+    // Its state is stated rather than derived. `stateOf` reads a listing's
+    // "pending" as already working, which is right for a registered entry and
+    // exactly wrong for one that has not registered: this job is waiting for
+    // the run it replaced, so it is queued, and queued is what puts a Cancel
+    // button — and only a Cancel button — on it.
+    views.push({ ...jobView(job, kind), state: "queued" });
   }
   return numberQueued(views);
 }
@@ -283,6 +293,15 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
    * run is already over and a resume can start at once.
    */
   const retiringListings = new Map<string, Promise<void>>();
+
+  /**
+   * Listing resumes waiting for a retiring run, by job id.
+   *
+   * Held so a job that has been accepted but not started is still a job: it
+   * reports in the listing snapshot as queued, and a cancel finds it. Entries
+   * leave when the wait ends, one way or the other.
+   */
+  const deferredResumes = new Map<string, PausedJob>();
 
   /**
    * What a resume needs, read off a download entry.
@@ -536,17 +555,26 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     if (retiring === undefined) {
       start();
     } else {
-      // The answer is still "resumed": the job has been accepted and will
-      // start on its own. Starting it now instead would put two runs of one
-      // playlist in the database at once, which is the one thing the wait is
-      // for. A listing registers only once it holds a semaphore slot anyway,
-      // so the drawer has always shown a resumed listing a moment after the
-      // click rather than on it.
+      // Tracked, not just awaited. Without a record of it the job sits in
+      // neither map while it waits: the drawer's row vanishes on the click and
+      // comes back on its own a moment later, and a cancel sent into that gap
+      // answers `not-found` while the listing goes ahead and starts anyway —
+      // the user asked for it to stop and it does not. Holding the job here
+      // makes it visible as queued (it is: waiting, and cancel is all that can
+      // be done to it) and gives the cancel something to find.
+      deferredResumes.set(id, job);
       logger.info(
         "A resumed listing waits for the run it replaced to finish",
         { id, url: job.url },
       );
-      void retiring.then(start).catch((error: unknown) => {
+      void retiring.then(() => {
+        // The delete is the check: it only reports true for the resume that put
+        // the entry here, so a cancel that has already taken it stops this.
+        if (deferredResumes.delete(id)) {
+          start();
+        }
+      }).catch((error: unknown) => {
+        deferredResumes.delete(id);
         logger.error("A deferred listing resume failed to start", {
           id,
           error: error instanceof Error ? error.message : String(error),
@@ -652,6 +680,25 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       return await cancelledDownload(id, paused);
     }
 
+    const deferred = deferredResumes.get(id);
+    if (deferred !== undefined) {
+      // Taking it out of the map is the whole cancel: the resume waiting on the
+      // retiring run finds nothing when it looks, and does not start. There is
+      // no process to signal and no bytes to delete — a listing writes rows,
+      // and this one had not started writing any.
+      deferredResumes.delete(id);
+      logger.info("Cancelled a listing that had not started again yet", {
+        id,
+        url: deferred.url,
+      });
+      return {
+        id,
+        action: "cancel",
+        outcome: "cancelled",
+        partialDeleted: false,
+      };
+    }
+
     return notFound(id, "cancel");
   }
 
@@ -678,7 +725,12 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     getQueueSnapshot: () =>
       snapshot(downloadProcesses.values(), "download", pausedJobs),
     getListingSnapshot: () =>
-      snapshot(listProcesses.values(), "listing", pausedJobs),
+      snapshot(
+        listProcesses.values(),
+        "listing",
+        pausedJobs,
+        deferredResumes.values(),
+      ),
     pauseJob,
     resumeJob,
     cancelJob,
