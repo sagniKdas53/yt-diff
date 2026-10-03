@@ -1027,3 +1027,36 @@ Deno.test("cancel - a listing cancelled while its resume is waiting never starts
     h.restore();
   }
 });
+
+Deno.test("pause and resume - a listing waiting to start again is not a missing job", async () => {
+  // The snapshot calls this job queued, so pause and resume are both invalid
+  // transitions on a job that exists. Answering `not-found` told the drawer the
+  // job had gone, which is the opposite of what happened — and neither attempt
+  // may take it out of the wait.
+  const resumed: PausedJob[] = [];
+  const h = buildHarness({ resumeListing: (job) => void resumed.push(job) });
+  try {
+    const gate = Promise.withResolvers<ListingResult>();
+    const entry = listingEntry();
+    h.listings.set("list-1", entry);
+    h.listingRuntime.inFlight.run(entry.flightKey, () => gate.promise);
+
+    h.control.pauseJob(entry.id);
+    h.control.resumeJob(entry.id);
+
+    assertEquals(h.control.pauseJob(entry.id).outcome, "not-allowed");
+    assertEquals(h.control.resumeJob(entry.id).outcome, "not-allowed");
+    assertEquals(h.control.getListingSnapshot().length, 1);
+
+    gate.resolve({ url: PLAYLIST_URL, status: "success" });
+    await tick();
+    await tick();
+    assertEquals(
+      resumed.length,
+      1,
+      "neither refused action may cancel the resume that is waiting",
+    );
+  } finally {
+    h.restore();
+  }
+});

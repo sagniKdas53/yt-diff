@@ -498,6 +498,17 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     if (pausedJobs.has(id)) {
       return notAllowed(id, "pause", "That job is already paused.");
     }
+    if (deferredResumes.has(id)) {
+      // It is there — the snapshot is calling it queued — so this is an
+      // invalid transition rather than a job that does not exist. Same answer
+      // a queued entry gets, and for the same reason: nothing is running to
+      // stop yet.
+      return notAllowed(
+        id,
+        "pause",
+        "That job has not started yet, so there is nothing to pause.",
+      );
+    }
     return notFound(id, "pause");
   }
 
@@ -513,8 +524,13 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     if (!job) {
       const live = findById(downloadProcesses, id) ??
         findById(listProcesses, id);
-      return live
-        ? notAllowed(id, "resume", "That job is not paused.")
+      if (live) {
+        return notAllowed(id, "resume", "That job is not paused.");
+      }
+      // A resume already waiting to start is in neither map, so the check above
+      // cannot see it. It is queued, though, and the queue is not paused.
+      return deferredResumes.has(id)
+        ? notAllowed(id, "resume", "That job is already on its way back.")
         : notFound(id, "resume");
     }
 
