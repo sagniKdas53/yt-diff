@@ -1,11 +1,6 @@
 import he from "he";
-import { Op } from "sequelize";
 import { config } from "../../config.ts";
-import {
-  PlaylistMetadata,
-  PlaylistVideoMapping,
-  VideoMetadata,
-} from "../../db/models.ts";
+import { PlaylistMetadata, VideoMetadata } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { exists, mkdir, readdir } from "../../utils/fs.ts";
@@ -18,7 +13,9 @@ import {
   sep,
 } from "../../utils/path.ts";
 import { Semaphore } from "./semaphore.ts";
+import { resolveVideoPlaylist } from "./download-location.ts";
 import type {
+  CancelOutcome,
   DiscoveredMetadata,
   DownloadCompletionUpdates,
   DownloadItem,
@@ -74,6 +71,7 @@ export interface DownloadFlow {
     queuePosition: number;
   }[];
   syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
+  cancelDownload: (url: string) => CancelOutcome;
 }
 
 export function createDownloadFlow(
@@ -160,22 +158,13 @@ export function createDownloadFlow(
           });
         }
       } else if (!saveDirectory || saveDirectory === "None") {
+        // Shared with `/locate` and with the bot's player link: the playlist a
+        // file lands in and the playlist a link opens have to be one answer,
+        // not two lookups that can disagree.
         try {
-          const mapping = await PlaylistVideoMapping.findOne({
-            where: {
-              videoUrl: videoUrl,
-              playlistUrl: {
-                [Op.notIn]: ["init", "None"],
-              },
-            },
-          });
-          if (mapping) {
-            const playlist = await PlaylistMetadata.findOne({
-              where: { playlistUrl: mapping.playlistUrl },
-            });
-            if (playlist) {
-              saveDirectory = playlist.saveDirectory;
-            }
+          const location = await resolveVideoPlaylist(videoUrl);
+          if (location) {
+            saveDirectory = location.saveDirectory;
           }
         } catch (error) {
           logger.error("Error getting fallback playlist save directory", {
@@ -314,8 +303,27 @@ export function createDownloadFlow(
       await DownloadSemaphore.acquire();
 
       try {
-        const result = await executeDownload(downloadItem, entryKey);
-        return result;
+        // A download cancelled while it was queued has no process to kill, so
+        // this is where the flag is spent. The event is emitted rather than
+        // only returned, because whoever asked for this was waiting on it:
+        // a silent "stopped" is the failure this whole path exists to avoid.
+        if (downloadEntry.cancelled) {
+          const reason = "Cancelled before it started";
+          logger.info("Dropping a cancelled download", { url: videoUrl });
+          safeEmit("download-failed", {
+            url: videoUrl,
+            title: videoTitle,
+            error: reason,
+          });
+          return {
+            url: videoUrl,
+            title: videoTitle,
+            status: "failed",
+            error: reason,
+          };
+        }
+
+        return await executeDownload(downloadItem, entryKey);
       } finally {
         DownloadSemaphore.release();
       }
@@ -327,6 +335,45 @@ export function createDownloadFlow(
         queueSequence = 0;
       }
     }
+  }
+
+  /**
+   * Stops a download that is queued for a slot or already running.
+   *
+   * A running one has a yt-dlp process, so it is killed and the existing
+   * SIGTERM path reports it as a failed download like any other kill. A
+   * queued one has nothing to kill: it is flagged, and `downloadWithSemaphore`
+   * reads the flag when the slot finally comes round.
+   */
+  function cancelDownload(videoUrl: string): CancelOutcome {
+    let outcome: CancelOutcome = "not-found";
+
+    for (const entry of downloadProcesses.values()) {
+      if (
+        entry.url !== videoUrl ||
+        (entry.status !== "pending" && entry.status !== "running")
+      ) {
+        continue;
+      }
+
+      if (entry.spawnedProcess) {
+        try {
+          entry.spawnedProcess.kill("SIGTERM");
+          outcome = "killed";
+        } catch (error) {
+          logger.warn("Could not kill a cancelled download process", {
+            url: videoUrl,
+            error: (error as Error).message,
+          });
+        }
+        continue;
+      }
+
+      entry.cancelled = true;
+      outcome = "queued";
+    }
+
+    return outcome;
   }
 
   async function executeDownload(
@@ -1114,5 +1161,6 @@ export function createDownloadFlow(
     resolveAndEnqueue,
     getQueueSnapshot,
     syncExtras,
+    cancelDownload,
   } satisfies DownloadFlow;
 }

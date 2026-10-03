@@ -60,6 +60,7 @@ export interface PlaylistVideoRowShape {
     subTitleFile?: string | null;
     descriptionFile?: string | null;
     isMetaDataSynced?: boolean;
+    commentsFile?: string | null;
     saveDirectory?: string | null;
     missingExtras?: string[] | null;
     lastDownloadError?: string | null;
@@ -80,6 +81,14 @@ export interface SafePlaylistVideoMeta {
   isMetaDataSynced?: boolean;
   saveDirectory?: string | null;
   missingExtras?: string[] | null;
+  commentsFile?: string | null;
+  /**
+   * When the reaper will take this file, if it will — the clock behind the
+   * UI's "expires in 3 h" chip. Only files the bot fetched in ephemeral mode
+   * have one, and clearing it (via `/keepfile` or `/keep`) is what makes the
+   * chip go away.
+   */
+  botExpiresAt?: Date | null;
   lastDownloadError?: string | null;
 }
 

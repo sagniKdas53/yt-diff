@@ -680,6 +680,16 @@
                                   }
                                 ]
                               },
+                              "commentsFile": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "descriptionFile": {
                                 "anyOf": [
                                   {
@@ -717,6 +727,16 @@
                                 ]
                               },
                               "lastDownloadError": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "botExpiresAt": {
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1892,6 +1912,293 @@
                 "properties": {
                   "videoUrl": {
                     "type": "string"
+                  }
+                },
+                "required": [
+                  "videoUrl"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/keepfile": {
+      "post": {
+        "operationId": "processKeepFileRequest",
+        "summary": "Make one video's bot downloads permanent, as /keep does in chat.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "success"
+                    },
+                    "kept": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "kept"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "videoUrl": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "videoUrl"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/cancel": {
+      "post": {
+        "operationId": "processCancelRequest",
+        "summary": "Stop one queued or running download or playlist listing.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "success"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "download",
+                        "list"
+                      ]
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "killed",
+                        "queued",
+                        "not-found"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "url",
+                    "kind",
+                    "outcome"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "download",
+                      "list"
+                    ]
+                  }
+                },
+                "required": [
+                  "url",
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/locate": {
+      "post": {
+        "operationId": "processLocateRequest",
+        "summary": "Find the playlist a video opens in, and its page in that list.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "videoUrl": {
+                      "type": "string"
+                    },
+                    "playlistUrl": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "page": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "videoUrl",
+                    "playlistUrl",
+                    "page"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "videoUrl": {
+                    "type": "string"
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "sortDownloaded": {
+                    "type": "boolean"
                   }
                 },
                 "required": [

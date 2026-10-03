@@ -23,6 +23,13 @@ const CHAT = "1391594622";
 const URL = "https://www.youtube.com/watch?v=abc123";
 const ID = "sub-abcdef12";
 
+/**
+ * What the harness's `locateVideo` reports (no real playlist) turns into:
+ * every delivery here ends with the same player link, appended to the ack
+ * message but never to the caption that travels with the file.
+ */
+const PLAYER_LINK = `Watch it: https://example.test/#/unlisted?v=${URL}`;
+
 interface Calls {
   /** Everything handed to sendFile, captions included. */
   captions: string[];
@@ -142,6 +149,8 @@ function harness(
         return Promise.resolve({ mode: "upload" });
       },
       buildSignedUrl: () => "https://example.test/f",
+      buildPlayerUrl: (videoUrl: string, playlistUrl: string | null) =>
+        `https://example.test/#/${playlistUrl ?? "unlisted"}?v=${videoUrl}`,
     } as unknown as Parameters<typeof createBotCore>[0]["delivery"],
     listItemsConcurrently: () => Promise.resolve([]),
     resolveAndEnqueue: () => Promise.resolve({ items: [], notIndexed: [] }),
@@ -159,6 +168,9 @@ function harness(
         ...syncResult,
       });
     },
+    cancelDownload: () => "not-found" as const,
+    cancelListing: () => "not-found" as const,
+    locateVideo: () => Promise.resolve({ playlistUrl: null, page: null }),
     store: store(submission),
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,
@@ -233,7 +245,11 @@ Deno.test("partial download-done - the delivery says what is missing", async () 
     "A video\n\nGot the video, but YouTube rate-limited the extras (subtitles, thumbnail).\n`/sync sub-abcdef12` fetches them later.",
   ]);
   assertEquals(h.calls.edits.length, 1);
-  assertEquals(h.calls.edits[0], h.calls.captions[0]);
+  // The caption travels with the file; the ack adds the player link on top.
+  assertEquals(
+    h.calls.edits[0],
+    `A video\n\n${PLAYER_LINK}\n\n${h.calls.captions[0].split("\n\n")[1]}`,
+  );
 });
 
 Deno.test("partial download-done - a non-rate-limit reason says so in other words", async () => {
@@ -253,9 +269,10 @@ Deno.test("download-done - a complete download's wording is untouched", async ()
   const h = harness();
   await deliver(h, { partial: false, missingExtras: null, reason: null });
 
-  // Byte-for-byte what it always was: no trailing blank line, no extra line.
+  // The caption is byte-for-byte what it always was: no trailing blank line,
+  // no extra line. The ack gains only the player link.
   assertEquals(h.calls.captions, ["A video"]);
-  assertEquals(h.calls.edits, ["A video"]);
+  assertEquals(h.calls.edits, [`A video\n\n${PLAYER_LINK}`]);
 });
 
 Deno.test("/sync <id> - resolves the submission and reports what it recovered", async () => {

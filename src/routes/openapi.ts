@@ -49,11 +49,15 @@ export const SubListVideoRowSchema = z.object({
     thumbNailFile: z.string().nullable().optional(),
     onlineThumbnail: z.string().nullable().optional(),
     subTitleFile: z.string().nullable().optional(),
+    commentsFile: z.string().nullable().optional(),
     descriptionFile: z.string().nullable().optional(),
     isMetaDataSynced: z.boolean().optional(),
     saveDirectory: z.string().nullable().optional(),
     missingExtras: z.array(z.string()).nullable().optional(),
     lastDownloadError: z.string().nullable().optional(),
+    // When the reaper will take this file, if it will. A `Date` on the way
+    // out of the handler and an ISO string once JSON has had it.
+    botExpiresAt: z.string().nullable().optional(),
   }),
 });
 
@@ -231,6 +235,21 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
     recovered: z.array(z.string()),
     stillMissing: z.array(z.string()),
     reason: z.string().nullable(),
+  }),
+  "/keepfile": z.object({
+    status: z.literal("success"),
+    kept: z.number(),
+  }),
+  "/cancel": z.object({
+    status: z.literal("success"),
+    url: z.string(),
+    kind: z.enum(["download", "list"]),
+    outcome: z.enum(["killed", "queued", "not-found"]),
+  }),
+  "/locate": z.object({
+    videoUrl: z.string(),
+    playlistUrl: z.string().nullable(),
+    page: z.number().nullable(),
   }),
   "/refresh": TokenResponseSchema,
   "/login": TokenResponseSchema,

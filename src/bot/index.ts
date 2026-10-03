@@ -24,6 +24,9 @@ export interface BotServiceDependencies {
   /** Stamped while polling and on every update; see bot/recovery.ts. */
   touchLastSeenAt?: (at: Date) => Promise<void>;
   syncExtras: BotCoreDependencies["syncExtras"];
+  cancelDownload: BotCoreDependencies["cancelDownload"];
+  cancelListing: BotCoreDependencies["cancelListing"];
+  locateVideo: BotCoreDependencies["locateVideo"];
   createSignedUrlForPath: (
     absPath: string,
     ttlSeconds?: number,
@@ -103,6 +106,9 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     getListingQueueDepth: deps.getListingQueueDepth,
     setPlaylistMonitoring: deps.setPlaylistMonitoring,
     syncExtras: deps.syncExtras,
+    cancelDownload: deps.cancelDownload,
+    cancelListing: deps.cancelListing,
+    locateVideo: deps.locateVideo,
     store,
     normalizeUrl: deps.normalizeUrl,
     isPlaylistUrl: deps.isPlaylistUrl,

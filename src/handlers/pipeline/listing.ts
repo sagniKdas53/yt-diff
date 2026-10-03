@@ -11,6 +11,7 @@ import { Semaphore } from "./semaphore.ts";
 import { config } from "../../config.ts";
 import { ListingProcessError, playlistRegex } from "./types.ts";
 import type {
+  CancelOutcome,
   ListingItem,
   ListingProcessEntry,
   ListingResult,
@@ -101,6 +102,48 @@ export function createListingRuntime(
 /** True listing backlog: items holding a slot plus those parked in the queue. */
 export function getListingQueueDepth(rt: ListingRuntime): number {
   return rt.listProcesses.size + rt.semaphore.pendingCount;
+}
+
+/**
+ * Stops a running playlist listing.
+ *
+ * Only a listing that holds a semaphore slot is in `listProcesses`, so a
+ * queued one reports "not-found" — there is nothing of it to stop yet, and
+ * the caller waiting for the result will be told so rather than being left to
+ * infer it. Killing the process is enough for the joiners already waiting on
+ * `inFlight`: the exit is a SIGTERM they read as a deliberate termination.
+ *
+ * Whatever the listing had already written stays written. Chunks are
+ * persisted as they arrive precisely so a killed run leaves a partial index
+ * rather than none; the next listing of the same playlist tops it up.
+ */
+export function cancelListing(
+  rt: ListingRuntime,
+  playlistUrl: string,
+): CancelOutcome {
+  let outcome: CancelOutcome = "not-found";
+  for (const entry of rt.listProcesses.values()) {
+    if (entry.url !== playlistUrl || !entry.spawnedProcess) {
+      continue;
+    }
+    try {
+      entry.spawnedProcess.kill("SIGTERM");
+      outcome = "killed";
+    } catch (error) {
+      logger.warn("Could not kill a cancelled listing process", {
+        url: playlistUrl,
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  if (outcome === "killed") {
+    logger.info("Cancelled a listing; its partial index is kept", {
+      url: playlistUrl,
+    });
+  }
+
+  return outcome;
 }
 
 /**

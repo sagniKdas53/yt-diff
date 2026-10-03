@@ -76,6 +76,9 @@ function coreWith(allowedChatIds: string[], spy: SpyAdapter) {
     getListingQueueDepth: () => 0,
     setPlaylistMonitoring: explode("setPlaylistMonitoring"),
     syncExtras: explode("syncExtras"),
+    cancelDownload: explode("cancelDownload"),
+    cancelListing: explode("cancelListing"),
+    locateVideo: explode("locateVideo"),
     // Every store method throws too, so a rejected message touching the
     // database at all would surface as a failure rather than passing quietly.
     store: {

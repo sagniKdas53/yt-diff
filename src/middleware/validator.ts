@@ -192,3 +192,25 @@ export const SyncExtrasRequestBodySchema = z.object({
   // is handed to yt-dlp.
   videoUrl: HttpUrlSchema,
 });
+
+export const KeepFileRequestBodySchema = z.object({
+  // The row's own `videoUrl`, which is already the canonical form — the UI is
+  // handing back a value this server wrote, not something a user typed.
+  videoUrl: HttpUrlSchema,
+});
+
+export const CancelRequestBodySchema = z.object({
+  // Same URL rules as every other route that reaches the pipeline: this value
+  // is what gets looked up in the in-flight maps.
+  url: HttpUrlSchema,
+  /** What to stop: a queued or running download, or a playlist listing. */
+  kind: z.enum(["download", "list"]),
+});
+
+export const LocateRequestBodySchema = z.object({
+  videoUrl: HttpUrlSchema,
+  // The page size the caller is paging `/getsub` with; the handler falls back
+  // to the server default, which is the same one `/getsub` defaults to.
+  pageSize: z.number().int().positive().optional(),
+  sortDownloaded: z.boolean().optional(),
+});

@@ -1,4 +1,4 @@
-import { Op } from "sequelize";
+import { Op, type WhereOptions } from "sequelize";
 
 import {
   BotHeartbeat,
@@ -19,6 +19,17 @@ const UNSETTLED_STATUSES = ["pending", "indexing", "downloading"];
 
 /** The single row of bot_heartbeat. */
 const HEARTBEAT_ROW_ID = "bot";
+
+/**
+ * The rows one `/keep` or `/rm` acts on: every submission of this video, in
+ * one chat when the caller named one.
+ */
+function submissionUrlWhere(
+  canonicalUrl: string,
+  chatId?: string,
+): WhereOptions {
+  return chatId === undefined ? { canonicalUrl } : { canonicalUrl, chatId };
+}
 
 /**
  * The subset of a video row the bot actually reads.
@@ -130,6 +141,24 @@ export interface BotStore {
     chatId: string,
     idPrefix: string,
   ): Promise<SubmissionRecord | null>;
+  /**
+   * Makes every delivery of one video permanent, so the reaper leaves the file
+   * on disk. Scoped to one chat when `chatId` is given: `/keep` in a shared
+   * chat must not keep other people's rows, even though they name the same
+   * file.
+   *
+   * @returns How many submissions were updated, so the caller can say whether
+   *   anything was actually kept rather than claiming success either way.
+   */
+  keepSubmissionsByUrl(
+    canonicalUrl: string,
+    chatId?: string,
+  ): Promise<number>;
+  /** Marks one video's submissions reaped in a chat; the files are already gone. */
+  markSubmissionsReapedByUrl(
+    canonicalUrl: string,
+    chatId?: string,
+  ): Promise<number>;
   /**
    * Deletes a video's files and clears its file columns.
    *
@@ -344,6 +373,22 @@ export function createSequelizeBotStore(): BotStore {
       });
       // An ambiguous prefix is treated as no match rather than guessing.
       return rows.length === 1 ? toSubmissionRecord(rows[0]) : null;
+    },
+
+    async keepSubmissionsByUrl(canonicalUrl, chatId) {
+      const [count] = await BotSubmission.update(
+        { retention: "persistent", expiresAt: null },
+        { where: submissionUrlWhere(canonicalUrl, chatId) },
+      );
+      return count;
+    },
+
+    async markSubmissionsReapedByUrl(canonicalUrl, chatId) {
+      const [count] = await BotSubmission.update(
+        { status: "reaped" },
+        { where: submissionUrlWhere(canonicalUrl, chatId) },
+      );
+      return count;
     },
 
     async purgeVideoFiles(videoUrl) {

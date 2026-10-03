@@ -27,6 +27,7 @@ import {
   normalizeUrl,
 } from "./src/utils/url.ts";
 import { createBotService } from "./src/bot/index.ts";
+import { processKeepFileRequest } from "./src/bot/keepfile.ts";
 import {
   processDedupPlaylistsRequest,
   processDedupUnlistedRequest,
@@ -399,6 +400,11 @@ const {
   processDownloadRequest,
   processListingRequest,
   processSyncExtrasRequest,
+  processLocateRequest,
+  locateVideo,
+  cancelDownload,
+  cancelListing,
+  processCancelRequest,
   resolveAndEnqueue,
   getQueueSnapshot,
   syncExtras,
@@ -687,6 +693,12 @@ const apiRoutes = createApiRoutes({
     processListingRequest,
     processDownloadRequest,
     processSyncExtrasRequest,
+    // The handler takes an injectable store as a third argument for tests;
+    // the router's third argument is the request context, so the two are
+    // bridged here rather than by loosening either signature.
+    processKeepFileRequest: (body, res) => processKeepFileRequest(body, res),
+    processCancelRequest,
+    processLocateRequest,
     updatePlaylistMonitoring,
     getPlaylistsForDisplay,
     processDeletePlaylistRequest,
@@ -771,6 +783,9 @@ const botService = createBotService({
   resolveAndEnqueue,
   getQueueSnapshot,
   syncExtras,
+  cancelDownload,
+  cancelListing,
+  locateVideo,
   getListingQueueDepth,
   setPlaylistMonitoring,
   createSignedUrlForPath,

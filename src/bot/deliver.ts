@@ -98,6 +98,22 @@ export function partialNote(
   ].join("\n");
 }
 
+/**
+ * The clock a reaped file is on, in the units a person would use for it.
+ *
+ * Spelled out rather than left as a timestamp because the only useful reading
+ * of an expiry is "how long have I got", and `BOT_RETENTION_HOURS` is allowed
+ * to be a fraction — 0.25 is a quarter of an hour, which as "0.25 h" would
+ * read as a bug. The `/keep <link>` beside it is what makes the sentence
+ * actionable rather than a warning about something unavoidable.
+ */
+function expiryNote(expiresAt: Date, videoUrl: string): string {
+  const hours = Math.max(0, (expiresAt.getTime() - Date.now()) / 3_600_000);
+  const span = hours >= 1
+    ? `${Math.round(hours)} h`
+    : `${Math.max(1, Math.round(hours * 60))} min`;
+  return `Expires in ${span} — \`/keep ${videoUrl}\` to keep it.`;
+}
 export function queuePositionFor(
   rt: BotRuntime,
   url: string,
@@ -113,6 +129,8 @@ export async function deliverVideo(
   entry: PendingSubmission,
   canonicalUrl: string,
   video: {
+    /** The canonical URL, when the caller has one; `canonicalUrl` otherwise. */
+    videoUrl?: string | null;
     title?: string | null;
     fileName?: string | null;
     saveDirectory?: string | null;
@@ -127,13 +145,29 @@ export async function deliverVideo(
   // message and in the /download receipt alike, so the user reads it wherever
   // the file itself landed. Null for every download that got what it asked
   // for, which is why the non-partial wording below is untouched.
-  const note = partialNote(
-    video.partial,
-    video.missingExtras,
-    entry.submissionId,
-    video.reason,
-  );
-  const withNote = (text: string) => (note ? `${text}\n\n${note}` : text);
+  const videoUrl = video.videoUrl ?? canonicalUrl;
+
+  // Only files the bot actually fetched are ever eligible for reaping, and
+  // only when retention is ephemeral. A file pulled out of an unmonitored
+  // playlist is on exactly the same clock as one nobody filed anywhere, so
+  // the delivery has to say so — the reaper's rule stays where it is, and the
+  // user is told the one thing that lets them opt out of it.
+  const expiresAt = downloadedByBot && rt.deps.retentionMode === "ephemeral"
+    ? new Date(Date.now() + rt.deps.retentionHours * 3600 * 1000)
+    : null;
+
+  const notes = [
+    partialNote(
+      video.partial,
+      video.missingExtras,
+      entry.submissionId,
+      video.reason,
+    ),
+    expiresAt ? expiryNote(expiresAt, videoUrl) : null,
+  ].filter((line): line is string => line !== null);
+  const withNote = (text: string) =>
+    notes.length > 0 ? `${text}\n\n${notes.join("\n\n")}` : text;
+
   if (!video.fileName) {
     await fail(
       rt,
@@ -177,20 +211,23 @@ export async function deliverVideo(
       forceLink: entry.mode === "link",
     });
 
-    // Only files the bot actually fetched are ever eligible for reaping, and
-    // only when retention is ephemeral.
-    const reapable = downloadedByBot &&
-      rt.deps.retentionMode === "ephemeral";
-
     await settle(rt, entry, canonicalUrl, {
       status: "delivered",
       deliveryMode: outcome.mode,
       downloadedByBot,
       retention: rt.deps.retentionMode,
-      expiresAt: reapable
-        ? new Date(Date.now() + rt.deps.retentionHours * 3600 * 1000)
-        : null,
+      expiresAt,
     });
+
+    // Where the file can be watched, not just fetched. One lookup per
+    // delivery: the same answer the web UI's own player link uses, so a
+    // message and a manual click cannot open two different lists.
+    const location = await rt.deps.locateVideo(videoUrl);
+    const playerUrl = rt.deps.delivery.buildPlayerUrl(
+      videoUrl,
+      location.playlistUrl,
+      location.page,
+    );
 
     if (outcome.mode === "signed_url") {
       // Always say why a link came back instead of a file. The pre-download
@@ -206,9 +243,15 @@ export async function deliverVideo(
         : outcome.reason === "upload_failed"
         ? `Upload failed, so here's a download link instead (${size}).`
         : `Download link (${size}).`;
-      await editAck(entry, withNote(`${why}\n${outcome.url}`));
+      await editAck(
+        entry,
+        withNote(`${why}\n${outcome.url}\n\nWatch it: ${playerUrl}`),
+      );
     } else {
-      await editAck(entry, withNote(video.title || "Done"));
+      await editAck(
+        entry,
+        withNote(`${video.title || "Done"}\n\nWatch it: ${playerUrl}`),
+      );
     }
   } catch (error) {
     await fail(

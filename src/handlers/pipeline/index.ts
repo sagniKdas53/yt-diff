@@ -9,10 +9,13 @@ import {
 } from "./process-manager.ts";
 import { createDownloadFlow } from "./download.ts";
 import {
+  cancelListing,
   createListingRuntime,
   getListingQueueDepth,
   listItemsConcurrently,
 } from "./listing.ts";
+import { processCancelRequest } from "./cancel.ts";
+import { locateVideo, processLocateRequest } from "./locate.ts";
 import { processListingRequest } from "./listing-requests.ts";
 
 export * from "./types.ts";
@@ -50,6 +53,22 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
       ),
     processDownloadRequest: downloadFlow.processDownloadRequest,
     processSyncExtrasRequest: downloadFlow.processSyncExtrasRequest,
+    processLocateRequest,
+    locateVideo,
+    cancelDownload: downloadFlow.cancelDownload,
+    cancelListing: (url: string) => cancelListing(listingRuntime, url),
+    processCancelRequest: (
+      requestBody: Parameters<typeof processCancelRequest>[1],
+      response: Parameters<typeof processCancelRequest>[2],
+    ) =>
+      processCancelRequest(
+        {
+          cancelDownload: downloadFlow.cancelDownload,
+          cancelListing: (url: string) => cancelListing(listingRuntime, url),
+        },
+        requestBody,
+        response,
+      ),
     resolveAndEnqueue: downloadFlow.resolveAndEnqueue,
     processListingRequest: (
       requestBody: Parameters<typeof processListingRequest>[1],

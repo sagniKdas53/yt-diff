@@ -128,6 +128,8 @@ function harness(options: HarnessOptions = {}): Harness {
     listActiveChatsSince: () => Promise.resolve([]),
     getLastSeenAt: () => Promise.resolve(null),
     touchLastSeenAt: () => Promise.resolve(),
+    keepSubmissionsByUrl: () => Promise.resolve(0),
+    markSubmissionsReapedByUrl: () => Promise.resolve(0),
   };
 
   const events = createEventBus();
@@ -175,6 +177,9 @@ function harness(options: HarnessOptions = {}): Harness {
         stillMissing: [],
         reason: null,
       }),
+    cancelDownload: () => "not-found" as const,
+    cancelListing: () => "not-found" as const,
+    locateVideo: () => Promise.resolve({ playlistUrl: null, page: null }),
     store,
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: (url: string) => url.includes("playlist?list="),

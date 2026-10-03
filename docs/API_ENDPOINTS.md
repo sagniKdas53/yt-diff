@@ -106,6 +106,40 @@ dependencies minimal.
   - **Response**: `{ url, status: "recovered" | "unchanged" | "failed", recovered: string[], stillMissing: string[], reason: string | null }`
   - **Authentication**: Required.
 
+- **`/keepfile`**
+  - **Description**: Makes a video's bot downloads permanent — the web UI's
+    version of `/keep` in chat. Sets `retention=persistent` and clears
+    `expiresAt` on every matching submission, and reports how many rows it
+    touched, so a row the bot never fetched can be told apart from a kept one.
+    Scoped to no chat, unlike the command: a row on screen is the reader's.
+  - **Request body**: `{ videoUrl: string }`
+  - **Response**: `{ status: "success", kept: number }`
+  - **Authentication**: Required.
+
+- **`/cancel`**
+  - **Description**: Stops one queued or running job. A running download or
+    listing has its yt-dlp process killed; a download still waiting for a slot
+    is dropped before it starts and reported as a failed download, so whatever
+    was waiting on it hears the outcome. `outcome` is `killed`, `queued` or
+    `not-found` — a bare 200 could not tell a caller that there was nothing to
+    stop. Cancelling a listing keeps whatever it had already indexed.
+  - **Request body**: `{ url: string, kind: "download" | "list" }`
+  - **Response**: `{ status: "success", url, kind, outcome }`
+  - **Authentication**: Required.
+
+- **`/locate`**
+  - **Description**: For one video, the playlist it should be opened in and
+    the page it sits on there. The playlist comes from the same helper the
+    download queue uses to pick a save directory, so a player link opens the
+    list the file actually landed in rather than an arbitrary one the video
+    also appears in. `playlistUrl` is `null` for a video in no real playlist
+    (open it under Unlisted), and `page` is then `null` too.
+  - **Request body**: `{ videoUrl: string, pageSize?: number, sortDownloaded?: boolean }`
+    — `pageSize` and `sortDownloaded` mirror `/getsub`, and the default page
+    size is the same one `/getsub` defaults to.
+  - **Response**: `{ videoUrl: string, playlistUrl: string | null, page: number | null }`
+  - **Authentication**: Required.
+
 ### 5. Authentication
 
 - **`/login`**

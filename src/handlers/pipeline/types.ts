@@ -4,6 +4,17 @@ import { type AppConfig, config } from "../../config.ts";
 export const playlistRegex = /(?:playlist|list=|creators|videos$)\b/i;
 
 /**
+ * Monitoring types whose videos the box keeps maintaining on its own.
+ *
+ * Lives here rather than with either of its two readers — the reaper, which
+ * will not touch a video in one of these, and the download router, which
+ * prefers to file a video in one of these — because the two answering with
+ * different lists would mean a file the scheduler keeps fresh is reaped out
+ * from under it.
+ */
+export const MONITORED_TYPES = ["Start", "End", "Full"];
+
+/**
  * The one language the sidecar flags and the extras probe both read from.
  *
  * `--sub-langs en` and `%(subtitles.en&1|0)s` have to agree: the second asks
@@ -265,6 +276,16 @@ export interface DownloadResult {
   error?: string;
 }
 
+/**
+ * What a cancel request actually found.
+ *
+ * "killed" and "queued" are both success but not the same thing to the user:
+ * one had a yt-dlp process running that is now gone, the other was still
+ * waiting for a slot and will never take it. Anything that reported a single
+ * "cancelled" for both would be claiming to have stopped work it never began.
+ */
+export type CancelOutcome = "killed" | "queued" | "not-found";
+
 export interface VideoEntrySnapshot {
   videoId: string;
   approximateSize: number | string;
@@ -393,6 +414,13 @@ export interface DownloadProcessEntry extends ProcessLike {
   url: string;
   title: string;
   queuePosition: number;
+  /**
+   * Set by `cancelDownload` while this entry is still queued for a slot.
+   *
+   * A queued download has no process to kill, so a cancellation can only be a
+   * note the download reads for itself when it finally gets one.
+   */
+  cancelled?: boolean;
 }
 
 export interface ListingProcessEntry extends ProcessLike {

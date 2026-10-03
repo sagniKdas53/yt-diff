@@ -114,7 +114,36 @@ export function createDelivery(deps: DeliveryDependencies) {
     }
   }
 
-  return { deliver, buildSignedUrl };
+  /**
+   * The link that opens this video in the web player.
+   *
+   * Sent alongside the download link, never instead of it: the download link
+   * works with no login, the player does not, and a user who only wanted the
+   * file must not be made to log in to get it. The playlist is the one
+   * `locateVideo` named — the same mapping the download was filed under, so
+   * the link opens the list the file actually landed in rather than whichever
+   * list the video also happens to appear in.
+   *
+   * `vp` is the page the video sits on, because the player only opens `v=`
+   * when the row is on the page it has loaded and silently drops it
+   * otherwise. Page 0 is the default the URL grammar omits.
+   */
+  function buildPlayerUrl(
+    videoUrl: string,
+    playlistUrl: string | null,
+    page: number | null,
+  ): string {
+    const route = playlistUrl
+      ? `playlist/${encodeURIComponent(playlistUrl)}`
+      : "unlisted";
+    const params = new URLSearchParams({ v: videoUrl });
+    if (playlistUrl && page !== null && page > 0) {
+      params.set("vp", String(page + 1));
+    }
+    return `${deps.publicBaseUrl}${deps.urlBase}/#/${route}?${params}`;
+  }
+
+  return { deliver, buildSignedUrl, buildPlayerUrl };
 }
 
 export type Delivery = ReturnType<typeof createDelivery>;

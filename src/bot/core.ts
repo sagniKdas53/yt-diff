@@ -1,6 +1,7 @@
 import { logger } from "../logger.ts";
 import { HELP_TEXT, parseCommand } from "./commands.ts";
 import {
+  handleCancel,
   handleHistory,
   handleKeep,
   handleList,
@@ -67,10 +68,13 @@ export async function handleMessage(
         await handleHistory(rt, adapter, target, command.limit);
         return;
       case "keep":
-        await handleKeep(rt, adapter, target, command.id);
+        await handleKeep(rt, adapter, target, command.target);
         return;
       case "remove":
-        await handleRemove(rt, adapter, target, command.id);
+        await handleRemove(rt, adapter, target, command.target);
+        return;
+      case "cancel":
+        await handleCancel(rt, adapter, target, command.target);
         return;
       case "sync":
         await handleSync(rt, adapter, target, command.target);

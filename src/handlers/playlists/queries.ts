@@ -2,6 +2,7 @@ import he from "he";
 import { FindAndCountOptions, Op, Order, WhereOptions } from "sequelize";
 import { config } from "../../config.ts";
 import {
+  BotSubmission,
   PlaylistMetadata,
   PlaylistVideoMapping,
   VideoMetadata,
@@ -18,6 +19,56 @@ import type {
   SubListRequest,
 } from "./types.ts";
 import { json } from "../../utils/http.ts";
+
+/**
+ * The submissions that put a clock on a video, narrowed to one page's URLs.
+ *
+ * These are the reaper's own three conditions, not a looser reading of them:
+ * a row the reaper would ignore must never show a countdown, or the UI would
+ * warn about a reaping that is not going to happen.
+ */
+export function buildBotExpiryWhere(videoUrls: string[]): WhereOptions {
+  return {
+    canonicalUrl: { [Op.in]: videoUrls },
+    status: "delivered",
+    downloadedByBot: true,
+    expiresAt: { [Op.ne]: null },
+  };
+}
+
+/**
+ * When the reaper will take each of these files, if it will.
+ *
+ * The earliest clock wins. A file can be asked for more than once — two chats,
+ * or the same chat twice — and each request writes its own `expiresAt`; the
+ * one that actually decides when the file goes is the soonest of them, so
+ * showing a longer one would have the UI counting down to a reaping that is
+ * not going to happen when the user expects.
+ */
+async function findBotExpiries(
+  videoUrls: string[],
+): Promise<Map<string, Date>> {
+  const earliest = new Map<string, Date>();
+  if (videoUrls.length === 0) {
+    return earliest;
+  }
+
+  const rows = await BotSubmission.findAll({
+    attributes: ["canonicalUrl", "expiresAt"],
+    where: buildBotExpiryWhere(videoUrls),
+    order: [["expiresAt", "ASC"]],
+  });
+
+  for (const row of rows) {
+    const canonicalUrl = row.getDataValue("canonicalUrl") as string | null;
+    const expiresAt = row.getDataValue("expiresAt") as Date | null;
+    if (canonicalUrl && expiresAt && !earliest.has(canonicalUrl)) {
+      earliest.set(canonicalUrl, expiresAt);
+    }
+  }
+
+  return earliest;
+}
 
 export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
   async function getPlaylistsForDisplay(
@@ -210,6 +261,7 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
             "onlineThumbnail",
             "subTitleFile",
             "descriptionFile",
+            "commentsFile",
             "isMetaDataSynced",
             "saveDirectory",
             "missingExtras",
@@ -225,6 +277,16 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       };
 
       const results = await PlaylistVideoMapping.findAndCountAll(queryOptions);
+
+      // One query for the whole page, not one per row: the expiry chip is a
+      // label, and paging a playlist should not cost N extra round trips to
+      // draw it. The filter is the reaper's own (`buildExpiredSubmissionWhere`
+      // selects the same three things), so a row the reaper would ignore can
+      // never carry a clock the UI would count down.
+      const pageVideoUrls = results.rows
+        .map((row) => row.video_metadatum?.videoUrl)
+        .filter((url): url is string => typeof url === "string" && !!url);
+      const expiryByUrl = await findBotExpiries(pageVideoUrls);
 
       let playlistSaveDir = "";
       let playlistTitle: string | null = null;
@@ -254,11 +316,15 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
           thumbNailFile: vm?.thumbNailFile,
           onlineThumbnail: vm?.onlineThumbnail,
           subTitleFile: vm?.subTitleFile,
+          commentsFile: vm?.commentsFile,
           descriptionFile: vm?.descriptionFile,
           isMetaDataSynced: vm?.isMetaDataSynced,
           saveDirectory: vm?.saveDirectory,
           missingExtras: vm?.missingExtras ?? null,
           lastDownloadError: vm?.lastDownloadError ?? null,
+          botExpiresAt: vm?.videoUrl
+            ? expiryByUrl.get(vm.videoUrl) ?? null
+            : null,
         };
 
         return {

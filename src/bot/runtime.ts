@@ -1,7 +1,10 @@
 import type { AppEventBus } from "../events.ts";
 // The pipeline's own result shape, so the bot cannot drift from what
 // `POST /syncextras` answers with; `events.ts` already imports it the same way.
-import type { SyncExtrasResult } from "../handlers/pipeline/types.ts";
+import type {
+  CancelOutcome,
+  SyncExtrasResult,
+} from "../handlers/pipeline/types.ts";
 import type { Delivery } from "./delivery.ts";
 import type { BotStore } from "./store.ts";
 import type { BotAdapter, DeliveryTarget, MessageRef } from "./types.ts";
@@ -50,6 +53,25 @@ export interface BotCoreDependencies {
    * when it is safe to call.
    */
   syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
+  /**
+   * Stops work the pipeline has already accepted. Both report what they
+   * found, so `/cancel` can say whether it killed something or merely
+   * dropped a queued request — the two are indistinguishable to the user
+   * otherwise.
+   */
+  cancelDownload: (url: string) => CancelOutcome;
+  cancelListing: (url: string) => CancelOutcome;
+  /**
+   * Which list a delivered file should be opened in, and on what page.
+   *
+   * The pipeline's own answer, passed straight through: the bot has no way to
+   * work out the playlist a download landed in without repeating the mapping
+   * rule, and a link that opened a different list from the one the file was
+   * filed under is worse than no link.
+   */
+  locateVideo: (
+    videoUrl: string,
+  ) => Promise<{ playlistUrl: string | null; page: number | null }>;
   normalizeUrl: (url: string) => string;
   isPlaylistUrl: (url: string) => boolean;
   allowedChatIds: string[];

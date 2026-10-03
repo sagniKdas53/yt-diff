@@ -113,6 +113,8 @@ function harness(options: HarnessOptions): Harness {
       heartbeats.push(at);
       return Promise.resolve();
     },
+    keepSubmissionsByUrl: () => Promise.resolve(0),
+    markSubmissionsReapedByUrl: () => Promise.resolve(0),
   };
 
   const core = createBotCore({
@@ -145,6 +147,9 @@ function harness(options: HarnessOptions): Harness {
         stillMissing: [],
         reason: null,
       }),
+    cancelDownload: () => "not-found" as const,
+    cancelListing: () => "not-found" as const,
+    locateVideo: () => Promise.resolve({ playlistUrl: null, page: null }),
     store,
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,
