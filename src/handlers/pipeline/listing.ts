@@ -810,6 +810,16 @@ export async function handlePlaylistStreaming(
             "End mode index returned empty due to likely deletions.",
           );
         }
+        if (
+          streamProcessor.process.killed ||
+          rt.listProcesses.get(processKey)?.paused
+        ) {
+          return {
+            url: videoUrl,
+            title: item.playlistTitle || "Playlist",
+            status: "paused",
+          };
+        }
         return handleEmptyResponse(rt, videoUrl);
       },
       onError: (error) =>
@@ -831,7 +841,19 @@ export async function handlePlaylistStreaming(
     return await consumePlaylistChunks(rt, {
       chunks: chunkPlaylistLines(fullStream.iterator, chunkSize, 1),
       stop: () => fullStream.process.kill("SIGTERM"),
-      onEmpty: () => handleEmptyResponse(rt, videoUrl),
+      onEmpty: () => {
+        if (
+          fullStream.process.killed ||
+          rt.listProcesses.get(processKey)?.paused
+        ) {
+          return {
+            url: videoUrl,
+            title: item.playlistTitle || "Playlist",
+            status: "paused",
+          };
+        }
+        return handleEmptyResponse(rt, videoUrl);
+      },
       onError: (error) =>
         isDeliberateTermination(error)
           ? null
@@ -942,6 +964,16 @@ async function handleSingleVideoStreaming(
     }
 
     if (chunkItems.length === 0) {
+      if (
+        streamProcessor.process.killed ||
+        rt.listProcesses.get(processKey)?.paused
+      ) {
+        return {
+          url: videoUrl,
+          title: "Video",
+          status: "paused",
+        };
+      }
       return handleEmptyResponse(rt, videoUrl);
     }
 
@@ -1007,6 +1039,16 @@ async function handleSingleVideoStreaming(
       processedChunks: result.count,
     };
   } catch (error) {
+    if (
+      isDeliberateTermination(error as Error) ||
+      rt.listProcesses.get(processKey)?.paused
+    ) {
+      return {
+        url: videoUrl,
+        title: "Video",
+        status: "paused",
+      };
+    }
     return handleListingError(rt, error as Error, videoUrl, itemType);
   }
 }

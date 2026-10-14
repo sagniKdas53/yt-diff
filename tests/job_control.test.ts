@@ -140,6 +140,7 @@ function buildHarness(
     resumeListing: deps.resumeListing ??
       ((job: PausedJob) => resumeListing(listingRuntime, job)),
     abandonListing: (id: string) => listingRuntime.abandon(id),
+    safeEmit: pipelineDeps.safeEmit,
   });
 
   let videoUpdates: Record<string, unknown>[] = [];
@@ -1190,3 +1191,29 @@ Deno.test("resume - a listing whose key is taken while it waits goes back to pau
     h.restore();
   }
 });
+
+Deno.test("job-control - emits job-paused and job-resumed socket events", () => {
+  const h = buildHarness();
+  try {
+    const entry = downloadEntry({
+      status: "running",
+      spawnedProcess: pendingProcess() as any,
+    });
+    h.downloads.set("dl-1", entry);
+
+    const pauseResult = h.control.pauseJob(entry.id);
+    assertEquals(pauseResult.outcome, "paused");
+    const pauseEvents = h.emitted.filter((e) => e.event === "job-paused");
+    assertEquals(pauseEvents.length, 1);
+    assertEquals(pauseEvents[0].payload.id, entry.id);
+
+    const resumeResult = h.control.resumeJob(entry.id);
+    assertEquals(resumeResult.outcome, "resumed");
+    const resumeEvents = h.emitted.filter((e) => e.event === "job-resumed");
+    assertEquals(resumeEvents.length, 1);
+    assertEquals(resumeEvents[0].payload.id, entry.id);
+  } finally {
+    h.restore();
+  }
+});
+

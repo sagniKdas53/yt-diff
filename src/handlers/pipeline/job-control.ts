@@ -243,6 +243,7 @@ export interface JobControlDependencies {
    * signal, and only the run itself can still say no.
    */
   abandonListing: (id: string) => void;
+  safeEmit?: (event: string, payload: unknown) => void;
 }
 
 /** What the routes, the drawer and the tests can ask of a job. */
@@ -291,6 +292,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
     pausedJobs,
     resumeDownload,
     resumeListing,
+    safeEmit,
   } = deps;
 
   /**
@@ -484,6 +486,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
         id,
         url: entry.url,
       });
+      safeEmit?.("job-paused", { id, url: entry.url });
       return { id, action: "pause", outcome: "paused", partialDeleted: false };
     }
 
@@ -527,6 +530,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
         id,
         url: entry.url,
       });
+      safeEmit?.("job-paused", { id, url: entry.url });
       return { id, action: "pause", outcome: "paused", partialDeleted: false };
     }
 
@@ -608,6 +612,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
       // findable from the moment it is accepted.
       resumeDownload(job);
       logger.info("Resumed a paused job", { id, kind: job.kind, url: job.url });
+      safeEmit?.("job-resumed", { id, url: job.url });
       return { id, action: "resume", outcome: "resumed", partialDeleted: null };
     }
 
@@ -686,6 +691,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
 
     // Null rather than false: nothing was deleted, because nothing was asked
     // to be.
+    safeEmit?.("job-resumed", { id, url: job.url });
     return { id, action: "resume", outcome: "resumed", partialDeleted: null };
   }
 

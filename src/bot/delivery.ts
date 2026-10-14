@@ -137,7 +137,7 @@ export function createDelivery(deps: DeliveryDependencies) {
       ? `playlist/${encodeURIComponent(playlistUrl)}`
       : "unlisted";
     const params = new URLSearchParams({ v: videoUrl });
-    if (playlistUrl && page !== null && page > 0) {
+    if (page !== null && page > 0) {
       params.set("vp", String(page + 1));
     }
     return `${deps.publicBaseUrl}${deps.urlBase}/#/${route}?${params}`;
