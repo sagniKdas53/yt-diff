@@ -69,7 +69,7 @@ The user reported that `vp=11` (`pq-32mjgDgc`) lags horribly, whereas `vp=12` (`
 - **Context**: Telegram delivery message vs resulting web application view.
 - **Symptom**: User sends an Iwara link (`RKtACaiXahVcQy`). The bot responds with `Watch it: https://<host>/ytdiff/#/unlisted?v=https%3A%2F%2Fwww.iwara.tv%2Fvideo%2FRKtACaiXahVcQy`. Clicking the link navigates to Page 1 of Unlisted (items 1–8 of 92). The player **never opens**, and the video is at position 95 (Page 12).
 - **Root Cause Chain**:
-  1. **`resolveVideoPlaylist` drops `None`**: In [`src/handlers/pipeline/download-location.ts#L10`](src/handlers/pipeline/download-location.ts#L10), `PSEUDO_PLAYLISTS = ["init", "None"]`. For any unlisted or bot video, `resolveVideoPlaylist` returns `null`.
+  1. **`resolveVideoPlaylist` drops `None`**: In [`src/handlers/pipeline/download-location.ts#L10`](src/handlers/pipeline/download-location.ts#L10), `PSEUDO_PLAYLISTS = ["init", "None"]`. When a video only exists in unlisted/bot scope (`playlistUrl = "None"`) and has no real-playlist mapping (as was the case with `RKtACaiXahVcQy`), `resolveVideoPlaylist` returns `null`.
   2. **`locateVideo` returns null page**: In [`src/handlers/pipeline/locate.ts#L43-L46`](src/handlers/pipeline/locate.ts#L43-L46), if `resolveVideoPlaylist` returns `null`, `locateVideo` immediately returns `{ videoUrl, playlistUrl: null, page: null }` without querying `PlaylistVideoMapping` for `None`.
   3. **`buildPlayerUrl` excludes `vp`**: In [`src/bot/delivery.ts#L140-L142`](src/bot/delivery.ts#L140-L142):
      ```typescript
@@ -123,7 +123,26 @@ The user reported that `vp=11` (`pq-32mjgDgc`) lags horribly, whereas `vp=12` (`
      }
      ```
      `--proxy` is **only passed for iwara.tv and x.com**. Even though an HTTP outbound proxy was configured in the environment, YouTube requests completely bypassed the proxy and exited directly from the local IP, triggering YouTube CDN rate limiting.
-  3. `yt-dlp` does not automatically retry HTTP 403 CDN errors without `--retry-sleep 403:5` or `--extractor-args "youtube:player_client=default,ios"`.
+  3. `yt-dlp` HTTP 403 handling is version- and extractor-dependent. Note that `--retry-sleep` only accepts sleep types (`http`, `fragment`, `file_access`, `extractor`), such as `--retry-sleep http:5` or `--retry-sleep fragment:exp=1:20`, rather than numeric HTTP status codes. Additionally, workarounds like player client emulation (e.g. `--extractor-args "youtube:player_client=default,ios"`) or routing traffic through a dedicated residential/VPN proxy must be evaluated and verified against the container's deployed `yt-dlp` build.
+
+### D. Outage Recovery & X.com Tweet / Multi-Item Ingestion Stress Test
+- **Context & Workload**:
+  - The stack was offline during an extended outage (~18 hours, `2026-10-13T19:40:00Z` to `2026-10-14T13:23:58Z`).
+  - While offline, the user submitted 11 items via the Telegram bot: 7 X.com (Twitter) video posts (`lalanonitizyo`, `Misuzu_oshi_v3`, `ZanEngineer`, `___u2`, `aazsxx2`, `alphatauri_0515`, `T41_MSB`), 2 YouTube Shorts (`eWJSJTOewjI`, `2POgeCJ0JMQ`), and 2 standard YouTube videos (`8Oos6D4_Bjo`, `NoJQHwylvew`).
+- **Startup Recovery Execution**:
+  - `recovery.ts:announceOutage` successfully detected the outage window and sent a catch-up broadcast message to the registered chat upon container startup.
+  - In-flight/persisted submissions resumed replay sequentially using `ListingSemaphore` (concurrency = 1) and `DownloadSemaphore` (concurrency = 1).
+  - High burst: At peak burst, 8 listings and 6 downloads were concurrently queued. The stack processed all 11 items in orderly FIFO fashion without crashes, memory exhaustion, or deadlocks, finishing the backlog in ~2 minutes total.
+  - Delivery: All 11 videos were downloaded, indexed into PostgreSQL, and uploaded as native video documents to Telegram.
+  - Proxy & Media Integrity: X.com downloads cleanly used the `--proxy` argument via `buildSiteArgs` and cookies (`/home/ytdiff/cookies.txt`). YouTube items did not encounter 403s during this run because file sizes were small (<30MB single-stream webm formats without DASH multi-stream splitting).
+- **Architectural Bottlenecks & Operational Deficiencies Revealed**:
+  1. **Strictly Serial Concurrency Bottleneck**:
+     - `DownloadSemaphore` and `ListingSemaphore` enforce hard-coded concurrency of 1. While this prevents memory and CPU spikes on resource-constrained hosts, it introduces linear queue latency during backlog bursts. A configurable or slightly higher concurrency limit (e.g., 2 concurrent downloads or parallelizing listing vs downloading) would significantly accelerate recovery.
+  2. **Socket Event Flood Amplifies Player Disruption (Bug #4)**:
+     - As each of the 11 backlog listings completed, the backend emitted `listing-single-item-complete`.
+     - Because `useSocketEvents.js` handles this event by calling `setPlayListUrl("None")` (which invokes `replacePlayListUrl` and resets `videoUrl: null`), any user attempting to watch a video in the web player during recovery would have been abruptly kicked out of the player 11 times in rapid succession. This severely elevates the real-world impact of Bug #4.
+  3. **Telegram Notification Burst / Rate-Limiting Risk**:
+     - The recovery sweep dispatched the outage notice followed by 20+ download progress and completion messages in a 2-minute window. While Telegram accepted the traffic for a single chat, notifying multiple chats or processing a larger backlog risks hitting Telegram's `429 Too Many Requests` rate limits without batching or delay guards.
 
 ---
 
@@ -147,6 +166,8 @@ The user reported that `vp=11` (`pq-32mjgDgc`) lags horribly, whereas `vp=12` (`
 | 14 | **Backend Job Control** | **Low** | Backend logs cancelled jobs as errors: `ERROR: Cancelled before it started`. | Cancelled queued jobs throw error in concurrency queue instead of clean cancellation log. |
 | 15 | **UI Copy** | **Low** | Resumed downloads show copy: `"Nothing downloaded yet — cancelling this one costs nothing"`. | [`JobDrawer.jsx#L171`](frontend/src/components/JobDrawer.jsx#L171) checks `queued` state without verifying `downloadedBytes > 0`. |
 | 16 | **Player Download Bar** | **Low** | Ambiguous 3px green line at bottom of player drawer item has no progress text or tooltip. | [`PlayerPlaylistDrawer.jsx#L249`](frontend/src/components/PlayerPlaylistDrawer.jsx#L249) renders raw line indicator without labels. |
+| 17 | **Queue Concurrency / Latency** | **Medium** | Single-worker (`concurrency: 1`) semaphores serialize backlog replay, introducing linear waiting times during outage catch-up bursts. | Hardcoded `ListingSemaphore` and `DownloadSemaphore` concurrency in [`types.ts`](src/handlers/pipeline/types.ts). |
+| 18 | **Bot Burst Rate-Limiting** | **Low** | Batch recovery sends unthrottled Telegram notifications in rapid succession without rate-limiting across chats. | [`recovery.ts:announceOutage`](src/bot/recovery.ts) and [`delivery.ts`](src/bot/delivery.ts) lack batch pacing. |
 
 ---
 
@@ -158,12 +179,14 @@ The user reported that `vp=11` (`pq-32mjgDgc`) lags horribly, whereas `vp=12` (`
    - Calculate `page = Math.floor(index / pageSize)` so unlisted videos return valid page coordinates.
 2. **Include `vp` in `buildPlayerUrl` for Unlisted**:
    - In [`delivery.ts`](src/bot/delivery.ts), allow `page > 0` to set `vp` regardless of whether `playlistUrl` is null or a named playlist.
-3. **Pass Proxy for YouTube & Add 403 Retries**:
+3. **Pass Proxy for YouTube & Add Valid Retries**:
    - In [`index.ts#L313`](index.ts#L313), enable `--proxy` for YouTube (or whenever `config.proxy_string` is configured).
-   - In [`types.ts`](src/handlers/pipeline/types.ts), add `--retry-sleep 403:5` and `--extractor-args "youtube:player_client=default,ios"`.
+   - In [`types.ts`](src/handlers/pipeline/types.ts), configure valid retry-sleep syntax (e.g. `--retry-sleep http:5` or `--retry-sleep fragment:exp=1:20`) and evaluate client player overrides (`--extractor-args "youtube:player_client=default,ios"`).
 4. **Throttle Progress Emissions**: Throttle `safeEmit("downloading-percent-update")` to at most once per 250ms per download.
 5. **Handle Listing Pause**: Map `yt-dlp` exit 143 during listing cancel/pause to a clean `paused` state.
 6. **Emit `job-paused` / `job-resumed`**: Notify client sockets on job state changes.
+7. **Configurable Worker Concurrency**: Support configurable concurrency for `DownloadSemaphore` (e.g. 2 workers) so outage recovery does not bottleneck linearly on single downloads.
+8. **Catch-Up Notification Pacing**: Add pacing / delay guards between rapid Telegram catch-up messages to prevent hitting Telegram API rate limits during bulk replay.
 
 ### PR 2: Frontend Performance & Virtualization (`perf/drawer-and-player-rendering`)
 1. **Eliminate Backdrop Blur**: In [`PlayerPlaylistDrawer.jsx`](frontend/src/components/PlayerPlaylistDrawer.jsx), replace `backdropFilter: "blur(8px)"` with solid `rgba(18, 18, 18, 0.95)`.
