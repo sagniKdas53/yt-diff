@@ -659,6 +659,7 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
         );
         return undefined;
       }
+      safeEmit?.("job-resumed", { id, url: job.url });
       return resumeListing(job);
     };
 
@@ -691,7 +692,6 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
 
     // Null rather than false: nothing was deleted, because nothing was asked
     // to be.
-    safeEmit?.("job-resumed", { id, url: job.url });
     return { id, action: "resume", outcome: "resumed", partialDeleted: null };
   }
 
