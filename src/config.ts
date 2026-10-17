@@ -415,7 +415,7 @@ export const config: AppConfig = {
     maxListings: +(Deno.env.get("MAX_LISTINGS") || 1),
     maxDownloads: +(
       Deno.env.get("MAX_CONCURRENT_DOWNLOADS")?.trim() ||
-        Deno.env.get("MAX_DOWNLOADS")?.trim() || 1
+      Deno.env.get("MAX_DOWNLOADS")?.trim() || 1
     ),
     cleanUpInterval: Deno.env.get("CLEANUP_INTERVAL") || "*/10 * * * *",
     maxIdle: +(Deno.env.get("PROCESS_MAX_AGE") || 5 * 60 * 1000),

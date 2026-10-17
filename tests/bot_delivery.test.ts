@@ -220,7 +220,11 @@ Deno.test("delivery - buildPlayerUrl includes vp for unlisted videos on later pa
     "https://yt.example.com/ytdiff/#/unlisted?v=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc&vp=12",
   );
   assertEquals(
-    delivery.buildPlayerUrl("https://youtube.com/watch?v=abc", "My Playlist", 2),
+    delivery.buildPlayerUrl(
+      "https://youtube.com/watch?v=abc",
+      "My Playlist",
+      2,
+    ),
     "https://yt.example.com/ytdiff/#/playlist/My%20Playlist?v=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc&vp=3",
   );
 });
