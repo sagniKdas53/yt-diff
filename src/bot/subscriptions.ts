@@ -111,6 +111,10 @@ export function onDone(
     title?: string | null;
     fileName?: string | null;
     saveDirectory?: string;
+    /** True when the run produced the video but not every sidecar. */
+    partial?: boolean;
+    missingExtras?: readonly string[] | null;
+    reason?: string | null;
   },
 ) {
   const entry = rt.pending.get(payload.url);

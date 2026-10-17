@@ -23,9 +23,9 @@ The system uses one of two paths depending on the URL and configuration:
 
 #### YouTube Data API Path (Fast)
 
-For YouTube playlists and channels, if API credentials are configured
-(see [YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md)), the system
-bypasses `yt-dlp` and uses the YouTube Data API v3 directly:
+For YouTube playlists and channels, if API credentials are configured (see
+[YouTube Auth & Scraping](YOUTUBE_AUTH_AND_SCRAPING.md)), the system bypasses
+`yt-dlp` and uses the YouTube Data API v3 directly:
 
 - Fetches items via `playlistItems.list` (50 items/page)
 - A 5,000-item playlist completes in ~50 seconds
@@ -64,8 +64,8 @@ bypasses `yt-dlp` and uses the YouTube Data API v3 directly:
   not available.
 - **Raw Metadata Storage**: The full `yt-dlp` JSON output is pruned (bulky
   arrays like `formats`, `thumbnails`, `subtitles`, `automatic_captions`, and
-  `requested_formats` are removed) and stored in the `raw_metadata` JSONB
-  column for future use.
+  `requested_formats` are removed) and stored in the `raw_metadata` JSONB column
+  for future use.
 
 ---
 
@@ -182,9 +182,9 @@ YouTube allows the same video at multiple positions in a playlist. `yt-diff`
 matches this behavior:
 
 - **Real playlists**: Duplicates are allowed. Each occurrence creates a separate
-  mapping at its own position. A mapping already consumed in one chunk cannot
-  be reused by a later chunk in the same listing. The system does not attempt
-  to de-duplicate or merge mappings for the same video URL.
+  mapping at its own position. A mapping already consumed in one chunk cannot be
+  reused by a later chunk in the same listing. The system does not attempt to
+  de-duplicate or merge mappings for the same video URL.
 - **"None" playlist** (unlisted/unplaylisted videos): Duplicates are **not**
   allowed. If a video already has a mapping, its position is updated instead of
   creating a duplicate entry.
@@ -199,4 +199,5 @@ matches this behavior:
 - [Download Behavior](DOWNLOAD_BEHAVIOR.md) — How downloads are processed
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_

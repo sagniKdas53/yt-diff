@@ -27,6 +27,7 @@ import {
   normalizeUrl,
 } from "./src/utils/url.ts";
 import { createBotService } from "./src/bot/index.ts";
+import { processKeepFileRequest } from "./src/bot/keepfile.ts";
 import {
   processDedupPlaylistsRequest,
   processDedupUnlistedRequest,
@@ -75,6 +76,26 @@ import {
   MIME_TYPES,
   SIGNED_FILE_CSP,
 } from "./src/utils/http.ts";
+
+/**
+ * A rejected promise nobody awaited is a bug, not a reason to stop serving.
+ *
+ * Deno's default is to print the error and exit, and `restart: always` brings
+ * the container straight back with an empty download queue and no word in any
+ * chat about the link that triggered it — which is exactly the failure the
+ * 2026-09-16 outage produced. One failed download promise took the whole
+ * server with it: the rejection climbed through `Promise.all` in
+ * `downloadItemsConcurrently`, which `resolveAndEnqueue` invokes with `void`.
+ * Logged with its stack, prevented, and left to the next request.
+ */
+globalThis.addEventListener("unhandledrejection", (event) => {
+  const reason: unknown = event.reason;
+  logger.error("Unhandled promise rejection", {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+  event.preventDefault();
+});
 
 logger.info("Logger initialized", { logLevel: config.logLevel });
 if (config.secretKey instanceof Error) {
@@ -378,8 +399,17 @@ const {
   listItemsConcurrently,
   processDownloadRequest,
   processListingRequest,
+  processSyncExtrasRequest,
+  processLocateRequest,
+  locateVideo,
+  cancelDownload,
+  cancelListing,
+  processCancelRequest,
+  processJobActionRequest,
   resolveAndEnqueue,
   getQueueSnapshot,
+  getListingSnapshot,
+  syncExtras,
   getListingQueueDepth,
 } = createPipelineHandlers({
   safeEmit,
@@ -476,6 +506,7 @@ function processQueueStatusRequest(
     status: "success",
     generation: connectionGeneration,
     queue: getQueueSnapshot(),
+    listings: getListingSnapshot(),
   });
 }
 
@@ -664,6 +695,14 @@ const apiRoutes = createApiRoutes({
     refreshAuthToken,
     processListingRequest,
     processDownloadRequest,
+    processSyncExtrasRequest,
+    // The handler takes an injectable store as a third argument for tests;
+    // the router's third argument is the request context, so the two are
+    // bridged here rather than by loosening either signature.
+    processKeepFileRequest: (body, res) => processKeepFileRequest(body, res),
+    processCancelRequest,
+    processJobActionRequest,
+    processLocateRequest,
     updatePlaylistMonitoring,
     getPlaylistsForDisplay,
     processDeletePlaylistRequest,
@@ -690,6 +729,7 @@ const jobs = createJobs({
   downloadProcesses: downloadProcesses as Map<string, ProcessLike>,
   listProcesses: listProcesses as Map<string, ProcessLike>,
   listItemsConcurrently,
+  syncExtras,
 });
 
 /**
@@ -746,6 +786,10 @@ const botService = createBotService({
   listItemsConcurrently,
   resolveAndEnqueue,
   getQueueSnapshot,
+  syncExtras,
+  cancelDownload,
+  cancelListing,
+  locateVideo,
   getListingQueueDepth,
   setPlaylistMonitoring,
   createSignedUrlForPath,

@@ -42,8 +42,9 @@ const YT_DLP_PATCHED_CMD =
 const proc = spawn("python3", ["-c", YT_DLP_PATCHED_CMD, ...args]);
 ```
 
-Full analysis: [`curl_cffi_segfault_analysis.md`](./curl_cffi_segfault_analysis.md)
-
+Full analysis:
+[`curl_cffi_segfault_analysis.md`](./curl_cffi_segfault_analysis.md)
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_

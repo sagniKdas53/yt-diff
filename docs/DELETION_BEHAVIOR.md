@@ -88,30 +88,30 @@ performance.
 2. **Per-Video Processing**: For each URL in `videoUrls`:
 
    a. **File Cleanup** (`cleanUp = true` and video is downloaded):
-      - Each associated file is individually unlinked:
-        - `fileName` — the video file
-        - `thumbNailFile` — the thumbnail
-        - `subTitleFile` — the subtitle file
-        - `commentsFile` — the comments JSON
-        - `descriptionFile` — the description text
-      - File paths are resolved using `saveLocation + saveDirectory + filename`.
-      - If any file fails to delete, the video is marked as failed and skipped.
+   - Each associated file is individually unlinked:
+     - `fileName` — the video file
+     - `thumbNailFile` — the thumbnail
+     - `subTitleFile` — the subtitle file
+     - `commentsFile` — the comments JSON
+     - `descriptionFile` — the description text
+   - File paths are resolved using `saveLocation + saveDirectory + filename`.
+   - If any file fails to delete, the video is marked as failed and skipped.
 
    b. **Database Destruction** (`deleteVideosInDB = true`):
-      - The entire `VideoMetadata` row is destroyed. Due to `CASCADE` rules on
-        the foreign key, **all mappings across every playlist** are
-        automatically removed.
-      - This is the most aggressive option.
+   - The entire `VideoMetadata` row is destroyed. Due to `CASCADE` rules on the
+     foreign key, **all mappings across every playlist** are automatically
+     removed.
+   - This is the most aggressive option.
 
    c. **Metadata Reset** (`cleanUp = true`, `deleteVideosInDB = false`):
-      - The video stays in the database but is reset to un-downloaded state:
-        `downloadStatus = false`, all file fields set to `null`.
+   - The video stays in the database but is reset to un-downloaded state:
+     `downloadStatus = false`, all file fields set to `null`.
 
    d. **Mapping Removal** (`deleteVideoMappings = true`,
-      `deleteVideosInDB = false`):
-      - Only the `PlaylistVideoMapping` row linking this video to the specified
-        playlist is removed. The video remains in `VideoMetadata` and may still
-        be mapped to other playlists.
+   `deleteVideosInDB = false`):
+   - Only the `PlaylistVideoMapping` row linking this video to the specified
+     playlist is removed. The video remains in `VideoMetadata` and may still be
+     mapped to other playlists.
 
 3. **Response**: Returns a JSON object with `deleted` (success list) and
    `failed` (list with reasons) arrays.
@@ -131,10 +131,10 @@ deleteVideosInDB = false →  cleanUp resets metadata, deleteVideoMappings remov
 
 The prune job runs on a cron schedule (see
 [AUTOMATED_JOBS.md](AUTOMATED_JOBS.md)) and cleans up orphaned videos — videos
-that exist in `VideoMetadata` but have **no entries** in
-`PlaylistVideoMapping`.
+that exist in `VideoMetadata` but have **no entries** in `PlaylistVideoMapping`.
 
 This situation arises when:
+
 - A playlist is deleted but its videos were shared with other playlists that
   were also deleted.
 - Video mappings were removed manually via `/delsub` with
@@ -161,12 +161,13 @@ preserved under the "None" bucket where the user can find and manage it.
 | `TZ_PREFERRED`   | `Asia/Kolkata` | Timezone for scheduling             |
 
 ---
+
 ---
 
 ## Chat bot retention (the reaper)
 
 When the chat bot is enabled it registers a fourth cron job that deletes the
-files of expired *ephemeral* bot downloads. Full detail lives in
+files of expired _ephemeral_ bot downloads. Full detail lives in
 [`AUTOMATED_JOBS.md`](./AUTOMATED_JOBS.md#4-bot-retention-job-reaper); the rule
 that matters here is:
 
@@ -188,4 +189,4 @@ self-evict on their own TTL. See the comparison table in `AUTOMATED_JOBS.md`.
 
 ---
 
-*Last updated at: 2026-06-10T14:01:59+05:30*
+_Last updated at: 2026-06-10T14:01:59+05:30_

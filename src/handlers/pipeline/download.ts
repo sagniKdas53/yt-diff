@@ -1,11 +1,6 @@
 import he from "he";
-import { Op } from "sequelize";
 import { config } from "../../config.ts";
-import {
-  PlaylistMetadata,
-  PlaylistVideoMapping,
-  VideoMetadata,
-} from "../../db/models.ts";
+import { PlaylistMetadata, VideoMetadata } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { exists, mkdir, readdir } from "../../utils/fs.ts";
@@ -17,8 +12,11 @@ import {
   resolve,
   sep,
 } from "../../utils/path.ts";
+import { readChapters } from "./chapters.ts";
 import { Semaphore } from "./semaphore.ts";
+import { resolveVideoPlaylist } from "./download-location.ts";
 import type {
+  CancelOutcome,
   DiscoveredMetadata,
   DownloadCompletionUpdates,
   DownloadItem,
@@ -27,13 +25,55 @@ import type {
   DownloadResult,
   FileSyncStatus,
   HttpError,
+  PausedJob,
   PipelineHandlerDependencies,
+  QueuedDownloadItem,
+  SyncExtrasResult,
   VideoEntryRecord,
 } from "./types.ts";
-import { downloadOptions, ProcessExitCodes } from "./types.ts";
+import {
+  classifyStderrReason,
+  configuredExtras,
+  downloadOptions,
+  ExtraKind,
+  extrasOnlyOptions,
+  newJobId,
+  parseOfferedExtras,
+  parseProgressLine,
+  ProcessExitCodes,
+} from "./types.ts";
 import { json } from "../../utils/http.ts";
 import type { ProcessStatus, ProcessStatusOptions } from "./process-manager.ts";
 import { createYtDlpLauncher } from "./ytdlp.ts";
+
+/** How many stderr lines to keep as evidence of a partial run. */
+const STDERR_TAIL_LINES = 20;
+
+/** How much of that tail is worth storing. */
+const STDERR_TAIL_BYTES = 500;
+
+/** What the download pipeline exposes to the routes, the bot and the jobs. */
+export interface DownloadFlow {
+  processDownloadRequest: (
+    requestBody: DownloadRequestBody,
+    response: HttpResponseLike,
+  ) => Promise<unknown>;
+  processSyncExtrasRequest: (
+    requestBody: { videoUrl: string },
+    response: HttpResponseLike,
+  ) => Promise<unknown>;
+  resolveAndEnqueue: (
+    urlList: string[],
+    playlistUrl: string,
+  ) => Promise<{
+    items: QueuedDownloadItem[];
+    notIndexed: string[];
+  }>;
+  /** Re-enters the queue for a paused download, under the id it was given. */
+  resumeDownload: (job: PausedJob) => void;
+  syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
+  cancelDownload: (url: string) => CancelOutcome;
+}
 
 export function createDownloadFlow(
   deps: PipelineHandlerDependencies,
@@ -80,7 +120,7 @@ export function createDownloadFlow(
     urlList: string[],
     playlistUrl: string,
   ): Promise<{
-    items: (DownloadItem & { queuePosition: number })[];
+    items: QueuedDownloadItem[];
     notIndexed: string[];
   }> {
     const videosToDownload: DownloadItem[] = [];
@@ -119,22 +159,13 @@ export function createDownloadFlow(
           });
         }
       } else if (!saveDirectory || saveDirectory === "None") {
+        // Shared with `/locate` and with the bot's player link: the playlist a
+        // file lands in and the playlist a link opens have to be one answer,
+        // not two lookups that can disagree.
         try {
-          const mapping = await PlaylistVideoMapping.findOne({
-            where: {
-              videoUrl: videoUrl,
-              playlistUrl: {
-                [Op.notIn]: ["init", "None"],
-              },
-            },
-          });
-          if (mapping) {
-            const playlist = await PlaylistMetadata.findOne({
-              where: { playlistUrl: mapping.playlistUrl },
-            });
-            if (playlist) {
-              saveDirectory = playlist.saveDirectory;
-            }
+          const location = await resolveVideoPlaylist(videoUrl);
+          if (location) {
+            saveDirectory = location.saveDirectory;
           }
         } catch (error) {
           logger.error("Error getting fallback playlist save directory", {
@@ -153,12 +184,17 @@ export function createDownloadFlow(
       uniqueUrls.add(videoUrl);
     }
 
-    // Assign queue positions before starting downloads so they can be
-    // included in both the HTTP response and the socket events.
-    const itemsWithPositions = videosToDownload.map((item) => ({
-      ...item,
-      queuePosition: ++queueSequence,
-    }));
+    // Assign queue positions and ids before starting downloads, so both are
+    // included in the HTTP response and the socket events: the id is what the
+    // drawer's pause, resume and cancel are addressed by from the moment the
+    // job is accepted.
+    const itemsWithPositions: QueuedDownloadItem[] = videosToDownload.map(
+      (item) => ({
+        ...item,
+        queuePosition: ++queueSequence,
+        id: newJobId(),
+      }),
+    );
 
     void downloadItemsConcurrently(
       itemsWithPositions,
@@ -207,7 +243,7 @@ export function createDownloadFlow(
   }
 
   async function downloadItemsConcurrently(
-    items: (DownloadItem & { queuePosition: number })[],
+    items: QueuedDownloadItem[],
     maxConcurrent: number = 2,
   ): Promise<boolean> {
     logger.trace(
@@ -238,6 +274,9 @@ export function createDownloadFlow(
     downloadResults.forEach((result) => {
       if (result.status === "success") {
         logger.info(`Downloaded ${result.title} successfully`);
+      } else if (result.status === "paused") {
+        // Neither a success nor a failure: it is waiting for a resume.
+        logger.info(`Paused ${result.title}; partial files kept`);
       } else {
         logger.error(`Failed to download ${result.title}: ${result.error}`);
       }
@@ -246,19 +285,40 @@ export function createDownloadFlow(
     return allSuccessful;
   }
 
+  /**
+   * Re-enters the queue for a paused download.
+   *
+   * The same path a fresh submission takes, with one difference: the id is the
+   * one the paused job already answered to, so the drawer keeps tracking the
+   * job it paused rather than losing it to a new one. The place in line is
+   * not carried over — the job is behind everything queued since it stopped.
+   */
+  function resumeDownload(job: PausedJob): void {
+    const item = job.item as DownloadItem;
+    void downloadItemsConcurrently([
+      { ...item, queuePosition: ++queueSequence, id: job.id },
+    ], config.queue.maxDownloads);
+  }
+
   async function downloadWithSemaphore(
-    downloadItem: DownloadItem & { queuePosition: number },
+    downloadItem: QueuedDownloadItem,
   ): Promise<DownloadResult> {
     logger.trace(
       `Starting download with semaphore: ${JSON.stringify(downloadItem)}`,
     );
 
-    const { url: videoUrl, title: videoTitle, queuePosition } = downloadItem;
+    const { url: videoUrl, title: videoTitle } = downloadItem;
     const now = Date.now();
     const downloadEntry: DownloadProcessEntry = {
+      id: downloadItem.id,
       url: videoUrl,
       title: videoTitle,
-      queuePosition,
+      item: downloadItem,
+      queuePosition: downloadItem.queuePosition,
+      progress: null,
+      itemsIndexed: null,
+      paused: false,
+      startedAt: now,
       spawnType: "download",
       lastActivity: now,
       lastStdoutActivity: now,
@@ -273,8 +333,27 @@ export function createDownloadFlow(
       await DownloadSemaphore.acquire();
 
       try {
-        const result = await executeDownload(downloadItem, entryKey);
-        return result;
+        // A download cancelled while it was queued has no process to kill, so
+        // this is where the flag is spent. The event is emitted rather than
+        // only returned, because whoever asked for this was waiting on it:
+        // a silent "stopped" is the failure this whole path exists to avoid.
+        if (downloadEntry.cancelled) {
+          const reason = "Cancelled before it started";
+          logger.info("Dropping a cancelled download", { url: videoUrl });
+          safeEmit("download-failed", {
+            url: videoUrl,
+            title: videoTitle,
+            error: reason,
+          });
+          return {
+            url: videoUrl,
+            title: videoTitle,
+            status: "failed",
+            error: reason,
+          };
+        }
+
+        return await executeDownload(downloadItem, entryKey, downloadEntry);
       } finally {
         DownloadSemaphore.release();
       }
@@ -288,9 +367,49 @@ export function createDownloadFlow(
     }
   }
 
+  /**
+   * Stops a download that is queued for a slot or already running.
+   *
+   * A running one has a yt-dlp process, so it is killed and the existing
+   * SIGTERM path reports it as a failed download like any other kill. A
+   * queued one has nothing to kill: it is flagged, and `downloadWithSemaphore`
+   * reads the flag when the slot finally comes round.
+   */
+  function cancelDownload(videoUrl: string): CancelOutcome {
+    let outcome: CancelOutcome = "not-found";
+
+    for (const entry of downloadProcesses.values()) {
+      if (
+        entry.url !== videoUrl ||
+        (entry.status !== "pending" && entry.status !== "running")
+      ) {
+        continue;
+      }
+
+      if (entry.spawnedProcess) {
+        try {
+          entry.spawnedProcess.kill("SIGTERM");
+          outcome = "killed";
+        } catch (error) {
+          logger.warn("Could not kill a cancelled download process", {
+            url: videoUrl,
+            error: (error as Error).message,
+          });
+        }
+        continue;
+      }
+
+      entry.cancelled = true;
+      outcome = "queued";
+    }
+
+    return outcome;
+  }
+
   async function executeDownload(
-    downloadItem: DownloadItem & { queuePosition: number },
+    downloadItem: QueuedDownloadItem,
     processKey: string,
+    downloadEntry: DownloadProcessEntry,
   ): Promise<DownloadResult> {
     const {
       url: videoUrl,
@@ -305,14 +424,56 @@ export function createDownloadFlow(
 
       logger.debug(`Downloading to path: ${savePath}`);
 
+      // Written to the entry rather than kept in this closure: a cancel that
+      // lands mid-transfer has no other way to learn where this job's partial
+      // files are, and it may be answered by a request that never went through
+      // this function.
+      const trackedEntry = downloadProcesses.get(processKey);
+      if (trackedEntry) {
+        trackedEntry.savePath = savePath;
+      }
+
       if (savePath !== config.saveLocation && !(await exists(savePath))) {
         await mkdir(savePath, { recursive: true });
       }
-
       return new Promise<DownloadResult>((resolve, reject) => {
         let progressPercent: number | null = null;
         let capturedTitle: string | null = null;
         let capturedFileName: string | null = null;
+        // What the source said it had, read from the same run. Null until the
+        // before_dl extras line arrives.
+        let offeredExtras: Set<ExtraKind> | null = null;
+        // A ring buffer rather than a log line: stderr is where the reason a
+        // sidecar failed lives, and by the time anyone asks it has scrolled.
+        const stderrTail: string[] = [];
+
+        // Checked before anything irreversible happens. Spawning first and
+        // only then finding the entry is gone left a live subprocess that
+        // nothing would ever reap, and rejecting there took the whole server
+        // down with it: the rejection climbed through Promise.all in
+        // downloadItemsConcurrently, which resolveAndEnqueue invokes with
+        // `void`, so nothing caught it. The fix belongs here rather than in a
+        // handler — every link that reaches the bot now ends in a file, a
+        // link, or a "failed: <reason>" line on the original chat.
+        if (!downloadProcesses.has(processKey)) {
+          const reason = "Download was dropped before it started";
+          logger.warn("Download entry is gone before spawn", {
+            processKey,
+            url: videoUrl,
+          });
+          safeEmit("download-failed", {
+            title: videoTitle,
+            url: videoUrl,
+            error: reason,
+          });
+          return resolve({
+            url: videoUrl,
+            title: videoTitle,
+            status: "failed",
+            error: reason,
+          });
+        }
+
         safeEmit("download-started", {
           url: videoUrl,
           percentage: 101,
@@ -326,22 +487,53 @@ export function createDownloadFlow(
           context: { title: videoTitle, savePath },
         });
 
-        // Fatal if the entry is gone: the subprocess is running and nothing
-        // would ever reap it.
+        // Still fatal, but no longer fatal to the process. The subprocess is
+        // running and nothing would ever reap it, so it is killed here and
+        // the download reported as failed instead of thrown.
         if (
           !setProcessStatus(processKey, "running", {
             spawnedProcess: downloadProcess,
           })
         ) {
-          return reject(new Error(`Process entry not found: ${processKey}`));
+          const reason = "Download was dropped before it started";
+          try {
+            downloadProcess.kill("SIGKILL");
+          } catch (error) {
+            logger.warn("Could not kill an untracked download process", {
+              pid: downloadProcess.pid,
+              error: (error as Error).message,
+            });
+          }
+          logger.error("Process entry not found", {
+            processKey,
+            url: videoUrl,
+            pid: downloadProcess.pid,
+          });
+          safeEmit("download-failed", {
+            title: videoTitle,
+            url: videoUrl,
+            error: reason,
+          });
+          return resolve({
+            url: videoUrl,
+            title: videoTitle,
+            status: "failed",
+            error: reason,
+          });
         }
 
-        void (async () => {
+        // Held so the completion handler can wait for them: the verdict is
+        // taken from what these two read (the file name, the extras line, the
+        // stderr tail), and `process.status` resolving does not mean the last
+        // chunk has been consumed. Deciding first lost the filename often
+        // enough that every run looked like it had produced no file.
+        const stdoutRead = (async () => {
           try {
             for await (const data of streamTextChunks(downloadProcess.stdout)) {
               try {
                 const output = data.toString().trim();
                 const percentMatch = /(\d{1,3}\.\d)/.exec(output);
+
                 if (percentMatch) {
                   const percent = parseFloat(percentMatch[0]);
                   const progressBlock = Math.floor(percent / 10);
@@ -362,6 +554,30 @@ export function createDownloadFlow(
                   });
                 }
 
+                // The counters the job drawer polls for. Read here rather
+                // than at the end because the run reporting them is the one
+                // still transferring; by completion there is nothing to read.
+                const transfer = parseProgressLine(output);
+                if (transfer && trackedEntry) {
+                  trackedEntry.progress = transfer;
+                }
+
+                // The output path, resolved before the transfer starts. A
+                // cancel that has this can delete the partial it left; one
+                // that only has the post_process file name — which arrives
+                // after the download is over — has nothing to delete, which is
+                // the opposite of what cancelling a running download is for.
+                //
+                // Read from our own `filePath:` print rather than yt-dlp's
+                // `Destination:` line: a `--print` among the arguments
+                // suppresses that one entirely, and there is one there.
+                const destination = /filePath:(.+)/.exec(output);
+                if (
+                  trackedEntry && destination?.[1] && !trackedEntry.destination
+                ) {
+                  trackedEntry.destination = destination[1].trim();
+                }
+
                 const itemTitle = /title:(.+)/m.exec(output);
                 if (itemTitle?.[1] && !capturedFileName) {
                   capturedTitle = itemTitle[1].trim();
@@ -370,10 +586,25 @@ export function createDownloadFlow(
                   });
                 }
 
+                const extrasInDest = parseOfferedExtras(output);
+                if (extrasInDest) {
+                  offeredExtras = extrasInDest;
+                  logger.debug(
+                    `Source offers: ${[...extrasInDest].join(", ")}`,
+                    { pid: downloadProcess.pid },
+                  );
+                }
+
                 const fileNameInDest = /fileName:(.+)"/m.exec(output);
                 if (fileNameInDest?.[1]) {
                   const finalFileName = fileNameInDest[1].trim();
                   capturedFileName = basename(finalFileName);
+                  // Also on the entry: a cancel deletes exactly the partials
+                  // of this one file name, and this is the only place the run
+                  // ever names it.
+                  if (trackedEntry) {
+                    trackedEntry.fileName = capturedFileName;
+                  }
                   logger.debug(
                     `Filename in destination: ${finalFileName}, basename: ${capturedFileName}, DB title: ${videoTitle}`,
                     { pid: downloadProcess.pid },
@@ -399,11 +630,16 @@ export function createDownloadFlow(
           }
         })();
 
-        void (async () => {
+        const stderrRead = (async () => {
           for await (const error of streamTextChunks(downloadProcess.stderr)) {
             logger.error(`Download error: ${error}`, {
               pid: downloadProcess.pid,
             });
+            stderrTail.push(error.trim());
+            // Bounded on purpose: the tail is evidence, not a transcript.
+            if (stderrTail.length > STDERR_TAIL_LINES) {
+              stderrTail.shift();
+            }
             updateProcessActivity(processKey);
           }
         })();
@@ -411,14 +647,86 @@ export function createDownloadFlow(
         void (async () => {
           const { code } = await downloadProcess.status;
           try {
+            // Both pipes are closed by the time the process has exited, so
+            // these settle; awaiting them is what makes the captured values
+            // above complete rather than merely started.
+            await Promise.all([stdoutRead, stderrRead]);
             const videoEntry = await VideoMetadata.findOne({
               where: { videoUrl: videoUrl },
             });
+            const videoEntryForDiscovery = videoEntry
+              ? {
+                downloadStatus: Boolean(
+                  videoEntry.getDataValue("downloadStatus"),
+                ),
+                fileName: videoEntry.getDataValue("fileName") as
+                  | string
+                  | null,
+              }
+              : null;
 
-            if (code === ProcessExitCodes.SUCCESS) {
+            // The filesystem decides, not the exit code. yt-dlp exits 1
+            // whenever it reported anything at all, so a thumbnail 429 after
+            // the video was written used to be recorded as a failed download
+            // of a file that was sitting on disk.
+            const { metadata, syncStatus } = await discoverFiles(
+              capturedFileName,
+              savePath,
+              videoEntryForDiscovery,
+            );
+            const mediaLanded = syncStatus.videoFileFound ||
+              (capturedFileName !== null &&
+                await exists(join(savePath, capturedFileName)));
+
+            if (code !== ProcessExitCodes.SUCCESS) {
+              logger.info("yt-dlp exited non-zero", {
+                code,
+                mediaLanded,
+                url: videoUrl,
+              });
+            }
+
+            if (code === ProcessExitCodes.SUCCESS || mediaLanded) {
               const unhelpfulTitle = videoTitle === videoId ||
                 videoTitle === "NA";
               const fallbackTitle = capturedTitle || videoTitle;
+              const stderrText = stderrTail.join("\n").slice(
+                -STDERR_TAIL_BYTES,
+              );
+
+              // Chapters are embedded in the container by the same run that
+              // wrote the media file, so there is no separate file to look
+              // for; their presence is the media file's presence.
+              const foundByKind: Record<ExtraKind, boolean> = {
+                subtitles: syncStatus.subTitleFileFound,
+                thumbnail: syncStatus.thumbNailFileFound,
+                description: syncStatus.descriptionFileFound,
+                comments: syncStatus.commentsFileFound,
+                chapters: syncStatus.videoFileFound,
+              };
+
+              // `expected = configured ∩ offered`. An extra the source never
+              // had is not missing, which is why the offered set has to come
+              // from the same run rather than from a guess. When the line
+              // never arrived — an older yt-dlp, a run killed before the
+              // download — the configured set stands in, so the worst case is
+              // today's behaviour rather than a silent "complete".
+              const configured = configuredExtras();
+              const expected = offeredExtras
+                ? configured.filter((kind) => offeredExtras!.has(kind))
+                : configured;
+              if (!offeredExtras) {
+                logger.warn(
+                  "No extras line from yt-dlp; assuming every configured sidecar was expected",
+                  { url: videoUrl },
+                );
+              }
+
+              const missing = expected.filter((kind) => !foundByKind[kind]);
+              const reason = missing.length > 0
+                ? classifyStderrReason(stderrText)
+                : null;
+
               const updates: DownloadCompletionUpdates = {
                 downloadStatus: true,
                 isAvailable: true,
@@ -428,41 +736,31 @@ export function createDownloadFlow(
                 commentsFile: null,
                 subTitleFile: null,
                 thumbNailFile: null,
-                isMetaDataSynced: true,
+                isMetaDataSynced: missing.length === 0,
                 saveDirectory: computeSaveDirectory(savePath),
+                missingExtras: missing.length > 0 ? missing : null,
+                lastDownloadError: stderrText || null,
+                downloadFailureReason: reason,
+                // A fresh download starts the retry budget over; otherwise a
+                // re-download after three failures could never be retried.
+                extrasSyncAttempts: 0,
               };
-
-              const videoEntryForDiscovery = videoEntry
-                ? {
-                  downloadStatus: Boolean(
-                    videoEntry.getDataValue("downloadStatus"),
-                  ),
-                  fileName: videoEntry.getDataValue("fileName") as
-                    | string
-                    | null,
-                }
-                : null;
-              const { metadata, syncStatus } = await discoverFiles(
-                capturedFileName,
-                savePath,
-                videoEntryForDiscovery,
-              );
 
               Object.assign(updates, metadata);
 
-              const allExtraFilesFound = syncStatus.videoFileFound &&
-                syncStatus.descriptionFileFound &&
-                syncStatus.commentsFileFound &&
-                syncStatus.subTitleFileFound &&
-                syncStatus.thumbNailFileFound;
+              // The chapters are already in the container — `--embed-chapters`
+              // has been in the options all along — and nothing could read
+              // them. One sub-second ffprobe per download, while the file the
+              // pipeline has just written is still in hand.
+              const chapters = metadata.fileName
+                ? await readChapters(join(savePath, metadata.fileName))
+                : [];
+              updates.chapters = chapters.length > 0 ? chapters : null;
 
-              if (allExtraFilesFound) {
-                logger.info("All extra files found", {
-                  updates: JSON.stringify(updates),
-                });
-              } else {
-                logger.info("Some of the expected files are not found", {
-                  updates: JSON.stringify(updates),
+              if (missing.length > 0) {
+                logger.info("Download landed with sidecars missing", {
+                  missing: missing.join(","),
+                  url: videoUrl,
                 });
               }
 
@@ -483,6 +781,9 @@ export function createDownloadFlow(
                   thumbNailFile: updates.thumbNailFile,
                   subTitleFile: updates.subTitleFile,
                   descriptionFile: updates.descriptionFile,
+                  partial: missing.length > 0,
+                  missingExtras: updates.missingExtras,
+                  reason,
                 });
               } catch (e) {
                 logger.error("Error computing save directory, using fallback", {
@@ -493,6 +794,8 @@ export function createDownloadFlow(
                   title: updates.title,
                   fileName: updates.fileName,
                   saveDirectory: "",
+                  partial: missing.length > 0,
+                  missingExtras: updates.missingExtras,
                 });
               }
 
@@ -503,10 +806,35 @@ export function createDownloadFlow(
                 title: updates.title,
                 status: "success",
               });
+            } else if (downloadEntry.paused) {
+              // A pause, not a failure. The kill a pause sends and the one a
+              // cancellation sends are the same signal, so the entry is what
+              // tells them apart: recording an error here would tell the UI a
+              // video is broken when it is sitting in the queue waiting to be
+              // resumed, and emitting `download-failed` would retire a job the
+              // user has not finished with. The partial files are deliberately
+              // still on disk.
+              logger.info("Download paused; its partial files are kept", {
+                url: videoUrl,
+                id: downloadEntry.id,
+              });
+              cleanupProcess(processKey, downloadProcess.pid);
+              resolve({
+                url: videoUrl,
+                title: videoTitle,
+                status: "paused",
+              });
             } else {
               const errorMsg = code === ProcessExitCodes.SIGTERM
                 ? "Process was killed (likely by user or timeout)"
                 : `Process exited with code ${code}`;
+
+              if (videoEntry) {
+                await videoEntry.update({
+                  lastDownloadError: stderrTail.join("\n")
+                    .slice(-STDERR_TAIL_BYTES) || errorMsg,
+                });
+              }
 
               // `error` is additive: existing socket consumers ignore it, while
               // in-process consumers get the reason without having to await the
@@ -755,17 +1083,175 @@ export function createDownloadFlow(
     }
   }
 
-  function getQueueSnapshot() {
-    const sortedEntries = Array.from(downloadProcesses.values())
-      .sort((a, b) => a.queuePosition - b.queuePosition);
+  /**
+   * Fetches only the sidecars a previous run missed.
+   *
+   * Same options, same output template, same directory and the same semaphore
+   * slot a download takes, so a retry cannot pile onto a rate limit and lands
+   * beside the file that is already there. Whichever gap closed is dropped from
+   * `missingExtras`; the rest stay, and the chip stays too.
+   */
+  async function syncExtras(videoUrl: string): Promise<SyncExtrasResult> {
+    const videoEntry = await VideoMetadata.findOne({
+      where: { videoUrl },
+    });
+    const missing = Array.isArray(videoEntry?.getDataValue("missingExtras"))
+      ? videoEntry!.getDataValue("missingExtras") as ExtraKind[]
+      : [];
 
-    return sortedEntries.map((entry, index) => ({
-      url: entry.url,
-      title: entry.title,
-      status: entry.status,
-      queuePosition: index + 1,
-    }));
+    if (!videoEntry || missing.length === 0) {
+      return {
+        url: videoUrl,
+        status: "unchanged",
+        recovered: [],
+        stillMissing: missing,
+        reason: null,
+      };
+    }
+
+    const fileName = videoEntry.getDataValue("fileName") as string | null;
+    if (!fileName) {
+      return {
+        url: videoUrl,
+        status: "failed",
+        recovered: [],
+        stillMissing: missing,
+        reason: null,
+      };
+    }
+
+    const savePath = join(
+      config.saveLocation,
+      (videoEntry.getDataValue("saveDirectory") ?? "").trim(),
+    );
+
+    await DownloadSemaphore.acquire();
+    try {
+      const { process: extrasProcess } = launchYtDlp({
+        url: videoUrl,
+        options: extrasOnlyOptions,
+        flags: ["-P", "home:" + savePath],
+        reason: `Fetching missing extras for ${videoUrl}`,
+        context: { savePath },
+      });
+
+      const stderrTail: string[] = [];
+      // Held so it can be awaited: `status` resolves when the process exits,
+      // which is not the same moment as the last chunk of stderr arriving. A
+      // reader left detached can still be pushing into `stderrTail` after the
+      // text is built, and the rate-limit line this exists to read is
+      // exactly the kind that arrives last.
+      const stderrRead = (async () => {
+        for await (const chunk of streamTextChunks(extrasProcess.stderr)) {
+          stderrTail.push(chunk.trim());
+          if (stderrTail.length > STDERR_TAIL_LINES) stderrTail.shift();
+        }
+      })();
+
+      const { code } = await extrasProcess.status;
+      await stderrRead;
+      const stderrText = stderrTail.join("\n").slice(-STDERR_TAIL_BYTES);
+
+      const { metadata, syncStatus } = await discoverFiles(
+        fileName,
+        savePath,
+        {
+          downloadStatus: true,
+          fileName,
+        },
+      );
+
+      const foundByKind: Record<ExtraKind, boolean> = {
+        subtitles: syncStatus.subTitleFileFound,
+        thumbnail: syncStatus.thumbNailFileFound,
+        description: syncStatus.descriptionFileFound,
+        comments: syncStatus.commentsFileFound,
+        chapters: syncStatus.videoFileFound,
+      };
+      const recovered = missing.filter((kind) => foundByKind[kind]);
+      const stillMissing = missing.filter((kind) => !foundByKind[kind]);
+
+      const updates: Record<string, unknown> = {
+        isMetaDataSynced: stillMissing.length === 0,
+        missingExtras: stillMissing.length > 0 ? stillMissing : null,
+        lastDownloadError: stderrText || null,
+        downloadFailureReason: stillMissing.length > 0
+          ? classifyStderrReason(stderrText)
+          : null,
+        extrasSyncAttempts: (videoEntry.getDataValue("extrasSyncAttempts") ??
+          0) as number + 1,
+      };
+      // Only the file columns that actually turned up, so a retry that got the
+      // subtitles does not blank a thumbnail it never touched.
+      for (const [column, value] of Object.entries(metadata)) {
+        if (value !== null) updates[column] = value;
+      }
+      await videoEntry.update(updates);
+
+      const result: SyncExtrasResult = {
+        url: videoUrl,
+        status: recovered.length > 0 ? "recovered" : "unchanged",
+        recovered,
+        stillMissing,
+        reason: classifyStderrReason(stderrText),
+      };
+      logger.info("Extras sync finished", {
+        url: videoUrl,
+        exitCode: code,
+        recovered: recovered.join(","),
+        stillMissing: stillMissing.join(","),
+      });
+      return result;
+    } catch (error) {
+      logger.error("Could not fetch missing extras", {
+        url: videoUrl,
+        error: (error as Error).message,
+      });
+      return {
+        url: videoUrl,
+        status: "failed",
+        recovered: [],
+        stillMissing: missing,
+        reason: null,
+      };
+    } finally {
+      DownloadSemaphore.release();
+    }
   }
 
-  return { processDownloadRequest, resolveAndEnqueue, getQueueSnapshot };
+  /**
+   * The HTTP shape of `syncExtras`.
+   *
+   * Answers with what came back rather than a bare 200: the caller has to tell
+   * "recovered everything" from "still rate limited" to decide whether the chip
+   * goes away, and that difference is the whole point of the endpoint.
+   */
+  async function processSyncExtrasRequest(
+    requestBody: { videoUrl: string },
+    response: HttpResponseLike,
+  ) {
+    try {
+      const result = await syncExtras(requestBody.videoUrl);
+      json(response, result.status === "failed" ? 500 : 200, result);
+    } catch (error) {
+      logger.error("Extras sync request failed", {
+        videoUrl: requestBody.videoUrl,
+        error: (error as Error).message,
+      });
+      const statusCode = (error as HttpError).status || 500;
+      json(response, statusCode, {
+        status: "error",
+        message: he.escape((error as Error).message),
+      });
+    }
+  }
+
+  return {
+    processDownloadRequest,
+    processSyncExtrasRequest,
+    resolveAndEnqueue,
+    resumeDownload,
+    syncExtras,
+    cancelDownload,
+  } satisfies DownloadFlow;
 }

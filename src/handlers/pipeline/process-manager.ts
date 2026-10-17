@@ -98,6 +98,24 @@ export function cleanupStaleProcesses(
       continue;
     }
 
+    // A queued download registers its entry *before* it takes a semaphore
+    // slot, so `lastActivity` stays frozen at enqueue time for as long as it
+    // waits. Reaping on that clock deletes a download that is not wedged but
+    // merely queued behind others: the cleanup job then runs, its turn comes,
+    // executeDownload cannot find the entry and the download dies with
+    // "Process entry not found". Listings are not affected — they register
+    // after acquiring, so they are running (or about to be) by the time they
+    // are visible here. Waiting is not idling, so nothing without a spawned
+    // process is reaped on the idle or age clocks.
+    if (processType === "download" && !spawnedProcess) {
+      logger.info(
+        `Skipping cleanup for queued download ${processId} (age: ${
+          Math.round(age / 1000)
+        }s)`,
+      );
+      continue;
+    }
+
     // Every status that is not terminal is checked, not just "running". An
     // entry sits at "pending" from the moment a listing takes a slot until
     // yt-dlp is spawned, and "errored" is never reaped anywhere else — so a

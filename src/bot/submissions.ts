@@ -48,6 +48,10 @@ export function armWatchdog(
  * A playlist link never reaches the download tiers: listing one produces
  * hundreds of videos, so it is catalogued instead and the user pulls
  * individual entries out of it with /list and /get.
+ *
+ * @param resume - Set when replaying a submission that was still in flight
+   when the process died: its row is reused instead of opening a second one,
+   so one user request stays one row across the restart.
  */
 export async function handleSubmission(
   rt: BotRuntime,
@@ -55,13 +59,20 @@ export async function handleSubmission(
   message: IncomingMessage,
   rawUrl: string,
   mode: DeliveryMode,
+  resume?: { submissionId: string },
 ) {
   const target: DeliveryTarget = {
     platform: adapter.platform,
     chatId: message.chatId,
   };
 
-  if (pendingCountForChat(rt, message.chatId) >= rt.deps.maxPendingPerChat) {
+  // The cap is backpressure on what a chat asks for; a replay is work the
+  // same chat already had accepted, and refusing it here would recreate the
+  // silence the replay exists to end.
+  if (
+    !resume &&
+    pendingCountForChat(rt, message.chatId) >= rt.deps.maxPendingPerChat
+  ) {
     await reply(
       adapter,
       target,
@@ -101,19 +112,24 @@ export async function handleSubmission(
   const isPlaylist = rt.deps.isPlaylistUrl(canonicalUrl);
 
   let submission: { id: string };
-  try {
-    submission = await rt.deps.store.createSubmission({
-      platform: adapter.platform,
-      chatId: message.chatId,
-      messageId: message.messageId,
-      requestedUrl: rawUrl,
-      kind: isPlaylist ? "playlist" : "video",
-      retention: rt.deps.retentionMode,
-    });
-  } catch (error) {
-    // Release the reservation, otherwise the URL is wedged until restart.
-    rt.pending.delete(canonicalUrl);
-    throw error;
+  if (resume) {
+    submission = { id: resume.submissionId };
+  } else {
+    try {
+      submission = await rt.deps.store.createSubmission({
+        platform: adapter.platform,
+        chatId: message.chatId,
+        messageId: message.messageId,
+        requestedUrl: rawUrl,
+        kind: isPlaylist ? "playlist" : "video",
+        retention: rt.deps.retentionMode,
+        requestedDeliveryMode: mode,
+      });
+    } catch (error) {
+      // Release the reservation, otherwise the URL is wedged until restart.
+      rt.pending.delete(canonicalUrl);
+      throw error;
+    }
   }
   entry.submissionId = submission.id;
 

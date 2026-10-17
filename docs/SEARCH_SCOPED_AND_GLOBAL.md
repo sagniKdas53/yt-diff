@@ -2,7 +2,9 @@
 
 ## Overview
 
-Both the **Playlist panel** (left side) and the **SubList panel** (right side) have a search/title field. The field supports several prefix syntaxes to control how results are filtered.
+Both the **Playlist panel** (left side) and the **SubList panel** (right side)
+have a search/title field. The field supports several prefix syntaxes to control
+how results are filtered.
 
 ---
 
@@ -17,6 +19,7 @@ The playlist search field filters the list of playlists.
 | `title:regex`     | **Regex** match on the playlist title (case-insensitive)           |
 
 ### Playlist Examples
+
 ```
 # Find playlists whose title contains "gaming"
 gaming
@@ -37,7 +40,9 @@ title:vlog|gaming
 
 The SubList search field filters the videos shown in the right panel.
 
-> **Important:** The `global:` prefix is the **only** prefix that works when **no playlist is loaded** (the initial `init` state). All other prefixes require a playlist to be selected first.
+> **Important:** The `global:` prefix is the **only** prefix that works when
+> **no playlist is loaded** (the initial `init` state). All other prefixes
+> require a playlist to be selected first.
 
 | Syntax              | Scope             | Behavior                                                        |
 | ------------------- | ----------------- | --------------------------------------------------------------- |
@@ -45,9 +50,10 @@ The SubList search field filters the videos shown in the right panel.
 | `url:youtube.com`   | Current playlist  | Partial match on the video **URL**                              |
 | `title:regex`       | Current playlist  | **Regex** match on the video title (case-insensitive)           |
 | `global:regex`      | **All playlists** | Regex match on the video title across **every** playlist        |
-| `global:` *(empty)* | **All playlists** | Returns **all videos** from every playlist                      |
+| `global:` _(empty)_ | **All playlists** | Returns **all videos** from every playlist                      |
 
 ### SubList Examples
+
 ```
 # Find videos in the current playlist containing "dance"
 dance
@@ -72,10 +78,16 @@ global:^20[0-9]{2}
 
 ## Notes
 
-- **Regex syntax** uses PostgreSQL case-insensitive regex (`~*`). Standard regex features like `^`, `$`, `|`, `.*`, `[...]`, `{n}` are all supported.
-- **Partial match** (default / `url:`) uses SQL `ILIKE` — no regex needed, just type the fragment you're looking for.
-- The `global:` prefix only bypasses the playlist filter when no playlist is loaded (`init` state). Once a playlist is selected, `global:` behaves like `title:` scoped to that playlist.
-- Downloads initiated from a `global:` search will automatically resolve each video's correct **save directory** from its original playlist mapping.
+- **Regex syntax** uses PostgreSQL case-insensitive regex (`~*`). Standard regex
+  features like `^`, `$`, `|`, `.*`, `[...]`, `{n}` are all supported.
+- **Partial match** (default / `url:`) uses SQL `ILIKE` — no regex needed, just
+  type the fragment you're looking for.
+- The `global:` prefix only bypasses the playlist filter when no playlist is
+  loaded (`init` state). Once a playlist is selected, `global:` behaves like
+  `title:` scoped to that playlist.
+- Downloads initiated from a `global:` search will automatically resolve each
+  video's correct **save directory** from its original playlist mapping.
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_

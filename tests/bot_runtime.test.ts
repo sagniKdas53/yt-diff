@@ -49,6 +49,17 @@ function deps(overrides: Partial<BotCoreDependencies> = {}) {
     getQueueSnapshot: () => [],
     getListingQueueDepth: () => 0,
     setPlaylistMonitoring: () => Promise.resolve(),
+    syncExtras: () =>
+      Promise.resolve({
+        url: "",
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
+    cancelDownload: () => "not-found" as const,
+    cancelListing: () => "not-found" as const,
+    locateVideo: () => Promise.resolve({ playlistUrl: null, page: null }),
     store: {} as BotCoreDependencies["store"],
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: () => false,

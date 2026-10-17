@@ -6,6 +6,7 @@ import { parseCommand } from "./commands.ts";
 import { type BotCoreDependencies, createBotCore } from "./core.ts";
 import { createDelivery } from "./delivery.ts";
 import { createMessageDispatcher } from "./dispatcher.ts";
+import { runBootRecovery } from "./recovery.ts";
 import { type BotStore, createSequelizeBotStore } from "./store.ts";
 import type { BotAdapter } from "./types.ts";
 
@@ -20,6 +21,11 @@ export interface BotServiceDependencies {
   setPlaylistMonitoring: (url: string, monitoringType: string) => Promise<void>;
   /** Defaults to the Sequelize-backed store; injectable for tests. */
   store?: BotStore;
+  /** Stamped while polling and on every update; see bot/recovery.ts. */
+  syncExtras: BotCoreDependencies["syncExtras"];
+  cancelDownload: BotCoreDependencies["cancelDownload"];
+  cancelListing: BotCoreDependencies["cancelListing"];
+  locateVideo: BotCoreDependencies["locateVideo"];
   createSignedUrlForPath: (
     absPath: string,
     ttlSeconds?: number,
@@ -40,7 +46,7 @@ export interface BotService {
  * other command is a database read and a reply — see the dispatcher's two
  * lanes for why the difference is worth naming.
  */
-const SLOW_COMMANDS = new Set(["get", "link", "download", "index"]);
+const SLOW_COMMANDS = new Set(["get", "link", "download", "index", "sync"]);
 
 /**
  * Builds the chat bot, or a no-op service when it is disabled.
@@ -77,6 +83,11 @@ export function createBotService(deps: BotServiceDependencies): BotService {
   // container-internal HOSTNAME, or a reverse proxy on a different name.
   const publicBaseUrl = config.bot.publicBaseUrl || config.publicOrigin;
 
+  // One store for the whole service: the boot replay and the handlers have to
+  // agree about what is in flight, and two instances would still agree only by
+  // accident.
+  const store = deps.store ?? createSequelizeBotStore();
+
   const delivery = createDelivery({
     createSignedUrlForPath: deps.createSignedUrlForPath,
     saveLocation: config.saveLocation,
@@ -93,7 +104,11 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     getQueueSnapshot: deps.getQueueSnapshot,
     getListingQueueDepth: deps.getListingQueueDepth,
     setPlaylistMonitoring: deps.setPlaylistMonitoring,
-    store: deps.store ?? createSequelizeBotStore(),
+    syncExtras: deps.syncExtras,
+    cancelDownload: deps.cancelDownload,
+    cancelListing: deps.cancelListing,
+    locateVideo: deps.locateVideo,
+    store,
     normalizeUrl: deps.normalizeUrl,
     isPlaylistUrl: deps.isPlaylistUrl,
     allowedChatIds: config.bot.allowedChatIds,
@@ -105,12 +120,34 @@ export function createBotService(deps: BotServiceDependencies): BotService {
     largeFileWarnBytes: config.bot.largeFileWarnBytes,
   });
 
+  // One minute is finer than any outage the bot could notice, and coarse
+  // enough that a chatty user is not writing to the database on every
+  // message. The stamp has to survive the crash to be worth anything, which
+  // is why it is a row rather than a variable.
+  const HEARTBEAT_INTERVAL_MS = 60_000;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+  async function touchHeartbeat() {
+    try {
+      await store.touchLastSeenAt(new Date());
+    } catch (error) {
+      logger.error("Could not record the bot heartbeat", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
   // Handlers run here rather than inside the adapter's update loop, so a
   // message that takes minutes — a playlist index, a large download — never
   // stops the next one from being read. See dispatcher.ts.
   const dispatcher = createMessageDispatcher({
     concurrency: config.bot.maxConcurrentMessages,
-    handle: core.handleMessage,
+    // Stamped per update as well as on the timer: the timestamp has to mean
+    // "the bot was reachable", and an update only arrives if it was.
+    handle: (message) => {
+      void touchHeartbeat();
+      return core.handleMessage(message);
+    },
     isSlow: (message) => SLOW_COMMANDS.has(parseCommand(message.text).kind),
   });
 
@@ -135,6 +172,26 @@ export function createBotService(deps: BotServiceDependencies): BotService {
         }
       }
 
+      heartbeatTimer = setInterval(() => {
+        void touchHeartbeat();
+      }, HEARTBEAT_INTERVAL_MS);
+      // Never hold the process open on the bot's account; index.ts already
+      // bounds shutdown with a failsafe.
+      heartbeatTimer.unref?.();
+
+      // Anything the last process accepted and never settled. Announced and
+      // replayed after the adapters are up, so the bot can actually send.
+      try {
+        const summary = await runBootRecovery(core.runtime, store);
+        if (summary.announcedChats > 0 || summary.resumed > 0) {
+          logger.info("Recovered from a previous run", { ...summary });
+        }
+      } catch (error) {
+        logger.error("Bot could not replay its in-flight submissions", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+
       logger.info("Chat bot started", {
         platforms: adapters.map((a) => a.platform).join(","),
         allowedChats: config.bot.allowedChatIds.length,
@@ -155,6 +212,11 @@ export function createBotService(deps: BotServiceDependencies): BotService {
         return;
       }
       started = false;
+
+      if (heartbeatTimer !== null) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
       core.unsubscribe();
 
       for (const adapter of adapters) {

@@ -1,6 +1,7 @@
 import { assertEquals } from "std/assert/mod.ts";
 import {
   basename,
+  dirname,
   extname,
   isAbsolute,
   isWithinPath,
@@ -39,6 +40,22 @@ Deno.test("path - basename extracts last segment", () => {
   assertEquals(basename("/a/b/file.txt"), "file.txt");
   assertEquals(basename("/a/b/"), "b");
   assertEquals(basename("/"), "/");
+});
+
+Deno.test("path - dirname takes the folder part of a path", () => {
+  assertEquals(dirname("/a/b/c.mp4"), "/a/b");
+  assertEquals(dirname("/c.mp4"), "/");
+  assertEquals(dirname("/"), "/");
+  // Relative input is rooted, the same way resolve() and relative() root it,
+  // so a folder name never comes back without a leading slash to join onto.
+  assertEquals(dirname("a/b/c.mp4"), "/a/b");
+});
+
+Deno.test("path - dirname and basename round-trip a nested path", () => {
+  assertEquals(
+    join(dirname("/a/b/c.mp4"), basename("/a/b/c.mp4")),
+    "/a/b/c.mp4",
+  );
 });
 
 Deno.test("path - extname extracts file extension", () => {

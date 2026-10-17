@@ -27,22 +27,23 @@ leveraging a custom class-based Semaphore (`DownloadSemaphore`).
 1. **Dynamic Config**: It forces the semaphore's maximum concurrent limit via
    `DownloadSemaphore.setMaxConcurrent(maxConcurrent)` mapped directly to the
    server environment's config `config.queue.maxDownloads` limit.
-2. **Queue Position Tracking**: It assigns a `queuePosition` to each item being queued,
-   allowing clients to fetch exactly where their items are in the queue via `/queuestatus` and socket updates.
+2. **Queue Position Tracking**: It assigns a `queuePosition` to each item being
+   queued, allowing clients to fetch exactly where their items are in the queue
+   via `/queuestatus` and socket updates.
 3. **Duplicate Filtration**: It sweeps the internal map tracker
    (`downloadProcesses`) to filter out URLs that are _already actively in the
    queue_ (`"running"` or `"pending"` status). This blocks eager users pushing
    the download button on the UI ten times successively and generating 10
    parallel overlapping subprocesses targeting the same file.
-3. **Promise Aggregation**: It fires a mapped `Promise.all()` passing remaining
+4. **Promise Aggregation**: It fires a mapped `Promise.all()` passing remaining
    unique items into the `downloadWithSemaphore()` wrapper function.
 
 ## 3. The Semaphore Lock (`downloadWithSemaphore`)
 
 This serves as the atomic lock handler controlling process creation timing.
 
-1. **Tracking Initialization**: A unique `entryKey` is generated using the URL and timestamp
-   (`pending_http..._1701241...`).
+1. **Tracking Initialization**: A unique `entryKey` is generated using the URL
+   and timestamp (`pending_http..._1701241...`).
 2. An entry is pushed to the global `downloadProcesses` Map setting the download
    to a `"pending"` state, along with its calculated `queuePosition`.
 3. **Acquiring the Lock**: The thread calls `await DownloadSemaphore.acquire()`.
@@ -63,11 +64,11 @@ This is where the child shells are instantiated interacting with `yt-dlp`.
 1. **Spawn**: `spawn("python3", ["-c", YT_DLP_PATCHED_CMD, ...args])`
    initializes (see
    [curl_cffi_segfault_analysis.md](curl_cffi_segfault_analysis.md) for the
-   monkey-patch rationale). The global tracking map
-   updates the entry to `"running"` and specifically attaches the raw
-   `ChildProcess` object into the Map. This allows cleanup workers to target and
-   defensively kill stalled/zombie `yt-dlp` instances directly using
-   `.kill('SIGTERM')` calls in the future.
+   monkey-patch rationale). The global tracking map updates the entry to
+   `"running"` and specifically attaches the raw `ChildProcess` object into the
+   Map. This allows cleanup workers to target and defensively kill
+   stalled/zombie `yt-dlp` instances directly using `.kill('SIGTERM')` calls in
+   the future.
 2. **WebSocket Notifications**: `safeEmit("download-started", data)` shoots a
    real-time WebSocket event back to the client UI bridging the network.
 3. **Standard Out (stdout)**: The system reads stdout data chunks on the fly
@@ -80,4 +81,5 @@ This is where the child shells are instantiated interacting with `yt-dlp`.
    database.
 
 ---
-*Last updated at: 2026-06-10T14:01:59+05:30*
+
+_Last updated at: 2026-06-10T14:01:59+05:30_

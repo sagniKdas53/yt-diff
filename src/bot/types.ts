@@ -54,7 +54,15 @@ export type BotCommand =
   | { kind: "link"; url: string }
   /** Fetch it to the server's library, but do not send anything back. */
   | { kind: "download"; url: string }
-  | { kind: "keep"; id: string }
+  /**
+   * Keep a submission's file off the reaper.
+   *
+   * `target` is either the short id from `/history` or the link itself: the
+   * expiry note in a delivery message hands the user the link, and an
+   * instruction that names a command its own wording will not accept is worse
+   * than no instruction.
+   */
+  | { kind: "keep"; target: string }
   /**
    * Catalogue only. `monitoringType` null means no monitoring: a video is
    * indexed into the "None" pseudo-playlist, a playlist is recorded with
@@ -66,7 +74,19 @@ export type BotCommand =
   /** The index of known playlists, for when the URL is not to hand. */
   | { kind: "playlists"; limit: number }
   | { kind: "search"; query: string; limit: number }
-  | { kind: "remove"; id: string }
+  /** Remove a submission's files. Same two shapes as `keep`. */
+  | { kind: "remove"; target: string }
+  /** Stop a queued or running download, or a playlist listing. */
+  | { kind: "cancel"; target: string }
+  /**
+   * Retry the sidecars a partial download left behind.
+   *
+   * `target` is either the short submission id from `/history` or a bare
+   * http(s) link: both are things a user can read straight off the message a
+   * partial delivery left them, so neither is worth splitting into two
+   * commands.
+   */
+  | { kind: "sync"; target: string }
   | { kind: "status" }
   | { kind: "history"; limit: number }
   | { kind: "help" }

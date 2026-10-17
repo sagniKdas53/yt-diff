@@ -132,11 +132,39 @@ export function parseCommand(raw: string): BotCommand {
 
     case "keep":
     case "rm": {
-      const id = args[0];
-      if (!id) {
+      // Either the short id from /history or the link itself, both of which
+      // the user can copy out of a delivery message. The URL form is the one
+      // the expiry note in that message points at, and an instruction that
+      // names a command its own wording does not accept is worse than none.
+      const target = args[0];
+      if (!target) {
         return { kind: "unknown", text };
       }
-      return command === "keep" ? { kind: "keep", id } : { kind: "remove", id };
+      return command === "keep"
+        ? { kind: "keep", target }
+        : { kind: "remove", target };
+    }
+
+    case "cancel": {
+      // Same two shapes as /keep: the /history code, or the link itself. A
+      // second word is not a request either of them can act on.
+      const target = args[0];
+      if (!target || args.length > 1) {
+        return { kind: "unknown", text };
+      }
+      return { kind: "cancel", target };
+    }
+
+    case "sync": {
+      // Either the short id from /history or the link itself: both are things
+      // the user has in front of them, and the handler resolves them the same
+      // way /keep and /rm resolve an id. Anything else — including a second
+      // word, which no id or URL can contain — is not a request we can act on.
+      const target = args[0];
+      if (!target || args.length > 1) {
+        return { kind: "unknown", text };
+      }
+      return { kind: "sync", target };
     }
 
     case "status":
@@ -191,8 +219,18 @@ export const HELP_TEXT = [
   "                (case doesn't matter — 'end' works too)",
   "",
   "MANAGE FILES",
-  "/keep <id>      stop this file being auto-deleted later",
-  "/rm <id>        delete this file now",
+  "/keep <id|link> stop this file being auto-deleted later. A download",
+  "                that will expire says so, with the link to keep it",
+  "/rm <id|link>   delete this file now",
   "",
-  "The <id> is the short code at the start of each /history line.",
+  "STOP SOMETHING",
+  "/cancel <id|link>   stop a download or playlist index still running",
+  "",
+  "MISSING EXTRAS",
+  "/sync <id>      fetch the subtitles, thumbnail, description, comments or",
+  "                chapters YouTube rate-limited away on a partial download",
+  "/sync <link>    same thing, if you have the link rather than the id",
+  "",
+  "The <id> is the short code at the start of each /history line. Every",
+  "command that takes one also takes the link itself.",
 ].join("\n");

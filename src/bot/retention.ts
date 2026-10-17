@@ -8,9 +8,10 @@ import {
 } from "../db/models.ts";
 import { removeVideoFiles } from "../handlers/videoFiles.ts";
 import { logger } from "../logger.ts";
-
-/** Monitoring types whose videos are persistent by definition. */
-export const MONITORED_TYPES = ["Start", "End", "Full"];
+// One definition of the monitoring types, in the pipeline's vocabulary
+// module: the reaper and the download router both need it, and they must not
+// be able to disagree about which playlists the scheduler keeps fresh.
+import { MONITORED_TYPES } from "../handlers/pipeline/types.ts";
 
 /** How many submissions one sweep will look at. */
 const REAP_BATCH_LIMIT = 500;

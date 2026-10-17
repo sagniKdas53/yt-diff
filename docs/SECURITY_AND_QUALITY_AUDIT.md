@@ -5,11 +5,11 @@ Full-tree audit of the backend and the `frontend` submodule, run with the
 review rubrics — `thermo-nuclear-review` (correctness and security) and
 `thermo-nuclear-code-quality-review` (maintainability and structure).
 
-| | |
-| :--- | :--- |
-| **Scope** | `master` @ `3a06590`, `frontend` @ `bc22d7b` |
+|             |                                                            |
+| :---------- | :--------------------------------------------------------- |
+| **Scope**   | `master` @ `3a06590`, `frontend` @ `bc22d7b`               |
 | **Surface** | ~26.4k lines — 16.7k backend TypeScript, 9.7k frontend JSX |
-| **Date** | 2026-08-21, frontend findings merged in 2026-08-22 |
+| **Date**    | 2026-08-21, frontend findings merged in 2026-08-22         |
 
 > [!NOTE]
 > Thermos is written for diff-scoped branch review — both rubrics say to report
@@ -18,8 +18,8 @@ review rubrics — `thermo-nuclear-review` (correctness and security) and
 > step was dropped. Every other rule was applied as written, including the
 > over-reporting discipline that governs the severities below.
 
-Findings marked **Verified** were independently re-traced end-to-end against
-the source after the review passes reported them.
+Findings marked **Verified** were independently re-traced end-to-end against the
+source after the review passes reported them.
 
 Line references are valid at the commits above. `master` has advanced well past
 the snapshot — where a finding has been addressed in the meantime, the status
@@ -27,45 +27,46 @@ table and the finding itself say so, and the [fix order](#suggested-fix-order)
 records what each step actually shipped.
 
 > [!NOTE]
-> **2026-08-22 — `docs/FRONTEND_IMPROVEMENTS.md` was folded into this document.**
-> That was a separate 2026-08-04 review of `frontend/` alone, comparing it
-> against a sibling React + MUI app. It has been re-verified against `frontend`
-> @ `b4327d4` and merged in as [F1–F10](#frontend-architecture-and-ux); its
-> `YD-F*` IDs became `F*`, keeping their numbers. Three of the ten closed in the
-> meantime — `F1` is this audit's own `Q1`, and `F8` and `F9` closed as side
-> effects of that fix. The source document and its branch are gone; this is now
-> the only copy, and the [fix order](#suggested-fix-order) is ranked across both
-> sets rather than keeping the frontend on a separate list.
+> **2026-08-22 — `docs/FRONTEND_IMPROVEMENTS.md` was folded into this
+> document.** That was a separate 2026-08-04 review of `frontend/` alone,
+> comparing it against a sibling React + MUI app. It has been re-verified
+> against `frontend` @ `b4327d4` and merged in as
+> [F1–F10](#frontend-architecture-and-ux); its `YD-F*` IDs became `F*`, keeping
+> their numbers. Three of the ten closed in the meantime — `F1` is this audit's
+> own `Q1`, and `F8` and `F9` closed as side effects of that fix. The source
+> document and its branch are gone; this is now the only copy, and the
+> [fix order](#suggested-fix-order) is ranked across both sets rather than
+> keeping the frontend on a separate list.
 
 ## Status
 
-| ID | Finding | Severity | Status |
-| :--- | :--- | :--- | :--- |
-| C1 | Argument injection into `yt-dlp` via `POST /list` | Critical | **Fixed** — with Q7 |
-| S1 | Action rate limiting ships disabled | Medium | **Fixed** |
-| S2 | Rate limiter keys on the socket peer | Medium | **Fixed** |
-| S3 | Deletion paths skip the containment check | Medium | **Fixed** |
-| S4–S9 | Assorted low-severity items | Low | **Fixed** — with F7 |
-| Q1 | Frontend context layer built then bypassed | Blocker | **Fixed** |
-| Q2 | Two divergent URL canonicalizers | Blocker | **Fixed** — with Q3 |
-| Q3 | Documented tracking-param stripping never implemented | Correctness | **Fixed** — with Q2 |
-| Q4 | Failure classification by error-string equality | Correctness | **Fixed** |
-| Q5 | CI gates none of the quality signals | Blocker | **Fixed** |
-| Q6 | No shared API contract | Structural | **Fixed** |
-| Q7 | Validation schemas are optional-everything | Structural | **Fixed** — with C1 |
-| Q8 | Non-atomic triple write in the ingest path | Structural | **Fixed** |
-| Q9 | Duplication with a canonical answer already present | Structural | **Fixed** |
-| Q10 | Files past the 1k-line bar | Structural | **Fixed** |
-| F1 | Context providers and `useApi` written but never mounted | High | **Closed** — is Q1 |
-| F2 | No error boundary behind five lazy routes | High | **Fixed** |
-| F3 | The socket is never closed on the client | High | **Fixed** |
-| F4 | `App.jsx` still owns the socket layer | Medium | **Fixed** |
-| F5 | No routing: no deep links, no Back button | Medium | **Fixed** |
-| F6 | No TypeScript, no generated API types | Medium | **Fixed** — was ranked with Q6 |
-| F7 | 31-day tokens in `localStorage`, never renewed | Medium | **Fixed** — with S4–S9 |
-| F8 | `"null"` as a `localStorage` sentinel | Low | **Fixed** |
-| F9 | Thumbnails not lazily loaded | Low | **Fixed** |
-| F10 | No test coverage thresholds | Low | **Fixed** |
+| ID    | Finding                                                  | Severity    | Status                         |
+| :---- | :------------------------------------------------------- | :---------- | :----------------------------- |
+| C1    | Argument injection into `yt-dlp` via `POST /list`        | Critical    | **Fixed** — with Q7            |
+| S1    | Action rate limiting ships disabled                      | Medium      | **Fixed**                      |
+| S2    | Rate limiter keys on the socket peer                     | Medium      | **Fixed**                      |
+| S3    | Deletion paths skip the containment check                | Medium      | **Fixed**                      |
+| S4–S9 | Assorted low-severity items                              | Low         | **Fixed** — with F7            |
+| Q1    | Frontend context layer built then bypassed               | Blocker     | **Fixed**                      |
+| Q2    | Two divergent URL canonicalizers                         | Blocker     | **Fixed** — with Q3            |
+| Q3    | Documented tracking-param stripping never implemented    | Correctness | **Fixed** — with Q2            |
+| Q4    | Failure classification by error-string equality          | Correctness | **Fixed**                      |
+| Q5    | CI gates none of the quality signals                     | Blocker     | **Fixed**                      |
+| Q6    | No shared API contract                                   | Structural  | **Fixed**                      |
+| Q7    | Validation schemas are optional-everything               | Structural  | **Fixed** — with C1            |
+| Q8    | Non-atomic triple write in the ingest path               | Structural  | **Fixed**                      |
+| Q9    | Duplication with a canonical answer already present      | Structural  | **Fixed**                      |
+| Q10   | Files past the 1k-line bar                               | Structural  | **Fixed**                      |
+| F1    | Context providers and `useApi` written but never mounted | High        | **Closed** — is Q1             |
+| F2    | No error boundary behind five lazy routes                | High        | **Fixed**                      |
+| F3    | The socket is never closed on the client                 | High        | **Fixed**                      |
+| F4    | `App.jsx` still owns the socket layer                    | Medium      | **Fixed**                      |
+| F5    | No routing: no deep links, no Back button                | Medium      | **Fixed**                      |
+| F6    | No TypeScript, no generated API types                    | Medium      | **Fixed** — was ranked with Q6 |
+| F7    | 31-day tokens in `localStorage`, never renewed           | Medium      | **Fixed** — with S4–S9         |
+| F8    | `"null"` as a `localStorage` sentinel                    | Low         | **Fixed**                      |
+| F9    | Thumbnails not lazily loaded                             | Low         | **Fixed**                      |
+| F10   | No test coverage thresholds                              | Low         | **Fixed**                      |
 
 **C1 and Q7 were deliberately paired and fixed in one PR.** They are the same
 boundary reached from two directions — see
@@ -82,7 +83,7 @@ either alone would have left the other half of the hole open.
 
 Every element of `urlList` reaches the `yt-dlp` argv as a positional argument
 with no `--` separator anywhere in the tree, so any element starting with `-` is
-parsed as an *option* rather than a URL.
+parsed as an _option_ rather than a URL.
 
 The full path:
 
@@ -121,40 +122,38 @@ no URL to fire on.
 - `urlList` on `/list` and `/download` is `z.array(HttpUrlSchema)`, a schema
   that **parses rather than validates**: `toHttpUrl` returns a serialized
   `http(s)` URL or nothing. The invariant it establishes is about the output,
-  not the input — every value that leaves the boundary begins with a scheme,
-  so nothing downstream can read it as an option.
+  not the input — every value that leaves the boundary begins with a scheme, so
+  nothing downstream can read it as an option.
 - All three argv builders go through `appendUrlArg`, which appends the URL
   behind a literal `"--"`. `--` closes yt-dlp's option parsing, so a URL that
   already sits in the database from before this fix still cannot become a flag.
 
-The second layer matters on its own: the scheduled updater and the download
-path read URLs from the database, not from the request, so the schema alone
-would not have covered a row poisoned by an earlier exploit.
+The second layer matters on its own: the scheduled updater and the download path
+read URLs from the database, not from the request, so the schema alone would not
+have covered a row poisoned by an earlier exploit.
 
 **What stays accepted.** Scheme-less input is normalized rather than refused —
 `youtube.com/watch?v=…` is how people paste URLs, and yt-dlp accepts it across
-its ~2,500 supported sites. Host-and-port forms (`example.com:8443/v`),
-IP literals, IPv6 brackets and internationalized domains all survive; the
-`bot/commands.ts` path deliberately keeps the stricter `isHttpUrl`, because in
-a chat stream a bare word has to stay chatter rather than become a submission.
+its ~2,500 supported sites. Host-and-port forms (`example.com:8443/v`), IP
+literals, IPv6 brackets and internationalized domains all survive; the
+`bot/commands.ts` path deliberately keeps the stricter `isHttpUrl`, because in a
+chat stream a bare word has to stay chatter rather than become a submission.
 
-**What stays rejected.** Anything beginning with `-`, any other scheme
-(`file:`, `data:`, `javascript:`), text that is not a URL at all, and yt-dlp's
-own non-URL prefix forms — `ytsearch:`, `scsearch:`, `:ytfav`, `:ytsubs`,
-`:ythistory` and the roughly twenty others. That last exclusion is a choice,
-not an oversight: this app keys playlists by URL, and the account-scoped
-keywords would spend the operator's cookies on behalf of whoever submitted
-them.
+**What stays rejected.** Anything beginning with `-`, any other scheme (`file:`,
+`data:`, `javascript:`), text that is not a URL at all, and yt-dlp's own non-URL
+prefix forms — `ytsearch:`, `scsearch:`, `:ytfav`, `:ytsubs`, `:ythistory` and
+the roughly twenty others. That last exclusion is a choice, not an oversight:
+this app keys playlists by URL, and the account-scoped keywords would spend the
+operator's cookies on behalf of whoever submitted them.
 
-**One migration consideration.** `playlistUrl` is a primary key, and before
-this change a scheme-less submission was stored verbatim — `normalizeUrl`
-passed unparseable input straight through, and `playlistRegex` matches without
-a scheme. Such rows keep working, because the scheduled updater reads them from
+**One migration consideration.** `playlistUrl` is a primary key, and before this
+change a scheme-less submission was stored verbatim — `normalizeUrl` passed
+unparseable input straight through, and `playlistRegex` matches without a
+scheme. Such rows keep working, because the scheduled updater reads them from
 the database and yt-dlp accepts them. But re-submitting the same scheme-less
-text now normalizes it, so `findOrCreate` inserts a second row alongside the
-old one. The existing `/dedup` tooling is the remedy; this is a further
-argument for **Q2**, which is about the two canonicalizers disagreeing in
-exactly this way.
+text now normalizes it, so `findOrCreate` inserts a second row alongside the old
+one. The existing `/dedup` tooling is the remedy; this is a further argument for
+**Q2**, which is about the two canonicalizers disagreeing in exactly this way.
 
 ---
 
@@ -170,13 +169,13 @@ attacker probing C1.
 
 This was **not** the already-documented issue.
 [`ISSUES_AND_IMPROVEMENTS.md`](./ISSUES_AND_IMPROVEMENTS.md) §4 covered the
-*global* limiter and reassured that base.env set it to `10`. That reassurance did
-not extend to the action limiter.
+_global_ limiter and reassured that base.env set it to `10`. That reassurance
+did not extend to the action limiter.
 
 Fixing it surfaced two further problems that made the naive fix actively wrong:
 
-- **All limiters shared one Redis key.** `rateLimit` keyed on `ip:<addr>` with no
-  scope while being called with two different budgets, so login attempts and
+- **All limiters shared one Redis key.** `rateLimit` keyed on `ip:<addr>` with
+  no scope while being called with two different budgets, so login attempts and
   listing requests drained the same counter. Simply raising the action budget
   would have let `/list` traffic exhaust the auth budget of 10. `/isregallowed`
   runs on every page load and was already spending the login budget.
@@ -206,10 +205,10 @@ intended deployment terminates TLS at a reverse proxy (`PROTOCOL=https`,
 `HIDE_PORTS=true`), where every client presents the proxy's address — so all
 users shared one bucket and one noisy client could lock out everyone.
 
-**Partly fixed with S1.** The work tier was keyed on the authenticated user,
-so the expensive endpoints no longer shared a budget behind a proxy. The
-admission tier still keyed on the socket peer, because it runs before
-authentication and has nothing else to key on.
+**Partly fixed with S1.** The work tier was keyed on the authenticated user, so
+the expensive endpoints no longer shared a budget behind a proxy. The admission
+tier still keyed on the socket peer, because it runs before authentication and
+has nothing else to key on.
 
 **Fixed.** `src/utils/clientIp.ts` resolves the address the admission tier keys
 on. It reads `X-Forwarded-For` only when the socket peer matches
@@ -224,8 +223,8 @@ client, which is the previous behaviour and the correct one for a
 directly-exposed server, so no deployment changes meaning by upgrading.
 
 `/login` and `/register` are the endpoints this was actually for: they never
-reach the per-user tier, so the admission bucket is the only place their
-clients can be told apart.
+reach the per-user tier, so the admission bucket is the only place their clients
+can be told apart.
 
 ---
 
@@ -241,11 +240,11 @@ clients can be told apart.
 `join(config.saveLocation, video.saveDirectory ?? "", value)` with no
 containment check.
 
-`saveDirectory` derives from `yt-dlp` metadata — `truncateText(playlistTitle, 30)`
-at `listing.ts:1655` — and `join` collapses `..` segments.
-`--restrict-filenames` is on by default, which is what keeps this from being
-exploitable today, so this is defense-in-depth. It is still a real asymmetry:
-the read path is hardened and the destructive path is not.
+`saveDirectory` derives from `yt-dlp` metadata —
+`truncateText(playlistTitle, 30)` at `listing.ts:1655` — and `join` collapses
+`..` segments. `--restrict-filenames` is on by default, which is what keeps this
+from being exploitable today, so this is defense-in-depth. It is still a real
+asymmetry: the read path is hardened and the destructive path is not.
 
 **Fixed.** `resolveWithin` in `src/utils/path.ts` packages the `resolve` +
 `isWithinPath` pair the read path already ran, and all four call sites go
@@ -260,7 +259,7 @@ what containment means — and an empty `saveDirectory` resolves to exactly that
 library. The `"None"` pseudo-playlist ships with `saveDirectory: ""`
 (`models.ts:543`); it is rejected by name earlier in the handler, but nothing
 stopped a real row from holding `""`. Cleanup now refuses anything that is not
-*strictly* below the save root, logs why, and reports it in the response
+_strictly_ below the save root, logs why, and reports it in the response
 message, leaving the database deletion behaviour unchanged.
 
 ---
@@ -270,10 +269,10 @@ message, leaving the database deletion behaviour unchanged.
 **Low · Fixed, paired with F7**
 
 - ~~**No `nosniff`, CSP, or `X-Frame-Options` on any response.**~~ **Done.**
-  `generateCorsHeaders` is the one builder all three response paths go through
-  — the JSON API, the static-asset server and the native file server — so the
-  headers went in there rather than at 71 `writeHead` call sites. Every
-  response now carries `nosniff`, `X-Frame-Options: DENY` and
+  `generateCorsHeaders` is the one builder all three response paths go through —
+  the JSON API, the static-asset server and the native file server — so the
+  headers went in there rather than at 71 `writeHead` call sites. Every response
+  now carries `nosniff`, `X-Frame-Options: DENY` and
   `Referrer-Policy: no-referrer`, plus one of two policies: `APP_CSP` for the
   app, or `SIGNED_FILE_CSP` (`default-src 'none'; sandbox`) for anything out of
   the download tree.
@@ -286,30 +285,29 @@ message, leaving the database deletion behaviour unchanged.
   parameter exists for.
 
   The app policy pins `script-src`, `connect-src` and `form-action` to this
-  origin — those are the directives that decide whether injected script can
-  post the token somewhere. Two are deliberately looser and are asserted as
-  such in `tests/security_headers.test.ts`, so a later tightening pass has to
-  notice it is breaking something: `style-src` allows `'unsafe-inline'`
-  because MUI injects inline `<style>` at runtime, and `img-src` allows
-  `https:` because thumbnails come from whatever site the video came from.
+  origin — those are the directives that decide whether injected script can post
+  the token somewhere. Two are deliberately looser and are asserted as such in
+  `tests/security_headers.test.ts`, so a later tightening pass has to notice it
+  is breaking something: `style-src` allows `'unsafe-inline'` because MUI
+  injects inline `<style>` at runtime, and `img-src` allows `https:` because
+  thumbnails come from whatever site the video came from.
 - ~~**JWT in `localStorage`.**~~ **Addressed, not eliminated.** The token is
   still in `localStorage` — moving it to an `HttpOnly` cookie trades XSS
-  exposure for CSRF exposure and is a bigger change than this finding
-  justifies. What changed is both things that made it worse: the CSP above
-  closes the exfiltration path, and `F7` cuts the window a stolen token is
-  worth anything from 31 days to one.
+  exposure for CSRF exposure and is a bigger change than this finding justifies.
+  What changed is both things that made it worse: the CSP above closes the
+  exfiltration path, and `F7` cuts the window a stolen token is worth anything
+  from 31 days to one.
 - ~~**Login user enumeration.**~~ **Done.** The username-miss path now spends a
   `bcrypt.compare` against a throwaway hash before answering, so a miss costs
-  what a hit costs. The hash is generated once at the configured
-  `saltRounds` rather than hardcoded — a dummy at a different cost than the
-  real ones would reintroduce the difference it exists to remove — and
-  `createAuthMiddleware` warms it at startup so the first miss after a restart
-  is not the odd one out.
+  what a hit costs. The hash is generated once at the configured `saltRounds`
+  rather than hardcoded — a dummy at a different cost than the real ones would
+  reintroduce the difference it exists to remove — and `createAuthMiddleware`
+  warms it at startup so the first miss after a restart is not the odd one out.
 - ~~**Committed proxy credential.**~~ **Removed from the tree**, as
   `secrets/http_proxy_password.txt` handed to gluetun via
-  `HTTPPROXY_PASSWORD_SECRETFILE`, mirroring the `openvpn_password` pair
-  already there. **It still needs rotating**: it was committed, so it is in the
-  history regardless of what the working tree says now.
+  `HTTPPROXY_PASSWORD_SECRETFILE`, mirroring the `openvpn_password` pair already
+  there. **It still needs rotating**: it was committed, so it is in the history
+  regardless of what the working tree says now.
 - ~~**Hardcoded personal `SAVE_PATH` default.**~~ **Done.** `./data/` instead of
   one machine's home directory. The container mounts a volume over `SAVE_PATH`
   anyway, so this only ever governed a host-side `deno task dev`, which is
@@ -348,31 +346,30 @@ exists. Roughly 400 lines leave `App.jsx` before any real refactoring begins.
 Download) and `App.jsx` lost 440 lines — the token state, the socket
 construction, the snackbar trio, the notification log, the download queue and
 the five drilled props. All 18 `fetch` calls go through `apiFetch`, which now
-owns the bearer token, the JSON headers and the eight verbatim copies of
-"401 → session expired → log out". A new `src/config.js` absorbed the three
-copies of the backend-location logic that `App.jsx`, `SocketContext.jsx` and
-the `baseUrl` in three components each kept separately.
+owns the bearer token, the JSON headers and the eight verbatim copies of "401 →
+session expired → log out". A new `src/config.js` absorbed the three copies of
+the backend-location logic that `App.jsx`, `SocketContext.jsx` and the `baseUrl`
+in three components each kept separately.
 
-Two of the providers had to grow to become the real path rather than a
-parallel one: `DownloadContext` took over `App`'s more evolved queue logic
-along with the `/download` POST and the `/queuestatus` sync, and
-`NotificationContext` gained `setSnack` and `addNotification` as separate
-calls, because the snackbar and the log routinely carry different text for
-the same event.
+Two of the providers had to grow to become the real path rather than a parallel
+one: `DownloadContext` took over `App`'s more evolved queue logic along with the
+`/download` POST and the `/queuestatus` sync, and `NotificationContext` gained
+`setSnack` and `addNotification` as separate calls, because the snackbar and the
+log routinely carry different text for the same event.
 
 ### Q2 — Two divergent URL canonicalizers, one of which defines the primary key
 
 **Blocker · Verified · Fixed, paired with Q3**
 
-`normalizeUrl` (`process-manager.ts:149`) drives a `SITE_CANONICALIZERS` registry
-and is the **write path** — its output *is* the `videoUrl` primary key.
+`normalizeUrl` (`process-manager.ts:149`) drives a `SITE_CANONICALIZERS`
+registry and is the **write path** — its output _is_ the `videoUrl` primary key.
 `canonicalizeVideoUrl` (`dedup.ts:63`) is an inline if/else chain over the same
 sites and drives the **dedup path**. They disagree:
 
-- `dedup.ts:107-113` *appends* `?s=20` to x.com URLs. `normalizeUrl` does not —
+- `dedup.ts:107-113` _appends_ `?s=20` to x.com URLs. `normalizeUrl` does not —
   dedup's canonical x.com form is one ingest will never write.
 - `dedup.ts:97-104` implements pornhub and xhamster for real.
-  `process-manager.ts:125-132` is a *commented-out placeholder* saying "Add more
+  `process-manager.ts:125-132` is a _commented-out placeholder_ saying "Add more
   site rules here as needed, e.g. pornhub" — the same knowledge written once as
   code and once as a TODO, in two files.
 - `normalizeUrl` handles YouTube `/embed/`; `canonicalizeVideoUrl` does not.
@@ -385,27 +382,27 @@ alongside the C1 admissibility helpers, and dedup calls `normalizeUrl`.
 `canonicalizeVideoUrl` is gone; pornhub, xhamster and x.com are registry
 entries.
 
-The x.com rule resolves the disagreement by **stripping** the share params
-(`s`, `t`) rather than appending them. Stripping is the only direction that
-can converge: dedup's `?s=20` form was one ingest would never write, so
+The x.com rule resolves the disagreement by **stripping** the share params (`s`,
+`t`) rather than appending them. Stripping is the only direction that can
+converge: dedup's `?s=20` form was one ingest would never write, so
 `canonicalizeVideoUrlsInNonePlaylist` — which writes its canonical form back as
 `videoUrl` — was rewriting rows towards a spelling the next ingest immediately
 diverged from again. The invariant that failure violated is now pinned as a
 test: `normalizeUrl` is idempotent on every site it handles.
 
-`canonicalizePlaylistUrl` moved with it and stays a separate function on
-purpose — a playlist's identity is the `list=` that `normalizeUrl` throws
-away — but now shares the generic https/trailing-slash/tracking steps instead
-of restating them.
+`canonicalizePlaylistUrl` moved with it and stays a separate function on purpose
+— a playlist's identity is the `list=` that `normalizeUrl` throws away — but now
+shares the generic https/trailing-slash/tracking steps instead of restating
+them.
 
 ### Q3 — Documented tracking-parameter stripping was never implemented
 
 **Correctness · Verified · Fixed, paired with Q2**
 
 The `normalizeUrl` docstring at `process-manager.ts:141-147` documents four
-steps, including *"3. Strips known tracking query parameters (utm_\*, fbclid, si,
-pp)"*. The implementation runs 1 → 2 → 4; there is no step 3. Grepping all of
-`src/` for those names returns **exactly one hit — the comment itself**.
+steps, including _"3. Strips known tracking query parameters (utm_\*, fbclid,
+si, pp)"_. The implementation runs 1 → 2 → 4; there is no step 3. Grepping all
+of `src/` for those names returns **exactly one hit — the comment itself**.
 
 This is a correctness bug, not doc drift. `SITE_CANONICALIZERS` covers only
 youtube, iwara and spankbang, so every other site falls to the generic path,
@@ -414,11 +411,11 @@ which preserves all query parameters. Because `normalizeUrl`'s output is the
 values becomes a **distinct row** — a silent dedup failure on exactly the sites
 that have no canonicalizer rule.
 
-**Fixed.** Step 3 runs, stripping exactly what the docstring named — `utm_*`
-by prefix, plus `fbclid`, `si` and `pp` — case-insensitively, before the site
-rule, which is the order the `SiteCanonicalizer` contract already documented to
-its own implementors. Parameters that merely look similar (`pp_id`, `site`) are
-left alone.
+**Fixed.** Step 3 runs, stripping exactly what the docstring named — `utm_*` by
+prefix, plus `fbclid`, `si` and `pp` — case-insensitively, before the site rule,
+which is the order the `SiteCanonicalizer` contract already documented to its
+own implementors. Parameters that merely look similar (`pp_id`, `site`) are left
+alone.
 
 Rows written before this keep their old spelling until `/dedup` runs, which is
 safe now that dedup groups by the same function ingest writes with — the point
@@ -433,8 +430,8 @@ of pairing this with Q2.
 
 ```ts
 !processSucceeded && error &&
-error.message !== "Process exited with code null" &&
-error.message !== "Process exited with code 143"
+  error.message !== "Process exited with code null" &&
+  error.message !== "Process exited with code 143";
 ```
 
 The producer at `listing.ts:1158-1163` appends `: ${reason}` whenever stderr had
@@ -442,16 +439,16 @@ content. A genuine SIGTERM-with-stderr therefore produces
 `"Process exited with code 143: <reason>"`, fails both equality tests, and gets
 surfaced to the user as a listing error instead of a cancellation.
 
-The author saw this coming — the comment above the throw reads *"Keeps the
-original prefix so anything matching on it still works"* — but the consumer uses
+The author saw this coming — the comment above the throw reads _"Keeps the
+original prefix so anything matching on it still works"_ — but the consumer uses
 exact `!==`, not `startsWith`. **The mitigation does not work.**
 
 **Fixed** as prescribed. `ListingProcessError` lives beside `ProcessExitCodes`
 in `src/handlers/pipeline/types.ts`, carrying `exitCode` and `reason`; the
 producer throws it and `isDeliberateTermination` narrows on the type and reads
 the code. The message keeps its `Process exited with code <n>[: reason]` shape,
-because it is logged and emitted on `listing-error` for the frontend to render
-— it just stopped being the thing anything decides on.
+because it is logged and emitted on `listing-error` for the frontend to render —
+it just stopped being the thing anything decides on.
 
 ### Q5 — CI gates none of the quality signals the repo already has
 
@@ -481,8 +478,10 @@ the finding making its own case:
 
 - **`deno task check` did not pass at all.** `import type Redis from "ioredis"`
   resolved to a namespace rather than the class, giving TS2709 at fifteen sites
-  across `src/`, `index.ts` and `tests/`. The named import (`import type
-  { Redis }`) is what ioredis's `built/index.d.ts` actually exports.
+  across `src/`, `index.ts` and `tests/`. The named import
+  (`import type
+  { Redis }`) is what ioredis's `built/index.d.ts` actually
+  exports.
 - **`scripts/scratch_canonicalize_db.ts` had never compiled.** It imports a
   `deduplicateAll` that has never existed in `dedup.ts`; being outside every
   glob is precisely what let that stand. It now calls `deduplicateUnlisted` and
@@ -494,13 +493,13 @@ the finding making its own case:
 **Structural · Fixed**
 
 **Backend:** each endpoint was described in three places — path and auth in
-`src/routes/api.ts`, schema 200 lines away in `index.ts:756-812`, and handler via
-a 20-field `ApiRouteDependencies` interface destructured twice. Response shapes
-were hand-built at **79 `writeHead` call sites** with no `json()` helper.
+`src/routes/api.ts`, schema 200 lines away in `index.ts:756-812`, and handler
+via a 20-field `ApiRouteDependencies` interface destructured twice. Response
+shapes were hand-built at **79 `writeHead` call sites** with no `json()` helper.
 
 **Frontend:** 18 hand-rolled `fetch` calls, each restating method, `Accept`,
-`Content-Type`, `Authorization`, `mode: "cors"`, `JSON.stringify`,
-`response.ok` and its own 401 handling.
+`Content-Type`, `Authorization`, `mode: "cors"`, `JSON.stringify`, `response.ok`
+and its own 401 handling.
 
 The leak showed through: `SubList.jsx:585,633-655` read
 `item.video_metadatum.videoUrl` — a Sequelize association name reaching JSX
@@ -525,8 +524,8 @@ next-handler that could never run, and `/refresh` needed a hand-written adapter
 to reach the arity the limiter wanted. Both are gone.
 
 `json(res, status, body)` in `src/utils/http.ts` replaced the `writeHead` +
-`end(JSON.stringify(…))` pair at 59 JSON call sites. Seven files stopped
-needing `generateCorsHeaders` or a `jsonMimeType` local of their own.
+`end(JSON.stringify(…))` pair at 59 JSON call sites. Seven files stopped needing
+`generateCorsHeaders` or a `jsonMimeType` local of their own.
 
 On the frontend, `src/api/client.js` owns the half `apiFetch` never did:
 encoding, `response.ok`, and parsing. `api.post()` returns the parsed body or
@@ -557,9 +556,8 @@ reached it from opposite directions.
 
 **Fix.** Required fields are required now — on `/list`, `/download`, `/watch`,
 both delete endpoints and the four signed-file endpoints — and the hand-written
-request interfaces were narrowed to match, so a dozen downstream
-presence-guards deleted themselves. C1's scheme refinement landed on the same
-schemas.
+request interfaces were narrowed to match, so a dozen downstream presence-guards
+deleted themselves. C1's scheme refinement landed on the same schemas.
 
 One boundary behaviour changed as a result, at endpoints that already rejected
 the input, only later: checks the handlers ran by hand now fail in
@@ -568,13 +566,13 @@ rather than a per-field message.
 
 The signed-file endpoints needed care rather than a blanket tightening.
 `fileName` is required on `/makesignedurl` but stays optional per entry on the
-bulk endpoint, which is partial-success by design — its response already
-carries a null per entry it could not resolve, and the caller batches one row
-per video on screen, including ones it has not downloaded and so cannot name.
-The name rules themselves are shared between the two, and stayed deliberately
-permissive: spaces, unicode, emoji, multi-dot extensions, a leading dot and no
-extension at all are all names yt-dlp writes. They gained only what cannot name
-a file here — control characters, and the `.`/`..` segment references.
+bulk endpoint, which is partial-success by design — its response already carries
+a null per entry it could not resolve, and the caller batches one row per video
+on screen, including ones it has not downloaded and so cannot name. The name
+rules themselves are shared between the two, and stayed deliberately permissive:
+spaces, unicode, emoji, multi-dot extensions, a leading dot and no extension at
+all are all names yt-dlp writes. They gained only what cannot name a file here —
+control characters, and the `.`/`..` segment references.
 
 That last one exposed a separate pre-existing bug. `exists()` is a `Deno.stat`
 wrapper, so it is true for **directories**: any bare directory name — `..`, or
@@ -583,7 +581,6 @@ containment check, and the serve path then sent a `Content-Length` taken from
 the directory entry before failing `EISDIR` partway through the body. No string
 rule can fix that, since a directory name is a perfectly valid file name; both
 minting paths now stat with `isFile`.
-
 
 ### Q8 — Non-atomic triple write and raw interpolated SQL in the hot ingest path
 
@@ -615,10 +612,10 @@ insert half well-formed.
 **Structural · Fixed**
 
 - ~~**Five host-matchers, one already canonical.**~~ **Fixed with Q2.**
-  `isSiteXDotCom` existed *verbatim twice* — `index.ts:293-307` and
+  `isSiteXDotCom` existed _verbatim twice_ — `index.ts:293-307` and
   `process-manager.ts:218-230` — alongside `isSiteIwaraDotTv`, `isSiteYouTube`
   and `hasEphemeralThumbnails`, while `canonicalizePlaylistUrl` declared a
-  *third* inline copy of `isHostOrSubdomain` two functions below the canonical
+  _third_ inline copy of `isHostOrSubdomain` two functions below the canonical
   one. All of them now live in `src/utils/url.ts` over a single
   `isHostOrSubdomain` and a single `hostnameOf`, which matters beyond line
   count: the copies each decided for themselves whether an unparseable URL
@@ -627,17 +624,17 @@ insert half well-formed.
 - ~~**Two copies of one listing algorithm.**~~ **Fixed.**
   `handlePlaylistStreaming` and `handlePlaylistViaApi` were line-for-line
   duplicates apart from where chunks came from. Both now run
-  `consumePlaylistChunks` over a `PlaylistChunkSource`, and each states only
-  the four things that genuinely differ: the chunk source, what an empty run
-  means, what a failure means, and its own progress logging.
+  `consumePlaylistChunks` over a `PlaylistChunkSource`, and each states only the
+  four things that genuinely differ: the chunk source, what an empty run means,
+  what a failure means, and its own progress logging.
 
   The copies had already drifted, which is what the finding was really about.
   One compared the "everything in this chunk is already known" early stop
-  against the *configured* chunk size and the other against the chunk actually
-  received — they differ on a trailing partial chunk, so the same playlist
-  could stop early on one path and not the other. The driver compares against
-  the chunk it was handed. The early stop also marks the process completed now;
-  it used to leave the entry at `"running"` until the idle timeout noticed.
+  against the _configured_ chunk size and the other against the chunk actually
+  received — they differ on a trailing partial chunk, so the same playlist could
+  stop early on one path and not the other. The driver compares against the
+  chunk it was handed. The early stop also marks the process completed now; it
+  used to leave the entry at `"running"` until the idle timeout noticed.
 
   The offset arithmetic came out to `chunkPlaylistLines` in
   `src/handlers/pipeline/chunks.ts`, where it is tested: it writes
@@ -646,69 +643,70 @@ insert half well-formed.
   branches.
 - ~~**Three hand-rolled copies of "drive a `yt-dlp` subprocess."**~~ **Fixed.**
   `createYtDlpLauncher` in `src/handlers/pipeline/ytdlp.ts` is the only place a
-  yt-dlp subprocess starts, which is what keeps [C1](#c1--argument-injection-into-yt-dlp-via-post-list)'s
-  `--` separator true for the next call site as well as these three. The
-  download path's log line also stopped disagreeing with what it ran: it
-  rendered its options unquoted, so a save path containing a space logged as a
-  command that would not run if pasted.
+  yt-dlp subprocess starts, which is what keeps
+  [C1](#c1--argument-injection-into-yt-dlp-via-post-list)'s `--` separator true
+  for the next call site as well as these three. The download path's log line
+  also stopped disagreeing with what it ran: it rendered its options unquoted,
+  so a save path containing a space logged as a command that would not run if
+  pasted.
 
   `addPlaylist`'s race went with it. It wrapped three detached IIFEs in a
   `new Promise` where the one awaiting the exit status read a variable another
-  one wrote — correct only for as long as yt-dlp happened to flush stdout
-  before exiting, and silently falling back to a URL-derived title when it did
-  not. Both drains and the status are awaited together now.
+  one wrote — correct only for as long as yt-dlp happened to flush stdout before
+  exiting, and silently falling back to a URL-derived title when it did not.
+  Both drains and the status are awaited together now.
 - ~~**The process-status mutation, copy-pasted eight times**~~ **Fixed**, as
   `setProcessStatus` on the process manager. Each copy mutated an entry it
-  already held by reference and *then* called `map.set(key, entry)` — a no-op,
+  already held by reference and _then_ called `map.set(key, entry)` — a no-op,
   replicated eight times, reading as though the write were what made the change
-  stick. Worse, each copy chose for itself which of the three liveness clocks
-  to move, so a status change meant different things depending on which copy
-  you were reading. It also returns `false` rather than silently doing nothing
-  when the entry is gone, which the two callers that have just spawned a
-  subprocess check: for them it means a process nothing will ever reap.
+  stick. Worse, each copy chose for itself which of the three liveness clocks to
+  move, so a status change meant different things depending on which copy you
+  were reading. It also returns `false` rather than silently doing nothing when
+  the entry is gone, which the two callers that have just spawned a subprocess
+  check: for them it means a process nothing will ever reap.
 
 ### Q10 — Files past the 1k-line bar
 
 **Structural · Fixed**
 
-| File | Was | Now | What happened |
-| :--- | ---: | ---: | :--- |
-| `src/handlers/pipeline/listing.ts` | 1,678 | 922 | The factory dissolved. `processStreamingVideoInformation` moved beside `persistStreamingChunk` into [`ingest-chunk.ts`](../src/handlers/pipeline/ingest-chunk.ts) — parse, diff and the Q8 transaction are one unit now; `addPlaylist`/`createPlaylistRecord` moved to [`playlist-records.ts`](../src/handlers/pipeline/playlist-records.ts); the `/list` triage path to [`listing-requests.ts`](../src/handlers/pipeline/listing-requests.ts). |
-| `frontend/src/components/App.jsx` | 1,053 | 588 | The 414-line socket effect is a `useSocketEvents` hook, which owns the listing counter, batch-reindex tracker and last-downloaded ref, and registers its eighteen listeners from one table — the hand-maintained parallel `.off` block cannot drift by construction. This was the rest of `F4`. |
-| `frontend/src/components/VideoPlayer.jsx` | 1,304 | 891 | Signed-URL minting/refresh/recovery is `useSignedPlayback`, subtitles (fetch, VTT parse, cue selection) are `useSubtitleTrack`, page-crossing prev/next is `usePlaylistNavigation`, and the pure VTT parser sits in `src/lib/subtitles.js`. `useSignedUrlRefresh.js`, which had sat unused through all of this, is deleted. |
-| `frontend/src/components/SubList.jsx` | 1,038 | 769 | Thumbnails (bulk fetch + expiry scheduling) are `useThumbnailUrls`; the rows fetch is `useSubListRows`; the delete dialog is its own component. Two of the eight effects were deleted outright: "select all" is derived from the rows on screen rather than mirrored into state, which also closed a stale-true edge when a page change pruned the last checked key away. |
-| `scripts/scratch_*.ts` | 1,318 | 0 | Deleted — one-off migration scripts referenced by no task, doc or Makefile target. Git history keeps them. |
+| File                                      |   Was | Now | What happened                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| :---------------------------------------- | ----: | --: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/handlers/pipeline/listing.ts`        | 1,678 | 922 | The factory dissolved. `processStreamingVideoInformation` moved beside `persistStreamingChunk` into [`ingest-chunk.ts`](../src/handlers/pipeline/ingest-chunk.ts) — parse, diff and the Q8 transaction are one unit now; `addPlaylist`/`createPlaylistRecord` moved to [`playlist-records.ts`](../src/handlers/pipeline/playlist-records.ts); the `/list` triage path to [`listing-requests.ts`](../src/handlers/pipeline/listing-requests.ts). |
+| `frontend/src/components/App.jsx`         | 1,053 | 588 | The 414-line socket effect is a `useSocketEvents` hook, which owns the listing counter, batch-reindex tracker and last-downloaded ref, and registers its eighteen listeners from one table — the hand-maintained parallel `.off` block cannot drift by construction. This was the rest of `F4`.                                                                                                                                                 |
+| `frontend/src/components/VideoPlayer.jsx` | 1,304 | 891 | Signed-URL minting/refresh/recovery is `useSignedPlayback`, subtitles (fetch, VTT parse, cue selection) are `useSubtitleTrack`, page-crossing prev/next is `usePlaylistNavigation`, and the pure VTT parser sits in `src/lib/subtitles.js`. `useSignedUrlRefresh.js`, which had sat unused through all of this, is deleted.                                                                                                                     |
+| `frontend/src/components/SubList.jsx`     | 1,038 | 769 | Thumbnails (bulk fetch + expiry scheduling) are `useThumbnailUrls`; the rows fetch is `useSubListRows`; the delete dialog is its own component. Two of the eight effects were deleted outright: "select all" is derived from the rows on screen rather than mirrored into state, which also closed a stale-true edge when a page change pruned the last checked key away.                                                                       |
+| `scripts/scratch_*.ts`                    | 1,318 |   0 | Deleted — one-off migration scripts referenced by no task, doc or Makefile target. Git history keeps them.                                                                                                                                                                                                                                                                                                                                      |
 
 **The enabler did ship:** the playlist sort order now comes from
-`MAX(sortOrder) + 1`, read inside a serialized create in
-`playlist-records.ts`, so `createListingFlow`'s counter, its initialization
-promise *and* the `resetPendingPlaylistSortCounter` invalidation hook that
-deletion had to remember to call are all gone — reading at write time has
-nothing to invalidate. The serialization itself remains, as the module-level
-`playlistCreateChain`: reading the tail is only safe if the read and the write
-it feeds are one section, or three concurrent creates all see the same tail
-and claim the same number. `tests/playlist_records.test.ts` pins that — it
-fails if the chain is removed — along with the renumber-after-delete case the
-old reset hook existed for.
+`MAX(sortOrder) + 1`, read inside a serialized create in `playlist-records.ts`,
+so `createListingFlow`'s counter, its initialization promise _and_ the
+`resetPendingPlaylistSortCounter` invalidation hook that deletion had to
+remember to call are all gone — reading at write time has nothing to invalidate.
+The serialization itself remains, as the module-level `playlistCreateChain`:
+reading the tail is only safe if the read and the write it feeds are one
+section, or three concurrent creates all see the same tail and claim the same
+number. `tests/playlist_records.test.ts` pins that — it fails if the chain is
+removed — along with the renumber-after-delete case the old reset hook existed
+for.
 
 What remains of the factory is pure wiring (`createListingRuntime`) assembling
 an explicit context object that every function takes as a parameter; each
-substantial function below it is a plain export a test can call without
-building the pipeline, which `tests/listing_requests.test.ts` and
+substantial function below it is a plain export a test can call without building
+the pipeline, which `tests/listing_requests.test.ts` and
 `tests/playlist_records.test.ts` now do.
 
 The split also made three components small enough for React Compiler's lint
 rules to analyze for the first time, which surfaced pre-existing
-setState-in-effect patterns; two were genuinely derivable and removed, the
-other two carry justifications inline.
+setState-in-effect patterns; two were genuinely derivable and removed, the other
+two carry justifications inline.
 
 **The sixth file, added after the fact.** `src/bot/core.ts` was 1,351 lines and
 had been since three weeks before this audit was written — it was simply not in
-the table above, so the five rows that were did not make the heading true. It
-is now 141, and the table row is:
+the table above, so the five rows that were did not make the heading true. It is
+now 141, and the table row is:
 
-| File | Was | Now | What happened |
-| :--- | ---: | ---: | :--- |
+| File              |   Was | Now | What happened                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| :---------------- | ----: | --: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `src/bot/core.ts` | 1,351 | 141 | The same shape as `listing.ts` and the same treatment. `createBotCore` held thirty-three nested functions over two in-flight maps — `pending` and `listings` — that the command handlers, the delivery path, the watchdog timers and the six bus subscriptions all reached by capture. The maps are a `BotRuntime` passed explicitly now, and the handlers moved beside the thing they do: [`replies.ts`](../src/bot/replies.ts), [`deliver.ts`](../src/bot/deliver.ts), [`submissions.ts`](../src/bot/submissions.ts), [`indexing.ts`](../src/bot/indexing.ts), [`queries.ts`](../src/bot/queries.ts) and [`subscriptions.ts`](../src/bot/subscriptions.ts). What is left in `core.ts` is the wiring and the command routing. Largest bot module is now 317. |
 
 Unlike the listing pipeline's sort-order counter, none of this state could be
@@ -746,7 +744,8 @@ not carried over on trust.
 
 **High · Closed — this is `Q1`**
 
-Same finding as [Q1](#q1--the-frontends-intended-architecture-is-written-complete-and-disconnected),
+Same finding as
+[Q1](#q1--the-frontends-intended-architecture-is-written-complete-and-disconnected),
 reached from the frontend side. `main.jsx` now renders `AppProviders`, and all
 18 `fetch` calls go through `apiFetch`. No residue.
 
@@ -817,15 +816,14 @@ to 1,038 lines and four mirrors (`playListUrl`, `disableProgress`,
 genuine mutable state, not mirrors.
 
 The reason the mirrors existed is **one `useEffect` at `:341`** registering 18
-`socket.on` handlers against a hand-maintained parallel block of 18
-`socket.off` calls. Handlers registered once need some way to read current
-state without re-subscribing, and mirroring into a ref is React 18's manual
-answer.
+`socket.on` handlers against a hand-maintained parallel block of 18 `socket.off`
+calls. Handlers registered once need some way to read current state without
+re-subscribing, and mirroring into a ref is React 18's manual answer.
 
 **Fixed.** A `useLatest(value)` hook is that box, named once instead of
-open-coded four times. The render-phase write is deliberate and kept — an
-effect commits after paint, so a handler firing in the gap would read the
-previous value — and that trade is now stated in one place with the single
+open-coded four times. The render-phase write is deliberate and kept — an effect
+commits after paint, so a handler firing in the gap would read the previous
+value — and that trade is now stated in one place with the single
 `react-hooks/refs` suppression it needs, rather than left implicit at four call
 sites that happened not to trip the rule.
 
@@ -848,13 +846,13 @@ So: no link to a specific playlist, no bookmark, no reopening where you left
 off, and the browser Back button exited the app rather than navigating inside
 it. On mobile, where Back is the primary gesture, that was the visible cost.
 
-**The finding overstated the remedy.** It reads as "adopt a router, redesign
-the two-panel UI", and the two-panel UI was never the obstacle. A URL does not
-have to describe a layout; it describes a *selection*. Master-detail is the
-most routable shape there is — the left panel is a list that persists across
+**The finding overstated the remedy.** It reads as "adopt a router, redesign the
+two-panel UI", and the two-panel UI was never the obstacle. A URL does not have
+to describe a layout; it describes a _selection_. Master-detail is the most
+routable shape there is — the left panel is a list that persists across
 navigations, the right panel is the detail keyed off one parameter. The
-selection was already isolated in a single variable, `playListUrl`, so what
-was actually missing was somewhere to keep it other than `useState`.
+selection was already isolated in a single variable, `playListUrl`, so what was
+actually missing was somewhere to keep it other than `useState`.
 
 **Fixed** as `src/router/` in the frontend: a fragment-backed router in two
 files, and no new dependency.
@@ -865,10 +863,10 @@ files, and no new dependency.
   and `parse(format(x))` round-trips for every route, including a playlist URL
   carrying a `?list=` of its own.
 - **`RouterProvider.jsx` is the plumbing**, over `useSyncExternalStore` rather
-  than `useState` plus an effect. The address bar is precisely an external
-  store — React does not own it, and it changes without React's knowledge on
-  Back, Forward or a hand-edited URL — so that is the primitive that fits, and
-  it removes the render where the app and the address bar disagree.
+  than `useState` plus an effect. The address bar is precisely an external store
+  — React does not own it, and it changes without React's knowledge on Back,
+  Forward or a hand-edited URL — so that is the primitive that fits, and it
+  removes the render where the app and the address bar disagree.
 
 **The fragment, not the path.** `makeAssets` builds an exact-match asset table
 and `serveStaticAsset` 404s a miss; there is no history fallback, so a GET for
@@ -886,12 +884,12 @@ widen what the table matches — no static asset here is identified by its query
 Three things fell out of the change that are worth naming:
 
 - **Push versus replace is the whole of the Back experience.** A background
-  listing finishing and pulling the view to its playlist is not a place the
-  user asked to be, so `useSocketEvents` navigates with `replace` and leaves no
-  entry to press Back through. Everything a person clicks pushes. The player
-  is the same rule seen twice: opening it from closed pushes, so Back closes
-  it; moving between videos while it is open replaces, so Back stays "close the
-  player" rather than walking back through everything that was watched.
+  listing finishing and pulling the view to its playlist is not a place the user
+  asked to be, so `useSocketEvents` navigates with `replace` and leaves no entry
+  to press Back through. Everything a person clicks pushes. The player is the
+  same rule seen twice: opening it from closed pushes, so Back closes it; moving
+  between videos while it is open replaces, so Back stays "close the player"
+  rather than walking back through everything that was watched.
 - **The mobile slide now follows the route rather than the tap**, which is what
   makes the browser's own Back gesture work: it arrives as an ordinary route
   change and slides out exactly as the in-app arrow does. `mobileView` survives
@@ -902,14 +900,14 @@ Three things fell out of the change that are worth naming:
   for either.
 
 **What is deliberately not in the URL**: the search query, the sort, the page,
-`rowsPerPage`, and the row selection. Each one is another sync point and
-another way to get a state → URL → state loop, and the selection in particular
-is a download staging area rather than a location. They can be added one at a
-time if sharing a search ever turns out to matter.
+`rowsPerPage`, and the row selection. Each one is another sync point and another
+way to get a state → URL → state loop, and the selection in particular is a
+download staging area rather than a location. They can be added one at a time if
+sharing a search ever turns out to matter.
 
-**A known limit, stated rather than hidden.** The player can only be opened
-from a row that is loaded, so a link to a video on a page that is not showing —
-or to one that was never downloaded — cannot be honoured. Rather than leave the
+**A known limit, stated rather than hidden.** The player can only be opened from
+a row that is loaded, so a link to a video on a page that is not showing — or to
+one that was never downloaded — cannot be honoured. Rather than leave the
 address bar naming something the app is not showing, the `v` parameter is
 dropped once the rows have arrived and it is clear the video is not among them.
 Fixing that properly needs a lookup endpoint that can say which page a video is
@@ -939,19 +937,19 @@ per endpoint beside the request records `Q6` left in `endpoints.ts`, and
 - `openapi.json` — the OpenAPI 3.0 document for the whole HTTP surface.
 - `frontend/src/api/generated/apiTypes.js` — JSDoc typedefs plus a route union.
 
-The frontend stays JavaScript. `createApiClient.post` is generic over that
-route union via JSDoc, so `api.post("/getsub", body)` accepts exactly the
-documented request and resolves to exactly the documented response — the
-`videoUrl` association name now has a type on both sides of the wire.
-`tsconfig.checkjs.json` runs `tsc --checkJs --noEmit` (`npm run typecheck`)
-over `src/api`, the hooks, the components and the contexts — everything that
-calls `post()`, not just the client that defines it — as a step in both
-repositories' PR workflows. `tests/api_codegen.test.ts` regenerates both
-artifacts in memory and fails against the committed copies, so a schema edit
-without regeneration cannot land.
+The frontend stays JavaScript. `createApiClient.post` is generic over that route
+union via JSDoc, so `api.post("/getsub", body)` accepts exactly the documented
+request and resolves to exactly the documented response — the `videoUrl`
+association name now has a type on both sides of the wire.
+`tsconfig.checkjs.json` runs `tsc --checkJs --noEmit` (`npm run typecheck`) over
+`src/api`, the hooks, the components and the contexts — everything that calls
+`post()`, not just the client that defines it — as a step in both repositories'
+PR workflows. `tests/api_codegen.test.ts` regenerates both artifacts in memory
+and fails against the committed copies, so a schema edit without regeneration
+cannot land.
 
-Not a TypeScript rewrite, deliberately: typing the API responses catches most
-of what `PropTypes` misses, and components keep their PropTypes until each is
+Not a TypeScript rewrite, deliberately: typing the API responses catches most of
+what `PropTypes` misses, and components keep their PropTypes until each is
 migrated on its own terms.
 
 > [!NOTE]
@@ -960,32 +958,32 @@ migrated on its own terms.
 > anything, and none of them was:
 >
 > 1. **`ApiRoute` was `any`.** The generator emitted the route union as a JSDoc
->    typedef whose type expression started on the line *after* `@typedef {`.
+>    typedef whose type expression started on the line _after_ `@typedef {`.
 >    TypeScript does not parse that form — it takes the typedef as `any` and
 >    reports nothing. `post()`'s path parameter was therefore constrained by
->    `any`: every path was accepted, every response came back untyped. A
->    silent `any` is precisely what `tsc` cannot tell you about, so
+>    `any`: every path was accepted, every response came back untyped. A silent
+>    `any` is precisely what `tsc` cannot tell you about, so
 >    `tests/desktop/apiContract.test.js` on the frontend asserts the emitted
 >    shape instead.
 > 2. **`ApiClient` did not exist.** Four hooks annotated their `api` parameter
 >    as `import("../api/client.js").ApiClient`, a typedef `client.js` never
 >    exported.
-> 3. **The gate did not reach the call sites.** `tsconfig.checkjs.json`
->    covered the client module and two others — none of the eleven files that
->    actually call `post()`.
+> 3. **The gate did not reach the call sites.** `tsconfig.checkjs.json` covered
+>    the client module and two others — none of the eleven files that actually
+>    call `post()`.
 >
 > Once all three were fixed the gate immediately found what the finding said it
 > would: `SubListItemCard` reading `element.isAvailable`, a field that lives
 > under `video_metadatum` and was always `undefined`; `DownloadContext` reading
 > a `percentage` that `/queuestatus` has never returned, so progress restored
 > after a reload was always 0; a `slotProps.list` key MUI v5 does not read,
-> which dropped a menu's `aria-labelledby`; `useSubtitleTrack` documenting
-> three of its six return values; and `useSocketEvents`'s `downloadedItem` ref
+> which dropped a menu's `aria-labelledby`; `useSubtitleTrack` documenting three
+> of its six return values; and `useSocketEvents`'s `downloadedItem` ref
 > declaring four fields while assigning the nine `SubList` reads.
 >
 > The lesson generalises past this finding: a generated artifact is not a
-> contract until something fails when it is wrong. Both halves are now pinned
-> — the backend test regenerates and compares, the frontend test asserts the
+> contract until something fails when it is wrong. Both halves are now pinned —
+> the backend test regenerates and compares, the frontend test asserts the
 > emitted file is in a form the checker can read.
 
 ### F7 — 31-day bearer tokens in `localStorage`, never renewed
@@ -997,31 +995,30 @@ form sent no override. There was no refresh endpoint and no renewal path on the
 client. `AuthContext.jsx:11` reads the token straight out of `localStorage`.
 
 The long lifetime existed precisely so the app could skip renewal, which is a
-defensible trade for a self-hosted tool. The costs were that an XSS-leaked
-token stayed valid for a month — compounded by the missing CSP in `S4–S9` —
-and that there was no way to shorten one user's session without invalidating
-everyone's.
+defensible trade for a self-hosted tool. The costs were that an XSS-leaked token
+stayed valid for a month — compounded by the missing CSP in `S4–S9` — and that
+there was no way to shorten one user's session without invalidating everyone's.
 
 **Done.** `TOKEN_EXPIRY` defaults to `24h`, and `POST /refresh` exchanges a
 still-valid token for a fresh one. On the client, `useTokenRefresh` renews on
 two triggers, because neither is sufficient alone: a timer at the halfway mark
-of the token's life, and `visibilitychange`, since timers do not survive
-suspend and browsers throttle them hard in background tabs — a tab woken after
-its timer should have fired must not wait for a timer that already missed.
+of the token's life, and `visibilitychange`, since timers do not survive suspend
+and browsers throttle them hard in background tabs — a tab woken after its timer
+should have fired must not wait for a timer that already missed.
 
 Three things fell out of it that are worth naming:
 
 - **The client no longer picks its own lifetime.** `expiry_time` was an
-  unbounded string on the login schema, so a caller could ask for a year and
-  get it. The field is gone; the server decides.
-- **`/refresh` sits behind `authenticateRequest`**, so an expired token gets
-  the ordinary 401 there too. This extends a live session, it cannot revive a
-  dead one — a sliding window, not an unlimited one. That is the trade the
-  short lifetime is buying, and a tab asleep longer than `TOKEN_EXPIRY` comes
-  back to a login form.
+  unbounded string on the login schema, so a caller could ask for a year and get
+  it. The field is gone; the server decides.
+- **`/refresh` sits behind `authenticateRequest`**, so an expired token gets the
+  ordinary 401 there too. This extends a live session, it cannot revive a dead
+  one — a sliding window, not an unlimited one. That is the trade the short
+  lifetime is buying, and a tab asleep longer than `TOKEN_EXPIRY` comes back to
+  a login form.
 - **The response carries `expiresAt`**, the server's own `exp` claim, so the
-  client schedules renewal off that rather than decoding a JWT it has no key
-  to verify.
+  client schedules renewal off that rather than decoding a JWT it has no key to
+  verify.
 
 Refresh re-reads `updatedAt` from the row rather than carrying the old token's
 claim forward, so a token minted here cannot outlive a password change — the
@@ -1087,8 +1084,8 @@ number in a config file.
 
 ## Where the two passes converge
 
-The two review passes ran in parallel with no knowledge of each other.
-Weighting their overlaps is the highest-signal output of the audit.
+The two review passes ran in parallel with no knowledge of each other. Weighting
+their overlaps is the highest-signal output of the audit.
 
 ### The security bug and the design flaw are the same finding
 
@@ -1107,13 +1104,13 @@ rather than separately.
 Every major finding is an instance of the same pattern: **a correct abstraction
 exists in the tree, and the path that actually runs goes around it.**
 
-| Canonical thing that exists | What bypasses it |
-| :--- | :--- |
-| `isHttpUrl` (`utils/url.ts`, hoisted out of `bot/commands.ts`) | ~~the HTTP `/list` path~~ → **C1**, fixed |
-| `isWithinPath` (`files.ts:107`) | ~~the file deletion path (`videoFiles.ts:46`)~~ → **S3**, fixed |
-| Four context providers + `useApi` | ~~`main.jsx` renders around them~~ → **Q1**, fixed |
-| `SITE_CANONICALIZERS` registry | ~~`dedup.ts:63` re-implements it, disagreeing~~ → **Q2**, fixed |
-| `isHostOrSubdomain` (`dedup.ts:59`) | ~~four more copies, one two functions below it~~ → **Q9**, fixed |
+| Canonical thing that exists                                    | What bypasses it                                                 |
+| :------------------------------------------------------------- | :--------------------------------------------------------------- |
+| `isHttpUrl` (`utils/url.ts`, hoisted out of `bot/commands.ts`) | ~~the HTTP `/list` path~~ → **C1**, fixed                        |
+| `isWithinPath` (`files.ts:107`)                                | ~~the file deletion path (`videoFiles.ts:46`)~~ → **S3**, fixed  |
+| Four context providers + `useApi`                              | ~~`main.jsx` renders around them~~ → **Q1**, fixed               |
+| `SITE_CANONICALIZERS` registry                                 | ~~`dedup.ts:63` re-implements it, disagreeing~~ → **Q2**, fixed  |
+| `isHostOrSubdomain` (`dedup.ts:59`)                            | ~~four more copies, one two functions below it~~ → **Q9**, fixed |
 
 The design instincts are good — the registry pattern, the context split, the
 semaphore, dependency injection in `resolveBotConfig`, and strong comment
@@ -1134,11 +1131,11 @@ That cuts both ways. Nothing is coupled to the internals these fixes would
 change, so the decomposition is unobstructed — but nothing catches a regression
 either.
 
-The Q2 fix moved both of those files' subjects *out* of `pipeline/` — the
+The Q2 fix moved both of those files' subjects _out_ of `pipeline/` — the
 canonicalizer tests now sit in `tests/url.test.ts` beside the code, and
 `dedup.test.ts` is gone — so the ratio above got worse, not better. What Q5
-changed is that the tests which do exist, on either side of the tree, now fail
-a build.
+changed is that the tests which do exist, on either side of the tree, now fail a
+build.
 
 The Q9 work moved the ratio the other way for the first time, and by the same
 method as Q2: rather than trying to test `handlePlaylistStreaming` where it
@@ -1147,12 +1144,12 @@ be. `chunks.ts` holds the offset arithmetic that writes `positionInPlaylist`,
 and `ytdlp.ts` holds the argv builder that carries C1's `--`. Both are now
 covered directly.
 
-Q8 applied the same move to the part that needs a database, without needing
-one: `persistStreamingChunk` came out of `processStreamingVideoInformation` to
-module scope, and the models are the seam — stubbing their statics pins the
-transaction and the upsert keys without a connection. That is the first test of
-any kind against `processStreamingVideoInformation`. What is still untested is
-everything upstream of the writes.
+Q8 applied the same move to the part that needs a database, without needing one:
+`persistStreamingChunk` came out of `processStreamingVideoInformation` to module
+scope, and the models are the seam — stubbing their statics pins the transaction
+and the upsert keys without a connection. That is the first test of any kind
+against `processStreamingVideoInformation`. What is still untested is everything
+upstream of the writes.
 
 ---
 
@@ -1180,7 +1177,7 @@ which is what makes the findings above meaningful.
 - **CORS** — single-origin allowlist echoed only on exact match, with
   `Vary: Origin`. Request bodies capped at 1 MB.
 
-From the frontend review, four things the sibling app was told to copy *from*
+From the frontend review, four things the sibling app was told to copy _from_
 this one. They are load-bearing — do not undo them while fixing F2–F10:
 
 - **Accessibility.** 56 `aria-label`s across 11 components; every icon button in
@@ -1224,14 +1221,14 @@ Sequenced so each step makes the next cheaper, not by severity alone.
    through `useApi`. Deletion rather than construction.~~ **Done**, as
    `AppProviders` in `main.jsx` and one `apiFetch` behind every call, with the
    backend-location logic collapsed into `src/config.js`. Net −466 lines of
-   `src/`, and the frontend suite went from 68 tests to 73.
-   Step 5 is also **F1** — the two are one finding, which is why F1 does not
-   appear again below.
+   `src/`, and the frontend suite went from 68 tests to 73. Step 5 is also
+   **F1** — the two are one finding, which is why F1 does not appear again
+   below.
 
 Steps 6 onward were re-ranked on 2026-08-22, across both sets rather than
-keeping the frontend items on a list of their own. The frontend items do not queue behind
-the backend ones: `F2` and `F3` are the highest impact-per-hour work left in the
-tree, and nothing above them blocks either.
+keeping the frontend items on a list of their own. The frontend items do not
+queue behind the backend ones: `F2` and `F3` are the highest impact-per-hour
+work left in the tree, and nothing above them blocks either.
 
 6. ~~**F2 + F3** — an error boundary that handles stale chunks, and moving
    socket construction into an effect that disconnects on cleanup.~~ **Done**,
@@ -1253,10 +1250,10 @@ tree, and nothing above them blocks either.
    decomposition, which is the point: it is the only thing that will notice if
    steps 10–11 quietly drop coverage while moving code.
 9. ~~**Q8** — one `sequelize.transaction()` around the triple write, and
-    `bulkCreate` with `updateOnDuplicate` in place of the interpolated CASE.~~
-    **Done**, as `persistStreamingChunk`, extracted to module scope so the
-    write block is testable without spawning a listing process. Backend suite
-    272 → 276, frontend 102 → 119.
+   `bulkCreate` with `updateOnDuplicate` in place of the interpolated CASE.~~
+   **Done**, as `persistStreamingChunk`, extracted to module scope so the write
+   block is testable without spawning a listing process. Backend suite 272 →
+   276, frontend 102 → 119.
 10. ~~**Q6 + F6 as one piece of work**~~ — **Q6 is done**, as
     `src/routes/endpoints.ts` (one record per endpoint, which `api.ts` maps
     over), `json()` in `src/utils/http.ts` across 59 call sites, and
@@ -1267,54 +1264,54 @@ tree, and nothing above them blocks either.
     ~~**F6 is what is left.**~~ **F6 is done too**, as `src/routes/openapi.ts`
     (one response schema per endpoint, beside the request records),
     `deno task gen:api` emitting `openapi.json` plus
-    `frontend/src/api/generated/apiTypes.js`, and a typed `post()` consumed
-    from plain JS through a new `checkJs` gate. The contract now exists on
-    both sides of the network boundary, generated from one file.
+    `frontend/src/api/generated/apiTypes.js`, and a typed `post()` consumed from
+    plain JS through a new `checkJs` gate. The contract now exists on both sides
+    of the network boundary, generated from one file.
 11. ~~**Q10** — the decomposition.~~ **Done.** `Q4` and `Q8` landed first, so
     `createListingFlow` had nothing left to close over once the sort-order
     counter moved into the database (`MAX(sortOrder) + 1` inside a serialized
-    create — which also deleted the reset hook deletion used to have to
-    call). `listing.ts` dissolved into `ingest-chunk.ts`,
-    `playlist-records.ts` and `listing-requests.ts` around it; App.jsx's
-    socket effect became `useSocketEvents` — closing the rest of `F4` and
-    unblocking `F5` — while VideoPlayer and SubList gave up their
-    signed-URL/subtitle/thumbnail layers to hooks. Every file named in the
-    finding is under the bar, the scratch scripts are gone, and the F10
-    coverage floor came through as designed: coverage rose slightly across
-    the move (65.7/48.9/56.6/67.4 against the 64/47/55/66 floor).
-12. ~~**F5** — routing.~~ **Done**, as `src/router/` — a fragment-backed
-    router in two files (`routes.js` for the grammar, `RouterProvider.jsx` for
-    the plumbing) and no new dependency. The step-11 sequencing turned out to
-    matter less than expected: only the socket layer's push-versus-replace
-    decision touches `useSocketEvents` at all, and that is one word per call
-    site. What the split did buy was being able to make it in one place.
+    create — which also deleted the reset hook deletion used to have to call).
+    `listing.ts` dissolved into `ingest-chunk.ts`, `playlist-records.ts` and
+    `listing-requests.ts` around it; App.jsx's socket effect became
+    `useSocketEvents` — closing the rest of `F4` and unblocking `F5` — while
+    VideoPlayer and SubList gave up their signed-URL/subtitle/thumbnail layers
+    to hooks. Every file named in the finding is under the bar, the scratch
+    scripts are gone, and the F10 coverage floor came through as designed:
+    coverage rose slightly across the move (65.7/48.9/56.6/67.4 against the
+    64/47/55/66 floor).
+12. ~~**F5** — routing.~~ **Done**, as `src/router/` — a fragment-backed router
+    in two files (`routes.js` for the grammar, `RouterProvider.jsx` for the
+    plumbing) and no new dependency. The step-11 sequencing turned out to matter
+    less than expected: only the socket layer's push-versus-replace decision
+    touches `useSocketEvents` at all, and that is one word per call site. What
+    the split did buy was being able to make it in one place.
 
     **`react-router` was considered and not adopted.** The app has two
     destinations and one modal; a router earns its dependency at four or five,
-    and until then it is more moving parts than the problem has. The decision
-    is kept cheap to reverse instead of being argued about again: nothing
-    outside `src/router/` knows how navigation is implemented — consumers see a
+    and until then it is more moving parts than the problem has. The decision is
+    kept cheap to reverse instead of being argued about again: nothing outside
+    `src/router/` knows how navigation is implemented — consumers see a
     `{playlistUrl, videoUrl}` object and a `navigate` function, never a
     `location` or a `<Route>` — so adopting it later is a change to one file,
     documented as three steps in `RouterProvider.jsx`, with `routes.js` and its
     tests carrying over whole. `HashRouter` would keep the backend untouched;
-    only `BrowserRouter` would need the server to serve `index.html` for
-    unknown paths under its base.
+    only `BrowserRouter` would need the server to serve `index.html` for unknown
+    paths under its base.
 
     Frontend suite 154 → 180, and coverage rose across the move
-    (72/55.4/62.3/73.3 against the old 69/51/59/70 floor, which has been
-    raised to match). One backend bug came out of it: a query string on the
-    app's own URL used to 404, because the static asset table is keyed on the
-    path but was looked up with the search string still attached.
-13. ~~**S2, S4–S9 and F7** — the security long tail, cheapest first.~~
-    **Done for S4–S9 and F7**, taken together as one change because they are
-    one exposure: the CSP closes the path a token is stolen through, and the
-    24-hour lifetime bounds what a stolen one is worth. Shipped as
-    `SECURITY_HEADERS` + two CSP profiles in `generateCorsHeaders`, an
-    `inline`-refusal list in `serveNativeFile`, a dummy `bcrypt.compare` on the
-    login miss path, `POST /refresh` with `useTokenRefresh` on the client, the
-    proxy credential moved to `secrets/`, and the personal `SAVE_PATH` default
-    dropped. Backend suite 209 → 224, frontend 73 → 89.
+    (72/55.4/62.3/73.3 against the old 69/51/59/70 floor, which has been raised
+    to match). One backend bug came out of it: a query string on the app's own
+    URL used to 404, because the static asset table is keyed on the path but was
+    looked up with the search string still attached.
+13. ~~**S2, S4–S9 and F7** — the security long tail, cheapest first.~~ **Done
+    for S4–S9 and F7**, taken together as one change because they are one
+    exposure: the CSP closes the path a token is stolen through, and the 24-hour
+    lifetime bounds what a stolen one is worth. Shipped as `SECURITY_HEADERS` +
+    two CSP profiles in `generateCorsHeaders`, an `inline`-refusal list in
+    `serveNativeFile`, a dummy `bcrypt.compare` on the login miss path,
+    `POST /refresh` with `useTokenRefresh` on the client, the proxy credential
+    moved to `secrets/`, and the personal `SAVE_PATH` default dropped. Backend
+    suite 209 → 224, frontend 73 → 89.
 
     **S2 has since closed too**, as `TRUSTED_PROXIES` plus a right-to-left
     `X-Forwarded-For` walk in `src/utils/clientIp.ts`. It did not ride along

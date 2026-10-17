@@ -1,6 +1,7 @@
 import { logger } from "../logger.ts";
 import { HELP_TEXT, parseCommand } from "./commands.ts";
 import {
+  handleCancel,
   handleHistory,
   handleKeep,
   handleList,
@@ -8,6 +9,7 @@ import {
   handleRemove,
   handleSearch,
   handleStatus,
+  handleSync,
 } from "./queries.ts";
 import { handleIndex } from "./indexing.ts";
 import { reply } from "./replies.ts";
@@ -66,10 +68,16 @@ export async function handleMessage(
         await handleHistory(rt, adapter, target, command.limit);
         return;
       case "keep":
-        await handleKeep(rt, adapter, target, command.id);
+        await handleKeep(rt, adapter, target, command.target);
         return;
       case "remove":
-        await handleRemove(rt, adapter, target, command.id);
+        await handleRemove(rt, adapter, target, command.target);
+        return;
+      case "cancel":
+        await handleCancel(rt, adapter, target, command.target);
+        return;
+      case "sync":
+        await handleSync(rt, adapter, target, command.target);
         return;
       case "index":
         await handleIndex(
@@ -137,5 +145,7 @@ export function createBotCore(deps: BotCoreDependencies) {
     handleMessage: (message: IncomingMessage) => handleMessage(rt, message),
     subscribe,
     unsubscribe,
+    /** Exposed for the boot replay in bot/recovery.ts; not for handlers. */
+    runtime: rt,
   };
 }

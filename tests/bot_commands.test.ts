@@ -193,10 +193,77 @@ Deno.test("parseCommand - /search with no query is rejected", () => {
   });
 });
 
-Deno.test("parseCommand - /keep and /rm need an id", () => {
-  assertEquals(parseCommand("/keep abc123"), { kind: "keep", id: "abc123" });
-  assertEquals(parseCommand("/rm abc123"), { kind: "remove", id: "abc123" });
+Deno.test("parseCommand - /keep and /rm take an id or a link", () => {
+  // The link form is what the expiry line in a delivery message quotes, so
+  // it has to parse as the same command rather than as an argument nothing
+  // accepts.
+  assertEquals(parseCommand("/keep abc123"), {
+    kind: "keep",
+    target: "abc123",
+  });
+  assertEquals(parseCommand("/rm abc123"), {
+    kind: "remove",
+    target: "abc123",
+  });
+  assertEquals(
+    parseCommand("/keep https://www.youtube.com/watch?v=abc123"),
+    { kind: "keep", target: "https://www.youtube.com/watch?v=abc123" },
+  );
+  assertEquals(
+    parseCommand("/rm https://www.youtube.com/watch?v=abc123"),
+    { kind: "remove", target: "https://www.youtube.com/watch?v=abc123" },
+  );
+  assertEquals(parseCommand("/keep@yt_diff_bot abc123"), {
+    kind: "keep",
+    target: "abc123",
+  });
   assertEquals(parseCommand("/keep"), { kind: "unknown", text: "/keep" });
+});
+
+Deno.test("parseCommand - /cancel takes an id or a link, nothing else", () => {
+  assertEquals(parseCommand("/cancel abc123"), {
+    kind: "cancel",
+    target: "abc123",
+  });
+  assertEquals(
+    parseCommand("/cancel https://www.youtube.com/watch?v=abc123"),
+    { kind: "cancel", target: "https://www.youtube.com/watch?v=abc123" },
+  );
+  assertEquals(parseCommand("/cancel"), {
+    kind: "unknown",
+    text: "/cancel",
+  });
+  // Neither an id nor a URL can contain a space, so a second word is junk
+  // rather than an argument to ignore.
+  assertEquals(parseCommand("/cancel abc123 https://youtu.be/x"), {
+    kind: "unknown",
+    text: "/cancel abc123 https://youtu.be/x",
+  });
+});
+
+Deno.test("parseCommand - /sync takes an id or a link, nothing else", () => {
+  // Both forms matter: the id is what the partial-delivery line quotes, and
+  // the link is what a user has when they only kept the message.
+  assertEquals(parseCommand("/sync abc123"), {
+    kind: "sync",
+    target: "abc123",
+  });
+  assertEquals(
+    parseCommand("/sync https://www.youtube.com/watch?v=abc123"),
+    { kind: "sync", target: "https://www.youtube.com/watch?v=abc123" },
+  );
+  assertEquals(
+    parseCommand("/sync@yt_diff_bot abc123"),
+    { kind: "sync", target: "abc123" },
+  );
+
+  assertEquals(parseCommand("/sync"), { kind: "unknown", text: "/sync" });
+  // Neither an id nor a URL can contain a space, so a second word is junk
+  // rather than an argument to ignore.
+  assertEquals(parseCommand("/sync abc123 https://youtu.be/x"), {
+    kind: "unknown",
+    text: "/sync abc123 https://youtu.be/x",
+  });
 });
 
 Deno.test("parseCommand - /history clamps and defaults its limit", () => {

@@ -123,7 +123,14 @@ function harness(options: HarnessOptions = {}): Harness {
         items: entries.slice(start, start + limit),
       }),
     findSubmissionByPrefix: () => Promise.resolve(null),
+    findSubmissionByUrl: () => Promise.resolve(null),
     purgeVideoFiles: () => Promise.resolve(true),
+    listUnsettledSubmissions: () => Promise.resolve([]),
+    listActiveChatsSince: () => Promise.resolve([]),
+    getLastSeenAt: () => Promise.resolve(null),
+    touchLastSeenAt: () => Promise.resolve(),
+    keepSubmissionsByUrl: () => Promise.resolve(0),
+    markSubmissionsReapedByUrl: () => Promise.resolve(0),
   };
 
   const events = createEventBus();
@@ -163,6 +170,17 @@ function harness(options: HarnessOptions = {}): Harness {
       monitoringSet.push({ url, monitoringType });
       return Promise.resolve();
     },
+    syncExtras: () =>
+      Promise.resolve({
+        url: "",
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
+    cancelDownload: () => "not-found" as const,
+    cancelListing: () => "not-found" as const,
+    locateVideo: () => Promise.resolve({ playlistUrl: null, page: null }),
     store,
     normalizeUrl: (url: string) => url,
     isPlaylistUrl: (url: string) => url.includes("playlist?list="),
