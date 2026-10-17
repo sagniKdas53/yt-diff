@@ -803,6 +803,13 @@ export async function handlePlaylistStreaming(
       ),
       stop: () => streamProcessor.process.kill("SIGTERM"),
       onEmpty: () => {
+        if (rt.listProcesses.get(processKey)?.paused) {
+          return {
+            url: videoUrl,
+            title: item.playlistTitle || "Playlist",
+            status: "paused",
+          };
+        }
         // A tail walk that starts past the top and finds nothing is not an
         // empty playlist — the positions it was told about are gone.
         if (monitoringType === "End" && startIndex > 1) {
@@ -831,7 +838,16 @@ export async function handlePlaylistStreaming(
     return await consumePlaylistChunks(rt, {
       chunks: chunkPlaylistLines(fullStream.iterator, chunkSize, 1),
       stop: () => fullStream.process.kill("SIGTERM"),
-      onEmpty: () => handleEmptyResponse(rt, videoUrl),
+      onEmpty: () => {
+        if (rt.listProcesses.get(processKey)?.paused) {
+          return {
+            url: videoUrl,
+            title: item.playlistTitle || "Playlist",
+            status: "paused",
+          };
+        }
+        return handleEmptyResponse(rt, videoUrl);
+      },
       onError: (error) =>
         isDeliberateTermination(error)
           ? null
@@ -942,6 +958,13 @@ async function handleSingleVideoStreaming(
     }
 
     if (chunkItems.length === 0) {
+      if (rt.listProcesses.get(processKey)?.paused) {
+        return {
+          url: videoUrl,
+          title: "Video",
+          status: "paused",
+        };
+      }
       return handleEmptyResponse(rt, videoUrl);
     }
 
@@ -1007,6 +1030,16 @@ async function handleSingleVideoStreaming(
       processedChunks: result.count,
     };
   } catch (error) {
+    if (
+      isDeliberateTermination(error as Error) ||
+      rt.listProcesses.get(processKey)?.paused
+    ) {
+      return {
+        url: videoUrl,
+        title: "Video",
+        status: "paused",
+      };
+    }
     return handleListingError(rt, error as Error, videoUrl, itemType);
   }
 }
