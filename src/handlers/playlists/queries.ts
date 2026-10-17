@@ -173,15 +173,17 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
 
       // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
       // Default mode preserves playlist order via positionInPlaylist ASC.
-      // Both break position ties on `id` so the page order is deterministic:
-      // the "None" pseudo-playlist shares one position across every unlisted
-      // video, and `locateVideo` counts pages against the same tie-breaker.
+      // Both break position ties on the mapping `id` so the page order is
+      // deterministic: the "None" pseudo-playlist shares one position across
+      // every unlisted video, and `locateVideo` counts pages against the same
+      // tie-breaker. The attribute is unqualified because Sequelize treats a
+      // Model in `order` as an association, not as the main model.
       const sortOrder: Order = sortByDownloaded
         ? [[VideoMetadata, "downloadStatus", "DESC"], [
           "positionInPlaylist",
           "ASC",
-        ], [PlaylistVideoMapping, "id", "ASC"]]
-        : [["positionInPlaylist", "ASC"], [PlaylistVideoMapping, "id", "ASC"]];
+        ], ["id", "ASC"]]
+        : [["positionInPlaylist", "ASC"], ["id", "ASC"]];
 
       logger.trace("Fetching playlist videos", {
         startIndex,
