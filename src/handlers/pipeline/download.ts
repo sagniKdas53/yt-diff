@@ -527,6 +527,7 @@ export function createDownloadFlow(
         // stderr tail), and `process.status` resolving does not mean the last
         // chunk has been consumed. Deciding first lost the filename often
         // enough that every run looked like it had produced no file.
+        let lastPercentEmitTime = 0;
         const stdoutRead = (async () => {
           try {
             for await (const data of streamTextChunks(downloadProcess.stdout)) {
@@ -548,10 +549,14 @@ export function createDownloadFlow(
                     logger.debug(output, { pid: downloadProcess.pid });
                   }
 
-                  safeEmit("downloading-percent-update", {
-                    url: videoUrl,
-                    percentage: percent,
-                  });
+                  const now = Date.now();
+                  if (now - lastPercentEmitTime >= 250 || percent >= 100) {
+                    lastPercentEmitTime = now;
+                    safeEmit("downloading-percent-update", {
+                      url: videoUrl,
+                      percentage: percent,
+                    });
+                  }
                 }
 
                 // The counters the job drawer polls for. Read here rather

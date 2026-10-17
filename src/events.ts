@@ -84,6 +84,11 @@ export interface ListingPlaylistChunkCompletePayload {
   seekPlaylistListTo: number;
 }
 
+export interface JobStateChangePayload {
+  id: string;
+  url?: string;
+}
+
 export interface AppEventMap {
   "download-started": DownloadStartedPayload;
   "downloading-percent-update": DownloadingPercentUpdatePayload;
@@ -91,6 +96,8 @@ export interface AppEventMap {
   "download-failed": DownloadFailedPayload;
   "listing-error": ListingErrorPayload;
   "listing-playlist-chunk-complete": ListingPlaylistChunkCompletePayload;
+  "job-paused": JobStateChangePayload;
+  "job-resumed": JobStateChangePayload;
 }
 
 export type AppEventName = keyof AppEventMap;
@@ -112,6 +119,8 @@ const APP_EVENT_NAMES: ReadonlySet<string> = new Set<AppEventName>([
   "download-failed",
   "listing-error",
   "listing-playlist-chunk-complete",
+  "job-paused",
+  "job-resumed",
 ]);
 
 /**

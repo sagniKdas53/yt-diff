@@ -310,7 +310,10 @@ export function buildSiteArgs(url: string, config: AppConfig): string[] {
   // causing 503 tunnel failures. Iwara works fine via direct connection.
   // I have figured out how to bypass CF alltogether but this proxy only works
   // for iwara and x.com, so special dispensation for these for now.
-  if (config.proxy_string && (isSiteIwaraDotTv(url) || isSiteXDotCom(url))) {
+  if (
+    config.proxy_string &&
+    (isSiteIwaraDotTv(url) || isSiteXDotCom(url) || isSiteYouTube(url))
+  ) {
     args.push("--proxy", config.proxy_string as string);
   }
   return args;

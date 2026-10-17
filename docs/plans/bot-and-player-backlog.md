@@ -9,10 +9,9 @@ v1.7.0 and v1.8.0). Playlist churn — the "diff" in yt-diff — is still deferr
 and the comments feature has been declined rather than deferred; both decisions
 are recorded below and in `../ISSUES_AND_IMPROVEMENTS.md` §7. The plans are kept as
 written: they say what the problem was, which is what the commit messages refer
-back to. All implementations have been verified against backend unit tests (479
-passing), Deno linting, and frontend static analysis; E2E integration test
-suites pass 94/96 test cases on the updated runner, with the 2 remaining
-unlisted location and socket event checks tracking follow-up pipeline changes.
+back to. All implementations have been verified against backend unit tests (481
+passing), Deno linting, frontend static analysis, and the E2E integration test
+suite (covering unlisted location and job socket events).
 
 Suggested order, by data risk, dependencies, then size:
 

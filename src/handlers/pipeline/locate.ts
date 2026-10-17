@@ -41,9 +41,7 @@ export async function locateVideo(
   options: { pageSize?: number; sortDownloaded?: boolean } = {},
 ): Promise<VideoLocation> {
   const location = await resolveVideoPlaylist(videoUrl);
-  if (!location) {
-    return { videoUrl, playlistUrl: null, page: null };
-  }
+  const targetPlaylistUrl = location?.playlistUrl ?? "None";
 
   const mapping = await PlaylistVideoMapping.findOne({
     attributes: ["positionInPlaylist"],
@@ -52,13 +50,17 @@ export async function locateVideo(
       attributes: ["downloadStatus"],
       required: false,
     }],
-    where: { videoUrl, playlistUrl: location.playlistUrl },
+    where: { videoUrl, playlistUrl: targetPlaylistUrl },
   });
   if (!mapping) {
-    // The video belongs to the list but no row records where it sits, so the
+    // The video belongs to no list or no row records where it sits, so the
     // page it opens on is unknown. Page 0 would be a claim, not a fact: the
     // player would open the front of the list and quietly drop `v=`.
-    return { videoUrl, playlistUrl: location.playlistUrl, page: null };
+    return {
+      videoUrl,
+      playlistUrl: location ? location.playlistUrl : null,
+      page: null,
+    };
   }
   const position = mapping.positionInPlaylist;
   const pageSize = options.pageSize && options.pageSize > 0
@@ -67,20 +69,20 @@ export async function locateVideo(
 
   const index = options.sortDownloaded
     ? await downloadedFirstIndex(
-      location.playlistUrl,
+      targetPlaylistUrl,
       position,
       !!mapping.video_metadatum?.downloadStatus,
     )
     : await PlaylistVideoMapping.count({
       where: {
-        playlistUrl: location.playlistUrl,
+        playlistUrl: targetPlaylistUrl,
         positionInPlaylist: { [Op.lt]: position },
       },
     });
 
   return {
     videoUrl,
-    playlistUrl: location.playlistUrl,
+    playlistUrl: location ? location.playlistUrl : null,
     page: Math.floor(index / pageSize),
   };
 }

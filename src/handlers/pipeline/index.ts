@@ -49,6 +49,7 @@ export function createPipelineHandlers(deps: PipelineHandlerDependencies) {
     resumeDownload: downloadFlow.resumeDownload,
     resumeListing: (job: PausedJob) => resumeListing(listingRuntime, job),
     abandonListing: (id: string) => listingRuntime.abandon(id),
+    safeEmit: deps.safeEmit,
   });
 
   return {
