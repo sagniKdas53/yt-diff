@@ -41,7 +41,7 @@ dependencies minimal.
 - **`/getsub`**
   - **Description**: Retrieves the associated videos (sub-items) for a specific
     playlist. Each video record includes file paths, `chapters` array,
-    `missingExtras` array, `downloadFailureReason`, and `botExpiresAt` (when the
+    `missingExtras` array, `lastDownloadError`, and `botExpiresAt` (when the
     file was fetched by the bot in ephemeral mode and has an active reaper countdown).
   - **Frontend Usage**: `SubList.jsx` fetches these videos when a user selects
     or expands a playlist.

@@ -276,7 +276,7 @@ Production defaults in `envs/base.env` remain hourly / 24h.
 
 ### How It Works
 
-1. Queries `VideoMetadata` for up to 10 retryable videos where:
+1. Queries `VideoMetadata` for up to 20 retryable videos where:
    - `downloadStatus = true`
    - `missingExtras IS NOT NULL`
    - `downloadFailureReason = 'rate-limited'`
