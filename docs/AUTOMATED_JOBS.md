@@ -1,7 +1,7 @@
 # Automated Jobs in yt-diff
 
 `yt-diff` uses [`node-cron`](https://www.npmjs.com/package/cron) to run
-background jobs on configurable schedules. Three always run; a fourth is
+background jobs on configurable schedules. Four always run; a fifth is
 registered only when the chat bot is enabled. All jobs start automatically when
 the server boots and are logged with their next scheduled run time.
 
@@ -9,12 +9,13 @@ the server boots and are logged with their next scheduled run time.
 
 ## Job Overview
 
-| Job               | Default Schedule              | Env Var             | Purpose                                     |
-| :---------------- | :---------------------------- | :------------------ | :------------------------------------------ |
-| **Cleanup**       | `*/10 * * * *` (every 10 min) | `CLEANUP_INTERVAL`  | Kill stale/zombie `yt-dlp` child processes  |
-| **Update**        | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED`  | Re-scan monitored playlists for new videos  |
-| **Prune**         | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`    | Remove or relocate orphaned video records   |
-| **Bot Retention** | `0 * * * *` (hourly)          | `BOT_REAP_INTERVAL` | Delete expired ephemeral chat-bot downloads |
+| Job               | Default Schedule              | Env Var                 | Purpose                                     |
+| :---------------- | :---------------------------- | :---------------------- | :------------------------------------------ |
+| **Cleanup**       | `*/10 * * * *` (every 10 min) | `CLEANUP_INTERVAL`      | Kill stale/zombie `yt-dlp` child processes  |
+| **Update**        | `*/30 * * * *` (every 30 min) | `UPDATE_SCHEDULED`      | Re-scan monitored playlists for new videos  |
+| **Prune**         | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`        | Remove or relocate orphaned video records   |
+| **Extras Retry**  | `7 * * * *` (hourly)          | `EXTRAS_RETRY_INTERVAL` | Retry fetching rate-limited missing extras  |
+| **Bot Retention** | `0 * * * *` (hourly)          | `BOT_REAP_INTERVAL`     | Delete expired ephemeral chat-bot downloads |
 
 > [!NOTE]
 > **Bot Retention only exists when `BOT_ENABLED=true`.** It is constructed in
@@ -38,6 +39,9 @@ processes (`yt-dlp` instances) that have gone stale.
    `listProcesses`.
 2. For each tracked process:
    - **Completed/Failed** processes → entry is deleted from the map.
+   - **Queued downloads** (where `spawnedProcess` is null) → **skipped**. A
+     download waiting for a semaphore slot has its `lastActivity` frozen at
+     enqueue time; waiting is not idling, so cleanup leaves queued jobs alone.
    - **Running download** processes older than `PROCESS_MAX_AGE` → forcefully
      killed (`SIGKILL`, falling back to `SIGTERM`) and removed from the map.
    - **Running list** processes → the `maxLifetime` kill is **skipped** if the
@@ -266,4 +270,28 @@ Production defaults in `envs/base.env` remain hourly / 24h.
 
 ---
 
-_Last updated at: 2026-06-10T14:01:59+05:30_
+## 5. Extras Retry Job
+
+**Purpose**: Automatically retries fetching missing sidecars (subtitles, thumbnails, descriptions, comments) for videos where the media file downloaded successfully but YouTube or another extractor rate-limited (HTTP 429) the sidecars.
+
+### How It Works
+
+1. Queries `VideoMetadata` for up to 10 retryable videos where:
+   - `downloadStatus = true`
+   - `missingExtras IS NOT NULL`
+   - `downloadFailureReason = 'rate-limited'`
+   - `extrasSyncAttempts < 3`
+   - `updatedAt <= now() - 1 hour`
+2. Runs sequentially (with a 1-second delay between items) to avoid triggering fresh rate limits.
+3. For each video, invokes `syncExtras(videoUrl)`, running `yt-dlp` with `--skip-download` to fetch only the missing extras into the existing directory.
+4. Updates `missingExtras`, dropping items that were successfully retrieved, and increments `extrasSyncAttempts`.
+
+### Configuration
+
+| Env Var                 | Default       | Description                                            |
+| :---------------------- | :------------ | :----------------------------------------------------- |
+| `EXTRAS_RETRY_INTERVAL` | `7 * * * *`   | Cron expression for scheduled sidecar retries (hourly) |
+
+---
+
+_Last updated at: 2026-10-17_

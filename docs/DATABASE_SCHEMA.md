@@ -24,9 +24,14 @@ of individual videos, independent of any playlist.
 | **`subTitleFile`**                | `STRING`  | Path/Name to the downloaded subtitle file.                                                                                                                                                                                                                        |
 | **`commentsFile`**                | `STRING`  | Path/Name to the downloaded JSON comments file.                                                                                                                                                                                                                   |
 | **`descriptionFile`**             | `STRING`  | Path/Name to the downloaded text description file.                                                                                                                                                                                                                |
-| **`isMetaDataSynced`**            | `BOOLEAN` | Marker for secondary asynchronous processes to verify if they have finished migrating metadata from the filesystem to the DB.                                                                                                                                     |
+| **`isMetaDataSynced`**            | `BOOLEAN` | Marker for secondary asynchronous processes to verify if they have finished migrating metadata from the filesystem to the DB. Replaced by `missingExtras.length === 0`.                                                         |
+| **`missingExtras`**               | `JSONB`   | JSON array of `"subtitles"` | `"thumbnail"` | `"description"` | `"comments"` | `"chapters"` that were expected from the source and not yet fetched. `null` when complete.                                           |
+| **`lastDownloadError`**           | `TEXT`    | Last ~500 bytes of yt-dlp stderr, preserving the failure reason (e.g., HTTP 429) after logs rotate.                                                                                               |
+| **`downloadFailureReason`**       | `STRING`  | Classification of a partial or failed run: `"rate-limited"` or `"error"`. `null` when complete.                                                                                                  |
+| **`extrasSyncAttempts`**          | `INTEGER` | Counter for scheduled sidecar retry attempts (capped at 3).                                                                                                                                       |
+| **`chapters`**                    | `JSONB`   | Extracted chapters array `[{"start": seconds, "end": seconds, "title": string}]` read from media via `ffprobe`. `null` when none exist.                                                          |
 | **`onlineThumbnail`**             | `TEXT`    | Online thumbnail URL scraped from `yt-dlp` output. Used as a fallback when `thumbNailFile` is not available. `TEXT` type because some platform CDN URLs exceed 255 characters. Explicitly set to `null` for platforms with ephemeral thumbnails (see note below). |
-| **`saveDirectory`**               | `STRING`  | Directory relative to `saveLocation` where this video's files are stored. `null` if not downloaded, empty string for root.                                                                                                                                        |
+| **`saveDirectory`**               | `STRING`  | Directory relative to `saveLocation` where this video's files are stored. `null` if not downloaded, empty string for root.                                                                                                         |
 | **`raw_metadata`**                | `JSONB`   | Full pruned `yt-dlp` JSON output (bulky arrays like `formats`, `thumbnails`, `subtitles` are removed before storage). **Excluded from the default Sequelize scope** — must be explicitly requested in queries.                                                    |
 | **`createdAt`** / **`updatedAt`** | `DATE`    | Sequelize automatic timestamps.                                                                                                                                                                                                                                   |
 
@@ -169,6 +174,7 @@ regardless and stays empty otherwise. See [`BOT.md`](./BOT.md).
 | **`playlistUrl`**     | `STRING`  | Owning playlist, when applicable.                                                                |
 | **`status`**          | `STRING`  | `pending` → `indexing` → `downloading` → `delivered`, or `failed` / `reaped`.                    |
 | **`deliveryMode`**    | `STRING`  | How the file reached the user: `upload` or `signed_url`.                                         |
+| **`requestedDeliveryMode`** | `STRING`  | Mode requested on intake: `"file"`, `"link"`, or `"store"`. Replayed on boot recovery.          |
 | **`retention`**       | `STRING`  | `ephemeral` or `persistent`, captured at delivery time.                                          |
 | **`downloadedByBot`** | `BOOLEAN` | **False when the file already existed.** The reaper only ever deletes rows where this is true.   |
 | **`expiresAt`**       | `DATE`    | When the file becomes reapable. `NULL` when persistent or `downloadedByBot = false`.             |
@@ -193,4 +199,17 @@ regardless and stays empty otherwise. See [`BOT.md`](./BOT.md).
 
 ---
 
-_Last updated at: 2026-08-02_
+## 6. `BotHeartbeat` (bot_heartbeat)
+
+Single-row table stamped once a minute while polling and on every update. Used on boot to detect whether an outage occurred and determine if Telegram's 24-hour update retention window was exceeded.
+
+| Field            | Type     | Description                                                     |
+| :--------------- | :------- | :-------------------------------------------------------------- |
+| **`id`**         | `STRING` | **(Primary Key)** Fixed key `"bot"`; table holds a single row.   |
+| **`lastSeenAt`** | `DATE`   | Timestamp of the last time the bot polled or processed work.    |
+| **`createdAt`**  | `DATE`   | Timestamp row was created.                                      |
+| **`updatedAt`**  | `DATE`   | Timestamp row was last updated.                                 |
+
+---
+
+_Last updated at: 2026-10-17_

@@ -356,14 +356,15 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 
 ### Scheduling
 
-| Variable              | Default        | Description                                                           |
-| :-------------------- | :------------- | :-------------------------------------------------------------------- |
-| `UPDATE_SCHEDULED`    | `*/30 * * * *` | Cron expression for playlist update checks                            |
-| `PRUNE_INTERVAL`      | `*/30 * * * *` | Cron expression for orphan video pruning                              |
-| `CLEANUP_INTERVAL`    | `*/10 * * * *` | Cron expression for stale process cleanup                             |
-| `PROCESS_MAX_AGE`     | `300000`       | Max process age in ms before cleanup kills it                         |
-| `TITLE_PROBE_TIMEOUT` | `60000`        | Deadline in ms for the yt-dlp probe that reads a new playlist's title |
-| `TZ_PREFERRED`        | `Asia/Kolkata` | Timezone for cron job scheduling                                      |
+| Variable                | Default        | Description                                                           |
+| :---------------------- | :------------- | :-------------------------------------------------------------------- |
+| `UPDATE_SCHEDULED`      | `*/30 * * * *` | Cron expression for playlist update checks                            |
+| `PRUNE_INTERVAL`        | `*/30 * * * *` | Cron expression for orphan video pruning                              |
+| `CLEANUP_INTERVAL`      | `*/10 * * * *` | Cron expression for stale process cleanup                             |
+| `EXTRAS_RETRY_INTERVAL` | `7 * * * *`    | Cron expression for retrying rate-limited sidecars (hourly)           |
+| `PROCESS_MAX_AGE`       | `300000`       | Max process age in ms before cleanup kills it                         |
+| `TITLE_PROBE_TIMEOUT`   | `60000`        | Deadline in ms for the yt-dlp probe that reads a new playlist's title |
+| `TZ_PREFERRED`          | `Asia/Kolkata` | Timezone for cron job scheduling                                      |
 
 ### Authentication
 
@@ -470,4 +471,4 @@ Use the included `restore_db.sh` script:
 
 ---
 
-_Last updated at: 2026-06-10T14:01:59+05:30_
+_Last updated at: 2026-10-17_

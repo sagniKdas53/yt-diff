@@ -9,16 +9,16 @@ A self-hosted video archival platform powered by [yt-dlp](https://github.com/yt-
 ## Features
 
 - **Playlist & Channel Monitoring** — Track playlists and channels with configurable strategies: scan from the top (`Start`), bottom (`End`), or do a full re-scan (`Full`). New videos are detected automatically on a cron schedule.
-- **Concurrent Downloads** — Semaphore-controlled download queue with duplicate detection, WebSocket progress updates, and stale process cleanup.
-- **Video Metadata Storage** — Every indexed video's metadata is stored in PostgreSQL, including thumbnails, descriptions, and pruned raw yt-dlp JSON output for future use.
+- **Concurrent Downloads** — Semaphore-controlled download queue with duplicate detection, WebSocket progress updates, job control (pause, resume, cancel), and sidecar rate-limit resilience (partial downloads with `/syncextras` recovery).
+- **Video Metadata Storage** — Every indexed video's metadata is stored in PostgreSQL, including thumbnails, descriptions, chapters, and pruned raw yt-dlp JSON output for future use.
 - **Flexible Deletion** — Granular control over what gets deleted: playlist mappings, database records, and/or physical files on disk. Downloaded orphans are automatically preserved in a "None" bucket.
 - **Powerful Search** — Regex and partial-match search across video titles and URLs, with a `global:` prefix for cross-playlist searches.
 - **Signed File URLs** — Secure, time-limited download tokens prevent unauthenticated file access.
 - **Site-Specific Support** — Built-in handling for Iwara credentials, browser cookie injection, and HTTP proxy routing through Gluetun VPN.
-- **Telegram Bot** — Submit links, browse playlists, and pull downloads straight from Telegram. Locked to an explicit chat allowlist (it refuses to start unrestricted), with `ephemeral` or `persistent` retention for submitted media.
+- **Telegram Bot** — Submit links, browse playlists, and pull downloads straight from Telegram. Features crash-resilient outage recovery, job cancellation, sidecar sync, and direct player link delivery. Locked to an explicit chat allowlist with `ephemeral` or `persistent` retention.
 - **Batch Re-index** — Re-list every monitored playlist in one pass to repair drifted metadata, with per-playlist progress streamed to the UI and a determinate progress bar.
-- **Built-in Video Player** — Range-request streaming with a custom React player: queue management, continuous playback, and network resiliency.
-- **Automated Background Jobs** — Process cleanup, scheduled playlist updates, and orphan video pruning all run on configurable cron schedules.
+- **Built-in Video Player** — Range-request streaming with a custom React player: chapter markers and drawer, cleaned auto-captions with transcript viewer, description dialog with timestamp links, playback speed control (0.5x–2x), keyboard shortcuts, queue drawer, and timestamp resume (`t=`).
+- **Automated Background Jobs** — Process cleanup, scheduled playlist updates, orphan video pruning, and sidecar retry all run on configurable cron schedules.
 - **URL Deduplication** — Incoming URLs are canonicalized before storage: YouTube video IDs are extracted from any URL form (`youtu.be`, `m.youtube.com`, `watch?v=&list=...`), iwara.tv title slugs are stripped, and tracking parameters (`utm_*`, `si=`, `pp=`) are removed globally. A `/dedup` endpoint lets you scan and merge any existing duplicate records in one shot.
 
 ## Architecture
@@ -214,13 +214,14 @@ Both the playlist panel and video panel support search with special prefixes:
 
 ### Monitoring & Background Jobs
 
-Three automated cron jobs always run in the background, plus a fourth when the bot is enabled:
+Four automated cron jobs always run in the background, plus a fifth when the bot is enabled:
 
 | Job | Default Schedule | Purpose |
 | :-- | :--------------- | :------ |
 | **Cleanup** | Every 10 min | Kills stale yt-dlp processes |
 | **Update** | Every 10 min | Re-scans monitored playlists for new videos |
 | **Prune** | Every 10 min | Handles orphaned videos (move to "None" or delete) |
+| **Extras retry** | Hourly | Retries rate-limited missing sidecars (subtitles, thumbnails, etc.) |
 | **Bot retention** | Hourly *(bot only)* | Reaps expired bot submissions in `ephemeral` mode |
 
 Scheduled updates run silently by design — they do not push per-playlist progress to connected clients, unlike a user-initiated batch re-index.

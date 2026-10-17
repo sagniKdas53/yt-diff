@@ -4,11 +4,13 @@ Eleven loose ideas, read against the code on 2026-09-16 and re-audited against
 `master` on 2026-09-29. Each item records what already exists, what is missing,
 the traps found while reading, and a size.
 
-Every item but one is implemented, on `feat/bot-and-player-backlog`. Playlist
-churn — the "diff" in yt-diff — is still deferred, and the comments feature has
-been declined rather than deferred; both decisions are recorded below and in
-`../ISSUES_AND_IMPROVEMENTS.md` §7. The plans are kept as written: they say what
-the problem was, which is what the commit messages refer back to.
+Every item but one is implemented and merged into `master` (released in
+v1.7.0 and v1.8.0). Playlist churn — the "diff" in yt-diff — is still deferred,
+and the comments feature has been declined rather than deferred; both decisions
+are recorded below and in `../ISSUES_AND_IMPROVEMENTS.md` §7. The plans are kept as
+written: they say what the problem was, which is what the commit messages refer
+back to. All implementations have been verified against backend unit tests (479
+passing), frontend lint/typechecks, and E2E integration suites.
 
 Suggested order, by data risk, dependencies, then size:
 
@@ -604,4 +606,5 @@ Skip design and implementation until this item is explicitly resumed.
 
 _Written 2026-09-16 from a read of `master` at `035ff7c`; items 10, 2, 8 and 4
 revised the same day after the 15–16 Sep outage; item 11 added the same day.
-Priority and status re-audited 2026-09-29 against `master` at `45ef5f6`._
+Priority and status re-audited 2026-09-29 against `master` at `45ef5f6`.
+Fully verified as implemented and merged to `master` (v1.7.0/v1.8.0) on 2026-10-17._
