@@ -213,10 +213,17 @@ export function createJobs({
             (r: { status?: string }) =>
               r && (r.status === "completed" || r.status === "success"),
           ).length;
+          // A paused listing is neither a success nor a failure; it is
+          // waiting for a resume, so it is reported separately rather than
+          // silently dropped from the completed tally.
+          const pausedCount = results.filter(
+            (r: { status?: string }) => r && r.status === "paused",
+          ).length;
 
           logger.info("Completed scheduled updates", {
             totalPlaylists: allPlaylists.length,
             completedCount,
+            pausedCount,
             nextRun: formatNextRun(jobs.update),
           });
         } catch (err) {

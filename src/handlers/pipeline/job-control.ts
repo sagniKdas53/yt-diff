@@ -522,6 +522,10 @@ export function createJobControl(deps: JobControlDependencies): JobControl {
         });
       }
       entry.paused = true;
+      // Run-scoped, because the entry is deleted a line later: the abandoned
+      // run reads this to tell a pause apart from a cancel when its SIGTERM'd
+      // process drains without producing a chunk.
+      listingRuntime.pausedRuns.add(key);
       const paused = pausedListing(entry);
       pausedJobs.set(paused.id, paused);
       listProcesses.delete(key);

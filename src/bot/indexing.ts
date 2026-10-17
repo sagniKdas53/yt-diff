@@ -79,6 +79,17 @@ export async function runPlaylistIndex(
       false,
     );
     const result = results[0];
+    if (result?.status === "paused") {
+      // Don't let the database-row fallback below report a paused run as
+      // "Indexed": the listing is part-written and waiting for a resume.
+      if (submissionId) {
+        await rt.deps.store.updateSubmission(submissionId, {
+          status: "indexing",
+        });
+      }
+      await say("Indexing paused. Resume it from the jobs drawer.");
+      return;
+    }
     const listed = result !== undefined &&
       (result.status === "completed" || result.status === "success");
 
@@ -188,6 +199,10 @@ export async function handleIndex(
       false,
     );
     const result = results[0];
+    if (result?.status === "paused") {
+      await say("Indexing paused. Resume it from the jobs drawer.");
+      return;
+    }
     if (
       !result ||
       (result.status !== "completed" && result.status !== "success")

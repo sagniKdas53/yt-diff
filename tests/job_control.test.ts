@@ -350,6 +350,23 @@ Deno.test("pause - a running download is stopped, kept, and keeps its bytes", ()
   }
 });
 
+Deno.test("pause - a paused listing marks its run so a zero-chunk kill is not failed", () => {
+  const h = buildHarness();
+  try {
+    // The run holds the map key it registered under. Pausing deletes the entry
+    // from `listProcesses`, so this run-scoped marker is all the abandoned run
+    // has left to tell a pause apart from a cancel when its SIGTERM'd process
+    // drains without producing a chunk.
+    h.listings.set("pending_list-1", listingEntry());
+    const result = h.control.pauseJob("list-1");
+    assertEquals(result.outcome, "paused");
+    assertEquals(h.listingRuntime.pausedRuns.has("pending_list-1"), true);
+    assertEquals(h.listings.size, 0);
+  } finally {
+    h.restore();
+  }
+});
+
 Deno.test("pause - a paused download is not recorded as a failed one", async () => {
   // A kill the flow can see through. `pendingProcess` never reports an exit,
   // which keeps a pause test away from the completion path — but this test is

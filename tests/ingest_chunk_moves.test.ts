@@ -465,6 +465,7 @@ function fakeRuntime(): ListingRuntime {
     inFlight: null as any,
     abandoned: new Set<string>(),
     abandon: (_jobId: string) => {},
+    pausedRuns: new Set<string>(),
     updateProcessActivity: (_key: string, _stdout?: boolean) => {},
     setProcessStatus: (_key: string, _status: ProcessStatus) => true,
   };

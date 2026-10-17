@@ -173,12 +173,15 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
 
       // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
       // Default mode preserves playlist order via positionInPlaylist ASC.
+      // Both break position ties on `id` so the page order is deterministic:
+      // the "None" pseudo-playlist shares one position across every unlisted
+      // video, and `locateVideo` counts pages against the same tie-breaker.
       const sortOrder: Order = sortByDownloaded
         ? [[VideoMetadata, "downloadStatus", "DESC"], [
           "positionInPlaylist",
           "ASC",
-        ]]
-        : [["positionInPlaylist", "ASC"]];
+        ], [PlaylistVideoMapping, "id", "ASC"]]
+        : [["positionInPlaylist", "ASC"], [PlaylistVideoMapping, "id", "ASC"]];
 
       logger.trace("Fetching playlist videos", {
         startIndex,

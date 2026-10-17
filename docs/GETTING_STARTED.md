@@ -330,7 +330,7 @@ Open `https://your.hostname/ytdiff` in your browser to access the UI.
 | `X_COOKIES_FILE`       | —                         | Path to cookies file for x.com only (overrides `COOKIES_FILE`)                                              |
 | `YOUTUBE_COOKIES_FILE` | —                         | Path to cookies file for YouTube only (overrides `COOKIES_FILE`)                                            |
 | `PROXY_STRING_FILE`    | —                         | Path to file containing HTTP proxy URL                                                                      |
-| `PROXY_STRING`         | —                         | Direct proxy URL (fallback). Note: Currently restricted to `x.com` and `iwara.tv` due to Cloudflare blocks. |
+| `PROXY_STRING`         | —                         | Direct proxy URL (fallback). Applied only to `x.com`, `iwara.tv` and YouTube; every other site connects directly. |
 | `SLEEP`                | `3`                       | Seconds to wait before starting jobs on boot                                                                |
 | `CHUNK_SIZE_DEFAULT`   | `10`                      | Videos per processing chunk during listing                                                                  |
 | `MAX_DOWNLOADS`        | `1`                       | Max concurrent download processes                                                                           |

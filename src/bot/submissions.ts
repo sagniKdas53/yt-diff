@@ -237,6 +237,14 @@ export async function handleSubmission(
   }
 
   const result = results[0];
+  if (result?.status === "paused") {
+    // The user paused this from the jobs drawer. It is neither a success nor
+    // a failure: the list is part-written and resuming it is the drawer's
+    // job, so the submission keeps its "indexing" state rather than being
+    // failed. `settle` clears the watchdog and the reservation.
+    await settle(rt, entry, canonicalUrl, { status: "indexing" });
+    return;
+  }
   if (
     !result || (result.status !== "completed" && result.status !== "success")
   ) {
