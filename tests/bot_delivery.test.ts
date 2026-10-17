@@ -208,3 +208,23 @@ Deno.test("delivery - an unknown (-1) estimate never triggers a size warning", (
   assertEquals(normalise(0), 0);
   assertEquals(normalise(68645179), 68645179);
 });
+
+Deno.test("delivery - buildPlayerUrl includes vp for unlisted videos on later pages", () => {
+  const { delivery } = deliveryFor("/tmp");
+  assertEquals(
+    delivery.buildPlayerUrl("https://youtube.com/watch?v=abc", null, 0),
+    "https://yt.example.com/ytdiff/#/unlisted?v=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc",
+  );
+  assertEquals(
+    delivery.buildPlayerUrl("https://youtube.com/watch?v=abc", null, 11),
+    "https://yt.example.com/ytdiff/#/unlisted?v=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc&vp=12",
+  );
+  assertEquals(
+    delivery.buildPlayerUrl(
+      "https://youtube.com/watch?v=abc",
+      "My Playlist",
+      2,
+    ),
+    "https://yt.example.com/ytdiff/#/playlist/My%20Playlist?v=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc&vp=3",
+  );
+});

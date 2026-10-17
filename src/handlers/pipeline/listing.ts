@@ -64,6 +64,16 @@ export interface ListingRuntime {
   abandoned: Set<string>;
   /** Marks a job as cancelled before its run has taken a slot. */
   abandon(jobId: string): void;
+  /**
+   * Process keys whose runs were paused rather than cancelled.
+   *
+   * `pauseJob` removes the entry from `listProcesses` before it signals the
+   * process, so by the time a SIGTERM'd stream drains there is no entry left
+   * to read `paused` from and a zero-chunk run would be reported as failed.
+   * This marker outlives the entry; the run clears it in its own `finally`
+   * once it has settled.
+   */
+  pausedRuns: Set<string>;
   updateProcessActivity: (processKey: string, isStdout?: boolean) => void;
   setProcessStatus: (
     processKey: string,
@@ -99,12 +109,14 @@ export function createListingRuntime(
   } = deps;
 
   const abandoned = new Set<string>();
+  const pausedRuns = new Set<string>();
 
   return {
     abandoned,
     abandon(jobId: string) {
       abandoned.add(jobId);
     },
+    pausedRuns,
     safeEmit,
     launchYtDlp: createYtDlpLauncher({ buildSiteArgs, spawnPythonProcess }),
     streamLines,
@@ -194,6 +206,9 @@ export async function listItemsConcurrently(
         logger.info(
           `Listed ${result.title || result.playlistTitle} successfully`,
         );
+      } else if (result.status === "paused") {
+        // Neither a success nor a failure: it is waiting for a resume.
+        logger.info(`Paused listing ${result.title}; partial index kept`);
       } else {
         logger.error(
           `Failed to list ${result.title}: ${JSON.stringify(result)}`,
@@ -289,6 +304,10 @@ async function listWithSemaphore(
 
   await rt.semaphore.acquire();
 
+  // The key this run registered under, kept outside the try so the pause
+  // marker is cleared even if the run throws before `entryKey` is assigned.
+  let runKey: string | undefined;
+
   try {
     const { url: videoUrl, type: itemType, currentMonitoringType } = item;
 
@@ -337,6 +356,7 @@ async function listWithSemaphore(
     };
 
     const entryKey = `pending_${videoUrl}_${Date.now()}`;
+    runKey = entryKey;
     rt.listProcesses.set(entryKey, listEntry);
 
     const result = await executeListing(
@@ -360,6 +380,11 @@ async function listWithSemaphore(
 
     return result;
   } finally {
+    // Cleared once the run has settled: until then the marker is what a
+    // zero-chunk termination reads to report "paused" rather than "failed".
+    if (runKey !== undefined) {
+      rt.pausedRuns.delete(runKey);
+    }
     rt.semaphore.release();
   }
 }
@@ -726,6 +751,19 @@ function isDeliberateTermination(error: Error): boolean {
     error.isDeliberateTermination;
 }
 
+/**
+ * Whether the run behind `processKey` was paused rather than cancelled.
+ *
+ * `pauseJob` removes the entry from `listProcesses` before it signals the
+ * process, so a SIGTERM'd stream that yields no chunks has no entry left to
+ * read `paused` from. The run-scoped marker is what lets it report "paused"
+ * instead of "failed"; it is cleared once the run settles.
+ */
+function isRunPaused(rt: ListingRuntime, processKey: string): boolean {
+  return rt.pausedRuns.has(processKey) ||
+    rt.listProcesses.get(processKey)?.paused === true;
+}
+
 export async function handlePlaylistStreaming(
   rt: ListingRuntime,
   item: {
@@ -803,6 +841,13 @@ export async function handlePlaylistStreaming(
       ),
       stop: () => streamProcessor.process.kill("SIGTERM"),
       onEmpty: () => {
+        if (isRunPaused(rt, processKey)) {
+          return {
+            url: videoUrl,
+            title: item.playlistTitle || "Playlist",
+            status: "paused",
+          };
+        }
         // A tail walk that starts past the top and finds nothing is not an
         // empty playlist — the positions it was told about are gone.
         if (monitoringType === "End" && startIndex > 1) {
@@ -831,7 +876,16 @@ export async function handlePlaylistStreaming(
     return await consumePlaylistChunks(rt, {
       chunks: chunkPlaylistLines(fullStream.iterator, chunkSize, 1),
       stop: () => fullStream.process.kill("SIGTERM"),
-      onEmpty: () => handleEmptyResponse(rt, videoUrl),
+      onEmpty: () => {
+        if (isRunPaused(rt, processKey)) {
+          return {
+            url: videoUrl,
+            title: item.playlistTitle || "Playlist",
+            status: "paused",
+          };
+        }
+        return handleEmptyResponse(rt, videoUrl);
+      },
       onError: (error) =>
         isDeliberateTermination(error)
           ? null
@@ -942,6 +996,13 @@ async function handleSingleVideoStreaming(
     }
 
     if (chunkItems.length === 0) {
+      if (isRunPaused(rt, processKey)) {
+        return {
+          url: videoUrl,
+          title: "Video",
+          status: "paused",
+        };
+      }
       return handleEmptyResponse(rt, videoUrl);
     }
 
@@ -1007,6 +1068,16 @@ async function handleSingleVideoStreaming(
       processedChunks: result.count,
     };
   } catch (error) {
+    if (
+      isDeliberateTermination(error as Error) ||
+      isRunPaused(rt, processKey)
+    ) {
+      return {
+        url: videoUrl,
+        title: "Video",
+        status: "paused",
+      };
+    }
     return handleListingError(rt, error as Error, videoUrl, itemType);
   }
 }

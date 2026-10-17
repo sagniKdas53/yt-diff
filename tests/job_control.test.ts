@@ -140,6 +140,7 @@ function buildHarness(
     resumeListing: deps.resumeListing ??
       ((job: PausedJob) => resumeListing(listingRuntime, job)),
     abandonListing: (id: string) => listingRuntime.abandon(id),
+    safeEmit: pipelineDeps.safeEmit,
   });
 
   let videoUpdates: Record<string, unknown>[] = [];
@@ -344,6 +345,23 @@ Deno.test("pause - a running download is stopped, kept, and keeps its bytes", ()
     assertEquals(view.state, "paused");
     assertEquals(view.queuePosition, 0);
     assertEquals(remaining(h.savePath), [`${FILE_NAME}.part`]);
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("pause - a paused listing marks its run so a zero-chunk kill is not failed", () => {
+  const h = buildHarness();
+  try {
+    // The run holds the map key it registered under. Pausing deletes the entry
+    // from `listProcesses`, so this run-scoped marker is all the abandoned run
+    // has left to tell a pause apart from a cancel when its SIGTERM'd process
+    // drains without producing a chunk.
+    h.listings.set("pending_list-1", listingEntry());
+    const result = h.control.pauseJob("list-1");
+    assertEquals(result.outcome, "paused");
+    assertEquals(h.listingRuntime.pausedRuns.has("pending_list-1"), true);
+    assertEquals(h.listings.size, 0);
   } finally {
     h.restore();
   }
@@ -1186,6 +1204,31 @@ Deno.test("resume - a listing whose key is taken while it waits goes back to pau
     const waiting = h.control.getListingSnapshot();
     assertEquals(waiting.length, 1);
     assertEquals(waiting[0].state, "paused");
+  } finally {
+    h.restore();
+  }
+});
+
+Deno.test("job-control - emits job-paused and job-resumed socket events", () => {
+  const h = buildHarness();
+  try {
+    const entry = downloadEntry({
+      status: "running",
+      spawnedProcess: pendingProcess(),
+    });
+    h.downloads.set("dl-1", entry);
+
+    const pauseResult = h.control.pauseJob(entry.id);
+    assertEquals(pauseResult.outcome, "paused");
+    const pauseEvents = h.emitted.filter((e) => e.event === "job-paused");
+    assertEquals(pauseEvents.length, 1);
+    assertEquals(pauseEvents[0].payload.id, entry.id);
+
+    const resumeResult = h.control.resumeJob(entry.id);
+    assertEquals(resumeResult.outcome, "resumed");
+    const resumeEvents = h.emitted.filter((e) => e.event === "job-resumed");
+    assertEquals(resumeEvents.length, 1);
+    assertEquals(resumeEvents[0].payload.id, entry.id);
   } finally {
     h.restore();
   }

@@ -370,16 +370,23 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             (r: { status?: string }) =>
               r && (r.status === "completed" || r.status === "success"),
           ).length;
+          // Paused items are neither completed nor failed, so they must not
+          // land in the failure tally.
+          const pausedCount = results.filter(
+            (r: { status?: string }) => r && r.status === "paused",
+          ).length;
           logger.info("Batch re-index completed", {
             batchId,
             total: items.length,
             completedCount,
+            pausedCount,
           });
           safeEmit("reindex-batch-complete", {
             batchId,
             total: items.length,
             completed: completedCount,
-            failed: items.length - completedCount,
+            paused: pausedCount,
+            failed: items.length - completedCount - pausedCount,
             durationMs: Date.now() - startedAt,
           });
         } catch (err) {

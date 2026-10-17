@@ -119,6 +119,10 @@ export const downloadOptions = [
   "--progress",
   "--embed-metadata",
   "--embed-chapters",
+  "--retry-sleep",
+  "http:5",
+  "--retry-sleep",
+  "fragment:exp=1:20",
   ...sidecarOptions,
   "--progress-template",
   // One line per update, carrying the counters the job drawer reads.

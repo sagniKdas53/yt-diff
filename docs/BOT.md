@@ -393,7 +393,7 @@ The bot inherits everything from `buildSiteArgs` — the same code path the web 
 uses for both listing and downloading. No bot-specific configuration:
 
 - `X_COOKIES_FILE` / `YOUTUBE_COOKIES_FILE` / `COOKIES_FILE`
-- `PROXY_STRING_FILE` (applied to x.com and iwara.tv)
+- `PROXY_STRING_FILE` (applied to x.com, iwara.tv and YouTube)
 - iwara credentials
 
 If a link works in the web UI it works in the bot, and vice versa.
