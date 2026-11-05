@@ -6,28 +6,26 @@ carry the design, so your job is to execute them one at a time.
 
 ## Where things stand (2026-11-06)
 
-| Item                             | State                                                               |
-| :------------------------------- | :------------------------------------------------------------------ |
-| Review and plans                 | On branch `docs/watch-first-plans`, committed, not pushed or merged |
-| 30-day login sessions            | On branch `chore/longer-sessions`, committed, not pushed or merged  |
-| Plans 01 to 06                   | Not started                                                         |
-| Pi measurements (Phase 0a)       | Not run; needed before plan 05                                      |
-| `master` and frontend `material` | Unchanged at `0040ad3` and `a401984`                                |
-| Test baseline                    | 482 backend, 316 frontend, all passing                              |
+| Item                       | State                                                    |
+| :------------------------- | :------------------------------------------------------- |
+| Review and plans           | Merged to `master`                                       |
+| 30-day login sessions      | Merged to `master` (PR #137). Not yet deployed to the Pi |
+| Plans 01 to 06             | Not started                                              |
+| Pi measurements (Phase 0a) | Not run; needed before plan 05                           |
+| Frontend `material`        | Unchanged at `a401984`                                   |
+| Test baseline              | 482 backend, 316 frontend, all passing                   |
 
 The owner has approved everything in the `README.md` Decisions table, including
 the Home and Library layouts.
 
 ## Before the first session (owner)
 
-1. **Merge `docs/watch-first-plans` into `master`.** Backend branches start from
-   `master`, so until this is merged the plans disappear when a session switches
-   to one. Plans 01 and 02 only touch the frontend submodule, but plan 03 needs
-   this.
-2. **Merge `chore/longer-sessions`, then deploy it:** run `make pi5` to
-   regenerate `.env`, then recreate the container. Tick "Remember me" on your
-   phone once; without it the session ends with the tab, however long the token
-   lasts.
+1. **Update your local checkout:** `git switch master && git pull`.
+2. **Deploy the 30-day sessions:** run `make pi5` to regenerate `.env`, then
+   recreate the container. A new image alone doesn't apply it, because the
+   change is in `docker-compose.yml` and `envs/base.env`.
+3. **Tick "Remember me" on your phone once.** Without it the session ends with
+   the tab, however long the token lasts.
 
 ## How to run a session
 
@@ -52,7 +50,7 @@ PR is open. Then update the Progress table below, in that plan's branch.
 | :--- | :------------------------------------------------------------------------------------------ |
 | 01   | Nothing                                                                                     |
 | 02   | 01 merged                                                                                   |
-| 03   | Plans branch merged into `master`                                                           |
+| 03   | 02 merged                                                                                   |
 | 04   | 03 merged. Backend PR merges before its frontend PR                                         |
 | 05   | 04 merged and its backfill run. **Phase 0a SQL output from the Pi pasted into the session** |
 | 06   | 05 merged and its backfill run                                                              |
