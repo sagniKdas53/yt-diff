@@ -97,7 +97,12 @@ table names with `\dt` first.
 - **Line numbers are from `0040ad3` / `a401984`** and drift as plans merge.
   Search for the symbol if a range looks wrong.
 - **`tests/auth_token.test.ts` pins the code default at `24h`.** The 30-day
-  setting is only in `envs/base.env`, on purpose.
+  setting is in `envs/base.env` on purpose, and the code default stays.
+- **A new environment variable needs a line in `docker-compose.yml`.** Compose
+  lists the service's environment one by one and has no `env_file`, so a value
+  only in `envs/*.env` never reaches the container. `TOKEN_EXPIRY` went
+  unnoticed this way. Check with
+  `docker compose --env-file <rendered env> config | grep <NAME>`.
 
 ## After each plan (owner, on the Pi)
 
