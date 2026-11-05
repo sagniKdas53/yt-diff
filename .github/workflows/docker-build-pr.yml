@@ -4,6 +4,16 @@ on:
   pull_request:
     branches:
       - master
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.vscode/**'
+      - '.agents/**'
+      - '.claude/**'
+      - '.gitnexus/**'
+      - '*.xcf'
 
 jobs:
   build-only:
