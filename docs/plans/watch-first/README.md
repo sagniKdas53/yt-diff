@@ -181,7 +181,8 @@ throwaway Postgres. **Phase 0a results and the storage audit:**
 
 | Scope    | Command                                                                 | Baseline           |
 | :------- | :---------------------------------------------------------------------- | :----------------- |
-| Backend  | `deno task test:unit`                                                   | 482 passed, ~20 s  |
+| Backend  | `deno task test:unit`                                                   | 568 passed, ~20 s  |
+| Backend  | `deno task test:db` (needs Docker; loads `seed/` each test)             | 41 passed, ~2 min  |
 | Backend  | `deno task fmt:check && deno lint index.ts src/ tests/ scripts/`        |                    |
 | Backend  | `deno check index.ts src/ tests/ scripts/`                              |                    |
 | Frontend | `npx vitest run --project desktop tests/desktop/<file>` (during a task) |                    |

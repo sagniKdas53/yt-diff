@@ -1,4 +1,4 @@
-import { assertEquals, assertExists } from "std/assert/mod.ts";
+import { assert, assertEquals, assertExists } from "std/assert/mod.ts";
 import { API_ENDPOINTS } from "../src/routes/endpoints.ts";
 import {
   buildOpenApiDocument,
@@ -110,4 +110,27 @@ Deno.test("/getsub response schema accepts the rows the handler emits", () => {
     },
   });
   assertEquals(result.success, true);
+});
+
+Deno.test("generated frontend types - nested paths become valid identifiers", () => {
+  // "/library/summary" once came out as `Library/summaryRoute`, which is not a
+  // name JavaScript can parse, and only the frontend's typecheck noticed.
+  const output = emitFrontendTypes();
+  for (
+    const name of [
+      "LibrarySummaryRequest",
+      "LibrarySummaryResponse",
+      "LibrarySummaryRoute",
+      "LibraryFacetsRoute",
+      "ChannelsMonitorRoute",
+    ]
+  ) {
+    assert(output.includes(name), `${name} should be generated`);
+  }
+  assertEquals(
+    [...output.matchAll(/[A-Za-z]\/[A-Za-z]+(Request|Response|Route)\b/g)]
+      .map((m) => m[0]),
+    [],
+    "no type name may contain a slash",
+  );
 });

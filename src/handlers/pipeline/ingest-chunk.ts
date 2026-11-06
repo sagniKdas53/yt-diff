@@ -10,6 +10,7 @@ import {
 import { logger } from "../../logger.ts";
 import { hasEphemeralThumbnails, normalizeUrl } from "../../utils/url.ts";
 import { truncateText } from "./process-manager.ts";
+import { deriveFacets } from "../filing/facets.ts";
 import type {
   ParsedStreamItem,
   PlaylistMappingCreate,
@@ -68,6 +69,16 @@ export async function persistStreamingChunk(
             "updatedAt",
             "onlineThumbnail",
             "raw_metadata",
+            // A re-index refreshes the facets too, so rows ingested before
+            // the columns existed don't keep nulls until the next backfill.
+            "site",
+            "siteName",
+            "channelKey",
+            "channelName",
+            "channelUrl",
+            "channelHandle",
+            "uploadDate",
+            "durationSeconds",
           ],
           transaction,
         },
@@ -374,6 +385,7 @@ export async function processStreamingVideoInformation(
       ].includes(title),
       onlineThumbnail: onlineThumbnail,
       raw_metadata: itemData,
+      ...deriveFacets(itemData, videoUrl),
     };
 
     videosToUpsert.push(videoData);

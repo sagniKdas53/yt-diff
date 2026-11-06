@@ -82,6 +82,8 @@ export interface ListingPlaylistChunkCompletePayload {
   processedChunks: number;
   playlistTitle: string;
   seekPlaylistListTo: number;
+  /** The playlist's key; `seekPlaylistListTo` is a position, this is not. */
+  seekPlaylistUrl?: string;
 }
 
 export interface JobStateChangePayload {

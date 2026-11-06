@@ -1,3 +1,5 @@
+import { Op } from "sequelize";
+import { nextRealPosition } from "../filing/positions.ts";
 import { PlaylistMetadata, PlaylistVideoMapping } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import {
@@ -548,7 +550,7 @@ interface PlaylistChunkSource {
  * throws the partial index away and rebuilds from zero, so a replacement that
  * then fails leaves less behind than the pause had.
  */
-async function clearMappingsForReindex(
+export async function clearMappingsForReindex(
   videoUrl: string,
   monitoringType: string,
   isResumed: boolean,
@@ -562,8 +564,11 @@ async function clearMappingsForReindex(
     return;
   }
 
+  // Real positions only. A negative one is a video the filing job put here,
+  // and a re-index builds the playlist from the source, which knows nothing
+  // about it; clearing it would silently un-file the video.
   const deletedCount = await PlaylistVideoMapping.destroy({
-    where: { playlistUrl: videoUrl },
+    where: { playlistUrl: videoUrl, positionInPlaylist: { [Op.gte]: 0 } },
   });
   logger.info(
     `Cleared ${deletedCount} existing mapping(s) before ${monitoringType} re-index`,
@@ -655,6 +660,7 @@ export async function consumePlaylistChunks(
           processedChunks,
           playlistTitle,
           seekPlaylistListTo,
+          seekPlaylistUrl: videoUrl,
         });
       }
 
@@ -719,7 +725,7 @@ export async function consumePlaylistChunks(
  * "End" walks the tail, so it rewinds one chunk from the last position on
  * record rather than starting at the top. Every other mode starts at 1.
  */
-async function resolveStartIndex(
+export async function resolveStartIndex(
   videoUrl: string,
   chunkSize: number,
   monitoringType: string,
@@ -1030,9 +1036,11 @@ async function handleSingleVideoStreaming(
         attributes: ["positionInPlaylist"],
         limit: 1,
       });
-      newStartIndex = lastVideo
-        ? lastVideo.getDataValue("positionInPlaylist") + 1
-        : 1;
+      // Not `last + 1`: a playlist holding only filed videos has a negative
+      // last position, and a real entry must not land in the job's range.
+      newStartIndex = nextRealPosition(
+        lastVideo?.getDataValue("positionInPlaylist"),
+      );
     }
 
     const result = await processStreamingVideoInformation(
@@ -1232,7 +1240,13 @@ function handleListingError(
   };
 }
 
-function completePlaylistListing(
+/**
+ * `seekPlaylistListTo` is the playlist's sortOrder, which only stands for a
+ * page position while Channels and Playlists are one list. They are two, and
+ * the auto channels sit at -1, so the key goes out as well and a client opens
+ * the playlist directly.
+ */
+export function completePlaylistListing(
   rt: ListingRuntime,
   videoUrl: string,
   processedChunks: number,
@@ -1255,6 +1269,7 @@ function completePlaylistListing(
       processedChunks,
       playlistTitle,
       seekPlaylistListTo,
+      seekPlaylistUrl: videoUrl,
     });
   }
 
@@ -1265,5 +1280,6 @@ function completePlaylistListing(
     processedChunks,
     playlistTitle,
     seekPlaylistListTo,
+    seekPlaylistUrl: videoUrl,
   };
 }

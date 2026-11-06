@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 
 import type { Chapter } from "../pipeline/chapters.ts";
+import type { LibraryFilter, LibraryView } from "../filing/views.ts";
 
 export interface PlaylistDisplayRequest {
   start?: number;
@@ -8,6 +9,7 @@ export interface PlaylistDisplayRequest {
   sort?: string;
   order?: string;
   query?: string;
+  kind?: "playlist" | "channel";
 }
 
 export interface SubListRequest {
@@ -16,6 +18,8 @@ export interface SubListRequest {
   stop?: number;
   query?: string;
   sortDownloaded?: boolean;
+  view?: LibraryView;
+  filter?: LibraryFilter;
 }
 
 export interface UpdatePlaylistMonitoringRequest {
@@ -104,8 +108,9 @@ export interface SafePlaylistVideoRow {
 }
 
 export interface PlaylistWhereShape {
-  sortOrder: { [Op.gte]: number };
-  playlistUrl?: { [Op.iLike]: string };
+  sortOrder?: { [Op.gte]: number };
+  kind?: string;
+  playlistUrl?: { [Op.iLike]?: string; [Op.notIn]?: string[] };
   title?: { [Op.iLike]?: string; [Op.iRegexp]?: string };
 }
 

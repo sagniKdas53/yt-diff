@@ -19,6 +19,22 @@ import type {
   SubListRequest,
 } from "./types.ts";
 import { json } from "../../utils/http.ts";
+import {
+  andWhere,
+  buildLibraryFilter,
+  libraryFacets,
+  type LibraryFilter,
+  librarySummary,
+  type LibraryView,
+  parseLibraryRequest,
+  viewForPlaylist,
+} from "../filing/views.ts";
+import {
+  CHANNEL_ACTIVITY_ORDER,
+  PLAYLIST_LIST_COLUMNS,
+  playlistKindWhere,
+} from "../filing/channels.ts";
+import { listOrder } from "./order.ts";
 
 /**
  * The submissions that put a clock on a video, narrowed to one page's URLs.
@@ -107,16 +123,20 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       );
 
       const playlistWhere: PlaylistWhereShape = {
-        sortOrder: {
-          [Op.gte]: 0,
-        },
+        ...playlistKindWhere(requestBody.kind),
       };
 
       const queryOptions: FindAndCountOptions = {
         where: playlistWhere as unknown as WhereOptions,
+        // Counts and the channel URL ride along on every row, so the
+        // frontend needn't ask once per playlist.
+        attributes: { include: PLAYLIST_LIST_COLUMNS },
         limit: pageSize,
         offset: startIndex,
-        order: [[sortBy, sortDirection]],
+        // Channels come newest activity first unless a sort was asked for.
+        order: requestBody.kind === "channel" && requestBody.sort === undefined
+          ? CHANNEL_ACTIVITY_ORDER
+          : [[sortBy, sortDirection]],
       };
 
       if (searchQuery && searchQuery.length > 0) {
@@ -172,27 +192,34 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       const sortByDownloaded = requestBody.sortDownloaded ?? false;
 
       // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
-      // Default mode preserves playlist order via positionInPlaylist ASC.
-      // Both break position ties on the mapping `id` so the page order is
-      // deterministic: the "None" pseudo-playlist shares one position across
-      // every unlisted video, and `locateVideo` counts pages against the same
-      // tie-breaker. The attribute is unqualified because Sequelize treats a
-      // Model in `order` as an association, not as the main model.
-      const sortOrder: Order = sortByDownloaded
-        ? [[VideoMetadata, "downloadStatus", "DESC"], [
-          "positionInPlaylist",
-          "ASC",
-        ], ["id", "ASC"]]
-        : [["positionInPlaylist", "ASC"], ["id", "ASC"]];
+      // Default mode is position order, newest first for Unlisted. Both break
+      // position ties on the mapping `id` so the page order is deterministic,
+      // and `locateVideo` counts pages against the same helper (order.ts).
+      const sortOrder: Order = listOrder(playlistUrl, sortByDownloaded);
 
       logger.trace("Fetching playlist videos", {
         startIndex,
         endIndex,
         searchQuery,
         sortBy: sortByDownloaded ? "downloadStatus" : "positionInPlaylist",
-        sortDirection: sortByDownloaded ? "DESC" : "ASC",
+        sortDirection: playlistUrl === "None" ? "DESC" : "ASC",
         playlistUrl,
       });
+
+      const library = parseLibraryRequest(requestBody);
+      if (library === null) {
+        // The schema already refuses these at the route; this keeps a direct
+        // caller from ever reaching the query with a malformed filter.
+        json(response, 400, { error: "Invalid view or filter" });
+        return;
+      }
+      const {
+        videoWhere: libraryVideoWhere,
+        mappingWhere: libraryMappingWhere,
+      } = buildLibraryFilter(
+        viewForPlaylist(playlistUrl, library.view),
+        library.filter,
+      );
 
       const videoMetadataWhere: WhereOptions = {};
       const mappingWhere: WhereOptions = {
@@ -273,10 +300,21 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
             "missingExtras",
             "lastDownloadError",
           ],
-          where: videoMetadataWhere,
-          required: !!(searchQuery && searchQuery.length > 0),
+          // A filter on the video is a join condition, so the include has to be
+          // required: otherwise the rows stay and `count` counts them too.
+          where: andWhere(
+            Object.keys(videoMetadataWhere).length > 0 ||
+              Object.getOwnPropertySymbols(videoMetadataWhere).length > 0
+              ? videoMetadataWhere
+              : undefined,
+            libraryVideoWhere,
+          ),
+          required: !!(searchQuery && searchQuery.length > 0) ||
+            libraryVideoWhere !== undefined,
         }],
-        where: mappingWhere,
+        // A view re-scopes to Unlisted after a `global:` search has dropped the
+        // scope, so a search from inside a view stays inside that view.
+        where: andWhere(mappingWhere, libraryMappingWhere)!,
         limit: endIndex - startIndex,
         offset: startIndex,
         order: sortOrder,
@@ -363,5 +401,45 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
     }
   }
 
-  return { getPlaylistsForDisplay, getSubListVideos };
+  async function getLibrarySummary(
+    _requestBody: Record<string, never>,
+    response: HttpResponseLike,
+  ): Promise<void> {
+    try {
+      json(response, 200, await librarySummary());
+    } catch (error) {
+      logger.error("Failed to count the library views", {
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+      json(response, 500, { error: "Could not count the library." });
+    }
+  }
+
+  async function getLibraryFacets(
+    requestBody: { view?: LibraryView; filter?: LibraryFilter },
+    response: HttpResponseLike,
+  ): Promise<void> {
+    const library = parseLibraryRequest(requestBody);
+    if (library === null) {
+      json(response, 400, { error: "Invalid view or filter" });
+      return;
+    }
+    try {
+      json(response, 200, await libraryFacets(library.view, library.filter));
+    } catch (error) {
+      logger.error("Failed to count the library filters", {
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+      json(response, 500, { error: "Could not count the filters." });
+    }
+  }
+
+  return {
+    getPlaylistsForDisplay,
+    getSubListVideos,
+    getLibrarySummary,
+    getLibraryFacets,
+  };
 }

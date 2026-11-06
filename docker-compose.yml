@@ -175,6 +175,9 @@ services:
       - TZ_PREFERRED=${TZ_PREFERRED}
       - UPDATE_SCHEDULED=${UPDATE_SCHEDULED}
       - PRUNE_INTERVAL=${PRUNE_INTERVAL}
+      # Unlisted filing. Off unless FILING_ENABLED=true; see docs/AUTOMATED_JOBS.md
+      - FILING_ENABLED=${FILING_ENABLED:-false}
+      - FILING_INTERVAL=${FILING_INTERVAL:-0 3 * * *}
       # Proxy Info
       - PROXY_STRING_FILE=/run/secrets/proxy_string
       # - PROXY_STRING=http://${HTTP_PROXY_USER}:${HTTP_PROXY_PASSWORD}@gluetun:3128

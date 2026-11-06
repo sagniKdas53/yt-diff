@@ -63,6 +63,17 @@ export class VideoMetadata extends Model<
   declare chapters: CreationOptional<Chapter[] | null>;
   declare saveDirectory: CreationOptional<string | null>;
   declare raw_metadata: CreationOptional<unknown>;
+  // Facets derived from raw_metadata by deriveFacets (src/handlers/filing/).
+  // Columns rather than JSON paths so the library views can filter and count
+  // on an index. Null until ingest or `facets:backfill` has seen the row.
+  declare site: CreationOptional<string | null>;
+  declare siteName: CreationOptional<string | null>;
+  declare channelKey: CreationOptional<string | null>;
+  declare channelName: CreationOptional<string | null>;
+  declare channelUrl: CreationOptional<string | null>;
+  declare channelHandle: CreationOptional<string | null>;
+  declare uploadDate: CreationOptional<string | null>;
+  declare durationSeconds: CreationOptional<number | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -185,6 +196,46 @@ VideoMetadata.init({
     comment:
       "Full pruned yt-dlp JSON output for future use (tags, age rating, etc). Bulky arrays like formats/thumbnails/subtitles are removed before storage.",
   },
+  site: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Hostname without www./m., from the video URL",
+  },
+  siteName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "extractor_key, else site. For labels only.",
+  },
+  channelKey: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "<site>:<lowercased channel id>. At most 250 characters.",
+  },
+  channelName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "channel, else uploader, else uploader_id",
+  },
+  channelUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "channel_url, else uploader_url",
+  },
+  channelHandle: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "uploader_id, lowercased, without a leading @",
+  },
+  uploadDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: "upload_date from the source, as YYYY-MM-DD",
+  },
+  durationSeconds: {
+    type: DataTypes.DOUBLE,
+    allowNull: true,
+    comment: "Length in seconds. Null when unknown, never 0.",
+  },
   createdAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -205,6 +256,16 @@ VideoMetadata.init({
       unique: false,
       name: "idx_video_metadata_video_id",
     },
+    {
+      fields: ["site", "channelKey"],
+      unique: false,
+      name: "idx_video_metadata_site_channel",
+    },
+    {
+      fields: ["durationSeconds"],
+      unique: false,
+      name: "idx_video_metadata_duration",
+    },
   ],
 });
 
@@ -218,6 +279,15 @@ export class PlaylistMetadata extends Model<
   declare monitoringType: string;
   declare saveDirectory: string;
   declare lastUpdatedByScheduler: Date;
+  /** Where the library shows it: Playlists, or Channels. */
+  declare kind: CreationOptional<"playlist" | "channel">;
+  /** Who made it. Only the filing job makes "auto" ones. */
+  declare origin: CreationOptional<"user" | "auto">;
+  /**
+   * The filing sweep, not the user, flipped `kind` to "channel". Undo uses it
+   * to put back only what the job changed, and not a promoted channel.
+   */
+  declare kindSetByFiling: CreationOptional<boolean>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -261,6 +331,24 @@ PlaylistMetadata.init({
     allowNull: false,
     comment:
       "Timestamp of the last update made by the scheduler, default value is createdAt",
+  },
+  kind: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "playlist",
+    comment: '"playlist" or "channel": which library list shows it',
+  },
+  origin: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "user",
+    comment: '"user", or "auto" for a channel the filing job created',
+  },
+  kindSetByFiling: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "The filing sweep flipped kind to channel; undo reverses it",
   },
 }, {
   sequelize,
@@ -331,6 +419,79 @@ PlaylistVideoMapping.init({
     {
       fields: ["playlistUrl", "positionInPlaylist"],
     },
+  ],
+});
+
+/**
+ * Where the filing job put one Unlisted video. One row per swept video.
+ *
+ * `videoUrl` is the primary key rather than `unique: true`: under
+ * `sync({ alter: true })` a unique column gets another constraint on every
+ * boot. The playlist link is nullable and SET NULL on delete, which is how a
+ * deleted playlist is told apart from one that was never assigned.
+ */
+export class VideoFiling extends Model<
+  InferAttributes<VideoFiling>,
+  InferCreationAttributes<VideoFiling>
+> {
+  declare videoUrl: string;
+  declare placement: "playlist" | "channel" | "clip" | "archive";
+  declare playlistUrl: CreationOptional<string | null>;
+  /** The sweep leaves a locked row alone. */
+  declare locked: CreationOptional<boolean>;
+  declare rulesVersion: number;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+VideoFiling.init({
+  videoUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+    references: { model: VideoMetadata, key: "videoUrl" },
+    onUpdate: "CASCADE",
+    onDelete: "CASCADE",
+  },
+  placement: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: '"playlist", "channel", "clip" or "archive"',
+  },
+  playlistUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    references: { model: PlaylistMetadata, key: "playlistUrl" },
+    onUpdate: "CASCADE",
+    onDelete: "SET NULL",
+    comment: "The playlist or channel it was filed into, if any",
+  },
+  locked: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "Set when the user undid a filing; the sweep leaves it alone",
+  },
+  rulesVersion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: "RULES_VERSION in effect when the row was placed",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: "video_filing",
+  tableName: "video_filing",
+  indexes: [
+    { fields: ["placement"], name: "idx_video_filing_placement" },
+    { fields: ["playlistUrl"], name: "idx_video_filing_playlist" },
   ],
 });
 

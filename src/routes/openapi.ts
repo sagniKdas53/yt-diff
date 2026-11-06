@@ -81,6 +81,16 @@ export const PlaylistDisplayRowSchema = z.object({
   lastUpdatedByScheduler: z.union([z.string(), z.null()]).optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  /** "playlist", or "channel" for a channel (the filing job's or a monitored one). */
+  kind: z.enum(["playlist", "channel"]),
+  /** "auto" for a channel the filing job created and nobody has monitored. */
+  origin: z.enum(["user", "auto"]),
+  kindSetByFiling: z.boolean(),
+  videoCount: z.number(),
+  /** The newest video in it, by when the archive got it. Null when empty. */
+  latestAddedAt: z.string().nullable(),
+  /** What Monitor channel would key it by. Null on a playlist, or if unknown. */
+  channelUrl: z.string().nullable(),
 });
 
 const TransferProgressSchema = z.object({
@@ -203,6 +213,35 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
     rows: z.array(SubListVideoRowSchema),
     saveDirectory: z.string(),
     playlistTitle: z.string().nullable(),
+  }),
+  "/channels/monitor": z.object({
+    // The channel's URL, which is now its key: open it directly.
+    playlistUrl: z.string(),
+  }),
+  "/library/summary": z.object({
+    inbox: z.number(),
+    bot: z.number(),
+    clips: z.number(),
+    archive: z.number(),
+    all: z.number(),
+    notSwept: z.number(),
+  }),
+  "/library/facets": z.object({
+    saved: z.object({ saved: z.number(), links: z.number() }),
+    sites: z.array(
+      z.object({ site: z.string(), name: z.string(), count: z.number() }),
+    ),
+    years: z.array(z.object({ year: z.number(), count: z.number() })),
+    months: z.array(z.object({ month: z.number(), count: z.number() })),
+    lengths: z.array(
+      z.object({
+        band: z.enum(["clip", "short", "medium", "long", "unknown"]),
+        count: z.number(),
+      }),
+    ),
+    creators: z.array(
+      z.object({ key: z.string(), name: z.string(), count: z.number() }),
+    ),
   }),
   "/delsub": z.object({
     message: z.string(),
@@ -426,11 +465,15 @@ export function buildOpenApiDocument(): Record<string, unknown> {
 // has real request and response types at the call site.
 // ---------------------------------------------------------------------------
 
-/** PascalCase type-name stem for a route path: "/dedup-unlisted" -> "DedupUnlisted". */
+/**
+ * PascalCase type-name stem for a route path: "/dedup-unlisted" ->
+ * "DedupUnlisted", "/library/summary" -> "LibrarySummary". Any run of
+ * characters that can't be in an identifier is a word break.
+ */
 function typeNameStem(path: string): string {
   return path
-    .replace(/^\//, "")
-    .split("-")
+    .split(/[^A-Za-z0-9]+/)
+    .filter((part) => part !== "")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
 }

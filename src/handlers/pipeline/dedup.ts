@@ -57,8 +57,11 @@ export interface DeduplicateResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Return hostname without leading www./m. for domain-scoping comparisons. */
-function coreHostname(url: string): string {
+/**
+ * Return hostname without leading www./m. for domain-scoping comparisons.
+ * Exported so filing derives `site` the same way dedup groups by it.
+ */
+export function coreHostname(url: string): string {
   try {
     return new URL(url).hostname
       .replace(/^www\./, "")
@@ -360,7 +363,7 @@ export async function findDuplicateVideos(
   return groups;
 }
 
-async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
+export async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
   const { canonicalUrl, duplicateUrls } = group;
 
   const transaction = await sequelize.transaction();
@@ -416,14 +419,18 @@ async function mergeVideoRecords(group: DuplicateGroup): Promise<void> {
 
           await mapping.destroy({ transaction });
 
-          await PlaylistVideoMapping.decrement("positionInPlaylist", {
-            by: 1,
-            where: {
-              playlistUrl,
-              positionInPlaylist: { [Op.gt]: removedPosition },
-            },
-            transaction,
-          });
+          // A filed mapping (negative position) leaves no gap in the real
+          // numbering, and "everything above it" would be every real entry.
+          if (removedPosition >= 1) {
+            await PlaylistVideoMapping.decrement("positionInPlaylist", {
+              by: 1,
+              where: {
+                playlistUrl,
+                positionInPlaylist: { [Op.gt]: removedPosition },
+              },
+              transaction,
+            });
+          }
         } else {
           await mapping.update({ videoUrl: canonicalUrl }, { transaction });
         }
@@ -494,6 +501,10 @@ export async function findDuplicatePlaylists(
   for (const p of allPlaylists) {
     const url = p.getDataValue("playlistUrl");
     if (url === "None" || url === "init") continue;
+    // Auto channels are keyed `auto:<channelKey>`, which isn't a URL: the
+    // canonicalizer would strip a tracking parameter out of one and make two
+    // distinct channels look like duplicates of each other.
+    if (url.startsWith("auto:")) continue;
     const canon = canonicalizePlaylistUrl(url);
     if (!canonGroups.has(canon)) canonGroups.set(canon, []);
     canonGroups.get(canon)!.push(url);

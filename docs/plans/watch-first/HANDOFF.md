@@ -6,17 +6,17 @@ carry the design, so your job is to execute them one at a time.
 
 ## Where things stand (2026-11-06)
 
-| Item                       | State                                                    |
-| :------------------------- | :------------------------------------------------------- |
-| Review and plans           | Merged to `master`                                       |
-| 30-day login sessions      | Merged to `master` (PR #137). Not yet deployed to the Pi |
-| Plans 01 to 06             | Not started                                              |
-| Pi measurements (Phase 0a) | Done. Results in `notes-2026-11-06.md`                   |
-| Pi measurements (0b)       | Laptop done, in the notes. Phones to come                |
-| Pi measurements (0c, 0d)   | Not run, and nothing depends on them                     |
-| Test data                  | `seed/`, loaded and checked against production           |
-| Frontend `material`        | Unchanged at `a401984`                                   |
-| Test baseline              | 482 backend, 316 frontend, all passing                   |
+| Item                       | State                                                             |
+| :------------------------- | :---------------------------------------------------------------- |
+| Review and plans           | Merged to `master`                                                |
+| 30-day login sessions      | Merged to `master` (PR #137). Not yet deployed to the Pi          |
+| Plans 01 to 06             | Not started                                                       |
+| Pi measurements (Phase 0a) | Done. Results in `notes-2026-11-06.md`                            |
+| Pi measurements (0b)       | Laptop done, in the notes. Phones to come                         |
+| Pi measurements (0c, 0d)   | Not run, and nothing depends on them                              |
+| Test data                  | `seed/`, loaded and checked against production                    |
+| Frontend `material`        | Unchanged at `a401984`                                            |
+| Test baseline              | 568 backend unit + 41 backend database, 316 frontend, all passing |
 
 The owner has approved everything in the `README.md` Decisions table, including
 the Home and Library layouts. On 2026-11-06 the owner chose the Unlisted design:
@@ -134,15 +134,15 @@ Use the same method you use for `chapters:backfill` in the container.
 
 ## Progress
 
-| Plan                                  | Branch(es)                                     | PR | Merged | Backfill run |
-| :------------------------------------ | :--------------------------------------------- | :- | :----- | :----------- |
-| 01 Playback fixes                     | `fix/playback-failures`                        |    |        | n/a          |
-| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                       |    |        | n/a          |
-| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`    |    |        |              |
-| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui` |    |        |              |
-| 05 Unlisted filing                    | `feat/unlisted-filing`                         |    |        |              |
-| 05b Library views                     | `feat/library-views`                           |    |        | n/a          |
-| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |    |        |              |
+| Plan                                  | Branch(es)                                     | PR                             | Merged | Backfill run |
+| :------------------------------------ | :--------------------------------------------- | :----------------------------- | :----- | :----------- |
+| 01 Playback fixes                     | `fix/playback-failures`                        |                                |        | n/a          |
+| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                       |                                |        | n/a          |
+| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`    |                                |        |              |
+| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui` |                                |        |              |
+| 05 Unlisted filing                    | `feat/unlisted-filing`                         | #140, types: yt-diff-react#128 |        |              |
+| 05b Library views                     | `feat/library-views`                           |                                |        | n/a          |
+| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |                                |        |              |
 
 ## Not in scope
 

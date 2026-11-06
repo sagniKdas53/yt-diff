@@ -10,6 +10,7 @@ import {
 } from "../db/models.ts";
 import { logger } from "../logger.ts";
 import { reapExpiredSubmissions } from "../bot/retention.ts";
+import { runFilingSweep } from "../handlers/filing/sweep.ts";
 
 import {
   type CleanupStaleProcesses,
@@ -25,6 +26,8 @@ interface JobDependencies {
   listItemsConcurrently: ListItemsConcurrently;
   /** Fetches only the sidecars a rate-limited run missed. */
   syncExtras: (videoUrl: string) => Promise<SyncExtrasResult>;
+  /** Files Unlisted videos. Injectable so the overlap guard is testable. */
+  runFiling?: () => Promise<unknown>;
 }
 
 /**
@@ -69,6 +72,8 @@ export type AppJobs =
   >
   & {
     botRetention?: CronJob;
+    /** Only when FILING_ENABLED, like botRetention. */
+    filing?: CronJob;
   };
 
 function formatNextRun(job: CronJob) {
@@ -90,6 +95,7 @@ export function createJobs({
   listProcesses,
   listItemsConcurrently,
   syncExtras,
+  runFiling = () => runFilingSweep({ apply: true }),
 }: JobDependencies): AppJobs {
   const jobs = {} as AppJobs;
 
@@ -422,6 +428,47 @@ export function createJobs({
           error: (error as Error).message,
         },
       );
+    }
+  }
+
+  // Registered only when FILING_ENABLED, so a deployment that hasn't reviewed
+  // a dry run files nothing. Same shape as the bot reaper above.
+  if (config.filing.enabled) {
+    // A sweep can outlast its interval on a big library, and two at once would
+    // both try to create the same auto channel. The second tick just skips.
+    let running = false;
+    try {
+      jobs.filing = new CronJob(
+        config.filing.interval,
+        () => {
+          if (running) {
+            logger.warn("Filing sweep still running; skipping this tick");
+            return;
+          }
+          running = true;
+          void (async () => {
+            try {
+              await runFiling();
+            } catch (error) {
+              logger.error("Scheduled filing sweep failed", {
+                error: (error as Error).message,
+                stack: (error as Error).stack,
+              });
+            } finally {
+              running = false;
+            }
+          })();
+        },
+        null,
+        true,
+        config.timeZone,
+      );
+    } catch (error) {
+      // An invalid expression costs the schedule, not the server.
+      logger.error("Invalid FILING_INTERVAL; filing job not registered", {
+        interval: config.filing.interval,
+        error: (error as Error).message,
+      });
     }
   }
 

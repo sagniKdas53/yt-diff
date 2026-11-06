@@ -106,6 +106,18 @@ export const PlaylistDisplayRequestSchema = z.object({
   sort: z.string().optional(),
   order: z.string().optional(),
   query: z.string().optional(),
+  // Which list: the user's playlists, or channels (theirs and the filing
+  // job's). Absent keeps today's behaviour.
+  kind: z.enum(["playlist", "channel"]).optional(),
+});
+
+/**
+ * Starts monitoring a channel the filing job created. The key may be an
+ * `auto:` one, which is why this is a plain playlist key and not a URL.
+ */
+export const MonitorChannelRequestSchema = z.object({
+  playlistUrl: PlaylistKeySchema,
+  monitoringType: z.enum(["Start", "End", "Full", "Refresh"]),
 });
 
 export const DeletePlaylistRequestBodySchema = z.object({
@@ -115,12 +127,50 @@ export const DeletePlaylistRequestBodySchema = z.object({
   cleanUp: z.boolean().optional(),
 });
 
+/**
+ * Unlisted views and the filters every list takes. A filter value ends up in a
+ * query, so each one is bounded here: strings by the column width, numbers to
+ * a calendar, and anything unrecognised is refused rather than ignored.
+ */
+export const LibraryViewSchema = z.enum(["inbox", "bot", "clips", "archive"]);
+
+export const LengthBandSchema = z.enum([
+  "clip",
+  "short",
+  "medium",
+  "long",
+  "unknown",
+]);
+
+export const LibraryFilterSchema = z.object({
+  saved: z.boolean().optional(),
+  site: z.string().min(1).max(255).optional(),
+  year: z.number().int().min(1970).max(2100).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+  channel: z.string().min(1).max(255).optional(),
+  length: LengthBandSchema.optional(),
+}).strict().refine(
+  (filter) => filter.month === undefined || filter.year !== undefined,
+  { message: "A month needs a year" },
+);
+
+/** Counts for the rail take no input. */
+export const LibrarySummaryRequestSchema = z.object({});
+
+/** Counts for the filter bar, under the view and filter being shown. */
+export const LibraryFacetsRequestSchema = z.object({
+  view: LibraryViewSchema.optional(),
+  filter: LibraryFilterSchema.optional(),
+});
+
 export const SubListRequestSchema = z.object({
   url: z.string().optional(),
   start: z.number().optional(),
   stop: z.number().optional(),
   query: z.string().optional(),
   sortDownloaded: z.boolean().optional(),
+  view: LibraryViewSchema.optional(),
+  filter: LibraryFilterSchema.optional(),
 });
 
 export const DeleteVideosRequestBodySchema = z.object({
@@ -221,4 +271,8 @@ export const LocateRequestBodySchema = z.object({
   // to the server default, which is the same one `/getsub` defaults to.
   pageSize: z.number().int().positive().optional(),
   sortDownloaded: z.boolean().optional(),
+  // The same view and filter the list is being shown under: the answer is a
+  // page of that list, not of wherever the video lives.
+  view: LibraryViewSchema.optional(),
+  filter: LibraryFilterSchema.optional(),
 });
