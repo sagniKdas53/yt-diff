@@ -299,11 +299,15 @@ export async function addPlaylist(
  * gives the same sequence with no invalidation step, because the value comes
  * from the same table the deletion just reshuffled.
  */
-export async function createPlaylistRecord(
-  playlistUrl: string,
-  playlistTitle: string,
-  monitoringType: string,
-): Promise<PlaylistMetadata> {
+/**
+ * Runs `work` once no other playlist create (or promotion) is running, and
+ * holds the lock until `work` settles, committed or failed. Anything that
+ * reads `MAX(sortOrder)` to hand out the next one has to do it in here, and
+ * commit before it returns, or two of them can read the same number.
+ */
+export async function withPlaylistCreateLock<T>(
+  work: () => Promise<T>,
+): Promise<T> {
   const previousCreate = playlistCreateChain;
   let releaseCreateLock!: () => void;
   playlistCreateChain = new Promise<void>((resolve) => {
@@ -313,6 +317,18 @@ export async function createPlaylistRecord(
   await previousCreate;
 
   try {
+    return await work();
+  } finally {
+    releaseCreateLock();
+  }
+}
+
+export async function createPlaylistRecord(
+  playlistUrl: string,
+  playlistTitle: string,
+  monitoringType: string,
+): Promise<PlaylistMetadata> {
+  return await withPlaylistCreateLock(async () => {
     const lastPlaylist = await PlaylistMetadata.findOne({
       order: [["sortOrder", "DESC"]],
       attributes: ["sortOrder"],
@@ -339,7 +355,5 @@ export async function createPlaylistRecord(
     }
 
     return playlist;
-  } finally {
-    releaseCreateLock();
-  }
+  });
 }

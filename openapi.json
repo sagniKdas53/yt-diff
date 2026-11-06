@@ -416,6 +416,46 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "playlist",
+                              "channel"
+                            ]
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "auto"
+                            ]
+                          },
+                          "kindSetByFiling": {
+                            "type": "boolean"
+                          },
+                          "videoCount": {
+                            "type": "number"
+                          },
+                          "latestAddedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channelUrl": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -423,7 +463,13 @@
                           "playlistUrl",
                           "title",
                           "monitoringType",
-                          "sortOrder"
+                          "sortOrder",
+                          "kind",
+                          "origin",
+                          "kindSetByFiling",
+                          "videoCount",
+                          "latestAddedAt",
+                          "channelUrl"
                         ]
                       }
                     }
@@ -482,6 +528,13 @@
                   },
                   "query": {
                     "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "playlist",
+                      "channel"
+                    ]
                   }
                 }
               }
@@ -1235,6 +1288,91 @@
                     "additionalProperties": false
                   }
                 }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/channels/monitor": {
+      "post": {
+        "operationId": "processMonitorChannelRequest",
+        "summary": "Start monitoring a channel the filing job created.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "playlistUrl": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "playlistUrl"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "playlistUrl": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "monitoringType": {
+                    "type": "string",
+                    "enum": [
+                      "Start",
+                      "End",
+                      "Full",
+                      "Refresh"
+                    ]
+                  }
+                },
+                "required": [
+                  "playlistUrl",
+                  "monitoringType"
+                ]
               }
             }
           }

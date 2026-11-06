@@ -106,6 +106,18 @@ export const PlaylistDisplayRequestSchema = z.object({
   sort: z.string().optional(),
   order: z.string().optional(),
   query: z.string().optional(),
+  // Which list: the user's playlists, or channels (theirs and the filing
+  // job's). Absent keeps today's behaviour.
+  kind: z.enum(["playlist", "channel"]).optional(),
+});
+
+/**
+ * Starts monitoring a channel the filing job created. The key may be an
+ * `auto:` one, which is why this is a plain playlist key and not a URL.
+ */
+export const MonitorChannelRequestSchema = z.object({
+  playlistUrl: PlaylistKeySchema,
+  monitoringType: z.enum(["Start", "End", "Full", "Refresh"]),
 });
 
 export const DeletePlaylistRequestBodySchema = z.object({

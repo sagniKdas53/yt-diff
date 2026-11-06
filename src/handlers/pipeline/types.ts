@@ -371,6 +371,8 @@ export interface ListingResult {
   type?: string;
   processedChunks?: number;
   seekPlaylistListTo?: number;
+  /** The playlist's key, so a client can open it without a page position. */
+  seekPlaylistUrl?: string;
   error?: string;
 }
 

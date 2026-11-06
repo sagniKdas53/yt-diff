@@ -81,6 +81,16 @@ export const PlaylistDisplayRowSchema = z.object({
   lastUpdatedByScheduler: z.union([z.string(), z.null()]).optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  /** "playlist", or "channel" for a channel (the filing job's or a monitored one). */
+  kind: z.enum(["playlist", "channel"]),
+  /** "auto" for a channel the filing job created and nobody has monitored. */
+  origin: z.enum(["user", "auto"]),
+  kindSetByFiling: z.boolean(),
+  videoCount: z.number(),
+  /** The newest video in it, by when the archive got it. Null when empty. */
+  latestAddedAt: z.string().nullable(),
+  /** What Monitor channel would key it by. Null on a playlist, or if unknown. */
+  channelUrl: z.string().nullable(),
 });
 
 const TransferProgressSchema = z.object({
@@ -203,6 +213,10 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
     rows: z.array(SubListVideoRowSchema),
     saveDirectory: z.string(),
     playlistTitle: z.string().nullable(),
+  }),
+  "/channels/monitor": z.object({
+    // The channel's URL, which is now its key: open it directly.
+    playlistUrl: z.string(),
   }),
   "/library/summary": z.object({
     inbox: z.number(),

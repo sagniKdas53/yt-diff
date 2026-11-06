@@ -29,6 +29,11 @@ import {
   parseLibraryRequest,
   viewForPlaylist,
 } from "../filing/views.ts";
+import {
+  CHANNEL_ACTIVITY_ORDER,
+  PLAYLIST_LIST_COLUMNS,
+  playlistKindWhere,
+} from "../filing/channels.ts";
 import { listOrder } from "./order.ts";
 
 /**
@@ -118,16 +123,20 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       );
 
       const playlistWhere: PlaylistWhereShape = {
-        sortOrder: {
-          [Op.gte]: 0,
-        },
+        ...playlistKindWhere(requestBody.kind),
       };
 
       const queryOptions: FindAndCountOptions = {
         where: playlistWhere as unknown as WhereOptions,
+        // Counts and the channel URL ride along on every row, so the
+        // frontend needn't ask once per playlist.
+        attributes: { include: PLAYLIST_LIST_COLUMNS },
         limit: pageSize,
         offset: startIndex,
-        order: [[sortBy, sortDirection]],
+        // Channels come newest activity first unless a sort was asked for.
+        order: requestBody.kind === "channel" && requestBody.sort === undefined
+          ? CHANNEL_ACTIVITY_ORDER
+          : [[sortBy, sortDirection]],
       };
 
       if (searchQuery && searchQuery.length > 0) {

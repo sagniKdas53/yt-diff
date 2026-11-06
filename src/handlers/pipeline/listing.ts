@@ -660,6 +660,7 @@ export async function consumePlaylistChunks(
           processedChunks,
           playlistTitle,
           seekPlaylistListTo,
+          seekPlaylistUrl: videoUrl,
         });
       }
 
@@ -1239,7 +1240,13 @@ function handleListingError(
   };
 }
 
-function completePlaylistListing(
+/**
+ * `seekPlaylistListTo` is the playlist's sortOrder, which only stands for a
+ * page position while Channels and Playlists are one list. They are two, and
+ * the auto channels sit at -1, so the key goes out as well and a client opens
+ * the playlist directly.
+ */
+export function completePlaylistListing(
   rt: ListingRuntime,
   videoUrl: string,
   processedChunks: number,
@@ -1262,6 +1269,7 @@ function completePlaylistListing(
       processedChunks,
       playlistTitle,
       seekPlaylistListTo,
+      seekPlaylistUrl: videoUrl,
     });
   }
 
@@ -1272,5 +1280,6 @@ function completePlaylistListing(
     processedChunks,
     playlistTitle,
     seekPlaylistListTo,
+    seekPlaylistUrl: videoUrl,
   };
 }

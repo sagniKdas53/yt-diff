@@ -1,12 +1,14 @@
 import type { PlaylistHandlerDependencies } from "./types.ts";
 import { createMutationHandlers } from "./mutations.ts";
 import { createQueryHandlers } from "./queries.ts";
+import { createChannelHandlers } from "../filing/channels.ts";
 
 export * from "./types.ts";
 
 export function createPlaylistHandlers(deps: PlaylistHandlerDependencies) {
   const mutations = createMutationHandlers(deps);
   const queries = createQueryHandlers(deps);
+  const channels = createChannelHandlers(deps);
 
   return {
     updatePlaylistMonitoring: mutations.updatePlaylistMonitoring,
@@ -17,5 +19,6 @@ export function createPlaylistHandlers(deps: PlaylistHandlerDependencies) {
     getSubListVideos: queries.getSubListVideos,
     getLibrarySummary: queries.getLibrarySummary,
     getLibraryFacets: queries.getLibraryFacets,
+    processMonitorChannelRequest: channels.processMonitorChannelRequest,
   };
 }

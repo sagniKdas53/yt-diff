@@ -9,6 +9,7 @@ export interface PlaylistDisplayRequest {
   sort?: string;
   order?: string;
   query?: string;
+  kind?: "playlist" | "channel";
 }
 
 export interface SubListRequest {
@@ -107,8 +108,9 @@ export interface SafePlaylistVideoRow {
 }
 
 export interface PlaylistWhereShape {
-  sortOrder: { [Op.gte]: number };
-  playlistUrl?: { [Op.iLike]: string };
+  sortOrder?: { [Op.gte]: number };
+  kind?: string;
+  playlistUrl?: { [Op.iLike]?: string; [Op.notIn]?: string[] };
   title?: { [Op.iLike]?: string; [Op.iRegexp]?: string };
 }
 

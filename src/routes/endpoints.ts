@@ -17,6 +17,7 @@ import {
   LibrarySummaryRequestSchema,
   ListingRequestBodySchema,
   LocateRequestBodySchema,
+  MonitorChannelRequestSchema,
   PlaylistDisplayRequestSchema,
   QueueStatusRequestBodySchema,
   RefreshSignedUrlRequestBodySchema,
@@ -66,6 +67,9 @@ export interface AuthenticatedHandlers {
   getSubListVideos: BodyHandler<Body<typeof SubListRequestSchema>>;
   getLibrarySummary: BodyHandler<Body<typeof LibrarySummaryRequestSchema>>;
   getLibraryFacets: BodyHandler<Body<typeof LibraryFacetsRequestSchema>>;
+  processMonitorChannelRequest: BodyHandler<
+    Body<typeof MonitorChannelRequestSchema>
+  >;
   processDeleteVideosRequest: BodyHandler<
     Body<typeof DeleteVideosRequestBodySchema>
   >;
@@ -242,6 +246,15 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
     summary: "Count the options for the filters, under the current view.",
     handler: "getLibraryFacets",
     schema: LibraryFacetsRequestSchema,
+    admission: "none",
+  },
+  {
+    kind: "authenticated",
+    method: "POST",
+    path: "/channels/monitor",
+    summary: "Start monitoring a channel the filing job created.",
+    handler: "processMonitorChannelRequest",
+    schema: MonitorChannelRequestSchema,
     admission: "none",
   },
   {
