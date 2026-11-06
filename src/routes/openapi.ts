@@ -465,11 +465,15 @@ export function buildOpenApiDocument(): Record<string, unknown> {
 // has real request and response types at the call site.
 // ---------------------------------------------------------------------------
 
-/** PascalCase type-name stem for a route path: "/dedup-unlisted" -> "DedupUnlisted". */
+/**
+ * PascalCase type-name stem for a route path: "/dedup-unlisted" ->
+ * "DedupUnlisted", "/library/summary" -> "LibrarySummary". Any run of
+ * characters that can't be in an identifier is a word break.
+ */
 function typeNameStem(path: string): string {
   return path
-    .replace(/^\//, "")
-    .split("-")
+    .split(/[^A-Za-z0-9]+/)
+    .filter((part) => part !== "")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
 }

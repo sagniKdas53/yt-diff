@@ -134,15 +134,15 @@ Use the same method you use for `chapters:backfill` in the container.
 
 ## Progress
 
-| Plan                                  | Branch(es)                                     | PR   | Merged | Backfill run |
-| :------------------------------------ | :--------------------------------------------- | :--- | :----- | :----------- |
-| 01 Playback fixes                     | `fix/playback-failures`                        |      |        | n/a          |
-| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                       |      |        | n/a          |
-| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`    |      |        |              |
-| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui` |      |        |              |
-| 05 Unlisted filing                    | `feat/unlisted-filing`                         | #140 |        |              |
-| 05b Library views                     | `feat/library-views`                           |      |        | n/a          |
-| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |      |        |              |
+| Plan                                  | Branch(es)                                     | PR                             | Merged | Backfill run |
+| :------------------------------------ | :--------------------------------------------- | :----------------------------- | :----- | :----------- |
+| 01 Playback fixes                     | `fix/playback-failures`                        |                                |        | n/a          |
+| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                       |                                |        | n/a          |
+| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`    |                                |        |              |
+| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui` |                                |        |              |
+| 05 Unlisted filing                    | `feat/unlisted-filing`                         | #140, types: yt-diff-react#128 |        |              |
+| 05b Library views                     | `feat/library-views`                           |                                |        | n/a          |
+| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |                                |        |              |
 
 ## Not in scope
 
