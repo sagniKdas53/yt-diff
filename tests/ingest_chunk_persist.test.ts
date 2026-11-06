@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "std/assert/mod.ts";
+import { deriveFacets } from "../src/handlers/filing/facets.ts";
 import {
   persistStreamingChunk,
   processStreamingVideoInformation,
@@ -110,6 +111,7 @@ const video: VideoUpsertData = {
   onlineThumbnail: null,
   // deno-lint-ignore no-explicit-any
   raw_metadata: {} as any,
+  ...deriveFacets(null, "https://example.com/v/a"),
 };
 
 const create: PlaylistMappingCreate = {
@@ -367,6 +369,60 @@ Deno.test("processStreamingVideoInformation - the None pseudo-playlist ignores p
     );
 
     assertEquals(positionsWritten(calls), [99, 99]);
+  } finally {
+    restore();
+    reads.restore();
+  }
+});
+
+Deno.test("ingest - a video stores its facets", async () => {
+  const reads = installReads();
+  const { calls, restore } = install();
+  try {
+    await processStreamingVideoInformation(
+      [
+        JSON.stringify({
+          webpage_url: "https://www.example.com/watch/f1",
+          id: "f1",
+          title: "facet video",
+          filesize_approx: "NA",
+          uploader_id: "@Some-Channel",
+          channel: "Some Channel",
+          duration: 95.5,
+          upload_date: "20240229",
+        }),
+      ],
+      "None",
+      1,
+      false,
+    );
+
+    const upsert = calls.find((c) => c.model === "VideoMetadata");
+    assert(upsert !== undefined, "the video must be upserted");
+    const [row] = upsert.rows;
+    assertEquals(row.site, "example.com");
+    assertEquals(row.channelKey, "example.com:some-channel");
+    assertEquals(row.channelName, "Some Channel");
+    assertEquals(row.durationSeconds, 95.5);
+    assertEquals(row.uploadDate, "2024-02-29");
+
+    // A re-index has to refresh all eight, or a row ingested before the
+    // columns existed would keep nulls forever.
+    const updated = upsert.options.updateOnDuplicate as string[];
+    for (
+      const column of [
+        "site",
+        "siteName",
+        "channelKey",
+        "channelName",
+        "channelUrl",
+        "channelHandle",
+        "uploadDate",
+        "durationSeconds",
+      ]
+    ) {
+      assert(updated.includes(column), `updateOnDuplicate lacks ${column}`);
+    }
   } finally {
     restore();
     reads.restore();

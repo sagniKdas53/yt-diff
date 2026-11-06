@@ -63,6 +63,17 @@ export class VideoMetadata extends Model<
   declare chapters: CreationOptional<Chapter[] | null>;
   declare saveDirectory: CreationOptional<string | null>;
   declare raw_metadata: CreationOptional<unknown>;
+  // Facets derived from raw_metadata by deriveFacets (src/handlers/filing/).
+  // Columns rather than JSON paths so the library views can filter and count
+  // on an index. Null until ingest or `facets:backfill` has seen the row.
+  declare site: CreationOptional<string | null>;
+  declare siteName: CreationOptional<string | null>;
+  declare channelKey: CreationOptional<string | null>;
+  declare channelName: CreationOptional<string | null>;
+  declare channelUrl: CreationOptional<string | null>;
+  declare channelHandle: CreationOptional<string | null>;
+  declare uploadDate: CreationOptional<string | null>;
+  declare durationSeconds: CreationOptional<number | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -185,6 +196,46 @@ VideoMetadata.init({
     comment:
       "Full pruned yt-dlp JSON output for future use (tags, age rating, etc). Bulky arrays like formats/thumbnails/subtitles are removed before storage.",
   },
+  site: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Hostname without www./m., from the video URL",
+  },
+  siteName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "extractor_key, else site. For labels only.",
+  },
+  channelKey: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "<site>:<lowercased channel id>. At most 250 characters.",
+  },
+  channelName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "channel, else uploader, else uploader_id",
+  },
+  channelUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "channel_url, else uploader_url",
+  },
+  channelHandle: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "uploader_id, lowercased, without a leading @",
+  },
+  uploadDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: "upload_date from the source, as YYYY-MM-DD",
+  },
+  durationSeconds: {
+    type: DataTypes.DOUBLE,
+    allowNull: true,
+    comment: "Length in seconds. Null when unknown, never 0.",
+  },
   createdAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -204,6 +255,16 @@ VideoMetadata.init({
       fields: ["videoId"],
       unique: false,
       name: "idx_video_metadata_video_id",
+    },
+    {
+      fields: ["site", "channelKey"],
+      unique: false,
+      name: "idx_video_metadata_site_channel",
+    },
+    {
+      fields: ["durationSeconds"],
+      unique: false,
+      name: "idx_video_metadata_duration",
     },
   ],
 });

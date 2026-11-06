@@ -1,6 +1,7 @@
 import { Model } from "sequelize";
 import { type AppConfig, config } from "../../config.ts";
 import type { Chapter } from "./chapters.ts";
+import type { VideoFacets } from "../filing/facets.ts";
 
 export const playlistRegex = /(?:playlist|list=|creators|videos$)\b/i;
 
@@ -590,7 +591,7 @@ export interface StreamingVideoMove {
   newPosition: number;
 }
 
-export interface VideoUpsertData extends VideoEntrySnapshot {
+export interface VideoUpsertData extends VideoEntrySnapshot, VideoFacets {
   videoUrl: string;
   downloadStatus: boolean;
   isAvailable: boolean;
