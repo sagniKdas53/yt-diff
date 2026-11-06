@@ -54,7 +54,6 @@ async function post<T>(
 
 const listings: Array<Record<string, unknown>> = [];
 const deps = {
-  // deno-lint-ignore no-explicit-any
   listItemsConcurrently: ((items: Array<Record<string, unknown>>) => {
     listings.push(...items);
     return Promise.resolve([]);

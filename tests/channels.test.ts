@@ -147,7 +147,6 @@ function fakeStore(
 function monitorHandler(store: ChannelStore) {
   const listings: AnyRecord[] = [];
   const handlers = createChannelHandlers({
-    // deno-lint-ignore no-explicit-any
     listItemsConcurrently: ((items: AnyRecord[]) => {
       listings.push(...items);
       return Promise.resolve([]);
@@ -281,11 +280,11 @@ Deno.test("listing - a finished playlist listing names the playlist as well as a
   // Channels and Playlists are one list. Once they are two, the position means
   // nothing, so the answer carries the URL the frontend can open directly.
   const emitted: AnyRecord[] = [];
+  const runtime = {
+    safeEmit: (_name: string, payload: AnyRecord) => emitted.push(payload),
+  } as unknown as Parameters<typeof completePlaylistListing>[0];
   const result = completePlaylistListing(
-    // deno-lint-ignore no-explicit-any
-    {
-      safeEmit: (_name: string, payload: AnyRecord) => emitted.push(payload),
-    } as any,
+    runtime,
     "https://a.example/@acct",
     3,
     "Acct",
