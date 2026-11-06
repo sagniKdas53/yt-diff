@@ -1,9 +1,10 @@
-import { Op, type WhereOptions } from "sequelize";
+import type { WhereOptions } from "sequelize";
 import { config } from "../../config.ts";
 import { PlaylistVideoMapping, VideoMetadata } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { json } from "../../utils/http.ts";
+import { rowsBefore } from "../playlists/order.ts";
 import { resolveVideoPlaylist } from "./download-location.ts";
 
 export interface LocateRequestBody {
@@ -76,7 +77,7 @@ export async function locateVideo(
       !!mapping.video_metadatum?.downloadStatus,
     )
     : await PlaylistVideoMapping.count({
-      where: beforeMapping(targetPlaylistUrl, position, mappingId),
+      where: rowsBefore(targetPlaylistUrl, position, mappingId),
     });
 
   return {
@@ -110,7 +111,7 @@ async function downloadedFirstIndex(
       }],
     });
 
-  const before = beforeMapping(playlistUrl, position, mappingId);
+  const before = rowsBefore(playlistUrl, position, mappingId);
 
   if (isDownloaded) {
     return await countDownloaded(before);
@@ -121,29 +122,6 @@ async function downloadedFirstIndex(
   const downloadedAhead = await countDownloaded(before);
 
   return totalDownloaded + ahead - downloadedAhead;
-}
-
-/**
- * The rows that sort strictly before one mapping under `/getsub`'s order.
- *
- * `/getsub` orders by `positionInPlaylist` then `id`, because the `"None"`
- * pseudo-playlist assigns the same position to every unlisted video. Counting
- * only smaller positions would treat such a tied group as entirely equal, so a
- * target on a page boundary could be counted onto a different page than the
- * one `/getsub` actually returns it on.
- */
-function beforeMapping(
-  playlistUrl: string,
-  position: number,
-  mappingId: string,
-): WhereOptions {
-  return {
-    playlistUrl,
-    [Op.or]: [
-      { positionInPlaylist: { [Op.lt]: position } },
-      { positionInPlaylist: position, id: { [Op.lt]: mappingId } },
-    ],
-  };
 }
 
 /** The HTTP shape of `locateVideo`. */

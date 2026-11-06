@@ -19,6 +19,7 @@ import type {
   SubListRequest,
 } from "./types.ts";
 import { json } from "../../utils/http.ts";
+import { listOrder } from "./order.ts";
 
 /**
  * The submissions that put a clock on a video, narrowed to one page's URLs.
@@ -172,25 +173,17 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
       const sortByDownloaded = requestBody.sortDownloaded ?? false;
 
       // Downloaded-first mode sorts by VideoMetadata.downloadStatus DESC.
-      // Default mode preserves playlist order via positionInPlaylist ASC.
-      // Both break position ties on the mapping `id` so the page order is
-      // deterministic: the "None" pseudo-playlist shares one position across
-      // every unlisted video, and `locateVideo` counts pages against the same
-      // tie-breaker. The attribute is unqualified because Sequelize treats a
-      // Model in `order` as an association, not as the main model.
-      const sortOrder: Order = sortByDownloaded
-        ? [[VideoMetadata, "downloadStatus", "DESC"], [
-          "positionInPlaylist",
-          "ASC",
-        ], ["id", "ASC"]]
-        : [["positionInPlaylist", "ASC"], ["id", "ASC"]];
+      // Default mode is position order, newest first for Unlisted. Both break
+      // position ties on the mapping `id` so the page order is deterministic,
+      // and `locateVideo` counts pages against the same helper (order.ts).
+      const sortOrder: Order = listOrder(playlistUrl, sortByDownloaded);
 
       logger.trace("Fetching playlist videos", {
         startIndex,
         endIndex,
         searchQuery,
         sortBy: sortByDownloaded ? "downloadStatus" : "positionInPlaylist",
-        sortDirection: sortByDownloaded ? "DESC" : "ASC",
+        sortDirection: playlistUrl === "None" ? "DESC" : "ASC",
         playlistUrl,
       });
 
