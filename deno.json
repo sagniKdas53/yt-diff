@@ -32,6 +32,8 @@
         "test:unit": "deno test --allow-read --allow-write --allow-env tests/",
         "gen:api": "deno run --allow-read --allow-write --allow-env scripts/gen_openapi.ts",
         "chapters:backfill": "deno run --allow-read --allow-write --allow-env --allow-net --allow-run=ffprobe scripts/chapters_backfill.ts",
-        "facets:backfill": "deno run --allow-read --allow-write --allow-env --allow-net scripts/facets_backfill.ts"
+        "facets:backfill": "deno run --allow-read --allow-write --allow-env --allow-net scripts/facets_backfill.ts",
+        "filing:run": "deno run --allow-read --allow-write --allow-env --allow-net scripts/filing.ts run",
+        "filing:undo": "deno run --allow-read --allow-write --allow-env --allow-net scripts/filing.ts undo"
     }
 }

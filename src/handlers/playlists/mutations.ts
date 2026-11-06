@@ -132,16 +132,21 @@ export function createMutationHandlers(deps: PlaylistHandlerDependencies) {
             ? " and deleted playlist"
             : `Deleted playlist ${playlist.title}`;
 
-          await PlaylistMetadata.decrement(
-            "sortOrder",
-            {
-              by: 1,
-              where: {
-                sortOrder: { [Op.gt]: deletedSortOrder },
+          // An auto channel has sortOrder -1: it holds no place in the list, so
+          // deleting it leaves no gap. Decrementing "everything above -1" would
+          // pull every real playlist down one, and the one at 0 would vanish.
+          if (deletedSortOrder >= 0) {
+            await PlaylistMetadata.decrement(
+              "sortOrder",
+              {
+                by: 1,
+                where: {
+                  sortOrder: { [Op.gt]: deletedSortOrder },
+                },
+                transaction,
               },
-              transaction,
-            },
-          );
+            );
+          }
 
           logger.debug(
             "Updated sortOrder for playlists after deleted playlist",

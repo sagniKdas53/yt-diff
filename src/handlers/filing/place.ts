@@ -88,18 +88,22 @@ export function channelFromHandle(
   return matches[0].playlistUrl;
 }
 
+/** The `isChannelLike` bucket for videos whose owner isn't known. */
+export const UNKNOWN_OWNER = "";
+
 /**
  * Whether a playlist is really one account's videos, so it belongs under
  * Channels. `counts` holds every video in the playlist by owner, with the
- * ones that have no known owner under a key of the caller's choosing: unknown
- * owners count against the share, so a mixed playlist isn't labelled a channel.
+ * ones that have no known owner under UNKNOWN_OWNER: they count toward the
+ * total, so a mixed playlist isn't labelled a channel, but they can never be
+ * the dominant owner themselves.
  */
 export function isChannelLike(counts: Map<string, number>): boolean {
   let total = 0;
   let largest = 0;
-  for (const count of counts.values()) {
+  for (const [owner, count] of counts) {
     total += count;
-    if (count > largest) largest = count;
+    if (owner !== UNKNOWN_OWNER && count > largest) largest = count;
   }
   return largest >= CHANNEL_MIN_VIDEOS && largest / total >= CHANNEL_SHARE;
 }

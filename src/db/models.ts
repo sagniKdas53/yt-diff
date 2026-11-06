@@ -283,6 +283,11 @@ export class PlaylistMetadata extends Model<
   declare kind: CreationOptional<"playlist" | "channel">;
   /** Who made it. Only the filing job makes "auto" ones. */
   declare origin: CreationOptional<"user" | "auto">;
+  /**
+   * The filing sweep, not the user, flipped `kind` to "channel". Undo uses it
+   * to put back only what the job changed, and not a promoted channel.
+   */
+  declare kindSetByFiling: CreationOptional<boolean>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -338,6 +343,12 @@ PlaylistMetadata.init({
     allowNull: false,
     defaultValue: "user",
     comment: '"user", or "auto" for a channel the filing job created',
+  },
+  kindSetByFiling: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "The filing sweep flipped kind to channel; undo reverses it",
   },
 }, {
   sequelize,

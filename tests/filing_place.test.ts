@@ -10,6 +10,7 @@ import {
   isChannelLike,
   type KnownPlaylist,
   placeVideos,
+  UNKNOWN_OWNER,
   type UnlistedRow,
 } from "../src/handlers/filing/place.ts";
 
@@ -341,5 +342,19 @@ Deno.test("filing place - the URL side is compared without case or @", () => {
   assertEquals(
     channelFromHandle(row({ channelHandle: "match-me" }), bare),
     "https://a.example/MATCH-ME",
+  );
+});
+
+Deno.test("filing place - videos with no known owner never make a channel", () => {
+  // 10 unknown videos are not "one account": the unknown bucket counts toward
+  // the total and can never be the dominant owner.
+  assertEquals(isChannelLike(new Map([[UNKNOWN_OWNER, 10]])), false);
+  assertEquals(
+    isChannelLike(new Map([[UNKNOWN_OWNER, 2], ["a", 8]])),
+    true,
+  );
+  assertEquals(
+    isChannelLike(new Map([[UNKNOWN_OWNER, 3], ["a", 7]])),
+    false,
   );
 });
