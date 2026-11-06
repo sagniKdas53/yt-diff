@@ -11,12 +11,16 @@ carry the design, so your job is to execute them one at a time.
 | Review and plans           | Merged to `master`                                       |
 | 30-day login sessions      | Merged to `master` (PR #137). Not yet deployed to the Pi |
 | Plans 01 to 06             | Not started                                              |
-| Pi measurements (Phase 0a) | Not run; needed before plan 05                           |
+| Pi measurements (Phase 0a) | Done. Results in `notes-2026-11-06.md`                   |
+| Pi measurements (0b, c, d) | Not run, and nothing depends on them                     |
+| Test data                  | `seed/`, loaded and checked against production           |
 | Frontend `material`        | Unchanged at `a401984`                                   |
 | Test baseline              | 482 backend, 316 frontend, all passing                   |
 
 The owner has approved everything in the `README.md` Decisions table, including
-the Home and Library layouts.
+the Home and Library layouts. On 2026-11-06 the owner chose the Unlisted design:
+Saved or Links only, one Archive with filters, one Channels list, and a Clips
+shelf. These plans run locally.
 
 ## Before the first session (owner)
 
@@ -46,17 +50,15 @@ PR is open. Then update the Progress table below, in that plan's branch.
 
 ## What each plan needs first
 
-| Plan | Before starting                                                                             |
-| :--- | :------------------------------------------------------------------------------------------ |
-| 01   | Nothing                                                                                     |
-| 02   | 01 merged                                                                                   |
-| 03   | 02 merged                                                                                   |
-| 04   | 03 merged. Backend PR merges before its frontend PR                                         |
-| 05   | 04 merged and its backfill run. **Phase 0a SQL output from the Pi pasted into the session** |
-| 06   | 05 merged and its backfill run                                                              |
-
-Phase 0a is in `../design-architecture-playback-review.md`, section 3. Check the
-table names with `\dt` first.
+| Plan | Before starting                                     |
+| :--- | :-------------------------------------------------- |
+| 01   | Nothing                                             |
+| 02   | 01 merged                                           |
+| 03   | 02 merged                                           |
+| 04   | 03 merged. Backend PR merges before its frontend PR |
+| 05   | Nothing. Run `seed/load.sh` for the test database   |
+| 05b  | 02 and 05 merged                                    |
+| 06   | 04, 05 and 05b merged, and their backfills run      |
 
 ## Things already proven, so don't re-derive them
 
@@ -92,6 +94,18 @@ table names with `\dt` first.
   frontend branch.
 - **The full frontend suite takes about 3 minutes.** Run single files during a
   task.
+- **`unique: true` adds a constraint on every boot.** `user_accounts` has 228 of
+  them from `sync({ alter: true })`. Use `primaryKey` or a named index on new
+  tables. The existing ones aren't planned work.
+- **This repository is public.** Don't commit anything from production without
+  pseudonymizing it, and don't name sites other than YouTube in new documents.
+  See `seed/README.md`.
+- **Only the filing job writes negative positions.** Any code doing arithmetic
+  on `positionInPlaylist` has to allow for them. Plan 05 lists the known places.
+- **`approximateSize` can't be trusted.** It totals 8.7 GB for a 361.5 GB
+  library.
+- **`raw_metadata` holds `cookies` in 230 rows,** and backups copy them. It
+  isn't planned work, so tell the owner if you're near that code.
 - **Line numbers are from `0040ad3` / `a401984`** and drift as plans merge.
   Search for the symbol if a range looks wrong.
 - **`tests/auth_token.test.ts` pins the code default at `24h`.** The 30-day
@@ -108,21 +122,22 @@ table names with `\dt` first.
 | :--- | :--------------------------------------------------------------------------- |
 | 03   | `deno task media:backfill`, then `media:remux-mkv` (dry run, then `--apply`) |
 | 04   | `deno task owners:backfill`, then with `--apply --assign-unowned <you>`      |
-| 05   | `deno task facets:backfill`                                                  |
+| 05   | `facets:backfill`, then `filing:run` (dry run, then `--apply`), then enable  |
 | 06   | `deno task facets:backfill` again, to fill `downloadedAt`                    |
 
 Use the same method you use for `chapters:backfill` in the container.
 
 ## Progress
 
-| Plan                                  | Branch(es)                                       | PR | Merged | Backfill run |
-| :------------------------------------ | :----------------------------------------------- | :- | :----- | :----------- |
-| 01 Playback fixes                     | `fix/playback-failures`                          |    |        | n/a          |
-| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                         |    |        | n/a          |
-| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`      |    |        |              |
-| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui`   |    |        |              |
-| 05 Auto-collections                   | `feat/auto-collections`, `feat/library-channels` |    |        |              |
-| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`             |    |        |              |
+| Plan                                  | Branch(es)                                     | PR | Merged | Backfill run |
+| :------------------------------------ | :--------------------------------------------- | :- | :----- | :----------- |
+| 01 Playback fixes                     | `fix/playback-failures`                        |    |        | n/a          |
+| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                       |    |        | n/a          |
+| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`    |    |        |              |
+| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui` |    |        |              |
+| 05 Unlisted filing                    | `feat/unlisted-filing`                         |    |        |              |
+| 05b Library views                     | `feat/library-views`                           |    |        | n/a          |
+| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |    |        |              |
 
 ## Not in scope
 

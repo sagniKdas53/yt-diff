@@ -270,6 +270,26 @@ inside it would be circular.
 - [ ] **Step 5: Commit, advisor checkpoint, open the frontend PR.**
       `feat(notifications): show the saved log and its delivery status`.
 
+### Task 7: Finished videos in Library views
+
+Do this if plan 05 has merged. If not, plan 05 has to add it instead, once these
+tables exist.
+
+**Backend files:** Modify `src/handlers/filing/views.ts`,
+`src/middleware/validator.ts`, `tests/library_views.test.ts`. **Frontend
+files:** Modify `src/components/SubList.jsx`, `tests/desktop/SubList.test.jsx`.
+
+- [ ] **Step 1: Write failing tests.**
+  - `inbox` leaves out videos this user has finished.
+  - With no `userId`, it doesn't exclude by progress.
+  - `/getsub` with `hideWatched: true` applies the same exclusion to any list.
+  - The header has a `Hide watched` switch, remembered in `localStorage`, with
+    try/catch around it.
+- [ ] **Step 2: Run them.** Expected: FAIL.
+- [ ] **Step 3: Implement** with a `NOT EXISTS` on finished `watch_progress`
+      rows, using replacements.
+- [ ] **Step 4: Run them, and commit.** `feat(library): hide finished videos`.
+
 ### After merging (run on the Pi, by you)
 
 ```bash
