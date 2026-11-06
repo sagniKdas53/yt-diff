@@ -19,6 +19,12 @@ import type {
   SubListRequest,
 } from "./types.ts";
 import { json } from "../../utils/http.ts";
+import {
+  andWhere,
+  buildLibraryFilter,
+  parseLibraryRequest,
+  viewForPlaylist,
+} from "../filing/views.ts";
 import { listOrder } from "./order.ts";
 
 /**
@@ -187,6 +193,21 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
         playlistUrl,
       });
 
+      const library = parseLibraryRequest(requestBody);
+      if (library === null) {
+        // The schema already refuses these at the route; this keeps a direct
+        // caller from ever reaching the query with a malformed filter.
+        json(response, 400, { error: "Invalid view or filter" });
+        return;
+      }
+      const {
+        videoWhere: libraryVideoWhere,
+        mappingWhere: libraryMappingWhere,
+      } = buildLibraryFilter(
+        viewForPlaylist(playlistUrl, library.view),
+        library.filter,
+      );
+
       const videoMetadataWhere: WhereOptions = {};
       const mappingWhere: WhereOptions = {
         playlistUrl: playlistUrl,
@@ -266,10 +287,21 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
             "missingExtras",
             "lastDownloadError",
           ],
-          where: videoMetadataWhere,
-          required: !!(searchQuery && searchQuery.length > 0),
+          // A filter on the video is a join condition, so the include has to be
+          // required: otherwise the rows stay and `count` counts them too.
+          where: andWhere(
+            Object.keys(videoMetadataWhere).length > 0 ||
+              Object.getOwnPropertySymbols(videoMetadataWhere).length > 0
+              ? videoMetadataWhere
+              : undefined,
+            libraryVideoWhere,
+          ),
+          required: !!(searchQuery && searchQuery.length > 0) ||
+            libraryVideoWhere !== undefined,
         }],
-        where: mappingWhere,
+        // A view re-scopes to Unlisted after a `global:` search has dropped the
+        // scope, so a search from inside a view stays inside that view.
+        where: andWhere(mappingWhere, libraryMappingWhere)!,
         limit: endIndex - startIndex,
         offset: startIndex,
         order: sortOrder,

@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 
 import type { Chapter } from "../pipeline/chapters.ts";
+import type { LibraryFilter, LibraryView } from "../filing/views.ts";
 
 export interface PlaylistDisplayRequest {
   start?: number;
@@ -16,6 +17,8 @@ export interface SubListRequest {
   stop?: number;
   query?: string;
   sortDownloaded?: boolean;
+  view?: LibraryView;
+  filter?: LibraryFilter;
 }
 
 export interface UpdatePlaylistMonitoringRequest {

@@ -4,6 +4,12 @@ import { PlaylistVideoMapping, VideoMetadata } from "../../db/models.ts";
 import { logger } from "../../logger.ts";
 import type { HttpResponseLike } from "../../transport/http.ts";
 import { json } from "../../utils/http.ts";
+import {
+  andWhere,
+  buildLibraryFilter,
+  type LibraryFilter,
+  type LibraryView,
+} from "../filing/views.ts";
 import { rowsBefore } from "../playlists/order.ts";
 import { resolveVideoPlaylist } from "./download-location.ts";
 
@@ -13,6 +19,9 @@ export interface LocateRequestBody {
   pageSize?: number;
   /** `/getsub`'s downloaded-first ordering, which pages differently. */
   sortDownloaded?: boolean;
+  /** The view and filter the list is shown under, if any. */
+  view?: LibraryView;
+  filter?: LibraryFilter;
 }
 
 /** Where a video should be opened, and which page of that list it is on. */
@@ -39,24 +48,45 @@ export interface VideoLocation {
  */
 export async function locateVideo(
   videoUrl: string,
-  options: { pageSize?: number; sortDownloaded?: boolean } = {},
+  options: {
+    pageSize?: number;
+    sortDownloaded?: boolean;
+    view?: LibraryView | null;
+    filter?: LibraryFilter;
+  } = {},
 ): Promise<VideoLocation> {
-  const location = await resolveVideoPlaylist(videoUrl);
-  const targetPlaylistUrl = location?.playlistUrl ?? "None";
+  const view = options.view ?? null;
+  const { videoWhere, mappingWhere } = buildLibraryFilter(
+    view,
+    options.filter ?? {},
+  );
+
+  // A view is a list of Unlisted, so the page is counted there: asking where
+  // an Inbox row is must answer for the Inbox, not for the channel the video
+  // was filed into, which is a different list with a different order.
+  const location = view === null ? await resolveVideoPlaylist(videoUrl) : null;
+  const targetPlaylistUrl = view !== null
+    ? "None"
+    : (location?.playlistUrl ?? "None");
 
   const mapping = await PlaylistVideoMapping.findOne({
     attributes: ["id", "positionInPlaylist"],
     include: [{
       model: VideoMetadata,
       attributes: ["downloadStatus"],
-      required: false,
+      required: videoWhere !== undefined,
+      where: videoWhere,
     }],
-    where: { videoUrl, playlistUrl: targetPlaylistUrl },
+    where: andWhere(
+      { videoUrl, playlistUrl: targetPlaylistUrl },
+      mappingWhere,
+    )!,
   });
   if (!mapping) {
-    // The video belongs to no list or no row records where it sits, so the
-    // page it opens on is unknown. Page 0 would be a claim, not a fact: the
-    // player would open the front of the list and quietly drop `v=`.
+    // The video belongs to no list, no row records where it sits, or it isn't
+    // in the view and filter asked about. The page it opens on is unknown:
+    // page 0 would be a claim, not a fact, and the player would open the front
+    // of the list and quietly drop `v=`.
     return {
       videoUrl,
       playlistUrl: location ? location.playlistUrl : null,
@@ -69,16 +99,31 @@ export async function locateVideo(
     ? Math.floor(options.pageSize)
     : config.chunkSize;
 
+  // Every count carries the same view and filter the list was fetched with.
+  const countRows = (where: WhereOptions, downloadedOnly = false) =>
+    PlaylistVideoMapping.count({
+      where: andWhere(where, mappingWhere)!,
+      include: downloadedOnly || videoWhere !== undefined
+        ? [{
+          model: VideoMetadata,
+          required: true,
+          where: andWhere(
+            videoWhere,
+            downloadedOnly ? { downloadStatus: true } : undefined,
+          ),
+        }]
+        : undefined,
+    });
+
   const index = options.sortDownloaded
     ? await downloadedFirstIndex(
       targetPlaylistUrl,
       mappingId,
       position,
       !!mapping.video_metadatum?.downloadStatus,
+      countRows,
     )
-    : await PlaylistVideoMapping.count({
-      where: rowsBefore(targetPlaylistUrl, position, mappingId),
-    });
+    : await countRows(rowsBefore(targetPlaylistUrl, position, mappingId));
 
   return {
     videoUrl,
@@ -100,26 +145,17 @@ async function downloadedFirstIndex(
   mappingId: string,
   position: number,
   isDownloaded: boolean,
+  countRows: (where: WhereOptions, downloadedOnly?: boolean) => Promise<number>,
 ): Promise<number> {
-  const countDownloaded = (where: WhereOptions) =>
-    PlaylistVideoMapping.count({
-      where,
-      include: [{
-        model: VideoMetadata,
-        required: true,
-        where: { downloadStatus: true },
-      }],
-    });
-
   const before = rowsBefore(playlistUrl, position, mappingId);
 
   if (isDownloaded) {
-    return await countDownloaded(before);
+    return await countRows(before, true);
   }
 
-  const totalDownloaded = await countDownloaded({ playlistUrl });
-  const ahead = await PlaylistVideoMapping.count({ where: before });
-  const downloadedAhead = await countDownloaded(before);
+  const totalDownloaded = await countRows({ playlistUrl }, true);
+  const ahead = await countRows(before);
+  const downloadedAhead = await countRows(before, true);
 
   return totalDownloaded + ahead - downloadedAhead;
 }
@@ -136,6 +172,8 @@ export async function processLocateRequest(
       await locateVideo(requestBody.videoUrl, {
         pageSize: requestBody.pageSize,
         sortDownloaded: requestBody.sortDownloaded,
+        view: requestBody.view,
+        filter: requestBody.filter,
       }),
     );
   } catch (error) {
