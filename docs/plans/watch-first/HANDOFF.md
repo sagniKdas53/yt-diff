@@ -12,7 +12,8 @@ carry the design, so your job is to execute them one at a time.
 | 30-day login sessions      | Merged to `master` (PR #137). Not yet deployed to the Pi |
 | Plans 01 to 06             | Not started                                              |
 | Pi measurements (Phase 0a) | Done. Results in `notes-2026-11-06.md`                   |
-| Pi measurements (0b, c, d) | Not run, and nothing depends on them                     |
+| Pi measurements (0b)       | Laptop done, in the notes. Phones to come                |
+| Pi measurements (0c, 0d)   | Not run, and nothing depends on them                     |
 | Test data                  | `seed/`, loaded and checked against production           |
 | Frontend `material`        | Unchanged at `a401984`                                   |
 | Test baseline              | 482 backend, 316 frontend, all passing                   |
@@ -24,7 +25,11 @@ shelf. These plans run locally.
 
 ## Before the first session (owner)
 
-1. **Update your local checkout:** `git switch master && git pull`.
+1. **Stay on `docs/unlisted-filing-plan` until its PR merges.** Plans 05 and 05b
+   and `seed/` exist only there, so `master` would lose them. While it's open,
+   branch backend work from it and target backend PRs at it. Frontend branches
+   still start from `material`. After it merges, use
+   `git switch master && git pull`, and branch from `master`.
 2. **Deploy the 30-day sessions:** run `make pi5` to regenerate `.env`, then
    recreate the container. A new image alone doesn't apply it, because the
    change is in `docker-compose.yml` and `envs/base.env`.

@@ -227,8 +227,9 @@ if they still bother you.
 - Stable thumbnail URLs (L8, S6). Only worth doing if a profile shows thumbnails
   costing real time.
 - On-demand transcoding. A file that can't play offers Download and VLC instead.
-- Phase 0b, c and d from the review. They still tell you whether "mid" is the
-  client or the server, and nothing here depends on the answer.
+- Phase 0c and d from the review, and 0b on phones. They still tell you whether
+  "mid" is the client or the server, and nothing here depends on the answer. The
+  laptop half of 0b is in the notes.
 - Filling in metadata for rows that have none, which needs a yt-dlp call per
   row. 844 rows stay in Archive under their site until a re-index gives them
   more.
