@@ -1,9 +1,10 @@
 # Automated Jobs in yt-diff
 
 `yt-diff` uses [`node-cron`](https://www.npmjs.com/package/cron) to run
-background jobs on configurable schedules. Four always run; a fifth is
-registered only when the chat bot is enabled. All jobs start automatically when
-the server boots and are logged with their next scheduled run time.
+background jobs on configurable schedules. Four always run; the bot retention
+and filing jobs are registered only when switched on. All jobs start
+automatically when the server boots and are logged with their next scheduled run
+time.
 
 ---
 
@@ -16,6 +17,7 @@ the server boots and are logged with their next scheduled run time.
 | **Prune**         | `*/30 * * * *` (every 30 min) | `PRUNE_INTERVAL`        | Remove or relocate orphaned video records   |
 | **Extras Retry**  | `7 * * * *` (hourly)          | `EXTRAS_RETRY_INTERVAL` | Retry fetching rate-limited missing extras  |
 | **Bot Retention** | `0 * * * *` (hourly)          | `BOT_REAP_INTERVAL`     | Delete expired ephemeral chat-bot downloads |
+| **Filing**        | `0 3 * * *` (daily, 03:00)    | `FILING_INTERVAL`       | Give each Unlisted video a home (off by default) |
 
 > [!NOTE]
 > **Bot Retention only exists when `BOT_ENABLED=true`.** It is constructed in
@@ -294,4 +296,50 @@ Production defaults in `envs/base.env` remain hourly / 24h.
 
 ---
 
-_Last updated at: 2026-10-17_
+## 6. Filing Job
+
+**Purpose**: Gives every Unlisted video a home, so the pile stops being one long
+list. **Off unless `FILING_ENABLED=true`**, and `createJobs` registers nothing
+when it is off. Nothing is deleted or moved: no file is touched, no `None`
+mapping is removed, and the job never reads or writes `retention` or
+`expiresAt`.
+
+### How It Works
+
+1. Reads each Unlisted video's site, channel and length from the facet columns
+   (`deno task facets:backfill` fills them for older rows; a row without
+   facets is skipped and counted).
+2. Places it, first rule that fits: a playlist it is already in or whose URL
+   names its uploader; Clips (known length under 2 minutes); a channel with at
+   least 3 videos left; otherwise Archive.
+3. Records the placement in `video_filing`. A playlist or channel placement also
+   adds a mapping at a negative position, so scans and a monitored playlist's
+   tail never see it. A channel the job creates is a normal playlist row
+   (`auto:<channelKey>`, kind `channel`, `sortOrder -1`).
+4. A video you take out of a filed playlist, or whose playlist you delete, goes
+   to Archive and stays there.
+5. A run still in progress makes the next tick skip.
+
+### Commands
+
+| Command                           | Effect                                         |
+| :-------------------------------- | :--------------------------------------------- |
+| `deno task filing:run`            | Dry run: prints what would happen              |
+| `deno task filing:run --apply`    | Files the videos                               |
+| `deno task filing:undo`           | Dry run of the undo                            |
+| `deno task filing:undo --apply`   | Removes what the job added and nothing else    |
+
+Review a dry run before enabling the job. Undo removes mappings at negative
+positions, the filing rows, the auto channels left empty, and the `kind` the job
+changed.
+
+### Configuration
+
+| Env Var           | Default     | Description                                     |
+| :---------------- | :---------- | :---------------------------------------------- |
+| `FILING_ENABLED`  | `false`     | Register the job. Both variables are passed through `docker-compose.yml` |
+| `FILING_INTERVAL` | `0 3 * * *` | Cron expression, after the 02:00 prune and before the 04:00 update |
+
+---
+
+_Last updated at: 2026-11-06_

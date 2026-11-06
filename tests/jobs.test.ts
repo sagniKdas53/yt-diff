@@ -1,5 +1,6 @@
-import { assertEquals } from "std/assert/mod.ts";
+import { assert, assertEquals } from "std/assert/mod.ts";
 import { buildRetryableVideosWhere, createJobs } from "../src/jobs/index.ts";
+import { config } from "../src/config.ts";
 import { PlaylistMetadata, VideoMetadata } from "../src/db/models.ts";
 import { Op } from "sequelize";
 import type {
@@ -230,4 +231,91 @@ Deno.test("jobs - the sidecar retry fires at most a batch at a time", async () =
   // Sequential, not fired at once: each row takes a download slot and the job
   // sleeps between them, because a batch at the same instant is the next 429.
   assertEquals(synced, ["url_0", "url_1", "url_2"]);
+});
+
+/** createJobs with everything stubbed but the filing runner. */
+function filingJobs(
+  filing: { enabled: boolean; interval?: string },
+  runFiling: () => Promise<unknown>,
+) {
+  const previous = { ...config.filing };
+  config.filing.enabled = filing.enabled;
+  if (filing.interval !== undefined) config.filing.interval = filing.interval;
+  const jobs = createJobs({
+    cleanupStaleProcesses: () => 0,
+    downloadProcesses: new Map(),
+    listProcesses: new Map(),
+    listItemsConcurrently: () => Promise.resolve([]),
+    syncExtras: (videoUrl: string) =>
+      Promise.resolve({
+        url: videoUrl,
+        status: "unchanged" as const,
+        recovered: [],
+        stillMissing: [],
+        reason: null,
+      }),
+    runFiling,
+  });
+  return {
+    jobs,
+    done: () => {
+      for (const job of Object.values(jobs)) job?.stop();
+      Object.assign(config.filing, previous);
+    },
+  };
+}
+
+Deno.test("jobs - filing is not registered unless FILING_ENABLED", () => {
+  const { jobs, done } = filingJobs(
+    { enabled: false },
+    () => Promise.resolve(),
+  );
+  try {
+    assertEquals(jobs.filing, undefined);
+  } finally {
+    done();
+  }
+});
+
+Deno.test("jobs - filing runs on FILING_INTERVAL when enabled", () => {
+  const { jobs, done } = filingJobs(
+    { enabled: true, interval: "5 3 * * *" },
+    () => Promise.resolve(),
+  );
+  try {
+    assert(jobs.filing !== undefined, "an enabled filing job is registered");
+    const cron = jobs.filing as unknown as { cronTime: { source: string } };
+    assertEquals(cron.cronTime.source, "5 3 * * *");
+  } finally {
+    done();
+  }
+});
+
+Deno.test("jobs - a filing run still in progress makes the next one skip", async () => {
+  let started = 0;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const { jobs, done } = filingJobs({ enabled: true }, () => {
+    started++;
+    return gate;
+  });
+  try {
+    await jobs.filing!.fireOnTick();
+    await jobs.filing!.fireOnTick();
+    for (let i = 0; i < 20 && started === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assertEquals(started, 1, "the second tick must skip, not start a run");
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await jobs.filing!.fireOnTick();
+    for (let i = 0; i < 20 && started === 1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assertEquals(started, 2, "once the run ends, the next tick runs again");
+  } finally {
+    release();
+    done();
+  }
 });

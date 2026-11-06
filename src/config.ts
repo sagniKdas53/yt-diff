@@ -284,6 +284,11 @@ export interface AppConfig {
   pruneInterval: string;
   /** Cron for the hourly rate-limited sidecar retry. */
   extrasRetryInterval: string;
+  /**
+   * The Unlisted filing job. Off unless asked for: review a dry run first
+   * (`deno task filing:run`), then set FILING_ENABLED=true.
+   */
+  filing: { enabled: boolean; interval: string };
   timeZone: string;
   saveSubs: boolean;
   saveDescription: boolean;
@@ -475,6 +480,11 @@ export const config: AppConfig = {
   // Off the hour on purpose: every other job in this file fires on a ten or
   // fifteen minute boundary, and a retry that piles onto them helps nobody.
   extrasRetryInterval: Deno.env.get("EXTRAS_RETRY_INTERVAL") || "7 * * * *",
+  filing: {
+    enabled: Deno.env.get("FILING_ENABLED") === "true",
+    // After the 02:00 prune and before the 04:00 update.
+    interval: Deno.env.get("FILING_INTERVAL") || "0 3 * * *",
+  },
   timeZone: Deno.env.get("TZ_PREFERRED") || "Asia/Kolkata",
   saveSubs: Deno.env.get("SAVE_SUBTITLES") !== "false",
   saveDescription: Deno.env.get("SAVE_DESCRIPTION") !== "false",
