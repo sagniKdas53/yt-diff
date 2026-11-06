@@ -57,8 +57,11 @@ export interface DeduplicateResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Return hostname without leading www./m. for domain-scoping comparisons. */
-function coreHostname(url: string): string {
+/**
+ * Return hostname without leading www./m. for domain-scoping comparisons.
+ * Exported so filing derives `site` the same way dedup groups by it.
+ */
+export function coreHostname(url: string): string {
   try {
     return new URL(url).hostname
       .replace(/^www\./, "")
