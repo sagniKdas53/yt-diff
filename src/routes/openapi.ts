@@ -204,6 +204,31 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
     saveDirectory: z.string(),
     playlistTitle: z.string().nullable(),
   }),
+  "/library/summary": z.object({
+    inbox: z.number(),
+    bot: z.number(),
+    clips: z.number(),
+    archive: z.number(),
+    all: z.number(),
+    notSwept: z.number(),
+  }),
+  "/library/facets": z.object({
+    saved: z.object({ saved: z.number(), links: z.number() }),
+    sites: z.array(
+      z.object({ site: z.string(), name: z.string(), count: z.number() }),
+    ),
+    years: z.array(z.object({ year: z.number(), count: z.number() })),
+    months: z.array(z.object({ month: z.number(), count: z.number() })),
+    lengths: z.array(
+      z.object({
+        band: z.enum(["clip", "short", "medium", "long", "unknown"]),
+        count: z.number(),
+      }),
+    ),
+    creators: z.array(
+      z.object({ key: z.string(), name: z.string(), count: z.number() }),
+    ),
+  }),
   "/delsub": z.object({
     message: z.string(),
     deleted: z.array(z.string()),

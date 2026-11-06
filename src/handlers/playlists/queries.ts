@@ -22,6 +22,10 @@ import { json } from "../../utils/http.ts";
 import {
   andWhere,
   buildLibraryFilter,
+  libraryFacets,
+  type LibraryFilter,
+  librarySummary,
+  type LibraryView,
   parseLibraryRequest,
   viewForPlaylist,
 } from "../filing/views.ts";
@@ -388,5 +392,45 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
     }
   }
 
-  return { getPlaylistsForDisplay, getSubListVideos };
+  async function getLibrarySummary(
+    _requestBody: Record<string, never>,
+    response: HttpResponseLike,
+  ): Promise<void> {
+    try {
+      json(response, 200, await librarySummary());
+    } catch (error) {
+      logger.error("Failed to count the library views", {
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+      json(response, 500, { error: "Could not count the library." });
+    }
+  }
+
+  async function getLibraryFacets(
+    requestBody: { view?: LibraryView; filter?: LibraryFilter },
+    response: HttpResponseLike,
+  ): Promise<void> {
+    const library = parseLibraryRequest(requestBody);
+    if (library === null) {
+      json(response, 400, { error: "Invalid view or filter" });
+      return;
+    }
+    try {
+      json(response, 200, await libraryFacets(library.view, library.filter));
+    } catch (error) {
+      logger.error("Failed to count the library filters", {
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+      json(response, 500, { error: "Could not count the filters." });
+    }
+  }
+
+  return {
+    getPlaylistsForDisplay,
+    getSubListVideos,
+    getLibrarySummary,
+    getLibraryFacets,
+  };
 }

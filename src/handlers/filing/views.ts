@@ -1,7 +1,11 @@
-import { literal, Op, type WhereOptions } from "sequelize";
+import { col, fn, literal, Op, type WhereOptions } from "sequelize";
 import type { z } from "zod";
 import { config } from "../../config.ts";
-import { sequelize } from "../../db/models.ts";
+import {
+  PlaylistVideoMapping,
+  sequelize,
+  VideoMetadata,
+} from "../../db/models.ts";
 import {
   LibraryFilterSchema,
   LibraryViewSchema,
@@ -157,5 +161,267 @@ export function buildLibraryFilter(
         ...(mapping.length > 0 ? { [Op.and]: mapping } : {}),
       }
       : undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Counts for the rail and the filter bar
+// ---------------------------------------------------------------------------
+
+export type FacetDimension =
+  | "saved"
+  | "site"
+  | "year"
+  | "month"
+  | "length"
+  | "channel";
+
+/**
+ * The filter a dimension's own counts are taken under: everything except that
+ * dimension's selection. Picking one site must still list the other sites, or
+ * the filter bar would only ever show the choice already made. Dropping the
+ * year drops the month with it, because a month means nothing without a year.
+ */
+export function filterWithout(
+  filter: LibraryFilter,
+  dimension: FacetDimension,
+): LibraryFilter {
+  const rest = { ...filter };
+  switch (dimension) {
+    case "year":
+      delete rest.year;
+      delete rest.month;
+      break;
+    default:
+      delete rest[dimension];
+  }
+  return rest;
+}
+
+/**
+ * The label for a key that has been seen under several names: the most common
+ * one, then the first alphabetically so the choice never flips between runs.
+ */
+export function pickName(
+  entries: Array<{ name: string | null; count: number }>,
+): string | null {
+  const named = entries.filter(
+    (e): e is { name: string; count: number } => e.name !== null,
+  );
+  if (named.length === 0) return null;
+  named.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return named[0].name;
+}
+
+export interface LibrarySummary {
+  inbox: number;
+  bot: number;
+  clips: number;
+  archive: number;
+  all: number;
+  notSwept: number;
+}
+
+export interface LibraryFacets {
+  saved: { saved: number; links: number };
+  sites: Array<{ site: string; name: string; count: number }>;
+  years: Array<{ year: number; count: number }>;
+  months: Array<{ month: number; count: number }>;
+  lengths: Array<{ band: LengthBand; count: number }>;
+  creators: Array<{ key: string; name: string; count: number }>;
+}
+
+const LENGTH_BANDS: LengthBand[] = [
+  "clip",
+  "short",
+  "medium",
+  "long",
+  "unknown",
+];
+const CREATOR_LIMIT = 50;
+
+/** Counts of Unlisted under a view and filter. */
+async function countUnlisted(
+  view: LibraryView | null,
+  filter: LibraryFilter,
+  now: Date,
+): Promise<number> {
+  const { videoWhere, mappingWhere } = buildLibraryFilter(view, filter, now);
+  return await PlaylistVideoMapping.count({
+    where: andWhere({ playlistUrl: "None" }, mappingWhere)!,
+    include: videoWhere === undefined ? undefined : [{
+      model: VideoMetadata,
+      attributes: [],
+      required: true,
+      where: videoWhere,
+    }],
+  });
+}
+
+/**
+ * Grouped counts of Unlisted under a view and filter. The expressions name the
+ * two table aliases Sequelize gives this query (the mapping, and the video
+ * through its association); there is no limit here, so the query is never
+ * wrapped in a subquery and they hold.
+ */
+async function groupedCounts(
+  view: LibraryView | null,
+  filter: LibraryFilter,
+  now: Date,
+  groups: Array<
+    [expression: ReturnType<typeof col> | ReturnType<typeof fn>, alias: string]
+  >,
+): Promise<Array<Record<string, unknown> & { count: number }>> {
+  const { videoWhere, mappingWhere } = buildLibraryFilter(view, filter, now);
+  const found = await PlaylistVideoMapping.findAll({
+    attributes: [
+      ...groups.map(([expression, alias]): [typeof expression, string] => [
+        expression,
+        alias,
+      ]),
+      [fn("COUNT", col("playlist_video_mapping.id")), "count"],
+    ],
+    where: andWhere({ playlistUrl: "None" }, mappingWhere)!,
+    include: [{
+      model: VideoMetadata,
+      attributes: [],
+      required: true,
+      where: videoWhere,
+    }],
+    group: groups.map(([expression]) => expression),
+    raw: true,
+  }) as unknown as Array<Record<string, unknown>>;
+  return found.map((row) => ({ ...row, count: Number(row.count) }));
+}
+
+const addedIn = (unit: "year" | "month") =>
+  fn(
+    "date_part",
+    unit,
+    literal(
+      `"playlist_video_mapping"."createdAt" AT TIME ZONE ${
+        sequelize.escape(config.timeZone)
+      }`,
+    ),
+  );
+
+/** How many videos each view holds, for the rail. */
+export async function librarySummary(
+  now: Date = new Date(),
+): Promise<LibrarySummary> {
+  const [inbox, bot, clips, archive, all, notSwept] = await Promise.all([
+    countUnlisted("inbox", {}, now),
+    countUnlisted("bot", {}, now),
+    countUnlisted("clips", {}, now),
+    countUnlisted("archive", {}, now),
+    countUnlisted(null, {}, now),
+    PlaylistVideoMapping.count({
+      where: {
+        playlistUrl: "None",
+        videoUrl: {
+          [Op.notIn]: literal(`(SELECT "videoUrl" FROM video_filing)`),
+        },
+      },
+    }),
+  ]);
+  return { inbox, bot, clips, archive, all, notSwept };
+}
+
+/**
+ * The options and counts for the filter bar. Each list is counted under the
+ * view and every filter except its own selection, so each one still offers the
+ * alternatives to what is picked.
+ */
+export async function libraryFacets(
+  view: LibraryView | null,
+  filter: LibraryFilter,
+  now: Date = new Date(),
+): Promise<LibraryFacets> {
+  const [saved, links, lengths, sites, years, months, creators] = await Promise
+    .all([
+      countUnlisted(
+        view,
+        { ...filterWithout(filter, "saved"), saved: true },
+        now,
+      ),
+      countUnlisted(
+        view,
+        { ...filterWithout(filter, "saved"), saved: false },
+        now,
+      ),
+      Promise.all(LENGTH_BANDS.map(async (band) => ({
+        band,
+        count: await countUnlisted(
+          view,
+          { ...filterWithout(filter, "length"), length: band },
+          now,
+        ),
+      }))),
+      groupedCounts(view, filterWithout(filter, "site"), now, [
+        [col("video_metadatum.site"), "site"],
+        [col("video_metadatum.siteName"), "siteName"],
+      ]),
+      groupedCounts(view, filterWithout(filter, "year"), now, [
+        [addedIn("year"), "year"],
+      ]),
+      // Months only mean something inside a year.
+      filter.year === undefined ? Promise.resolve([]) : groupedCounts(
+        view,
+        filterWithout(filter, "month"),
+        now,
+        [[addedIn("month"), "month"]],
+      ),
+      groupedCounts(view, filterWithout(filter, "channel"), now, [
+        [col("video_metadatum.channelKey"), "channelKey"],
+        [col("video_metadatum.channelName"), "channelName"],
+      ]),
+    ]);
+
+  // Rows come back per (key, name); fold them into one entry per key.
+  const fold = (
+    rows: Array<Record<string, unknown> & { count: number }>,
+    keyField: string,
+    nameField: string,
+  ) => {
+    const byKey = new Map<
+      string,
+      Array<{ name: string | null; count: number }>
+    >();
+    for (const row of rows) {
+      const key = row[keyField] as string | null;
+      if (key === null || key === undefined) continue;
+      const entries = byKey.get(key) ?? [];
+      entries.push({
+        name: (row[nameField] as string | null) ?? null,
+        count: row.count,
+      });
+      byKey.set(key, entries);
+    }
+    return [...byKey].map(([key, entries]) => ({
+      key,
+      name: pickName(entries) ?? key,
+      count: entries.reduce((sum, e) => sum + e.count, 0),
+    }));
+  };
+  const byCountThenName = <T extends { count: number; name: string }>(
+    a: T,
+    b: T,
+  ) => b.count - a.count || a.name.localeCompare(b.name);
+
+  return {
+    saved: { saved, links },
+    sites: fold(sites, "site", "siteName")
+      .map(({ key, name, count }) => ({ site: key, name, count }))
+      .sort(byCountThenName),
+    years: years
+      .map((row) => ({ year: Number(row.year), count: row.count }))
+      .sort((a, b) => b.year - a.year),
+    months: months
+      .map((row) => ({ month: Number(row.month), count: row.count }))
+      .sort((a, b) => a.month - b.month),
+    lengths,
+    creators: fold(creators, "channelKey", "channelName")
+      .sort(byCountThenName)
+      .slice(0, CREATOR_LIMIT),
   };
 }

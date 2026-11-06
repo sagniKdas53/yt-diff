@@ -142,6 +142,15 @@ export const LibraryFilterSchema = z.object({
   { message: "A month needs a year" },
 );
 
+/** Counts for the rail take no input. */
+export const LibrarySummaryRequestSchema = z.object({});
+
+/** Counts for the filter bar, under the view and filter being shown. */
+export const LibraryFacetsRequestSchema = z.object({
+  view: LibraryViewSchema.optional(),
+  filter: LibraryFilterSchema.optional(),
+});
+
 export const SubListRequestSchema = z.object({
   url: z.string().optional(),
   start: z.number().optional(),

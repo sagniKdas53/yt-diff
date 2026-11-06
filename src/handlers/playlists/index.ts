@@ -15,5 +15,7 @@ export function createPlaylistHandlers(deps: PlaylistHandlerDependencies) {
     processDeleteVideosRequest: mutations.processDeleteVideosRequest,
     getPlaylistsForDisplay: queries.getPlaylistsForDisplay,
     getSubListVideos: queries.getSubListVideos,
+    getLibrarySummary: queries.getLibrarySummary,
+    getLibraryFacets: queries.getLibraryFacets,
   };
 }

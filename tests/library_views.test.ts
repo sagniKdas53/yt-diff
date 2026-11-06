@@ -3,10 +3,13 @@ import { Op } from "sequelize";
 import { config } from "../src/config.ts";
 import {
   buildLibraryFilter,
+  filterWithout,
   type LibraryView,
   parseLibraryRequest,
+  pickName,
   viewForPlaylist,
 } from "../src/handlers/filing/views.ts";
+import { API_ENDPOINTS } from "../src/routes/endpoints.ts";
 
 const VIEWS: LibraryView[] = ["inbox", "bot", "clips", "archive"];
 const NOW = new Date("2026-03-01T00:00:00Z");
@@ -221,4 +224,69 @@ Deno.test("library views - site and channel are equality filters on the facet co
       { channelKey: "a.example:acct" },
     ],
   });
+});
+
+const PICKED = {
+  saved: true,
+  site: "a.example",
+  year: 2026,
+  month: 3,
+  channel: "a.example:acct",
+  length: "short" as const,
+};
+
+Deno.test("library facets - each dimension drops its own selection and keeps the rest", () => {
+  // Picking one site still has to list the other sites, or the filter bar
+  // would only ever show the choice already made.
+  const { site, ...withoutSite } = PICKED;
+  assertEquals(filterWithout(PICKED, "site"), withoutSite);
+  assert(site === "a.example");
+
+  const { saved: _s, ...withoutSaved } = PICKED;
+  assertEquals(filterWithout(PICKED, "saved"), withoutSaved);
+
+  const { channel: _c, ...withoutChannel } = PICKED;
+  assertEquals(filterWithout(PICKED, "channel"), withoutChannel);
+
+  const { length: _l, ...withoutLength } = PICKED;
+  assertEquals(filterWithout(PICKED, "length"), withoutLength);
+});
+
+Deno.test("library facets - the year drops the month with it, the month keeps the year", () => {
+  // A month with no year isn't a valid filter, and the years list is the
+  // count across all years, so choosing March 2026 doesn't hide 2025.
+  const { year: _y, month: _m, ...withoutTime } = PICKED;
+  assertEquals(filterWithout(PICKED, "year"), withoutTime);
+
+  const { month: _mo, ...withoutMonth } = PICKED;
+  assertEquals(filterWithout(PICKED, "month"), withoutMonth);
+  assertEquals(filterWithout(PICKED, "month").year, 2026);
+});
+
+Deno.test("library facets - a name is the most common one for its key, then the first alphabetically", () => {
+  assertEquals(
+    pickName([
+      { name: "Old Name", count: 2 },
+      { name: "New Name", count: 7 },
+    ]),
+    "New Name",
+  );
+  assertEquals(
+    pickName([{ name: "b", count: 3 }, { name: "a", count: 3 }]),
+    "a",
+  );
+  assertEquals(pickName([]), null);
+  assertEquals(
+    pickName([{ name: null, count: 9 }, { name: "x", count: 1 }]),
+    "x",
+  );
+});
+
+Deno.test("library endpoints - summary and facets are registered, authenticated and uncosted", () => {
+  for (const path of ["/library/summary", "/library/facets"]) {
+    const endpoint = API_ENDPOINTS.find((e) => e.path === path);
+    assert(endpoint !== undefined, `${path} must be in the endpoint table`);
+    assertEquals(endpoint.kind, "authenticated");
+    assertEquals(endpoint.method, "POST");
+  }
 });

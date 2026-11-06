@@ -485,6 +485,8 @@ const {
   processDeleteVideosRequest,
   getPlaylistsForDisplay,
   getSubListVideos,
+  getLibrarySummary,
+  getLibraryFacets,
 } = createPlaylistHandlers({
   listItemsConcurrently,
   safeEmit,
@@ -710,6 +712,8 @@ const apiRoutes = createApiRoutes({
     getPlaylistsForDisplay,
     processDeletePlaylistRequest,
     getSubListVideos,
+    getLibrarySummary,
+    getLibraryFacets,
     processDeleteVideosRequest,
     makeSignedUrl,
     refreshSignedUrl,

@@ -43,33 +43,55 @@ interface SubListBody {
   rows: Array<{ video_metadatum: { videoUrl: string } }>;
 }
 
-/** Calls the real `/getsub` handler and returns what it would have sent. */
-async function getsub(body: Record<string, unknown> = {}) {
+/** Runs a real handler against a response that records what it was sent. */
+async function post<T>(
+  handler: (body: never, response: never) => Promise<void>,
+  body: Record<string, unknown>,
+): Promise<{ status: number; body: T }> {
   let status = 0;
   let text = "";
-  await handlers.getSubListVideos(
-    { url: "None", start: 0, stop: 5000, ...body },
-    {
-      headersSent: false,
-      setHeader: () => {},
-      writeHead: (s: number) => {
-        status = s;
-      },
-      write: () => {},
-      end: (chunk?: string | Uint8Array) => {
-        text = typeof chunk === "string"
-          ? chunk
-          : new TextDecoder().decode(chunk);
-      },
+  await (handler as (b: unknown, r: unknown) => Promise<void>)(body, {
+    headersSent: false,
+    setHeader: () => {},
+    writeHead: (s: number) => {
+      status = s;
     },
+    write: () => {},
+    end: (chunk?: string | Uint8Array) => {
+      text = typeof chunk === "string"
+        ? chunk
+        : new TextDecoder().decode(chunk);
+    },
+  });
+  return { status, body: JSON.parse(text) as T };
+}
+
+/** Calls the real `/getsub` handler and returns what it would have sent. */
+async function getsub(body: Record<string, unknown> = {}) {
+  const { status, body: parsed } = await post<SubListBody>(
+    handlers.getSubListVideos,
+    { url: "None", start: 0, stop: 5000, ...body },
   );
-  const parsed = JSON.parse(text) as SubListBody;
   return {
     status,
     count: parsed.count,
     urls: (parsed.rows ?? []).map((r) => r.video_metadatum.videoUrl),
   };
 }
+
+interface Facets {
+  saved: { saved: number; links: number };
+  sites: Array<{ site: string; name: string; count: number }>;
+  years: Array<{ year: number; count: number }>;
+  months: Array<{ month: number; count: number }>;
+  lengths: Array<{ band: string; count: number }>;
+  creators: Array<{ key: string; name: string; count: number }>;
+}
+
+const facets = async (body: Record<string, unknown> = {}) =>
+  (await post<Facets>(handlers.getLibraryFacets, body)).body;
+const sum = (list: Array<{ count: number }>) =>
+  list.reduce((total, item) => total + item.count, 0);
 
 const NONE = `FROM playlist_video_mappings m
   JOIN video_metadata v USING ("videoUrl")
@@ -420,6 +442,143 @@ dbTest(
     );
     assertEquals(end.map((r) => r.videoUrl)[0], "https://match.example/v/1");
     assertEquals(end.slice(1).map((r) => r.positionInPlaylist), [1, 2, 3]);
+  },
+);
+
+dbTest(
+  "counts db - the summary matches the data, before and after a sweep",
+  async () => {
+    const expectedAll = await count(`SELECT COUNT(*) n ${NONE}`);
+    const summary = () =>
+      post<Record<string, number>>(handlers.getLibrarySummary, {});
+
+    const before = (await summary()).body;
+    assertEquals(before.all, expectedAll);
+    assertEquals(before.notSwept, expectedAll, "nothing is swept yet");
+    assertEquals(before.clips, 0);
+    assertEquals(before.archive, expectedAll, "not swept counts as Archive");
+
+    await sweep();
+    const after = (await summary()).body;
+    assertEquals(after.all, expectedAll);
+    assertEquals(after.notSwept, 0);
+    assertEquals(after.clips, 148);
+    assertEquals(after.archive, 366);
+    assertEquals(
+      after.bot,
+      await count(
+        `SELECT COUNT(*) n ${NONE} AND v."videoUrl" IN (SELECT "canonicalUrl" FROM bot_submissions)`,
+      ),
+    );
+    assertEquals(
+      after.inbox,
+      await count(
+        `SELECT COUNT(*) n ${NONE} AND v."downloadStatus"
+       AND m."createdAt" >= now() - interval '30 days'`,
+      ),
+    );
+  },
+);
+
+dbTest(
+  "counts db - every list of options adds up to the view's total",
+  async () => {
+    await sweep();
+    const cases: Array<Record<string, unknown>> = [
+      {},
+      { view: "clips" },
+      { view: "archive" },
+      { view: "bot" },
+      { filter: { site: "clips.example" } },
+      { view: "archive", filter: { saved: true, year: 2026 } },
+      { filter: { year: 2026, month: 3 } },
+    ];
+    for (const request of cases) {
+      const label = JSON.stringify(request);
+      const filter = (request.filter ?? {}) as Record<string, unknown>;
+      const got = await facets(request);
+
+      // Each list is counted under everything except its own selection, so its
+      // total is the list you would get after clearing just that one filter.
+      const without = async (...keys: string[]) => {
+        const rest = { ...filter };
+        for (const key of keys) delete rest[key];
+        return (await getsub({ ...request, filter: rest })).count;
+      };
+      assertEquals(
+        got.saved.saved + got.saved.links,
+        await without("saved"),
+        `saved ${label}`,
+      );
+      assertEquals(sum(got.sites), await without("site"), `sites ${label}`);
+      assertEquals(
+        sum(got.years),
+        await without("year", "month"),
+        `years ${label}`,
+      );
+      assertEquals(
+        sum(got.lengths),
+        await without("length"),
+        `lengths ${label}`,
+      );
+      if (filter.year === undefined) {
+        assertEquals(got.months, [], `months need a year ${label}`);
+      } else {
+        assertEquals(
+          sum(got.months),
+          await without("month"),
+          `months ${label}`,
+        );
+      }
+    }
+  },
+);
+
+dbTest(
+  "counts db - picking a site still lists the other sites, under the other filters",
+  async () => {
+    const picked = await facets({ filter: { site: "clips.example" } });
+    const names = picked.sites.map((s) => s.site);
+    assert(names.includes("clips.example"));
+    assert(names.length > 1, "the other sites are still offered");
+
+    const savedOnly = await facets({
+      filter: { site: "clips.example", saved: true },
+    });
+    assertEquals(
+      sum(savedOnly.sites),
+      (await getsub({ filter: { saved: true } })).count,
+      "the site counts respect the saved filter",
+    );
+
+    const clips = picked.sites.find((s) => s.site === "clips.example");
+    assertEquals(clips?.name, "ClipSite", "the label is the extractor's name");
+  },
+);
+
+dbTest(
+  "counts db - creators are the top channels, each counted as the data says",
+  async () => {
+    await sweep();
+    const got = await facets();
+    assert(got.creators.length > 0 && got.creators.length <= 50);
+    for (let i = 1; i < got.creators.length; i++) {
+      assert(got.creators[i - 1].count >= got.creators[i].count, "most first");
+    }
+    for (const creator of got.creators.slice(0, 10)) {
+      assertEquals(
+        creator.count,
+        await count(
+          `SELECT COUNT(*) n ${NONE} AND v."channelKey" = ${
+            quote(creator.key)
+          }`,
+        ),
+        creator.key,
+      );
+    }
+    const oneil = got.creators.find((c) => c.key.startsWith("edge.example:"));
+    assertEquals(oneil?.name, "O'Neil");
+    assertEquals(oneil?.count, 3);
   },
 );
 

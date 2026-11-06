@@ -921,6 +921,331 @@
         ]
       }
     },
+    "/library/summary": {
+      "post": {
+        "operationId": "getLibrarySummary",
+        "summary": "Count the videos in each Unlisted view, for the rail.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "inbox": {
+                      "type": "number"
+                    },
+                    "bot": {
+                      "type": "number"
+                    },
+                    "clips": {
+                      "type": "number"
+                    },
+                    "archive": {
+                      "type": "number"
+                    },
+                    "all": {
+                      "type": "number"
+                    },
+                    "notSwept": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "inbox",
+                    "bot",
+                    "clips",
+                    "archive",
+                    "all",
+                    "notSwept"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/library/facets": {
+      "post": {
+        "operationId": "getLibraryFacets",
+        "summary": "Count the options for the filters, under the current view.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "saved": {
+                      "type": "object",
+                      "properties": {
+                        "saved": {
+                          "type": "number"
+                        },
+                        "links": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "saved",
+                        "links"
+                      ]
+                    },
+                    "sites": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "site": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "site",
+                          "name",
+                          "count"
+                        ]
+                      }
+                    },
+                    "years": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "year": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "year",
+                          "count"
+                        ]
+                      }
+                    },
+                    "months": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "month": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "month",
+                          "count"
+                        ]
+                      }
+                    },
+                    "lengths": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "band": {
+                            "type": "string",
+                            "enum": [
+                              "clip",
+                              "short",
+                              "medium",
+                              "long",
+                              "unknown"
+                            ]
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "band",
+                          "count"
+                        ]
+                      }
+                    },
+                    "creators": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "name",
+                          "count"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "saved",
+                    "sites",
+                    "years",
+                    "months",
+                    "lengths",
+                    "creators"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "view": {
+                    "type": "string",
+                    "enum": [
+                      "inbox",
+                      "bot",
+                      "clips",
+                      "archive"
+                    ]
+                  },
+                  "filter": {
+                    "type": "object",
+                    "properties": {
+                      "saved": {
+                        "type": "boolean"
+                      },
+                      "site": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "year": {
+                        "type": "integer",
+                        "minimum": 1970,
+                        "maximum": 2100
+                      },
+                      "month": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 12
+                      },
+                      "channel": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "length": {
+                        "type": "string",
+                        "enum": [
+                          "clip",
+                          "short",
+                          "medium",
+                          "long",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/delsub": {
       "post": {
         "operationId": "processDeleteVideosRequest",
