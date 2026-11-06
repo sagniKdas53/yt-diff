@@ -49,7 +49,7 @@ links open.
 **Interfaces:**
 
 ```js
-invalidate(key: string, { coalesceMs = 0 } = {}): void   // keys: "playlists", "videos:<url>", "collections"
+invalidate(key: string, { coalesceMs = 0 } = {}): void   // keys: "playlists", "videos:<url>", "channels"
 useInvalidationVersion(key: string): number
 publishRowPatch(videoUrl: string, fields: object): void
 useRowPatches(onPatch: (videoUrl, fields) => void): void
@@ -110,15 +110,15 @@ so agree which effects can go.
 
 **Files:** Create `src/hooks/usePlayQueue.js`,
 `tests/desktop/usePlayQueue.test.jsx`. Backend, on a branch from `master`:
-`src/handlers/pipeline/locate.ts` and `LocateRequestBodySchema` gain an optional
-`collection` string, using `buildCollectionFilter`.
+`usePlayQueue` passes the route's `view` and `filter` to `/locate`, which plan
+05 already accepts. No backend change is needed.
 
 **Advisor checkpoint:** before Step 3, on the window design.
 
 **Interfaces:**
 
 ```js
-usePlayQueue({ api, playlistUrl, collection, sortDownloaded, videoUrl, windowSize = 32 }) → {
+usePlayQueue({ api, playlistUrl, view, filter, sortDownloaded, videoUrl, windowSize = 32 }) → {
   current: Row | null, items: Row[], loading: boolean, notFound: boolean,
   hasNext: boolean, hasPrev: boolean,
   nextPlayable(): Promise<Row | null>, prevPlayable(): Promise<Row | null>,
@@ -237,7 +237,8 @@ plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
 **Interfaces:** `POST /recent { limit? (default 24, max 60) }` returns
 `{ items: [{ videoUrl, playlistUrl, downloadedAt, video: {…same as /continue…} }] }`.
 `useHomeFeed()` returns
-`{ continue: Item[], recent: Item[], collections: Row[], loading, failed }`.
+`{ continue: Item[], recent: Item[], channels: Row[], loading, failed }`.
+`channels` comes from `POST /getplay { kind: "channel" }`.
 
 - [ ] **Step 1: Write failing backend tests,** then implement `/recent`.
       Downloaded only, newest `downloadedAt` first, null last, with `limit`
@@ -252,7 +253,7 @@ plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
     its `playlistUrl`, and a continue card adds `t=`.
   - A card has no delete or manage control. It shows the progress bar and
     `12m left`.
-  - A collection card goes to `#/unlisted?c=<key>`.
+  - A channel card goes to `#/playlist/<url>`.
   - `"search treats what you type as text"`: `a+b(` posts `query` with regex
     characters escaped under `global:`, and doesn't throw on invalid regex.
   - Mobile: rails scroll horizontally, and the page has no sideways scroll.
@@ -260,8 +261,8 @@ plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
 - [ ] **Step 4: Implement.** Follow the Home layout in `README.md`.
       `Search everything…` shows results inline as `WatchCard`s (limit 24) with
       a 400 ms debounce. Use `useThumbnailUrls` by mapping items into its row
-      shape. Refresh when `collections` or `videos:*` is invalidated, and on
-      window focus.
+      shape. Refresh when `channels` or `videos:*` is invalidated, and on window
+      focus.
 - [ ] **Step 5: Full check and a browser look.** Backend and frontend suites,
       lint, typecheck, then `playwright-cli` screenshots of Home and Library at
       1440×900 and 800×1280.

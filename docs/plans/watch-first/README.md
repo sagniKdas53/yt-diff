@@ -8,20 +8,21 @@ this file wins.
 ## Goal
 
 Keep the archive's reliability, and make watching good enough that Jellyfin and
-VLC stop being needed for everyday viewing, with the 3,000-video Unlisted pile
+VLC stop being needed for everyday viewing, with the 3,400-video Unlisted pile
 organized automatically.
 
 ## Decisions
 
-| Topic         | Decision                                                                                                                          |
-| :------------ | :-------------------------------------------------------------------------------------------------------------------------------- |
-| Formats       | Quality first. yt-dlp's format choice stays as it is. Lossless remux only. A file the browser can't play offers Download and VLC. |
-| Progress      | Per-user backend table.                                                                                                           |
-| Ownership     | Record who added or saved each video. **No restrictions:** nothing filters by owner yet.                                          |
-| Notifications | Persist them, with delivery per channel (web, Telegram): delivered, read, failed. Also no restrictions.                           |
-| Routes        | **Approved 2026-11-06, layouts included:** `#/` is Home, `#/library` is the two-panel view. Existing bot links keep working.      |
-| Unlisted      | Grouped automatically by channel, with small channels rolled up per site. Nobody sorts anything by hand.                          |
-| Mini-player   | Not building one. Browser picture-in-picture stays.                                                                               |
+| Topic         | Decision                                                                                                                                                     |
+| :------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Formats       | Quality first. yt-dlp's format choice stays as it is. Lossless remux only. A file the browser can't play offers Download and VLC.                            |
+| Progress      | Per-user backend table.                                                                                                                                      |
+| Ownership     | Record who added or saved each video. **No restrictions:** nothing filters by owner yet.                                                                     |
+| Notifications | Persist them, with delivery per channel (web, Telegram): delivered, read, failed. Also no restrictions.                                                      |
+| Routes        | **Approved 2026-11-06, layouts included:** `#/` is Home, `#/library` is the two-panel view. Existing bot links keep working.                                 |
+| Unlisted      | **Chosen 2026-11-06:** a scheduled job files each video into a playlist, Clips, a channel or Archive. Nobody sorts by hand, and nothing is deleted or moved. |
+| Storage       | Filing frees no space, because each URL already has one file. Duplicate clean-up isn't planned: it would reclaim 1–2%.                                       |
+| Mini-player   | Not building one. Browser picture-in-picture stays.                                                                                                          |
 
 **Why the format choice stays:** tested on a 4K YouTube video. The default picks
 AV1 with AAC in MP4 at 743 MB. `-S "res,fps,hdr:12,vcodec:h264,acodec:aac"`
@@ -77,33 +78,48 @@ never empty. On desktop, `#/library` opens the Inbox.
 │ [Playlists] [Channels]│ Some Channel · 42 videos       [▶ Play]  │
 │ ───────────────────── │ [Monitor channel]  [Resume]              │
 │ 📥 Inbox           18 │ [ Search this list ]  Newest ▾  ☐ Hide watched
-│ 🤖 Via bot        210 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐          │
-│ 🗂 All unlisted  3420 │ │  ▶  │ │  ▶  │ │  ▶  │ │  ☁  │          │
-│ ───────────────────── │ │▓▓░░░│ │     │ │     │ │     │          │
-│ ◉ Some Channel     42 │ └─────┘ └─────┘ └─────┘ └─────┘          │
-│ ◉ Another          19 │ Title ⋮ Title ⋮ Title ⋮ Title ⋮          │
-│ ◉ Third             7 │                        [Save to archive] │
-│ ▸ Other from X    880 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐          │
-│ ▸ Other from YouTube  │ │     │ │     │ │     │ │     │          │
+│ 🤖 Via bot        210 │ [Saved 283|Links 1456] Site ▾ Added ▾ Length ▾ Creator ▾
+│ ✂ Clips           757 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐          │
+│ 🗄 Archive        1739 │ │  ▶  │ │  ▶  │ │  ▶  │ │  ☁  │          │
+│ 🗂 All unlisted   3430 │ │▓▓░░░│ │     │ │     │ │     │          │
+│ ───────────────────── │ └─────┘ └─────┘ └─────┘ └─────┘          │
+│ ◉ Some Channel     42 │ Title ⋮ Title ⋮ Title ⋮ Title ⋮          │
+│ ◉ Another          19 │                        [Save to archive] │
+│ ◉ Third             7 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐          │
 │         …      page ▾ │                          page 1 of 3  ▸  │
 └───────────────────────┴──────────────────────────────────────────┘
 ```
 
-- **Playlists tab:** today's list, with "Watch" renamed "Auto-update".
-- **Channels tab:** the automatic groups, newest activity first.
+- **Playlists tab:** your playlists that aren't channels, about 63, with "Watch"
+  renamed "Auto-update".
+- **Channels tab:** every channel, yours and the job's, newest activity first.
+  About 261.
 - **On a phone:** `#/library` is the left panel alone; a row slides in the
   videos.
 - **Deleting and similar:** moved into each card's ⋮ menu.
 
 ### How the pile disappears
 
-1. Each video gets a site and channel from metadata already stored, with no
-   re-index.
-2. A channel with 3 or more Unlisted videos becomes its own row.
-3. Everything smaller rolls up into "Other from <site>".
-4. **Inbox** holds only what you might want now: saved in the last 30 days and
-   not finished.
-5. **Hide watched** clears finished videos from any view.
+Measured on production, 2026-11-06. The design and rules are in
+[05](./05-unlisted-filing.md).
+
+| Where it goes                                 | Videos |
+| :-------------------------------------------- | :----- |
+| A playlist it's already in, or its uploader's | 555    |
+| Clips: known length under 2 minutes           | 757    |
+| A channel, with 3+ videos left (66 channels)  | 379    |
+| Archive, Saved: what the Archive opens on     | 283    |
+| Archive, Links only: one tap away             | 1,456  |
+
+1. Each video gets a site, channel and length from metadata already stored, with
+   no re-index.
+2. A daily job places each one, and adds a mapping if it goes to a playlist or
+   channel. It's off until you've reviewed a dry run, and it can be undone.
+3. **Archive** has no site or time rows. Those are filters, along with creator
+   and length.
+4. **Inbox** holds only what you might want now: saved in the last 30 days and,
+   once plan 04 is in, not finished.
+5. **Hide watched** clears finished videos from any view, once plan 04 is in.
 
 `#/unlisted` still exists as "All unlisted", so nothing is hidden for good, and
 old bot links still open.
@@ -116,12 +132,22 @@ old bot links still open.
 | [02](./02-safe-cards-and-nav.md)               | Safe cards, nav, labels, no background jumps | frontend | M    |
 | [03](./03-formats-and-media-info.md)           | Remux, codec info, playback check            | both     | M    |
 | [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notification log     | both     | L    |
-| [05](./05-auto-collections.md)                 | Newest first, Channels, Inbox                | both     | L    |
+| [05](./05-unlisted-filing.md)                  | Newest first, filing job, views and filters  | backend  | L    |
+| [05b](./05b-library-views.md)                  | Rail, Channels, Clips, Archive filters       | frontend | M    |
 | [06](./06-player-lift-and-home.md)             | Invalidation store, player lift, Home        | both     | L    |
 
-Each plan ships on its own. Do them in this order: 05 needs 04's tables for
-Inbox, and 06 needs 04 and 05. **Before plan 05**, run Phase 0a from the review
-on the Pi and paste the output into the session.
+Each plan ships on its own.
+
+- **Frontend order:** 01, 02, 03 Task 5, 05b, then 04's and 06's frontend parts.
+  They edit the same components.
+- **Backend:** 05 can start now. It needs no other plan, and neither do 03 Tasks
+  1–4, which touch different code apart from `models.ts` and `queries.ts`.
+- **Needs both:** 06 needs 04 and 05. 04 adds "not finished" to Inbox, so if 05
+  went first, that's its Task 7.
+
+**Test data:** [`seed/`](./seed/README.md) loads real-shaped data into a
+throwaway Postgres. **Phase 0a results and the storage audit:**
+[`notes-2026-11-06.md`](./notes-2026-11-06.md).
 
 ## How to run this with Sonnet
 
@@ -201,5 +227,15 @@ if they still bother you.
 - Stable thumbnail URLs (L8, S6). Only worth doing if a profile shows thumbnails
   costing real time.
 - On-demand transcoding. A file that can't play offers Download and VLC instead.
-- Phase 0b, c and d from the review. They still tell you whether "mid" is the
-  client or the server, and nothing here depends on the answer.
+- Phase 0c and d from the review, and 0b on phones. They still tell you whether
+  "mid" is the client or the server, and nothing here depends on the answer. The
+  laptop half of 0b is in the notes.
+- Filling in metadata for rows that have none, which needs a yt-dlp call per
+  row. 844 rows stay in Archive under their site until a re-index gives them
+  more.
+- Deleting duplicate files. 3.93 GB of orphans and a few dozen duplicates, out
+  of 361.5 GB. The existing dedup tool merges rows only.
+- Moving files into per-channel folders. It's tidier, and it frees nothing.
+- Site shelves, guided triage, dead-link checks and topic clustering. Considered
+  on 2026-11-06, and not chosen.
+- Running these plans in cloud sessions. What that would take is in the notes.
