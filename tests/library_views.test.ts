@@ -10,6 +10,11 @@ import {
   viewForPlaylist,
 } from "../src/handlers/filing/views.ts";
 import { API_ENDPOINTS } from "../src/routes/endpoints.ts";
+import {
+  LibraryFacetsRequestSchema,
+  SubListRequestSchema,
+  validateBody,
+} from "../src/middleware/validator.ts";
 
 const VIEWS: LibraryView[] = ["inbox", "bot", "clips", "archive"];
 const NOW = new Date("2026-03-01T00:00:00Z");
@@ -288,5 +293,36 @@ Deno.test("library endpoints - summary and facets are registered, authenticated 
     assert(endpoint !== undefined, `${path} must be in the endpoint table`);
     assertEquals(endpoint.kind, "authenticated");
     assertEquals(endpoint.method, "POST");
+  }
+});
+
+Deno.test("library views - a malformed view or filter gets a 400 at the route and never reaches the handler", () => {
+  for (const schema of [SubListRequestSchema, LibraryFacetsRequestSchema]) {
+    for (
+      const body of [
+        { view: "everything" },
+        { filter: { month: 3 } },
+        { filter: { site: "x".repeat(256) } },
+        { filter: { year: 2026, month: 13 } },
+      ]
+    ) {
+      let reached = false;
+      let status = 0;
+      // deno-lint-ignore no-explicit-any
+      const guarded = validateBody(schema as any, () => {
+        reached = true;
+      });
+      guarded(body, {
+        headersSent: false,
+        setHeader: () => {},
+        writeHead: (s: number) => {
+          status = s;
+        },
+        write: () => {},
+        end: () => {},
+      });
+      assertEquals(status, 400, JSON.stringify(body));
+      assertEquals(reached, false, JSON.stringify(body));
+    }
   }
 });
