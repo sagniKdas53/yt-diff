@@ -279,6 +279,10 @@ export class PlaylistMetadata extends Model<
   declare monitoringType: string;
   declare saveDirectory: string;
   declare lastUpdatedByScheduler: Date;
+  /** Where the library shows it: Playlists, or Channels. */
+  declare kind: CreationOptional<"playlist" | "channel">;
+  /** Who made it. Only the filing job makes "auto" ones. */
+  declare origin: CreationOptional<"user" | "auto">;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -322,6 +326,18 @@ PlaylistMetadata.init({
     allowNull: false,
     comment:
       "Timestamp of the last update made by the scheduler, default value is createdAt",
+  },
+  kind: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "playlist",
+    comment: '"playlist" or "channel": which library list shows it',
+  },
+  origin: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "user",
+    comment: '"user", or "auto" for a channel the filing job created',
   },
 }, {
   sequelize,
@@ -392,6 +408,79 @@ PlaylistVideoMapping.init({
     {
       fields: ["playlistUrl", "positionInPlaylist"],
     },
+  ],
+});
+
+/**
+ * Where the filing job put one Unlisted video. One row per swept video.
+ *
+ * `videoUrl` is the primary key rather than `unique: true`: under
+ * `sync({ alter: true })` a unique column gets another constraint on every
+ * boot. The playlist link is nullable and SET NULL on delete, which is how a
+ * deleted playlist is told apart from one that was never assigned.
+ */
+export class VideoFiling extends Model<
+  InferAttributes<VideoFiling>,
+  InferCreationAttributes<VideoFiling>
+> {
+  declare videoUrl: string;
+  declare placement: "playlist" | "channel" | "clip" | "archive";
+  declare playlistUrl: CreationOptional<string | null>;
+  /** The sweep leaves a locked row alone. */
+  declare locked: CreationOptional<boolean>;
+  declare rulesVersion: number;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+}
+
+VideoFiling.init({
+  videoUrl: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+    references: { model: VideoMetadata, key: "videoUrl" },
+    onUpdate: "CASCADE",
+    onDelete: "CASCADE",
+  },
+  placement: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: '"playlist", "channel", "clip" or "archive"',
+  },
+  playlistUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    references: { model: PlaylistMetadata, key: "playlistUrl" },
+    onUpdate: "CASCADE",
+    onDelete: "SET NULL",
+    comment: "The playlist or channel it was filed into, if any",
+  },
+  locked: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "Set when the user undid a filing; the sweep leaves it alone",
+  },
+  rulesVersion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: "RULES_VERSION in effect when the row was placed",
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: "video_filing",
+  tableName: "video_filing",
+  indexes: [
+    { fields: ["placement"], name: "idx_video_filing_placement" },
+    { fields: ["playlistUrl"], name: "idx_video_filing_playlist" },
   ],
 });
 
