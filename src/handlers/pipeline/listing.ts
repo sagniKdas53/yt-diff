@@ -724,7 +724,7 @@ export async function consumePlaylistChunks(
  * "End" walks the tail, so it rewinds one chunk from the last position on
  * record rather than starting at the top. Every other mode starts at 1.
  */
-async function resolveStartIndex(
+export async function resolveStartIndex(
   videoUrl: string,
   chunkSize: number,
   monitoringType: string,
