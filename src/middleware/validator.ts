@@ -155,6 +155,9 @@ export const LibraryFilterSchema = z.object({
   month: z.number().int().min(1).max(12).optional(),
   channel: z.string().min(1).max(255).optional(),
   length: LengthBandSchema.optional(),
+  // Which date `year` and `month` read: when the link was added (the default),
+  // or the video's own upload date. Alone it filters nothing.
+  dateField: z.enum(["added", "uploaded"]).optional(),
 }).strict().refine(
   (filter) => filter.month === undefined || filter.year !== undefined,
   { message: "A month needs a year" },
@@ -164,9 +167,13 @@ export const LibraryFilterSchema = z.object({
 export const LibrarySummaryRequestSchema = z.object({});
 
 /** Counts for the filter bar, under the view and filter being shown. */
+export const CreatorQuerySchema = z.string().min(1).max(100);
+
 export const LibraryFacetsRequestSchema = z.object({
   view: LibraryViewSchema.optional(),
   filter: LibraryFilterSchema.optional(),
+  // Narrows the creators list only, to names or keys containing this text.
+  creatorQuery: CreatorQuerySchema.optional(),
 });
 
 export const SubListRequestSchema = z.object({

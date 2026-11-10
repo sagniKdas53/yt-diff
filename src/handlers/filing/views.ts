@@ -81,6 +81,20 @@ function startOf(year: number, month: number) {
   );
 }
 
+/** A calendar date as the plain `YYYY-MM-DD` an upload date is stored as. */
+function plainDate(year: number, month: number): string {
+  return `${String(year).padStart(4, "0")}-${
+    String(month).padStart(2, "0")
+  }-01`;
+}
+
+/** The first month after the one asked for (or after the year, if no month). */
+function monthAfter(year: number, month: number | undefined): [number, number] {
+  return month === undefined || month === 12
+    ? [year + 1, 1]
+    : [year, month + 1];
+}
+
 /**
  * Turns a view and a filter into conditions on the mapping and on the video.
  *
@@ -142,15 +156,23 @@ export function buildLibraryFilter(
 
   if (filter.year !== undefined) {
     const { year, month } = filter;
-    const next = month === undefined
-      ? [year + 1, 1]
-      : month === 12
-      ? [year + 1, 1]
-      : [year, month + 1];
-    mapping.push(
-      { createdAt: { [Op.gte]: startOf(year, month ?? 1) } },
-      { createdAt: { [Op.lt]: startOf(next[0], next[1]) } },
-    );
+    const next = monthAfter(year, month);
+    if (filter.dateField === "uploaded") {
+      // An upload date is a plain date with no time or zone, so it is compared
+      // as one, and a video without it has nothing to compare and drops out.
+      video.push({
+        uploadDate: {
+          [Op.ne]: null,
+          [Op.gte]: plainDate(year, month ?? 1),
+          [Op.lt]: plainDate(next[0], next[1]),
+        },
+      });
+    } else {
+      mapping.push(
+        { createdAt: { [Op.gte]: startOf(year, month ?? 1) } },
+        { createdAt: { [Op.lt]: startOf(next[0], next[1]) } },
+      );
+    }
   }
 
   return {
@@ -196,6 +218,23 @@ export function filterWithout(
       delete rest[dimension];
   }
   return rest;
+}
+
+/**
+ * Whether a creator's key or any name it has been seen under contains the text,
+ * ignoring case. Plain text, not a pattern: `%` and `_` are only themselves.
+ * It is done here rather than in SQL because the creators query already
+ * returns every creator, so this adds no query, keeps each count whole when a
+ * key has several names, and leaves no text for a query to be built from.
+ */
+export function creatorMatches(
+  key: string,
+  names: string[],
+  query: string,
+): boolean {
+  const needle = query.toLowerCase();
+  return key.toLowerCase().includes(needle) ||
+    names.some((name) => name.toLowerCase().includes(needle));
 }
 
 /**
@@ -271,8 +310,12 @@ async function groupedCounts(
   groups: Array<
     [expression: ReturnType<typeof col> | ReturnType<typeof fn>, alias: string]
   >,
+  /** A further condition on the video, for a count that needs one. */
+  alsoVideoWhere?: WhereOptions,
 ): Promise<Array<Record<string, unknown> & { count: number }>> {
-  const { videoWhere, mappingWhere } = buildLibraryFilter(view, filter, now);
+  const built = buildLibraryFilter(view, filter, now);
+  const videoWhere = andWhere(built.videoWhere, alsoVideoWhere);
+  const mappingWhere = built.mappingWhere;
   const found = await PlaylistVideoMapping.findAll({
     attributes: [
       ...groups.map(([expression, alias]): [typeof expression, string] => [
@@ -294,11 +337,15 @@ async function groupedCounts(
   return found.map((row) => ({ ...row, count: Number(row.count) }));
 }
 
-const addedIn = (unit: "year" | "month") =>
+/**
+ * The year or month of the date a filter reads. Added is the mapping's time in
+ * the configured zone; uploaded is the video's plain date, with no zone.
+ */
+const dateIn = (unit: "year" | "month", field: "added" | "uploaded") =>
   fn(
     "date_part",
     unit,
-    literal(
+    field === "uploaded" ? col("video_metadatum.uploadDate") : literal(
       `"playlist_video_mapping"."createdAt" AT TIME ZONE ${
         sequelize.escape(config.timeZone)
       }`,
@@ -336,7 +383,13 @@ export async function libraryFacets(
   view: LibraryView | null,
   filter: LibraryFilter,
   now: Date = new Date(),
+  creatorQuery?: string,
 ): Promise<LibraryFacets> {
+  const dateField = filter.dateField ?? "added";
+  // A video with no upload date has no year to be counted under.
+  const hasUploadDate = dateField === "uploaded"
+    ? { uploadDate: { [Op.ne]: null } }
+    : undefined;
   const [saved, links, lengths, sites, years, months, creators] = await Promise
     .all([
       countUnlisted(
@@ -362,14 +415,15 @@ export async function libraryFacets(
         [col("video_metadatum.siteName"), "siteName"],
       ]),
       groupedCounts(view, filterWithout(filter, "year"), now, [
-        [addedIn("year"), "year"],
-      ]),
+        [dateIn("year", dateField), "year"],
+      ], hasUploadDate),
       // Months only mean something inside a year.
       filter.year === undefined ? Promise.resolve([]) : groupedCounts(
         view,
         filterWithout(filter, "month"),
         now,
-        [[addedIn("month"), "month"]],
+        [[dateIn("month", dateField), "month"]],
+        hasUploadDate,
       ),
       groupedCounts(view, filterWithout(filter, "channel"), now, [
         [col("video_metadatum.channelKey"), "channelKey"],
@@ -401,6 +455,7 @@ export async function libraryFacets(
       key,
       name: pickName(entries) ?? key,
       count: entries.reduce((sum, e) => sum + e.count, 0),
+      names: entries.flatMap((e) => e.name === null ? [] : [e.name]),
     }));
   };
   const byCountThenName = <T extends { count: number; name: string }>(
@@ -420,7 +475,14 @@ export async function libraryFacets(
       .map((row) => ({ month: Number(row.month), count: row.count }))
       .sort((a, b) => a.month - b.month),
     lengths,
+    // The search comes before the cut to 50, so a creator outside the top 50
+    // by count is still found by name.
     creators: fold(creators, "channelKey", "channelName")
+      .filter((c) =>
+        creatorQuery === undefined ||
+        creatorMatches(c.key, c.names, creatorQuery)
+      )
+      .map(({ key, name, count }) => ({ key, name, count }))
       .sort(byCountThenName)
       .slice(0, CREATOR_LIMIT),
   };

@@ -19,6 +19,7 @@ import type {
   SubListRequest,
 } from "./types.ts";
 import { json } from "../../utils/http.ts";
+import { CreatorQuerySchema } from "../../middleware/validator.ts";
 import {
   andWhere,
   buildLibraryFilter,
@@ -417,16 +418,32 @@ export function createQueryHandlers(_deps: PlaylistHandlerDependencies) {
   }
 
   async function getLibraryFacets(
-    requestBody: { view?: LibraryView; filter?: LibraryFilter },
+    requestBody: {
+      view?: LibraryView;
+      filter?: LibraryFilter;
+      creatorQuery?: string;
+    },
     response: HttpResponseLike,
   ): Promise<void> {
     const library = parseLibraryRequest(requestBody);
-    if (library === null) {
-      json(response, 400, { error: "Invalid view or filter" });
+    const creatorQuery = CreatorQuerySchema.optional().safeParse(
+      requestBody.creatorQuery,
+    );
+    if (library === null || !creatorQuery.success) {
+      json(response, 400, { error: "Invalid view, filter or creator query" });
       return;
     }
     try {
-      json(response, 200, await libraryFacets(library.view, library.filter));
+      json(
+        response,
+        200,
+        await libraryFacets(
+          library.view,
+          library.filter,
+          new Date(),
+          creatorQuery.data,
+        ),
+      );
     } catch (error) {
       logger.error("Failed to count the library filters", {
         error: (error as Error).message,

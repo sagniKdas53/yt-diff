@@ -962,6 +962,13 @@
                           "long",
                           "unknown"
                         ]
+                      },
+                      "dateField": {
+                        "type": "string",
+                        "enum": [
+                          "added",
+                          "uploaded"
+                        ]
                       }
                     },
                     "additionalProperties": false
@@ -1287,9 +1294,21 @@
                           "long",
                           "unknown"
                         ]
+                      },
+                      "dateField": {
+                        "type": "string",
+                        "enum": [
+                          "added",
+                          "uploaded"
+                        ]
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "creatorQuery": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
                   }
                 }
               }
@@ -3200,6 +3219,13 @@
                           "medium",
                           "long",
                           "unknown"
+                        ]
+                      },
+                      "dateField": {
+                        "type": "string",
+                        "enum": [
+                          "added",
+                          "uploaded"
                         ]
                       }
                     },
