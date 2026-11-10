@@ -12,7 +12,9 @@ import {
   MIXED_PLAYLIST,
   Op,
   PlaylistVideoMapping,
+  quote,
   rows,
+  sequelize,
 } from "./support.ts";
 
 const { runFilingSweep, undoFiling } = await import(
@@ -80,8 +82,11 @@ dbTest(
     assertEquals(
       Object.fromEntries(Object.entries(t).map(([k, v]) => [k, Number(v)])),
       {
-        in_playlist: 44,
-        clips: 148,
+        // One pack video used to match a playlist by handle. That playlist
+        // holds only videos with no known owner, so it isn't one account's
+        // videos (05c), and the 49 second video is a clip instead.
+        in_playlist: 43,
+        clips: 149,
         in_channels: 23,
         channels: 6,
         saved: 45,
@@ -334,5 +339,113 @@ dbTest("filing db - a filed video you removed stays in Archive", async () => {
   assertEquals(again.toPlaylist, 0);
   assertEquals(await placementOf(url), "archive links");
 });
+
+/** A playlist of three videos by one account, on a made-up host. */
+async function insertOwnPlaylist(playlistUrl: string, ownerKey: string) {
+  await sequelize.query(
+    `INSERT INTO playlist_metadata ("playlistUrl", title, "sortOrder", "monitoringType",
+       "saveDirectory", "createdAt", "updatedAt", "lastUpdatedByScheduler")
+     VALUES (${quote(playlistUrl)}, 'Own', 2000, 'N/A', 'own',
+       '2026-01-01', '2026-01-01', '2026-01-01')`,
+  );
+  for (const n of [1, 2, 3]) {
+    const url = `https://id.example/own/${n}`;
+    await sequelize.query(
+      `INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+         "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+         "durationSeconds", "createdAt", "updatedAt")
+       VALUES (${quote(url)}, 'own${n}', 'Own ${n}', 1, false, true, false,
+         'id.example', ${quote(ownerKey)}, 500, '2026-01-01', '2026-01-01');
+       INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+         "positionInPlaylist", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), ${quote(url)}, ${quote(playlistUrl)}, ${n},
+         '2026-01-01', '2026-01-01')`,
+    );
+  }
+}
+
+/** A lone Unlisted video on the same host, with the given handle and id. */
+async function insertUnlisted(
+  url: string,
+  channelKey: string,
+  handle: string,
+) {
+  await sequelize.query(
+    `INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+       "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+       "channelHandle", "durationSeconds", "createdAt", "updatedAt")
+     VALUES (${quote(url)}, md5(${quote(url)}), 'Lone', 1, false, true, false,
+       'id.example', ${quote(channelKey)}, ${quote(handle)}, 500,
+       '2026-02-01', '2026-02-01');
+     INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+       "positionInPlaylist", "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), ${quote(url)}, 'None',
+       (SELECT max("positionInPlaylist") + 1 FROM playlist_video_mappings
+        WHERE "playlistUrl" = 'None'), '2026-02-01', '2026-02-01')`,
+  );
+}
+
+dbTest(
+  "filing db - a channel id in a playlist URL files the uploader's video there",
+  async () => {
+    const own = "https://id.example/channel/UCOwn1/videos";
+    await insertOwnPlaylist(own, "id.example:ucown1");
+    // The handle matches nothing, so only the id can find the playlist.
+    await insertUnlisted(
+      "https://id.example/lone/1",
+      "id.example:ucown1",
+      "no-such-handle",
+    );
+    await apply();
+    assertEquals(
+      await placementOf("https://id.example/lone/1"),
+      `playlist ${own}`,
+    );
+  },
+);
+
+dbTest(
+  "filing db - a curated playlist under an account's path is not a target for its uploads",
+  async () => {
+    // Three owners, so it is not one account's videos, though its URL names one.
+    const curated = "https://id.example/@someone/playlists/best-of";
+    await sequelize.query(
+      `INSERT INTO playlist_metadata ("playlistUrl", title, "sortOrder", "monitoringType",
+         "saveDirectory", "createdAt", "updatedAt", "lastUpdatedByScheduler")
+       VALUES (${quote(curated)}, 'Best of', 2001, 'N/A', 'best',
+         '2026-01-01', '2026-01-01', '2026-01-01')`,
+    );
+    for (const n of [1, 2, 3]) {
+      const url = `https://id.example/curated/${n}`;
+      await sequelize.query(
+        `INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+           "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+           "durationSeconds", "createdAt", "updatedAt")
+         VALUES (${quote(url)}, 'cur${n}', 'Cur ${n}', 1, false, true, false,
+           'id.example', 'id.example:other${n}', 500, '2026-01-01', '2026-01-01');
+         INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+           "positionInPlaylist", "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), ${quote(url)}, ${quote(curated)}, ${n},
+           '2026-01-01', '2026-01-01')`,
+      );
+    }
+    await insertUnlisted(
+      "https://id.example/lone/2",
+      "id.example:someone",
+      "someone",
+    );
+    await apply();
+    assertEquals(
+      await placementOf("https://id.example/lone/2"),
+      "archive links",
+    );
+    const [kind] = await rows<{ kind: string }>(
+      `SELECT kind FROM playlist_metadata WHERE "playlistUrl" = ${
+        quote(curated)
+      }`,
+    );
+    assertEquals(kind.kind, "playlist");
+  },
+);
 
 closeTest("filing db - close the connection");

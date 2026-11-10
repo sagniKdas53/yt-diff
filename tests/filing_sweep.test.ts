@@ -18,6 +18,7 @@ import {
   filedPosition,
   nextRealPosition,
 } from "../src/handlers/filing/positions.ts";
+import { RULES_VERSION } from "../src/handlers/filing/rules.ts";
 import type {
   KnownPlaylist,
   UnlistedRow,
@@ -43,6 +44,7 @@ function row(overrides: Partial<UnlistedRow> = {}): UnlistedRow {
     channelKey: null,
     channelName: null,
     channelHandle: null,
+    channelId: null,
     durationSeconds: 600,
     addedAt: new Date("2026-01-01T00:00:00Z"),
     realPlaylistUrl: null,
@@ -63,6 +65,8 @@ function fakeStore(
   } = {},
 ) {
   const calls = {
+    order: [] as string[],
+    ownersGiven: [] as Array<Map<string, Map<string, number>>>,
     groups: [] as FilingGroup[],
     marked: [] as string[][],
     undone: [] as UndoPlan[],
@@ -70,9 +74,17 @@ function fakeStore(
   const store: FilingStore = {
     countWithoutFacets: () => Promise.resolve(data.withoutFacets ?? 0),
     loadUnlisted: () => Promise.resolve(data.rows ?? []),
-    loadPlaylists: () => Promise.resolve(data.playlists ?? []),
-    loadOwnerCounts: () => Promise.resolve(data.owners ?? new Map()),
+    loadPlaylists: (owners) => {
+      calls.order.push("loadPlaylists");
+      calls.ownersGiven.push(owners);
+      return Promise.resolve(data.playlists ?? []);
+    },
+    loadOwnerCounts: () => {
+      calls.order.push("loadOwnerCounts");
+      return Promise.resolve(data.owners ?? new Map());
+    },
     writeGroup: (group) => {
+      calls.order.push("writeGroup");
       if (data.failOn !== undefined && group.playlistUrl === data.failOn) {
         return Promise.reject(new Error("boom"));
       }
@@ -121,6 +133,36 @@ Deno.test("filing sweep - a dry run returns the summary and writes nothing", asy
   assertEquals(calls.marked.length, 0);
 });
 
+Deno.test("filing sweep - owner counts are read before anything is placed or written, and shape the playlists", async () => {
+  const owners = new Map([["https://p", new Map([["a", 9], ["b", 1]])]]);
+  const { store, calls } = fakeStore({
+    rows: [row({ durationSeconds: 10 })],
+    owners,
+  });
+  await runFilingSweep({ apply: true }, store);
+  // The counts decide which playlists an uploader can match, so they have to
+  // come from before this sweep adds mappings of its own.
+  assert(
+    calls.order.indexOf("loadOwnerCounts") <
+      calls.order.indexOf("loadPlaylists"),
+  );
+  assert(
+    calls.order.indexOf("loadOwnerCounts") <
+      calls.order.indexOf("writeGroup"),
+  );
+  assertEquals(calls.ownersGiven.length, 1);
+  assertEquals(calls.ownersGiven[0], owners);
+  // And the same read marks the channel-like playlists afterwards.
+  assertEquals(calls.marked, [["https://p"]]);
+});
+
+Deno.test("filing sweep - rows are stamped with the current rules version", async () => {
+  const { store, calls } = fakeStore({ rows: [row({ durationSeconds: 10 })] });
+  await runFilingSweep({ apply: true }, store);
+  assertEquals(calls.groups[0].rulesVersion, RULES_VERSION);
+  assertEquals(RULES_VERSION, 2);
+});
+
 Deno.test("filing sweep - a filed mapping's position is minus its added time in seconds, never positive", async () => {
   const added = new Date("2026-03-04T05:06:07.999Z");
   assertEquals(filedPosition(added), -Math.floor(added.getTime() / 1000));
@@ -148,6 +190,7 @@ Deno.test("filing sweep - a video already in the playlist gets no second mapping
     urlSegments: ["p", "1"],
     monitored: false,
     createdAt: new Date("2025-01-01"),
+    channelLike: true,
   };
   const inPlaylist = row({ realPlaylistUrl: "https://a.example/p/1" });
   const byHandle = row({ channelHandle: "p" });
@@ -185,6 +228,7 @@ Deno.test("filing sweep - an existing auto playlist is reused, not created again
     urlSegments: [],
     monitored: false,
     createdAt: new Date("2025-01-01"),
+    channelLike: true,
   };
   const { store, calls } = fakeStore({
     rows: longVideos("a.example:acct", 3),

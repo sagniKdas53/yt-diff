@@ -107,7 +107,7 @@ dbTest(
     const archive = await getsub({ view: "archive" });
 
     assertEquals(clips.status, 200);
-    assertEquals(clips.count, 148);
+    assertEquals(clips.count, 149);
     assertEquals(archive.count, 366);
     // `count` is what the pager shows: it must match the rows, not the join.
     assertEquals(clips.urls.length, clips.count);
@@ -462,7 +462,7 @@ dbTest(
     const after = (await summary()).body;
     assertEquals(after.all, expectedAll);
     assertEquals(after.notSwept, 0);
-    assertEquals(after.clips, 148);
+    assertEquals(after.clips, 149);
     assertEquals(after.archive, 366);
     assertEquals(
       after.bot,

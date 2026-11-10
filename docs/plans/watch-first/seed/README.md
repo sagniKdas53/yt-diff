@@ -37,8 +37,7 @@ YouTube bot submissions.
 
 ## Expected numbers
 
-`load.sh --pack-only` prints these, and production gave the same result for its
-YouTube rows on 2026-11-06:
+`load.sh --pack-only` prints these:
 
 | Rows | Distinct positions | Ties | Inversions |
 | :--- | :----------------- | :--- | :--------- |
@@ -46,7 +45,12 @@ YouTube rows on 2026-11-06:
 
 | Unlisted | In a playlist | Clips | In auto-channels | Auto-channels | Saved | Links |
 | :------- | :------------ | :---- | :--------------- | :------------ | :---- | :---- |
-| 559      | 43            | 141   | 20               | 5             | 41    | 314   |
+| 559      | 42            | 142   | 20               | 5             | 41    | 314   |
+
+The positions table matched production on 2026-11-06. The placement table uses
+the rule as [05c](../05c-filing-follow-ups.md) tightened it, so one more video
+is a clip and one fewer is in a playlist than under plan 05's first rule (43
+and 141). Production hasn't been measured under the new rule.
 
 If they differ, either the pack or the rules have changed. Find out which.
 

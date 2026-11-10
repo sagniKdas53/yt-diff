@@ -66,7 +66,13 @@ export interface FilingStore {
   /** Unlisted rows whose facets haven't been filled in yet. */
   countWithoutFacets(): Promise<number>;
   loadUnlisted(): Promise<UnlistedRow[]>;
-  loadPlaylists(): Promise<KnownPlaylist[]>;
+  /**
+   * `owners` is `loadOwnerCounts`' result: a playlist of kind "playlist" is
+   * channel-like when it passes `isChannelLike` over its counts.
+   */
+  loadPlaylists(
+    owners: Map<string, Map<string, number>>,
+  ): Promise<KnownPlaylist[]>;
   /** Videos per owner for each user playlist still of kind "playlist". */
   loadOwnerCounts(): Promise<Map<string, Map<string, number>>>;
   writeGroup(group: FilingGroup): Promise<void>;
@@ -134,9 +140,13 @@ export async function runFilingSweep(
   options: { apply: boolean },
   store: FilingStore = createDbFilingStore(),
 ): Promise<FilingSummary> {
+  // Read before anything is placed: whether a playlist is one account's
+  // videos decides which playlists an uploader can match, and it has to be
+  // judged without the mappings this sweep is about to add.
+  const owners = await store.loadOwnerCounts();
   const [rows, playlists, withoutFacets] = await Promise.all([
     store.loadUnlisted(),
-    store.loadPlaylists(),
+    store.loadPlaylists(owners),
     store.countWithoutFacets(),
   ]);
   if (withoutFacets > 0) {
@@ -233,7 +243,6 @@ export async function runFilingSweep(
 
   // User playlists that are really one account's videos belong under
   // Channels. This only ever flips towards "channel"; undo reverses it.
-  const owners = await store.loadOwnerCounts();
   const channelLike = [...owners]
     .filter(([, counts]) => isChannelLike(counts))
     .map(([playlistUrl]) => playlistUrl);
