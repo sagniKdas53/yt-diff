@@ -5,6 +5,7 @@ import {
   type ChannelRow,
   type ChannelStore,
   createChannelHandlers,
+  createDbChannelStore,
   playlistKindWhere,
 } from "../src/handlers/filing/channels.ts";
 import { createQueryHandlers } from "../src/handlers/playlists/queries.ts";
@@ -12,6 +13,7 @@ import {
   DeletePlaylistRequestBodySchema,
   MonitorChannelRequestSchema,
   PlaylistDisplayRequestSchema,
+  SetPlaylistKindRequestSchema,
   UpdatePlaylistMonitoringRequestSchema,
 } from "../src/middleware/validator.ts";
 import { API_ENDPOINTS } from "../src/routes/endpoints.ts";
@@ -141,6 +143,7 @@ function fakeStore(
       promoted.push([autoUrl, channelUrl]);
       return Promise.resolve({ merged });
     },
+    setKind: () => Promise.resolve(),
   };
 }
 
@@ -313,4 +316,122 @@ Deno.test("channels - an auto key is accepted wherever a playlist key is, so it 
     }).success,
     true,
   );
+});
+
+// ---------------------------------------------------------------------------
+// 05c Task 2: set a playlist's kind by hand
+// ---------------------------------------------------------------------------
+
+function kindHandler(rows: Record<string, ChannelRow>) {
+  const store = fakeStore(rows) as ReturnType<typeof fakeStore> & {
+    kinds: Array<[string, string]>;
+  };
+  store.kinds = [];
+  store.setKind = (playlistUrl, kind) => {
+    store.kinds.push([playlistUrl, kind]);
+    return Promise.resolve();
+  };
+  const { handlers } = monitorHandler(store);
+  return { handlers, store };
+}
+
+const USER_ROW: ChannelRow = {
+  playlistUrl: "https://a.example/@mine",
+  origin: "user",
+  channelUrl: null,
+};
+
+Deno.test("channels - setting a kind answers with the URL and the kind, and stores it", async () => {
+  const { handlers, store } = kindHandler({ [USER_ROW.playlistUrl]: USER_ROW });
+  for (const kind of ["channel", "playlist"] as const) {
+    const { response, out } = responseStub();
+    await handlers.processSetPlaylistKindRequest(
+      { playlistUrl: USER_ROW.playlistUrl, kind },
+      response,
+    );
+    assertEquals(out.status, 200);
+    assertEquals(out.body, { playlistUrl: USER_ROW.playlistUrl, kind });
+  }
+  assertEquals(store.kinds, [
+    [USER_ROW.playlistUrl, "channel"],
+    [USER_ROW.playlistUrl, "playlist"],
+  ]);
+});
+
+Deno.test("channels - setting a kind on None, init or an unknown URL is a 404", async () => {
+  // None and init exist as rows, so they are refused by name, not by lookup.
+  const { handlers, store } = kindHandler({
+    None: { playlistUrl: "None", origin: "user", channelUrl: null },
+    init: { playlistUrl: "init", origin: "user", channelUrl: null },
+  });
+  for (const playlistUrl of ["None", "init", "https://a.example/@nobody"]) {
+    const { response, out } = responseStub();
+    await handlers.processSetPlaylistKindRequest(
+      { playlistUrl, kind: "channel" },
+      response,
+    );
+    assertEquals(out.status, 404, playlistUrl);
+  }
+  assertEquals(store.kinds, []);
+});
+
+Deno.test("channels - an auto channel's kind can't be set: it is a channel by construction", async () => {
+  const { handlers, store } = kindHandler({
+    [AUTO]: { playlistUrl: AUTO, origin: "auto", channelUrl: null },
+  });
+  const { response, out } = responseStub();
+  await handlers.processSetPlaylistKindRequest(
+    { playlistUrl: AUTO, kind: "playlist" },
+    response,
+  );
+  assertEquals(out.status, 400);
+  assertEquals(store.kinds, []);
+});
+
+Deno.test("channels - the kind is stored as a choice, silently, without touching sortOrder", async () => {
+  let call: { values: AnyRecord; options: AnyRecord } | null = null;
+  const restore = stub(
+    PlaylistMetadata,
+    "update",
+    (values: AnyRecord, options: AnyRecord) => {
+      call = { values, options };
+      return Promise.resolve([1]);
+    },
+  );
+  try {
+    await createDbChannelStore().setKind("https://a.example/@mine", "playlist");
+  } finally {
+    restore();
+  }
+  const seen = call as unknown as { values: AnyRecord; options: AnyRecord };
+  // The job didn't set it, so undo leaves it; and the sweep leaves it too.
+  assertEquals(seen.values, {
+    kind: "playlist",
+    kindLocked: true,
+    kindSetByFiling: false,
+  });
+  // `silent` keeps updatedAt, which Channels sorts on. No sortOrder in the
+  // values means a row at 0 or above reappears in Playlists where it was.
+  assertEquals(seen.options.silent, true);
+  assertEquals(seen.options.where, { playlistUrl: "https://a.example/@mine" });
+});
+
+Deno.test("channels - the kind request is validated and the endpoint is registered", () => {
+  const ok = { playlistUrl: "https://a.example/@mine", kind: "channel" };
+  assertEquals(SetPlaylistKindRequestSchema.safeParse(ok).success, true);
+  assertEquals(
+    SetPlaylistKindRequestSchema.safeParse({ ...ok, kind: "mixed" }).success,
+    false,
+  );
+  assertEquals(
+    SetPlaylistKindRequestSchema.safeParse({ kind: "channel" }).success,
+    false,
+  );
+  const endpoint = API_ENDPOINTS.find((e) => e.path === "/playlists/kind");
+  assert(
+    endpoint !== undefined,
+    "/playlists/kind must be in the endpoint table",
+  );
+  assertEquals(endpoint.kind, "authenticated");
+  assertEquals(endpoint.handler, "processSetPlaylistKindRequest");
 });

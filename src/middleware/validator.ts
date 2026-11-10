@@ -120,6 +120,12 @@ export const MonitorChannelRequestSchema = z.object({
   monitoringType: z.enum(["Start", "End", "Full", "Refresh"]),
 });
 
+/** Overrules the library's "channel" or "playlist" label for one playlist. */
+export const SetPlaylistKindRequestSchema = z.object({
+  playlistUrl: PlaylistKeySchema,
+  kind: z.enum(["playlist", "channel"]),
+});
+
 export const DeletePlaylistRequestBodySchema = z.object({
   playListUrl: PlaylistKeySchema,
   deleteAllVideosInPlaylist: z.boolean().optional(),

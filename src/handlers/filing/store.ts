@@ -135,7 +135,13 @@ export function createDbFilingStore(): FilingStore {
 
     async loadPlaylists(owners): Promise<KnownPlaylist[]> {
       const rows = await PlaylistMetadata.findAll({
-        attributes: ["playlistUrl", "monitoringType", "createdAt", "kind"],
+        attributes: [
+          "playlistUrl",
+          "monitoringType",
+          "createdAt",
+          "kind",
+          "kindLocked",
+        ],
         where: { playlistUrl: { [Op.notIn]: ["None", "init"] } },
         raw: true,
       });
@@ -147,10 +153,12 @@ export function createDbFilingStore(): FilingStore {
           urlSegments: isAuto ? [] : urlSegments(p.playlistUrl),
           monitored: MONITORED_TYPES.includes(p.monitoringType),
           createdAt: new Date(p.createdAt),
-          // `owners` only covers user playlists of kind "playlist", so a row
-          // that is already a channel is channel-like by its kind alone.
+          // A playlist whose kind you chose is what you said it is, however
+          // its videos count. Otherwise `owners` covers user playlists still
+          // of kind "playlist", and a row already a channel is one by kind.
           channelLike: p.kind === "channel" ||
-            isChannelLike(owners.get(p.playlistUrl) ?? new Map()),
+            (!p.kindLocked &&
+              isChannelLike(owners.get(p.playlistUrl) ?? new Map())),
         };
       });
     },
@@ -165,6 +173,7 @@ export function createDbFilingStore(): FilingStore {
          JOIN playlist_metadata p ON p."playlistUrl" = pm."playlistUrl"
          JOIN video_metadata v ON v."videoUrl" = pm."videoUrl"
          WHERE p."kind" = 'playlist' AND p."origin" = 'user'
+           AND p."kindLocked" = false
            AND pm."playlistUrl" NOT IN ('None', 'init')
          GROUP BY 1, 2`,
         {
@@ -249,7 +258,11 @@ export function createDbFilingStore(): FilingStore {
       await PlaylistMetadata.update(
         { kind: "channel", kindSetByFiling: true },
         {
-          where: { playlistUrl: { [Op.in]: playlistUrls }, kind: "playlist" },
+          where: {
+            playlistUrl: { [Op.in]: playlistUrls },
+            kind: "playlist",
+            kindLocked: false,
+          },
           silent: true,
         },
       );
@@ -266,14 +279,16 @@ export function createDbFilingStore(): FilingStore {
           playlistUrl: string;
           origin: "user" | "auto";
           kindSetByFiling: boolean;
+          kindLocked: boolean;
           mappingCount: number;
         }
       >(
-        `SELECT p."playlistUrl", p."origin", p."kindSetByFiling",
+        `SELECT p."playlistUrl", p."origin", p."kindSetByFiling", p."kindLocked",
                 (SELECT COUNT(*)::int FROM playlist_video_mappings m
                  WHERE m."playlistUrl" = p."playlistUrl") AS "mappingCount"
          FROM playlist_metadata p
-         WHERE p."origin" = 'auto' OR p."kindSetByFiling"`,
+         WHERE p."origin" = 'auto'
+            OR (p."kindSetByFiling" AND NOT p."kindLocked")`,
         { type: QueryTypes.SELECT },
       );
       return {
@@ -305,7 +320,10 @@ export function createDbFilingStore(): FilingStore {
           await PlaylistMetadata.update(
             { kind: "playlist", kindSetByFiling: false },
             {
-              where: { playlistUrl: { [Op.in]: plan.resetKinds } },
+              where: {
+                playlistUrl: { [Op.in]: plan.resetKinds },
+                kindLocked: false,
+              },
               silent: true,
               transaction,
             },

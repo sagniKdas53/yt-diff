@@ -51,6 +51,8 @@ export interface UndoCandidates {
     origin: "user" | "auto";
     /** The sweep flipped this user playlist to kind "channel". */
     kindSetByFiling: boolean;
+    /** You set the kind by hand, so undo leaves it. */
+    kindLocked: boolean;
     mappingCount: number;
   }>;
 }
@@ -288,7 +290,7 @@ export async function undoFiling(
     )
     .map((p) => p.playlistUrl);
   const resetKinds = found.playlists
-    .filter((p) => p.origin === "user" && p.kindSetByFiling)
+    .filter((p) => p.origin === "user" && p.kindSetByFiling && !p.kindLocked)
     .map((p) => p.playlistUrl);
 
   const plan: UndoPlan = {

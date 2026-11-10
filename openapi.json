@@ -434,6 +434,9 @@
                           "kindSetByFiling": {
                             "type": "boolean"
                           },
+                          "kindLocked": {
+                            "type": "boolean"
+                          },
                           "videoCount": {
                             "type": "number"
                           },
@@ -467,6 +470,7 @@
                           "kind",
                           "origin",
                           "kindSetByFiling",
+                          "kindLocked",
                           "videoCount",
                           "latestAddedAt",
                           "channelUrl"
@@ -1372,6 +1376,97 @@
                 "required": [
                   "playlistUrl",
                   "monitoringType"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/playlists/kind": {
+      "post": {
+        "operationId": "processSetPlaylistKindRequest",
+        "summary": "Set whether a playlist is listed as a playlist or a channel.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "playlistUrl": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "playlist",
+                        "channel"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "playlistUrl",
+                    "kind"
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Refused — invalid payload, failed admission, or dead session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "playlistUrl": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "playlist",
+                      "channel"
+                    ]
+                  }
+                },
+                "required": [
+                  "playlistUrl",
+                  "kind"
                 ]
               }
             }

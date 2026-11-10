@@ -112,6 +112,8 @@ export interface ChannelStore {
    * playlist create lock.
    */
   promote(autoUrl: string, channelUrl: string): Promise<{ merged: boolean }>;
+  /** Records a kind you chose, which the filing job then leaves alone. */
+  setKind(playlistUrl: string, kind: PlaylistKind): Promise<void>;
 }
 
 export function createDbChannelStore(): ChannelStore {
@@ -132,6 +134,17 @@ export function createDbChannelStore(): ChannelStore {
     // MAX. The rename leans on ON UPDATE CASCADE for the mappings and the
     // filing rows; if a database were missing it, the transaction would fail
     // whole instead of leaving a half-renamed channel.
+    async setKind(playlistUrl, kind) {
+      // `silent` leaves updatedAt alone, which Channels sorts on. sortOrder is
+      // left alone too, so a playlist set back to "playlist" reappears in the
+      // list where it was. kindSetByFiling goes false because the job no
+      // longer owns the label, and undo must not put it back.
+      await PlaylistMetadata.update(
+        { kind, kindLocked: true, kindSetByFiling: false },
+        { where: { playlistUrl }, silent: true },
+      );
+    },
+
     promote(autoUrl, channelUrl) {
       return withPlaylistCreateLock(() =>
         sequelize.transaction(async (transaction) => {
@@ -272,5 +285,39 @@ export function createChannelHandlers(
     }
   }
 
-  return { processMonitorChannelRequest };
+  async function processSetPlaylistKindRequest(
+    requestBody: { playlistUrl: string; kind: PlaylistKind },
+    response: HttpResponseLike,
+  ): Promise<void> {
+    try {
+      const { playlistUrl, kind } = requestBody;
+
+      // None and init are rows, but not lists anyone files things under.
+      const row = playlistUrl === "None" || playlistUrl === "init"
+        ? null
+        : await store.find(playlistUrl);
+      if (!row) {
+        json(response, 404, { error: "Playlist not found" });
+        return;
+      }
+      if (row.origin === "auto") {
+        // A channel by construction. Monitor channel is how it changes.
+        json(response, 400, {
+          error: "A channel the job created is changed with Monitor channel",
+        });
+        return;
+      }
+
+      await store.setKind(playlistUrl, kind);
+      json(response, 200, { playlistUrl, kind });
+    } catch (error) {
+      logger.error("Setting a playlist's kind failed", {
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+      json(response, 500, { error: "Could not change that playlist's kind." });
+    }
+  }
+
+  return { processMonitorChannelRequest, processSetPlaylistKindRequest };
 }

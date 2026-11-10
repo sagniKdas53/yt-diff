@@ -4,8 +4,10 @@ import {
   PlaylistMetadata,
   PlaylistVideoMapping,
   sequelize,
+  VideoFiling,
   VideoMetadata,
 } from "../src/db/models.ts";
+import { createDbFilingStore } from "../src/handlers/filing/store.ts";
 import {
   type FilingGroup,
   type FilingStore,
@@ -295,6 +297,115 @@ Deno.test("filing sweep - a sweep marks channel-like playlists and reports rows 
   assertEquals(summary.withoutFacets, 7);
 });
 
+Deno.test("filing undo - a playlist whose kind you set by hand is never reset", async () => {
+  const undo: UndoCandidates = {
+    negativeMappings: [],
+    filingRows: 0,
+    playlists: [
+      // Not a reachable state (setting a kind clears kindSetByFiling), but undo
+      // must not depend on that.
+      {
+        playlistUrl: "https://chosen",
+        origin: "user",
+        kindSetByFiling: true,
+        kindLocked: true,
+        mappingCount: 4,
+      },
+      {
+        playlistUrl: "https://flipped",
+        origin: "user",
+        kindSetByFiling: true,
+        kindLocked: false,
+        mappingCount: 4,
+      },
+    ],
+  };
+  const { store, calls } = fakeStore({ undo });
+  const summary = await undoFiling({ apply: true }, store);
+  assertEquals(calls.undone[0].resetKinds, ["https://flipped"]);
+  assertEquals(summary.kindsReset, 1);
+});
+
+Deno.test("filing store - the sweep and undo leave a kindLocked playlist out of every query", async () => {
+  const seenSql: string[] = [];
+  const restoreQuery = stub(sequelize, "query", (sql: string) => {
+    seenSql.push(sql);
+    return Promise.resolve([]);
+  });
+  const updates: AnyRecord[] = [];
+  const restoreUpdate = stub(
+    PlaylistMetadata,
+    "update",
+    (_values: AnyRecord, options: AnyRecord) => {
+      updates.push(options.where);
+      return Promise.resolve([0]);
+    },
+  );
+  const restoreFind = stub(
+    PlaylistVideoMapping,
+    "findAll",
+    () => Promise.resolve([]),
+  );
+  const restoreCount = stub(VideoFiling, "count", () => Promise.resolve(0));
+  try {
+    const store = createDbFilingStore();
+    await store.loadOwnerCounts();
+    await store.markChannelLike(["https://p"]);
+    await store.loadUndoCandidates();
+  } finally {
+    restoreQuery();
+    restoreUpdate();
+    restoreFind();
+    restoreCount();
+  }
+  // Owner counts decide which playlists the sweep flips, so a playlist you
+  // fixed by hand has to be absent from them.
+  assert(seenSql[0].includes(`p."kindLocked" = false`), seenSql[0]);
+  assertEquals(updates[0].kindLocked, false);
+  // Undo's candidates are what it resets.
+  assert(seenSql[1].includes(`NOT p."kindLocked"`), seenSql[1]);
+});
+
+Deno.test("filing store - a playlist you fixed by hand is channel-like by its kind alone", async () => {
+  const rows = [
+    ["https://a.example/own", "playlist", false],
+    ["https://a.example/chosen-playlist", "playlist", true],
+    ["https://a.example/chosen-channel", "channel", true],
+    ["https://a.example/flipped", "channel", false],
+  ].map(([playlistUrl, kind, kindLocked]) => ({
+    playlistUrl,
+    kind,
+    kindLocked,
+    monitoringType: "N/A",
+    createdAt: new Date("2025-01-01"),
+  }));
+  const restore = stub(
+    PlaylistMetadata,
+    "findAll",
+    () => Promise.resolve(rows),
+  );
+  try {
+    // Every one of them looks like one account's videos by its counts.
+    const owners = new Map(
+      rows.map((r) => [r.playlistUrl, new Map([["a", 9], ["b", 1]])]),
+    );
+    const playlists = await createDbFilingStore().loadPlaylists(
+      owners as Map<string, Map<string, number>>,
+    );
+    assertEquals(
+      Object.fromEntries(playlists.map((p) => [p.playlistUrl, p.channelLike])),
+      {
+        "https://a.example/own": true,
+        "https://a.example/chosen-playlist": false,
+        "https://a.example/chosen-channel": true,
+        "https://a.example/flipped": true,
+      },
+    );
+  } finally {
+    restore();
+  }
+});
+
 Deno.test("filing undo - removes only negative mappings and only empty auto playlists", async () => {
   const undo: UndoCandidates = {
     negativeMappings: [
@@ -309,6 +420,7 @@ Deno.test("filing undo - removes only negative mappings and only empty auto play
         playlistUrl: "auto:emptied",
         origin: "auto",
         kindSetByFiling: false,
+        kindLocked: false,
         mappingCount: 2,
       },
       // Someone added a real mapping, so it is not left empty.
@@ -316,12 +428,14 @@ Deno.test("filing undo - removes only negative mappings and only empty auto play
         playlistUrl: "auto:kept",
         origin: "auto",
         kindSetByFiling: false,
+        kindLocked: false,
         mappingCount: 2,
       },
       {
         playlistUrl: "https://user",
         origin: "user",
         kindSetByFiling: true,
+        kindLocked: false,
         mappingCount: 1,
       },
     ],
@@ -355,6 +469,7 @@ Deno.test("filing undo - keeps a promoted channel and a user playlist that was a
         playlistUrl: "https://promoted",
         origin: "user",
         kindSetByFiling: false,
+        kindLocked: false,
         mappingCount: 1,
       },
     ],

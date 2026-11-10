@@ -20,5 +20,6 @@ export function createPlaylistHandlers(deps: PlaylistHandlerDependencies) {
     getLibrarySummary: queries.getLibrarySummary,
     getLibraryFacets: queries.getLibraryFacets,
     processMonitorChannelRequest: channels.processMonitorChannelRequest,
+    processSetPlaylistKindRequest: channels.processSetPlaylistKindRequest,
   };
 }

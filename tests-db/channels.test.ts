@@ -9,6 +9,7 @@ import {
   count,
   dbTest,
   END_PLAYLIST,
+  MIXED_PLAYLIST,
   quote,
   rows,
   sequelize,
@@ -74,6 +75,7 @@ interface PlaylistRow {
   playlistUrl: string;
   kind: string;
   origin: string;
+  kindLocked: boolean;
   sortOrder: number;
   videoCount: number;
   latestAddedAt: string | null;
@@ -396,6 +398,133 @@ dbTest(
     assertEquals(edge.channelUrl, EDGE_CHANNEL_URL);
     const end = found.rows.find((r) => r.playlistUrl === END_PLAYLIST);
     assertEquals(end?.channelUrl, END_PLAYLIST);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 05c Task 2: a kind you set by hand
+// ---------------------------------------------------------------------------
+
+const setKind = (playlistUrl: string, kind: string) =>
+  post<{ playlistUrl: string; kind: string }>(
+    channels.processSetPlaylistKindRequest,
+    { playlistUrl, kind },
+  );
+
+async function kindOf(playlistUrl: string) {
+  const [row] = await rows<
+    {
+      kind: string;
+      kindLocked: boolean;
+      kindSetByFiling: boolean;
+      sortOrder: number;
+    }
+  >(
+    `SELECT kind, "kindLocked", "kindSetByFiling", "sortOrder"
+     FROM playlist_metadata WHERE "playlistUrl" = ${quote(playlistUrl)}`,
+  );
+  return row;
+}
+
+dbTest(
+  "channels db - the End playlist, set to playlist by hand, is still a playlist after a sweep",
+  async () => {
+    // By its videos End is one account's, which the sweep would flip.
+    const answer = await setKind(END_PLAYLIST, "playlist");
+    assertEquals(answer.status, 200);
+    assertEquals(answer.body, { playlistUrl: END_PLAYLIST, kind: "playlist" });
+    // A row at 0 or above keeps its place in the Playlists list.
+    assertEquals(await kindOf(END_PLAYLIST), {
+      kind: "playlist",
+      kindLocked: true,
+      kindSetByFiling: false,
+      sortOrder: 1000,
+    });
+
+    const summary = await sweep();
+    assertEquals(summary.channelLikePlaylists, 0);
+    assertEquals((await kindOf(END_PLAYLIST)).kind, "playlist");
+    assert(
+      (await getplay({ kind: "playlist" })).rows.some((r) =>
+        r.playlistUrl === END_PLAYLIST
+      ),
+      "still listed under Playlists",
+    );
+
+    // And undo leaves the choice alone.
+    const { undoFiling } = await import("../src/handlers/filing/sweep.ts");
+    await undoFiling({ apply: true });
+    assertEquals((await kindOf(END_PLAYLIST)).kindLocked, true);
+    assertEquals((await kindOf(END_PLAYLIST)).kind, "playlist");
+  },
+);
+
+dbTest(
+  "channels db - a playlist set to channel by hand stays one through undo, and a sweep",
+  async () => {
+    assertEquals((await setKind(MIXED_PLAYLIST, "channel")).status, 200);
+    await sweep();
+    const { undoFiling } = await import("../src/handlers/filing/sweep.ts");
+    await undoFiling({ apply: true });
+    assertEquals(await kindOf(MIXED_PLAYLIST), {
+      kind: "channel",
+      kindLocked: true,
+      kindSetByFiling: false,
+      sortOrder: 1001,
+    });
+    assert(
+      (await getplay({ kind: "channel" })).rows.some((r) =>
+        r.playlistUrl === MIXED_PLAYLIST
+      ),
+      "listed under Channels",
+    );
+  },
+);
+
+dbTest(
+  "channels db - a kind you set replaces the one the job set, and undo no longer owns it",
+  async () => {
+    await sweep();
+    assertEquals((await kindOf(END_PLAYLIST)).kindSetByFiling, true);
+    assertEquals((await setKind(END_PLAYLIST, "channel")).status, 200);
+    assertEquals(await kindOf(END_PLAYLIST), {
+      kind: "channel",
+      kindLocked: true,
+      kindSetByFiling: false,
+      sortOrder: 1000,
+    });
+    const { undoFiling } = await import("../src/handlers/filing/sweep.ts");
+    const undone = await undoFiling({ apply: true });
+    assertEquals(undone.kindsReset, 0);
+    assertEquals((await kindOf(END_PLAYLIST)).kind, "channel");
+  },
+);
+
+dbTest(
+  "channels db - setting a kind refuses None, init, an auto channel and an unknown URL",
+  async () => {
+    await sweep();
+    const auto = await edgeChannel();
+    assertEquals((await setKind("None", "channel")).status, 404);
+    assertEquals((await setKind("init", "channel")).status, 404);
+    assertEquals(
+      (await setKind("https://nope.example/x", "channel")).status,
+      404,
+    );
+    assertEquals((await setKind(auto, "playlist")).status, 400);
+    assertEquals((await kindOf(auto)).kind, "channel");
+    assertEquals((await kindOf(auto)).kindLocked, false);
+  },
+);
+
+dbTest(
+  "channels db - /getplay rows say whether the kind is locked",
+  async () => {
+    await setKind(MIXED_PLAYLIST, "channel");
+    const all = await getplay({});
+    const byUrl = new Map(all.rows.map((r) => [r.playlistUrl, r]));
+    assertEquals(byUrl.get(MIXED_PLAYLIST)?.kindLocked, true);
+    assertEquals(byUrl.get(END_PLAYLIST)?.kindLocked, false);
   },
 );
 
