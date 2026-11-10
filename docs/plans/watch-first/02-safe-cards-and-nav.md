@@ -149,7 +149,7 @@ components.
 - [ ] **Step 3: Update tests** that pass the removed prop, then run
       `npx vitest run`. Expected: all pass.
 - [ ] **Step 4: Check it in a browser.** Use the `playwright-cli` skill against
-      `npm run dev` with mocked or local API at 1440×900 and 800×1280. Confirm
+      `npm run dev` with mocked or local API at 1440×900, 800×1280 and 390×844. Confirm
       no page scrollbar, pagination visible, and the last list row clear of the
       FAB.
 - [ ] **Step 5: Commit.**

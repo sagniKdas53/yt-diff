@@ -62,7 +62,8 @@ PR is open. Then update the Progress table below, in that plan's branch.
 | 03   | 02 merged                                           |
 | 04   | 03 merged. Backend PR merges before its frontend PR |
 | 05   | Nothing. Run `seed/load.sh` for the test database   |
-| 05b  | 02 and 05 merged                                    |
+| 05c  | Nothing. Run `seed/load.sh` for the test database   |
+| 05b  | 02, 05 and 05c merged                               |
 | 06   | 04, 05 and 05b merged, and their backfills run      |
 
 ## Things already proven, so don't re-derive them
@@ -107,6 +108,9 @@ PR is open. Then update the Progress table below, in that plan's branch.
   See `seed/README.md`.
 - **Only the filing job writes negative positions.** Any code doing arithmetic
   on `positionInPlaylist` has to allow for them. Plan 05 lists the known places.
+- **`view` means a Library view, and only that.** `inbox`, `bot`, `clips` and
+  `archive`, in the route and in requests. Home or Library is the route's
+  `screen` (plan 06 Task 5). An earlier draft used `view` for both.
 - **`approximateSize` can't be trusted.** It totals 8.7 GB for a 361.5 GB
   library.
 - **`raw_metadata` holds `cookies` in 230 rows,** and backups copy them. It
@@ -143,6 +147,7 @@ Use the same method you use for `chapters:backfill` in the container.
 | 05 Unlisted filing                    | `feat/unlisted-filing`                         | #140, types: yt-diff-react#128 |        |              |
 | 05b Library views                     | `feat/library-views`                           |                                |        | n/a          |
 | 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |                                |        |              |
+| 05c Filing follow-ups                 | `fix/filing-follow-ups`                        |                                |        | n/a          |
 
 ## Not in scope
 

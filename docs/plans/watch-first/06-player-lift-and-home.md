@@ -181,7 +181,8 @@ understates it, since 19 props move.
       Render `PlayerHost` once, at the top of `App`, in the signed-in branch.
 - [ ] **Step 4: Run `npx vitest run`, `npm run lint && npm run typecheck`.**
       Expected: all pass.
-- [ ] **Step 5: Try it in a browser** with `playwright-cli`: open a video, Next
+- [ ] **Step 5: Try it in a browser** with `playwright-cli`, at 1440×900 and
+      390×844: open a video, Next
       through a page boundary, Back closes the player, reload resumes, and a
       pasted link opens.
 - [ ] **Step 6: Commit.** `feat(player): host the player at the app level`.
@@ -198,19 +199,21 @@ recorded there as approved, stop and ask.
 
 **Advisor checkpoint:** before Step 3, because the routing grammar is changing.
 
-**Interfaces:** `Route` gains `view: "home" | "library"`. `playlistUrl` stays
-`NO_PLAYLIST` for both.
+**Interfaces:** `Route` gains `screen: "home" | "library"`. `playlistUrl` stays
+`NO_PLAYLIST` for both. It isn't called `view`, because plan 05b already gave
+the route a `view` (`inbox`, `bot`, `clips`, `archive`), and `usePlayQueue`
+passes that one to `/locate`.
 
 - [ ] **Step 1: Write failing tests.**
-  - `#/` and an empty hash are `view: "home"`.
-  - `#/library` is `view: "library"`, and round-trips with `pp` and `ps`.
-  - `#/?pp=26` is `view: "library"`, page 26, and formats back to
+  - `#/` and an empty hash are `screen: "home"`.
+  - `#/library` is `screen: "library"`, and round-trips with `pp` and `ps`.
+  - `#/?pp=26` is `screen: "library"`, page 26, and formats back to
     `#/library?pp=26`.
-  - `#/unlisted`, `#/playlist/x`, with any of `v`, `t`, `vp`, `vs`, `c`, are
-    unchanged, `view: "library"`.
+  - `#/unlisted`, `#/playlist/x`, with any of `v`, `t`, `vp`, `vs`, `view` and
+    the filter params, are unchanged, `screen: "library"`.
   - A malformed location is Home.
-  - Desktop: `#/library` replaces itself with `#/unlisted?c=inbox`. Mobile: it
-    stays and shows the rail.
+  - Desktop: `#/library` replaces itself with `#/unlisted?view=inbox`. Mobile:
+    it stays and shows the rail.
   - Nav shows `Home` and `Library`, replacing `Unlisted`.
   - `clearList` and the mobile back arrow go to `#/library`.
   - A listing finishing on Home doesn't navigate.
@@ -227,7 +230,10 @@ recorded there as approved, stop and ask.
 **Backend files:** Modify `src/db/models.ts` (`downloadedAt` DATE null),
 `src/handlers/pipeline/download.ts` (set beside `downloadStatus: true`),
 `scripts/facets_backfill.ts` (fill null from `updatedAt` for downloaded rows),
-plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
+`src/handlers/filing/views.ts` (Inbox), `src/handlers/filing/channels.ts`
+(`latestSavedAt`), plus an endpoint by the README recipe. Tests
+`tests/recent.test.ts`, `tests/library_views.test.ts`,
+`tests/channels.test.ts`.
 
 **Frontend files:** Create `src/components/Home.jsx`,
 `src/components/WatchCard.jsx`, `src/hooks/useHomeFeed.js`,
@@ -238,11 +244,25 @@ plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
 `{ items: [{ videoUrl, playlistUrl, downloadedAt, video: {…same as /continue…} }] }`.
 `useHomeFeed()` returns
 `{ continue: Item[], recent: Item[], channels: Row[], loading, failed }`.
-`channels` comes from `POST /getplay { kind: "channel" }`.
+`channels` comes from `POST /getplay`, once for each `kind`, merged, newest
+`latestSavedAt` first, without the rows that have none. `/getplay` rows gain
+`latestSavedAt`: the newest `downloadedAt` among the list's videos. The rail is
+for watching, so a channel whose new videos are all links stays off it, and
+the rail's title says playlists too, so it shows them.
 
 - [ ] **Step 1: Write failing backend tests,** then implement `/recent`.
       Downloaded only, newest `downloadedAt` first, null last, with `limit`
-      capped at 60. Run `deno task gen:api`.
+      capped at 60. Two more, with their own tests:
+  - **Inbox reads `downloadedAt`.** "Saved in the last 30 days" has meant
+    "added in the last 30 days, and saved". It becomes `downloadedAt` within
+    `INBOX_DAYS`, falling back to the mapping's `createdAt` while
+    `downloadedAt` is null, so the Inbox is right before the backfill runs
+    too. A link added a year ago and saved yesterday is in; one added
+    yesterday and never saved still isn't.
+  - **`latestSavedAt` on `/getplay` rows,** null when nothing in the list is
+    saved.
+
+  Run `deno task gen:api`.
 - [ ] **Step 2: Write failing frontend tests.**
   - Rails render in order: `Continue watching`, `Recently saved`,
     `Channels and playlists with new videos`.
@@ -254,6 +274,8 @@ plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
   - A card has no delete or manage control. It shows the progress bar and
     `12m left`.
   - A channel card goes to `#/playlist/<url>`.
+  - The third rail holds channels and playlists together, newest
+    `latestSavedAt` first, and a row with a null one isn't shown.
   - `"search treats what you type as text"`: `a+b(` posts `query` with regex
     characters escaped under `global:`, and doesn't throw on invalid regex.
   - Mobile: rails scroll horizontally, and the page has no sideways scroll.
@@ -265,7 +287,7 @@ plus an endpoint by the README recipe. Test `tests/recent.test.ts`.
       focus.
 - [ ] **Step 5: Full check and a browser look.** Backend and frontend suites,
       lint, typecheck, then `playwright-cli` screenshots of Home and Library at
-      1440×900 and 800×1280.
+      1440×900, 800×1280 and 390×844.
 - [ ] **Step 6: Commit, advisor checkpoint, open both PRs.**
       `feat(home): a place to watch from`.
 

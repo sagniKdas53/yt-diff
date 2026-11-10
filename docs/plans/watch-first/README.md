@@ -94,6 +94,13 @@ never empty. On desktop, `#/library` opens the Inbox.
   renamed "Auto-update".
 - **Channels tab:** every channel, yours and the job's, newest activity first.
   About 261.
+- **Two groups above the lists:** Inbox and Via bot cut across everything,
+  while Clips and Archive split what the job hasn't put in a playlist or
+  channel. The rail separates the two groups with a divider, so nobody expects
+  the counts to add up to All unlisted.
+- **A wrong label is fixable:** a playlist's ⋮ menu has "Move to Channels" or
+  "Move to Playlists", and the job leaves that choice alone
+  ([05c](./05c-filing-follow-ups.md)).
 - **On a phone:** `#/library` is the left panel alone; a row slides in the
   videos.
 - **Deleting and similar:** moved into each card's ⋮ menu.
@@ -118,7 +125,9 @@ Measured on production, 2026-11-06. The design and rules are in
 3. **Archive** has no site or time rows. Those are filters, along with creator
    and length.
 4. **Inbox** holds only what you might want now: saved in the last 30 days and,
-   once plan 04 is in, not finished.
+   once plan 04 is in, not finished. Until plan 06 adds `downloadedAt`, "saved
+   in the last 30 days" reads when the link was added, so an old link saved
+   yesterday is missing. Plan 06 Task 6 switches it.
 5. **Hide watched** clears finished videos from any view, once plan 04 is in.
 
 `#/unlisted` still exists as "All unlisted", so nothing is hidden for good, and
@@ -133,6 +142,7 @@ old bot links still open.
 | [03](./03-formats-and-media-info.md)           | Remux, codec info, playback check            | both     | M    |
 | [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notification log     | both     | L    |
 | [05](./05-unlisted-filing.md)                  | Newest first, filing job, views and filters  | backend  | L    |
+| [05c](./05c-filing-follow-ups.md)              | Tighter matching, kind by hand, two filters  | backend  | S    |
 | [05b](./05b-library-views.md)                  | Rail, Channels, Clips, Archive filters       | frontend | M    |
 | [06](./06-player-lift-and-home.md)             | Invalidation store, player lift, Home        | both     | L    |
 
@@ -140,8 +150,11 @@ Each plan ships on its own.
 
 - **Frontend order:** 01, 02, 03 Task 5, 05b, then 04's and 06's frontend parts.
   They edit the same components.
-- **Backend:** 05 can start now. It needs no other plan, and neither do 03 Tasks
-  1–4, which touch different code apart from `models.ts` and `queries.ts`.
+- **Backend:** 05 is merged. 05c and 03 Tasks 1–4 need no other plan, so
+  either can run while the frontend queue waits on a merge. They both touch
+  `models.ts`, so run them one after the other, not at once.
+- **Shortest path to seeing the filing:** 01, 02, 05c, 05b. Plans 03 and 04
+  aren't on it.
 - **Needs both:** 06 needs 04 and 05. 04 adds "not finished" to Inbox, so if 05
   went first, that's its Task 7.
 
@@ -152,7 +165,10 @@ throwaway Postgres. **Phase 0a results and the storage audit:**
 ## How to run this with Sonnet
 
 1. **One session per plan file.** Run on Sonnet, `/clear` between plans, and
-   load only that plan plus this README. Don't spawn subagents.
+   load only that plan plus this README. Don't spawn subagents. Since
+   2026-11-10 an orchestrating session may instead hand each plan to one
+   Sonnet subagent, one at a time: `test:db` and the seed loader share a fixed
+   port, so two plans can't test at once.
 2. **Call the advisor only** at each `Advisor checkpoint` in a plan, when the
    same problem has failed twice, and before declaring a plan finished. Each
    call forwards the whole session, so short sessions keep it cheap.
@@ -215,6 +231,8 @@ There are five places, and nothing works until all are done:
   nullable or have defaults.
 - Recording progress, owners or notifications must never fail a download, a
   delivery or playback. Log the error and carry on.
+- Browser checks use three sizes: 1440×900, 800×1280 and 390×844. Watching on
+  a phone is the goal, and the first two never show a phone's width.
 - Keep the code style: explain why in comments, and use `Deno.test` names shaped
   like `area - behaviour`.
 
