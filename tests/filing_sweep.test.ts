@@ -99,7 +99,13 @@ function fakeStore(
     },
     loadUndoCandidates: () =>
       Promise.resolve(
-        data.undo ?? { negativeMappings: [], filingRows: 0, playlists: [] },
+        data.undo ??
+          {
+            negativeMappings: [],
+            filingRows: 0,
+            lockedFilingRows: 0,
+            playlists: [],
+          },
       ),
     applyUndo: (plan) => {
       calls.undone.push(plan);
@@ -301,6 +307,7 @@ Deno.test("filing undo - a playlist whose kind you set by hand is never reset", 
   const undo: UndoCandidates = {
     negativeMappings: [],
     filingRows: 0,
+    lockedFilingRows: 0,
     playlists: [
       // Not a reachable state (setting a kind clears kindSetByFiling), but undo
       // must not depend on that.
@@ -406,6 +413,70 @@ Deno.test("filing store - a playlist you fixed by hand is channel-like by its ki
   }
 });
 
+Deno.test("filing undo - the filing rows you made by removing a video are kept, and not counted as removed", async () => {
+  const undo: UndoCandidates = {
+    negativeMappings: [],
+    // Eight rows are the job's own; three record something you did.
+    filingRows: 8,
+    lockedFilingRows: 3,
+    playlists: [],
+  };
+  const { store, calls } = fakeStore({ undo });
+  const dry = await undoFiling({ apply: false }, store);
+  assertEquals(calls.undone.length, 0);
+  assertEquals(dry.filingRowsRemoved, 8);
+  assertEquals(dry.lockedKept, 3);
+  const applied = await undoFiling({ apply: true }, store);
+  assertEquals(applied, dry);
+});
+
+Deno.test("filing store - undo deletes only the filing rows that aren't locked, and parks the rest in Archive", async () => {
+  const destroyed: AnyRecord[] = [];
+  const updated: Array<{ values: AnyRecord; where: AnyRecord }> = [];
+  const counted: AnyRecord[] = [];
+  const restores = [
+    stub(
+      sequelize,
+      "transaction",
+      (fn: (t: unknown) => Promise<void>) => fn({}),
+    ),
+    stub(PlaylistVideoMapping, "destroy", () => Promise.resolve(0)),
+    stub(VideoFiling, "destroy", (opts: AnyRecord) => {
+      destroyed.push(opts.where);
+      return Promise.resolve(0);
+    }),
+    stub(VideoFiling, "update", (values: AnyRecord, opts: AnyRecord) => {
+      updated.push({ values, where: opts.where });
+      return Promise.resolve([0]);
+    }),
+    stub(VideoFiling, "count", (opts: AnyRecord) => {
+      counted.push(opts.where);
+      return Promise.resolve(0);
+    }),
+    stub(PlaylistVideoMapping, "findAll", () => Promise.resolve([])),
+    stub(sequelize, "query", () => Promise.resolve([])),
+  ];
+  try {
+    const store = createDbFilingStore();
+    const found = await store.loadUndoCandidates();
+    assertEquals(found.filingRows, 0);
+    await store.applyUndo({
+      mappingIds: [],
+      removeAutoPlaylists: [],
+      resetKinds: [],
+    });
+  } finally {
+    restores.reverse().forEach((restore) => restore());
+  }
+  assertEquals(counted, [{ locked: false }, { locked: true }]);
+  // A locked row is something you did. Deleting it would let the next sweep
+  // file the video again, so it stays, with nowhere to point to.
+  assertEquals(destroyed, [{ locked: false }]);
+  assertEquals(updated.length, 1);
+  assertEquals(updated[0].values, { placement: "archive", playlistUrl: null });
+  assertEquals(updated[0].where.locked, true);
+});
+
 Deno.test("filing undo - removes only negative mappings and only empty auto playlists", async () => {
   const undo: UndoCandidates = {
     negativeMappings: [
@@ -415,6 +486,7 @@ Deno.test("filing undo - removes only negative mappings and only empty auto play
       { id: "m4", playlistUrl: "https://user" },
     ],
     filingRows: 9,
+    lockedFilingRows: 0,
     playlists: [
       {
         playlistUrl: "auto:emptied",
@@ -449,6 +521,7 @@ Deno.test("filing undo - removes only negative mappings and only empty auto play
     filingRowsRemoved: 9,
     channelsRemoved: 1,
     kindsReset: 1,
+    lockedKept: 0,
   });
 
   await undoFiling({ apply: true }, store);
@@ -462,6 +535,7 @@ Deno.test("filing undo - keeps a promoted channel and a user playlist that was a
   const undo: UndoCandidates = {
     negativeMappings: [{ id: "m1", playlistUrl: "https://promoted" }],
     filingRows: 1,
+    lockedFilingRows: 0,
     playlists: [
       // Promoted by Monitor channel: origin is user now, and the job did not
       // set its kind.

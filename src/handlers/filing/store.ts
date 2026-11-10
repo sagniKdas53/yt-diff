@@ -293,7 +293,8 @@ export function createDbFilingStore(): FilingStore {
       );
       return {
         negativeMappings,
-        filingRows: await VideoFiling.count(),
+        filingRows: await VideoFiling.count({ where: { locked: false } }),
+        lockedFilingRows: await VideoFiling.count({ where: { locked: true } }),
         playlists,
       };
     },
@@ -306,7 +307,24 @@ export function createDbFilingStore(): FilingStore {
           where: { positionInPlaylist: { [Op.lt]: 0 } },
           transaction,
         });
-        await VideoFiling.destroy({ where: {}, transaction });
+        // A locked row records something you did, and deleting it would let
+        // the next sweep file that video again. It stays as a plain Archive
+        // row: its playlist mapping is gone with the others, so it must not
+        // keep pointing at one.
+        await VideoFiling.destroy({ where: { locked: false }, transaction });
+        await VideoFiling.update(
+          { placement: "archive", playlistUrl: null },
+          {
+            where: {
+              locked: true,
+              [Op.or]: [
+                { placement: { [Op.ne]: "archive" } },
+                { playlistUrl: { [Op.ne]: null } },
+              ],
+            },
+            transaction,
+          },
+        );
         if (plan.removeAutoPlaylists.length > 0) {
           await PlaylistMetadata.destroy({
             where: {
