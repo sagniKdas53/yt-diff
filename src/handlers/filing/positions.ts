@@ -6,8 +6,9 @@
 
 /**
  * Where a filed mapping sits: minus the time the video was added, in seconds.
- * Newest-added is the least negative, so it sorts last in position order and
- * first when Unlisted is read newest-first. The `-1` ceiling keeps the epoch
+ * The newest-added video is the most negative, so it sorts first in position
+ * order, which is what puts filed videos newest first above position 1 in a
+ * real playlist. The `-1` ceiling keeps the epoch
  * and sub-second timestamps negative, because undo finds the job's rows by
  * their sign.
  */

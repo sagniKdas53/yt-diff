@@ -1,8 +1,11 @@
 -- Measures the shape of the Unlisted pile using the rules in
--- ../05-unlisted-filing.md, within the pack's scope (YouTube). Run it on the
--- seed before edge-cases.sql is loaded and compare with seed/README.md; it was
--- also run on production to get those numbers, so a difference means the pack no
--- longer represents the archive. Only session-local temp tables are written.
+-- ../05-unlisted-filing.md, as ../05c-filing-follow-ups.md tightened rule 1: an
+-- uploader matches a playlist only if that playlist is one account's videos,
+-- and by channel id as well as handle. It stays within the pack's scope
+-- (YouTube). Run it on the seed before edge-cases.sql is loaded and compare
+-- with seed/README.md; it was also run on production to get those numbers, so
+-- a difference means the pack no longer represents the archive. Only
+-- session-local temp tables are written.
 \pset pager off
 \pset format aligned
 
@@ -25,19 +28,44 @@ CREATE TEMP TABLE un AS
     AND lower(regexp_replace(split_part(v."videoUrl", '/', 3), '^(www\.|m\.)', ''))
         IN ('youtube.com', 'youtu.be');
 
+-- Who owns each video in each playlist, as the sweep's loadOwnerCounts reads it.
+-- A video with no id is owner '', which counts toward the total and can never
+-- be the dominant owner. Every pack playlist is of kind "playlist"; on a
+-- database with channels already, those count as channel-like by their kind, so
+-- counting every playlist here gives the same answer.
+CREATE TEMP TABLE pl_owner AS
+  SELECT m."playlistUrl" AS pl,
+    coalesce(
+      lower(regexp_replace(split_part(v."videoUrl", '/', 3), '^(www\.|m\.)', '')) || ':' ||
+      lower(coalesce(nullif(v.raw_metadata->>'channel_id', 'NA'),
+                     nullif(v.raw_metadata->>'uploader_id', 'NA'),
+                     nullif(v.raw_metadata->>'uploader', 'NA'))), '') AS owner,
+    count(*) AS n
+  FROM playlist_video_mappings m JOIN video_metadata v USING ("videoUrl")
+  WHERE m."playlistUrl" NOT IN ('None', 'init')
+  GROUP BY 1, 2;
+
+-- isChannelLike: the biggest known owner has at least 3 videos and at least 80%.
+CREATE TEMP TABLE chanlike AS
+  SELECT pl FROM pl_owner GROUP BY pl
+  HAVING coalesce(max(n) FILTER (WHERE owner <> ''), 0) >= 3
+     AND coalesce(max(n) FILTER (WHERE owner <> ''), 0)::numeric
+         / sum(n) >= 0.8;
+
 CREATE TEMP TABLE seg AS
   SELECT lower(regexp_replace(split_part("playlistUrl", '/', 3), '^(www\.|m\.)', '')) AS host,
     lower(unnest(string_to_array(
       split_part(regexp_replace("playlistUrl", '^https?://[^/]+/', ''), '?', 1), '/'))) AS s
   FROM playlist_metadata
   WHERE lower(regexp_replace(split_part("playlistUrl", '/', 3), '^(www\.|m\.)', ''))
-        IN ('youtube.com', 'youtu.be');
+        IN ('youtube.com', 'youtu.be')
+    AND "playlistUrl" IN (SELECT pl FROM chanlike);
 
 CREATE TEMP TABLE placed AS
   SELECT un.*,
-    also OR (uid IS NOT NULL AND EXISTS (SELECT 1 FROM seg WHERE seg.host = un.host
+    also OR EXISTS (SELECT 1 FROM seg WHERE seg.host = un.host
              AND seg.s NOT IN ('videos', 'playlist', 'profile', 'channel', 'user', 'shorts')
-             AND seg.s IN (uid, '@' || ltrim(uid, '@')))) AS in_playlist,
+             AND (ltrim(seg.s, '@') = ltrim(uid, '@') OR ltrim(seg.s, '@') = ltrim(ch, '@'))) AS in_playlist,
     coalesce(seconds < 120, false) AS clip
   FROM un;
 

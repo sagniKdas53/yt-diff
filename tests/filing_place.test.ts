@@ -4,9 +4,10 @@ import {
   CHANNEL_SHARE,
   CLIP_MAX_SECONDS,
   INBOX_DAYS,
+  URL_WORDS,
 } from "../src/handlers/filing/rules.ts";
 import {
-  channelFromHandle,
+  channelFromUploader,
   isChannelLike,
   type KnownPlaylist,
   placeVideos,
@@ -24,6 +25,7 @@ function row(overrides: Partial<UnlistedRow> = {}): UnlistedRow {
     channelKey: null,
     channelName: null,
     channelHandle: null,
+    channelId: null,
     durationSeconds: 600,
     addedAt: new Date("2026-01-01T00:00:00Z"),
     realPlaylistUrl: null,
@@ -40,6 +42,7 @@ function playlist(overrides: Partial<KnownPlaylist> = {}): KnownPlaylist {
     urlSegments: ["@some", "videos"],
     monitored: false,
     createdAt: new Date("2025-01-01T00:00:00Z"),
+    channelLike: true,
     ...overrides,
   };
 }
@@ -73,10 +76,10 @@ Deno.test("filing place - a handle matches a playlist URL on the same site only"
   const hit = row({ site: "match.example", channelHandle: "match-me" });
   const otherSite = row({ site: "other.example", channelHandle: "match-me" });
   assertEquals(
-    channelFromHandle(hit, known),
+    channelFromUploader(hit, known),
     "https://match.example/@match-me/videos",
   );
-  assertEquals(channelFromHandle(otherSite, known), null);
+  assertEquals(channelFromUploader(otherSite, known), null);
   const [placed] = place([hit], known);
   assertEquals(placed.placement, "playlist");
   assertEquals(placed.playlistUrl, "https://match.example/@match-me/videos");
@@ -99,7 +102,7 @@ Deno.test("filing place - a handle that is a URL word matches nothing", () => {
     ]
   ) {
     assertEquals(
-      channelFromHandle(
+      channelFromUploader(
         row({ site: "match.example", channelHandle: word }),
         known,
       ),
@@ -127,11 +130,11 @@ Deno.test("filing place - with two matches a monitored playlist wins, then the o
   });
   const r = row({ channelHandle: "dup" });
   assertEquals(
-    channelFromHandle(r, [newer, old]),
+    channelFromUploader(r, [newer, old]),
     "https://a.example/@dup/old",
   );
   assertEquals(
-    channelFromHandle(r, [newer, monitored, old]),
+    channelFromUploader(r, [newer, monitored, old]),
     "https://a.example/@dup/monitored",
   );
 });
@@ -332,7 +335,7 @@ Deno.test("filing place - the URL side is compared without case or @", () => {
     urlSegments: ["@Match-Me", "videos"],
   })];
   assertEquals(
-    channelFromHandle(row({ channelHandle: "match-me" }), known),
+    channelFromUploader(row({ channelHandle: "match-me" }), known),
     "https://a.example/@Match-Me/videos",
   );
   const bare = [playlist({
@@ -340,7 +343,7 @@ Deno.test("filing place - the URL side is compared without case or @", () => {
     urlSegments: ["MATCH-ME"],
   })];
   assertEquals(
-    channelFromHandle(row({ channelHandle: "match-me" }), bare),
+    channelFromUploader(row({ channelHandle: "match-me" }), bare),
     "https://a.example/MATCH-ME",
   );
 });
@@ -357,4 +360,164 @@ Deno.test("filing place - videos with no known owner never make a channel", () =
     isChannelLike(new Map([[UNKNOWN_OWNER, 3], ["a", 7]])),
     false,
   );
+});
+
+// ---------------------------------------------------------------------------
+// 05c Task 1: an uploader only ever lands in one account's own playlist
+// ---------------------------------------------------------------------------
+
+Deno.test("filing place - a handle matching a playlist that is not channel-like matches nothing", () => {
+  const curated = playlist({
+    playlistUrl: "https://a.example/@acct/playlists/best-of",
+    urlSegments: ["@acct", "playlists", "best-of"],
+    channelLike: false,
+  });
+  const r = row({ channelHandle: "acct", durationSeconds: 30 });
+  assertEquals(channelFromUploader(r, [curated]), null);
+  // It goes on to the clip rule instead.
+  assertEquals(place([r], [curated])[0].placement, "clip");
+
+  const long = row({ channelHandle: "acct", durationSeconds: 600 });
+  assertEquals(place([long], [curated])[0].placement, "archive");
+});
+
+Deno.test("filing place - a handle that matches both a channel-like and a curated playlist picks the channel-like one", () => {
+  const curated = playlist({
+    playlistUrl: "https://a.example/@acct/curated",
+    urlSegments: ["@acct", "curated"],
+    channelLike: false,
+    monitored: true,
+    createdAt: new Date("2020-01-01"),
+  });
+  const own = playlist({
+    playlistUrl: "https://a.example/@acct/videos",
+    urlSegments: ["@acct", "videos"],
+    channelLike: true,
+    createdAt: new Date("2025-01-01"),
+  });
+  assertEquals(
+    channelFromUploader(row({ channelHandle: "acct" }), [curated, own]),
+    "https://a.example/@acct/videos",
+  );
+});
+
+Deno.test("filing place - with no handle match, a channel id equal to a URL segment matches on the same site only", () => {
+  const known = [playlist({
+    playlistUrl: "https://match.example/channel/UCAbC123/videos",
+    site: "match.example",
+    urlSegments: ["channel", "UCAbC123", "videos"],
+  })];
+  const hit = row({ site: "match.example", channelId: "ucabc123" });
+  const otherSite = row({ site: "other.example", channelId: "ucabc123" });
+  assertEquals(
+    channelFromUploader(hit, known),
+    "https://match.example/channel/UCAbC123/videos",
+  );
+  assertEquals(channelFromUploader(otherSite, known), null);
+  assertEquals(place([hit], known)[0].placement, "playlist");
+});
+
+Deno.test("filing place - a channel id only matches a channel-like playlist", () => {
+  const known = [playlist({
+    playlistUrl: "https://a.example/channel/UCx/playlists",
+    urlSegments: ["channel", "UCx", "playlists"],
+    channelLike: false,
+  })];
+  assertEquals(channelFromUploader(row({ channelId: "ucx" }), known), null);
+});
+
+Deno.test("filing place - a channel id that is a URL word matches nothing", () => {
+  const known = [playlist({
+    site: "match.example",
+    urlSegments: ["@x", "videos", "channel", "user", "playlist"],
+  })];
+  for (const word of URL_WORDS) {
+    assertEquals(
+      channelFromUploader(
+        row({ site: "match.example", channelId: word }),
+        known,
+      ),
+      null,
+    );
+  }
+});
+
+Deno.test("filing place - a handle match wins over a channel id match when they differ", () => {
+  const byHandle = playlist({
+    playlistUrl: "https://a.example/@handle/videos",
+    urlSegments: ["@handle", "videos"],
+    createdAt: new Date("2025-06-01"),
+  });
+  const byId = playlist({
+    playlistUrl: "https://a.example/channel/ucid",
+    urlSegments: ["channel", "ucid"],
+    createdAt: new Date("2020-01-01"),
+    monitored: true,
+  });
+  assertEquals(
+    channelFromUploader(
+      row({ channelHandle: "handle", channelId: "ucid" }),
+      [byId, byHandle],
+    ),
+    "https://a.example/@handle/videos",
+  );
+  // With no handle match, the id match is used.
+  assertEquals(
+    channelFromUploader(
+      row({ channelHandle: "elsewhere", channelId: "ucid" }),
+      [byId, byHandle],
+    ),
+    "https://a.example/channel/ucid",
+  );
+});
+
+Deno.test("filing place - the id match keeps the tie-break: monitored first, then the oldest", () => {
+  const old = playlist({
+    playlistUrl: "https://a.example/channel/ucid/old",
+    urlSegments: ["channel", "ucid", "old"],
+    createdAt: new Date("2024-01-01"),
+  });
+  const newer = playlist({
+    playlistUrl: "https://a.example/channel/ucid/new",
+    urlSegments: ["channel", "ucid", "new"],
+    createdAt: new Date("2025-01-01"),
+  });
+  const monitored = playlist({
+    playlistUrl: "https://a.example/channel/ucid/live",
+    urlSegments: ["channel", "ucid", "live"],
+    createdAt: new Date("2026-01-01"),
+    monitored: true,
+  });
+  const r = row({ channelId: "ucid" });
+  assertEquals(
+    channelFromUploader(r, [newer, old]),
+    "https://a.example/channel/ucid/old",
+  );
+  assertEquals(
+    channelFromUploader(r, [newer, monitored, old]),
+    "https://a.example/channel/ucid/live",
+  );
+});
+
+Deno.test("filing place - a row already placed in a playlist under the old rule stays put", () => {
+  // The playlist is no longer channel-like, but the filing row was written
+  // under the older rule. Only new and reconsidered rows see the new one.
+  const curated = playlist({
+    playlistUrl: "https://a.example/@acct/curated",
+    urlSegments: ["@acct", "curated"],
+    channelLike: false,
+  });
+  const filed = row({
+    channelHandle: "acct",
+    hasFiledMapping: true,
+    filing: {
+      placement: "playlist",
+      playlistUrl: "https://a.example/@acct/curated",
+      locked: false,
+    },
+  });
+  const [placed] = place([filed], [curated]);
+  assertEquals(placed.placement, "playlist");
+  assertEquals(placed.playlistUrl, "https://a.example/@acct/curated");
+  assertEquals(placed.locked, false);
 });

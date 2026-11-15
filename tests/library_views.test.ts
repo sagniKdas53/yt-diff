@@ -1,9 +1,12 @@
 import { assert, assertEquals } from "std/assert/mod.ts";
 import { Op } from "sequelize";
 import { config } from "../src/config.ts";
+import { PlaylistVideoMapping } from "../src/db/models.ts";
 import {
   buildLibraryFilter,
+  creatorMatches,
   filterWithout,
+  libraryFacets,
   type LibraryView,
   parseLibraryRequest,
   pickName,
@@ -15,6 +18,20 @@ import {
   SubListRequestSchema,
   validateBody,
 } from "../src/middleware/validator.ts";
+
+// deno-lint-ignore no-explicit-any
+type AnyRecord = Record<string, any>;
+
+/** Shadows an inherited static property; the returned fn restores it. */
+function stub(target: object, name: string, impl: unknown): () => void {
+  const own = Object.prototype.hasOwnProperty.call(target, name);
+  const original = (target as AnyRecord)[name];
+  (target as AnyRecord)[name] = impl;
+  return () => {
+    if (own) (target as AnyRecord)[name] = original;
+    else delete (target as AnyRecord)[name];
+  };
+}
 
 const VIEWS: LibraryView[] = ["inbox", "bot", "clips", "archive"];
 const NOW = new Date("2026-03-01T00:00:00Z");
@@ -324,5 +341,287 @@ Deno.test("library views - a malformed view or filter gets a 400 at the route an
       assertEquals(status, 400, JSON.stringify(body));
       assertEquals(reached, false, JSON.stringify(body));
     }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 05c Task 4: find a creator by name, and filter by upload date
+// ---------------------------------------------------------------------------
+
+Deno.test("library views - uploaded dates put the range on uploadDate as plain dates", () => {
+  const { videoWhere, mappingWhere } = buildLibraryFilter(
+    null,
+    { dateField: "uploaded", year: 2026, month: 3 },
+    NOW,
+  );
+  // Plain YYYY-MM-DD strings: an upload date has no time or zone, so there is
+  // nothing to convert and no literal to build. A video with no uploadDate has
+  // nothing to compare, and is excluded.
+  assertEquals(videoWhere, {
+    [Op.and]: [{
+      uploadDate: {
+        [Op.ne]: null,
+        [Op.gte]: "2026-03-01",
+        [Op.lt]: "2026-04-01",
+      },
+    }],
+  });
+  assertEquals(literalsIn(videoWhere), []);
+  // And the time it was added is no longer part of the question.
+  assertEquals(mappingWhere, undefined);
+
+  const december = buildLibraryFilter(
+    null,
+    { dateField: "uploaded", year: 2026, month: 12 },
+    NOW,
+  ).videoWhere;
+  assert(leaves(december).includes("2027-01-01"));
+
+  const yearOnly = buildLibraryFilter(
+    null,
+    { dateField: "uploaded", year: 2026 },
+    NOW,
+  ).videoWhere;
+  assert(leaves(yearOnly).includes("2026-01-01"));
+  assert(leaves(yearOnly).includes("2027-01-01"));
+});
+
+Deno.test("library views - dateField added is the default and keeps reading the mapping", () => {
+  const explicit = buildLibraryFilter(
+    null,
+    { dateField: "added", year: 2026, month: 3 },
+    NOW,
+  );
+  const implicit = buildLibraryFilter(null, { year: 2026, month: 3 }, NOW);
+  assertEquals(
+    literalsIn(explicit.mappingWhere),
+    literalsIn(implicit.mappingWhere),
+  );
+  assertEquals(explicit.videoWhere, undefined);
+});
+
+Deno.test("library views - a dateField without a year filters nothing", () => {
+  for (const dateField of ["added", "uploaded"] as const) {
+    assertEquals(buildLibraryFilter(null, { dateField }, NOW), {
+      videoWhere: undefined,
+      mappingWhere: undefined,
+    });
+  }
+});
+
+Deno.test("library views - an unknown dateField, or an empty or long creatorQuery, is rejected", () => {
+  assertEquals(parseLibraryRequest({ filter: { dateField: "created" } }), null);
+  assertEquals(
+    parseLibraryRequest({ filter: { dateField: "uploaded", year: 2026 } }),
+    { view: null, filter: { dateField: "uploaded", year: 2026 } },
+  );
+  const ok = { creatorQuery: "a" };
+  assertEquals(LibraryFacetsRequestSchema.safeParse(ok).success, true);
+  assertEquals(
+    LibraryFacetsRequestSchema.safeParse({ creatorQuery: "x".repeat(100) })
+      .success,
+    true,
+  );
+  for (const creatorQuery of ["", "x".repeat(101), 5, null]) {
+    assertEquals(
+      LibraryFacetsRequestSchema.safeParse({ creatorQuery }).success,
+      false,
+      JSON.stringify(creatorQuery),
+    );
+  }
+});
+
+Deno.test("library facets - a creator query is matched as text, so wildcards and SQL mean nothing", () => {
+  const names = ["Plain Name"];
+  // Matched against the text itself, not a pattern: `%` and `_` are only
+  // themselves, and nothing here ever reaches SQL.
+  assertEquals(creatorMatches("a.example:x", names, "%"), false);
+  assertEquals(creatorMatches("a.example:x", names, "_"), false);
+  assertEquals(creatorMatches("a.example:x", names, "'; DROP TABLE"), false);
+  assertEquals(creatorMatches("a.example:100%", ["100% Real"], "%"), true);
+  assertEquals(creatorMatches("a.example:a_b", ["A_B"], "_"), true);
+  assertEquals(
+    creatorMatches("a.example:x", ["o'; drop table--"], "'; DROP TABLE"),
+    true,
+  );
+});
+
+Deno.test("library facets - a creator query matches the name or the key, without case", () => {
+  assertEquals(creatorMatches("a.example:ucabc", ["Some Name"], "SOME"), true);
+  assertEquals(creatorMatches("a.example:ucabc", ["Some Name"], "UCAB"), true);
+  assertEquals(
+    creatorMatches("a.example:ucabc", ["Some Name"], "other"),
+    false,
+  );
+  // Any name the key has been seen under counts, not only the one shown.
+  assertEquals(
+    creatorMatches("a.example:k", ["Old Name", "New Name"], "old"),
+    true,
+  );
+});
+
+/** Stands in for the two queries the facets run, with fixed rows. */
+function stubFacetQueries() {
+  const grouped: Array<Record<string, unknown>> = [];
+  const rows = [
+    {
+      site: "a.example",
+      siteName: "A",
+      year: 2026,
+      month: 3,
+      channelKey: "a.example:big",
+      channelName: "Big One",
+      count: "5",
+    },
+    {
+      site: "a.example",
+      siteName: "A",
+      year: 2026,
+      month: 3,
+      channelKey: "a.example:small",
+      channelName: "Tiny Find",
+      count: "1",
+    },
+  ];
+  const restoreFind = stub(PlaylistVideoMapping, "findAll", (
+    options: Record<string, unknown>,
+  ) => {
+    grouped.push(options);
+    return Promise.resolve(rows);
+  });
+  const restoreCount = stub(
+    PlaylistVideoMapping,
+    "count",
+    () => Promise.resolve(7),
+  );
+  return {
+    grouped,
+    restore: () => {
+      restoreFind();
+      restoreCount();
+    },
+  };
+}
+
+Deno.test("library facets - a creator query narrows the creators and nothing else", async () => {
+  const stubbed = stubFacetQueries();
+  try {
+    const plain = await libraryFacets("archive", { year: 2026 }, NOW);
+    const searched = await libraryFacets(
+      "archive",
+      { year: 2026 },
+      NOW,
+      "tiny",
+    );
+    assertEquals(plain.creators.map((c) => c.key), [
+      "a.example:big",
+      "a.example:small",
+    ]);
+    assertEquals(searched.creators, [
+      { key: "a.example:small", name: "Tiny Find", count: 1 },
+    ]);
+    assertEquals(searched.sites, plain.sites);
+    assertEquals(searched.years, plain.years);
+    assertEquals(searched.months, plain.months);
+    assertEquals(searched.lengths, plain.lengths);
+    assertEquals(searched.saved, plain.saved);
+
+    // A query nothing matches is an empty list, not an error.
+    assertEquals(
+      (await libraryFacets("archive", {}, NOW, "no such creator")).creators,
+      [],
+    );
+  } finally {
+    stubbed.restore();
+  }
+});
+
+/** The grouped query that counts under `alias` (year, month, site, ...). */
+function queryFor(grouped: Array<Record<string, unknown>>, alias: string) {
+  const found = grouped.find((options) =>
+    (options.attributes as Array<unknown>).some((a) =>
+      Array.isArray(a) && a[1] === alias
+    )
+  );
+  assert(found !== undefined, `no query counts ${alias}`);
+  const attribute = (found.attributes as Array<[unknown, string]>).find((a) =>
+    a[1] === alias
+  )!;
+  return {
+    // The SQL function and the text it reads from.
+    expression: JSON.stringify(attribute[0]),
+    videoWhere: (found.include as Array<{ where: unknown }>)[0].where,
+  };
+}
+
+/** Whether a where tree names this column anywhere. */
+function names(node: unknown, key: string): boolean {
+  if (node === null || typeof node !== "object") return false;
+  return Reflect.ownKeys(node).some((k) =>
+    k === key ||
+    names((node as Record<string | symbol, unknown>)[k], key)
+  );
+}
+
+Deno.test("library facets - uploaded years count the upload date and skip videos without one", async () => {
+  const stubbed = stubFacetQueries();
+  try {
+    await libraryFacets(null, { dateField: "uploaded" }, NOW);
+    const uploaded = queryFor(stubbed.grouped, "year");
+    assert(uploaded.expression.includes("uploadDate"));
+    assert(!uploaded.expression.includes("createdAt"));
+    // No uploadDate means no year to count the video under.
+    assertEquals(
+      leaves(uploaded.videoWhere).length,
+      0,
+      "the only condition is the not-null test",
+    );
+    assert(names(uploaded.videoWhere, "uploadDate"));
+
+    // The default still reads when the video was added.
+    stubbed.grouped.length = 0;
+    await libraryFacets(null, {}, NOW);
+    const added = queryFor(stubbed.grouped, "year");
+    assert(added.expression.includes("createdAt"));
+    assert(!added.expression.includes("uploadDate"));
+  } finally {
+    stubbed.restore();
+  }
+});
+
+Deno.test("library facets - uploaded months are counted inside the chosen year, on the upload date", async () => {
+  const stubbed = stubFacetQueries();
+  try {
+    await libraryFacets(null, { dateField: "uploaded", year: 2026 }, NOW);
+    const month = queryFor(stubbed.grouped, "month");
+    assert(month.expression.includes("uploadDate"));
+    // The year's range is on uploadDate too, so a month is a month of that
+    // year's uploads.
+    assert(leaves(month.videoWhere).includes("2026-01-01"));
+    assert(leaves(month.videoWhere).includes("2027-01-01"));
+  } finally {
+    stubbed.restore();
+  }
+});
+
+Deno.test("library facets - the creator query is validated at the route", () => {
+  for (const creatorQuery of ["", "x".repeat(101)]) {
+    let reached = false;
+    let status = 0;
+    // deno-lint-ignore no-explicit-any
+    const guarded = validateBody(LibraryFacetsRequestSchema as any, () => {
+      reached = true;
+    });
+    guarded({ creatorQuery }, {
+      headersSent: false,
+      setHeader: () => {},
+      writeHead: (s: number) => {
+        status = s;
+      },
+      write: () => {},
+      end: () => {},
+    });
+    assertEquals(status, 400);
+    assertEquals(reached, false);
   }
 });

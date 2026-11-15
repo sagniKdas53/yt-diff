@@ -11,7 +11,8 @@ import {
  * in, and the sweep (sweep.ts) does the reading and the writing.
  *
  * The first rule that fits wins:
- *   1. Already in a real playlist, or its uploader matches one on the same site.
+ *   1. Already in a real playlist, or its uploader matches a channel-like one
+ *      on the same site (by handle first, then by channel id).
  *   2. Known duration under CLIP_MAX_SECONDS: a clip.
  *   3. At least CHANNEL_MIN_VIDEOS left from one channel: that channel.
  *   4. Everything else: Archive. Saved or Links only is `downloadStatus` at
@@ -26,6 +27,8 @@ export interface UnlistedRow {
   channelKey: string | null;
   channelName: string | null;
   channelHandle: string | null;
+  /** The part of `channelKey` after "<site>:", for matching URLs by id. */
+  channelId: string | null;
   durationSeconds: number | null;
   addedAt: Date;
   /** A playlist the video is in that the job didn't put it in. */
@@ -45,6 +48,12 @@ export interface KnownPlaylist {
   urlSegments: string[];
   monitored: boolean;
   createdAt: Date;
+  /**
+   * The playlist is one account's videos: its kind is "channel", or it passes
+   * `isChannelLike` right now. A curated or mixed playlist is never a target
+   * for an uploader match, however its URL reads.
+   */
+  channelLike: boolean;
 }
 
 export interface Placement {
@@ -62,22 +71,37 @@ function bare(value: string): string {
 }
 
 /**
- * The playlist whose URL names this uploader, on the same site.
+ * The channel-like playlist whose URL names this uploader, on the same site.
+ *
+ * The handle is tried first, then the channel id, which finds a channel stored
+ * under an id-style URL. Only a playlist that is one account's videos can
+ * match: a user's curated playlist often sits under their path, and matching
+ * it would file every video they upload there.
  *
  * With two matches a monitored playlist wins, then the oldest, which is the
  * order `resolveVideoPlaylist` uses to pick a folder.
  */
-export function channelFromHandle(
+export function channelFromUploader(
   row: UnlistedRow,
   playlists: KnownPlaylist[],
 ): string | null {
-  if (row.channelHandle === null) return null;
-  const handle = bare(row.channelHandle);
-  if (handle === "" || URL_WORDS.has(handle)) return null;
+  const candidates = playlists.filter((p) =>
+    p.channelLike && p.site === row.site
+  );
+  return matchSegment(row.channelHandle, candidates) ??
+    matchSegment(row.channelId, candidates);
+}
 
-  const matches = playlists.filter((p) =>
-    p.site === row.site &&
-    p.urlSegments.some((segment) => bare(segment) === handle)
+function matchSegment(
+  value: string | null,
+  candidates: KnownPlaylist[],
+): string | null {
+  if (value === null) return null;
+  const wanted = bare(value);
+  if (wanted === "" || URL_WORDS.has(wanted)) return null;
+
+  const matches = candidates.filter((p) =>
+    p.urlSegments.some((segment) => bare(segment) === wanted)
   );
   if (matches.length === 0) return null;
 
@@ -166,7 +190,7 @@ export function placeVideos(
     }
 
     const playlistUrl = row.realPlaylistUrl ??
-      channelFromHandle(row, playlists);
+      channelFromUploader(row, playlists);
     if (playlistUrl !== null) {
       results.set(row, {
         videoUrl: row.videoUrl,

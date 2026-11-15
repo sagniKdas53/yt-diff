@@ -17,9 +17,10 @@ export const INBOX_DAYS = 30;
 
 /**
  * Stamped on every filing row. Bump it when a rule changes, so a later sweep
- * can tell which rows were placed under the old one.
+ * can tell which rows were placed under the old one. Version 2: an uploader
+ * only matches a channel-like playlist, and by channel id as well as handle.
  */
-export const RULES_VERSION = 1;
+export const RULES_VERSION = 2;
 
 /**
  * Path segments that name a kind of page rather than an account, so a handle

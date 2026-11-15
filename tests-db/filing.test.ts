@@ -12,7 +12,9 @@ import {
   MIXED_PLAYLIST,
   Op,
   PlaylistVideoMapping,
+  quote,
   rows,
+  sequelize,
 } from "./support.ts";
 
 const { runFilingSweep, undoFiling } = await import(
@@ -80,8 +82,11 @@ dbTest(
     assertEquals(
       Object.fromEntries(Object.entries(t).map(([k, v]) => [k, Number(v)])),
       {
-        in_playlist: 44,
-        clips: 148,
+        // One pack video used to match a playlist by handle. That playlist
+        // holds only videos with no known owner, so it isn't one account's
+        // videos (05c), and the 49 second video is a clip instead.
+        in_playlist: 43,
+        clips: 149,
         in_channels: 23,
         channels: 6,
         saved: 45,
@@ -334,5 +339,213 @@ dbTest("filing db - a filed video you removed stays in Archive", async () => {
   assertEquals(again.toPlaylist, 0);
   assertEquals(await placementOf(url), "archive links");
 });
+
+/** A playlist of three videos by one account, on a made-up host. */
+async function insertOwnPlaylist(playlistUrl: string, ownerKey: string) {
+  await sequelize.query(
+    `INSERT INTO playlist_metadata ("playlistUrl", title, "sortOrder", "monitoringType",
+       "saveDirectory", "createdAt", "updatedAt", "lastUpdatedByScheduler")
+     VALUES (${quote(playlistUrl)}, 'Own', 2000, 'N/A', 'own',
+       '2026-01-01', '2026-01-01', '2026-01-01')`,
+  );
+  for (const n of [1, 2, 3]) {
+    const url = `https://id.example/own/${n}`;
+    await sequelize.query(
+      `INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+         "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+         "durationSeconds", "createdAt", "updatedAt")
+       VALUES (${quote(url)}, 'own${n}', 'Own ${n}', 1, false, true, false,
+         'id.example', ${quote(ownerKey)}, 500, '2026-01-01', '2026-01-01');
+       INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+         "positionInPlaylist", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), ${quote(url)}, ${quote(playlistUrl)}, ${n},
+         '2026-01-01', '2026-01-01')`,
+    );
+  }
+}
+
+/** A lone Unlisted video on the same host, with the given handle and id. */
+async function insertUnlisted(
+  url: string,
+  channelKey: string,
+  handle: string,
+) {
+  await sequelize.query(
+    `INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+       "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+       "channelHandle", "durationSeconds", "createdAt", "updatedAt")
+     VALUES (${quote(url)}, md5(${quote(url)}), 'Lone', 1, false, true, false,
+       'id.example', ${quote(channelKey)}, ${quote(handle)}, 500,
+       '2026-02-01', '2026-02-01');
+     INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+       "positionInPlaylist", "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), ${quote(url)}, 'None',
+       (SELECT max("positionInPlaylist") + 1 FROM playlist_video_mappings
+        WHERE "playlistUrl" = 'None'), '2026-02-01', '2026-02-01')`,
+  );
+}
+
+dbTest(
+  "filing db - a channel id in a playlist URL files the uploader's video there",
+  async () => {
+    const own = "https://id.example/channel/UCOwn1/videos";
+    await insertOwnPlaylist(own, "id.example:ucown1");
+    // The handle matches nothing, so only the id can find the playlist.
+    await insertUnlisted(
+      "https://id.example/lone/1",
+      "id.example:ucown1",
+      "no-such-handle",
+    );
+    await apply();
+    assertEquals(
+      await placementOf("https://id.example/lone/1"),
+      `playlist ${own}`,
+    );
+  },
+);
+
+dbTest(
+  "filing db - a curated playlist under an account's path is not a target for its uploads",
+  async () => {
+    // Three owners, so it is not one account's videos, though its URL names one.
+    const curated = "https://id.example/@someone/playlists/best-of";
+    await sequelize.query(
+      `INSERT INTO playlist_metadata ("playlistUrl", title, "sortOrder", "monitoringType",
+         "saveDirectory", "createdAt", "updatedAt", "lastUpdatedByScheduler")
+       VALUES (${quote(curated)}, 'Best of', 2001, 'N/A', 'best',
+         '2026-01-01', '2026-01-01', '2026-01-01')`,
+    );
+    for (const n of [1, 2, 3]) {
+      const url = `https://id.example/curated/${n}`;
+      await sequelize.query(
+        `INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+           "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+           "durationSeconds", "createdAt", "updatedAt")
+         VALUES (${quote(url)}, 'cur${n}', 'Cur ${n}', 1, false, true, false,
+           'id.example', 'id.example:other${n}', 500, '2026-01-01', '2026-01-01');
+         INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+           "positionInPlaylist", "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), ${quote(url)}, ${quote(curated)}, ${n},
+           '2026-01-01', '2026-01-01')`,
+      );
+    }
+    await insertUnlisted(
+      "https://id.example/lone/2",
+      "id.example:someone",
+      "someone",
+    );
+    await apply();
+    assertEquals(
+      await placementOf("https://id.example/lone/2"),
+      "archive links",
+    );
+    const [kind] = await rows<{ kind: string }>(
+      `SELECT kind FROM playlist_metadata WHERE "playlistUrl" = ${
+        quote(curated)
+      }`,
+    );
+    assertEquals(kind.kind, "playlist");
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 05c Task 3: undo keeps your removals
+// ---------------------------------------------------------------------------
+
+/** Files everything, then removes one filed video from its playlist and sweeps. */
+async function removeFiledVideo(url: string) {
+  await apply();
+  await PlaylistVideoMapping.destroy({
+    where: {
+      videoUrl: url,
+      playlistUrl: END_PLAYLIST,
+      positionInPlaylist: { [Op.lt]: 0 },
+    },
+  });
+  await apply();
+}
+
+dbTest(
+  "filing db - undo keeps the video you removed, and a sweep after it leaves it in Archive",
+  async () => {
+    const url = "https://match.example/v/1";
+    const before = await shape();
+    await removeFiledVideo(url);
+
+    const undone = await undoFiling({ apply: true });
+    assertEquals(undone.lockedKept, 1);
+    assertEquals(undone.filingRowsRemoved, 580);
+
+    // Everything else is gone, and the counts are back where they started.
+    const kept = await rows<
+      {
+        videoUrl: string;
+        placement: string;
+        playlistUrl: string | null;
+        locked: boolean;
+      }
+    >(
+      `SELECT "videoUrl", placement, "playlistUrl", locked FROM video_filing`,
+    );
+    assertEquals(kept, [{
+      videoUrl: url,
+      placement: "archive",
+      playlistUrl: null,
+      locked: true,
+    }]);
+    assertEquals(await shape(), before);
+
+    // The sweep that follows doesn't take the video back to where it was.
+    await apply();
+    assertEquals(await placementOf(url), "archive links");
+    const [row] = await rows<{ locked: boolean }>(
+      `SELECT locked FROM video_filing WHERE "videoUrl" = ${quote(url)}`,
+    );
+    assertEquals(row.locked, true);
+    assertEquals(
+      await count(
+        `SELECT COUNT(*) n FROM playlist_video_mappings
+         WHERE "videoUrl" = ${quote(url)} AND "playlistUrl" = ${
+          quote(END_PLAYLIST)
+        }`,
+      ),
+      0,
+      "no mapping in the playlist it was taken out of",
+    );
+  },
+);
+
+dbTest(
+  "filing db - a locked row that still points at a playlist is parked in Archive by undo",
+  async () => {
+    await apply();
+    // Not a state the sweep writes, but undo is about to remove the mapping,
+    // so the row must not be left pointing at it.
+    await sequelize.query(
+      `UPDATE video_filing SET locked = true
+       WHERE "videoUrl" = 'https://match.example/v/1'`,
+    );
+    await undoFiling({ apply: true });
+    assertEquals(
+      await rows(
+        `SELECT placement, "playlistUrl", locked FROM video_filing`,
+      ),
+      [{ placement: "archive", playlistUrl: null, locked: true }],
+    );
+  },
+);
+
+dbTest(
+  "filing db - a dry run of undo reports the locked rows and changes nothing",
+  async () => {
+    await removeFiledVideo("https://match.example/v/1");
+    const before = await shape();
+    const dry = await undoFiling({ apply: false });
+    assertEquals(dry.lockedKept, 1);
+    assertEquals(dry.filingRowsRemoved, 580);
+    assertEquals(await shape(), before);
+    assertEquals(await count(`SELECT COUNT(*) n FROM video_filing`), 581);
+  },
+);
 
 closeTest("filing db - close the connection");

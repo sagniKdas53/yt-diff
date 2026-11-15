@@ -4,8 +4,10 @@ import {
   PlaylistMetadata,
   PlaylistVideoMapping,
   sequelize,
+  VideoFiling,
   VideoMetadata,
 } from "../src/db/models.ts";
+import { createDbFilingStore } from "../src/handlers/filing/store.ts";
 import {
   type FilingGroup,
   type FilingStore,
@@ -18,6 +20,7 @@ import {
   filedPosition,
   nextRealPosition,
 } from "../src/handlers/filing/positions.ts";
+import { RULES_VERSION } from "../src/handlers/filing/rules.ts";
 import type {
   KnownPlaylist,
   UnlistedRow,
@@ -43,6 +46,7 @@ function row(overrides: Partial<UnlistedRow> = {}): UnlistedRow {
     channelKey: null,
     channelName: null,
     channelHandle: null,
+    channelId: null,
     durationSeconds: 600,
     addedAt: new Date("2026-01-01T00:00:00Z"),
     realPlaylistUrl: null,
@@ -63,6 +67,8 @@ function fakeStore(
   } = {},
 ) {
   const calls = {
+    order: [] as string[],
+    ownersGiven: [] as Array<Map<string, Map<string, number>>>,
     groups: [] as FilingGroup[],
     marked: [] as string[][],
     undone: [] as UndoPlan[],
@@ -70,9 +76,17 @@ function fakeStore(
   const store: FilingStore = {
     countWithoutFacets: () => Promise.resolve(data.withoutFacets ?? 0),
     loadUnlisted: () => Promise.resolve(data.rows ?? []),
-    loadPlaylists: () => Promise.resolve(data.playlists ?? []),
-    loadOwnerCounts: () => Promise.resolve(data.owners ?? new Map()),
+    loadPlaylists: (owners) => {
+      calls.order.push("loadPlaylists");
+      calls.ownersGiven.push(owners);
+      return Promise.resolve(data.playlists ?? []);
+    },
+    loadOwnerCounts: () => {
+      calls.order.push("loadOwnerCounts");
+      return Promise.resolve(data.owners ?? new Map());
+    },
     writeGroup: (group) => {
+      calls.order.push("writeGroup");
       if (data.failOn !== undefined && group.playlistUrl === data.failOn) {
         return Promise.reject(new Error("boom"));
       }
@@ -85,7 +99,13 @@ function fakeStore(
     },
     loadUndoCandidates: () =>
       Promise.resolve(
-        data.undo ?? { negativeMappings: [], filingRows: 0, playlists: [] },
+        data.undo ??
+          {
+            negativeMappings: [],
+            filingRows: 0,
+            lockedFilingRows: 0,
+            playlists: [],
+          },
       ),
     applyUndo: (plan) => {
       calls.undone.push(plan);
@@ -121,6 +141,36 @@ Deno.test("filing sweep - a dry run returns the summary and writes nothing", asy
   assertEquals(calls.marked.length, 0);
 });
 
+Deno.test("filing sweep - owner counts are read before anything is placed or written, and shape the playlists", async () => {
+  const owners = new Map([["https://p", new Map([["a", 9], ["b", 1]])]]);
+  const { store, calls } = fakeStore({
+    rows: [row({ durationSeconds: 10 })],
+    owners,
+  });
+  await runFilingSweep({ apply: true }, store);
+  // The counts decide which playlists an uploader can match, so they have to
+  // come from before this sweep adds mappings of its own.
+  assert(
+    calls.order.indexOf("loadOwnerCounts") <
+      calls.order.indexOf("loadPlaylists"),
+  );
+  assert(
+    calls.order.indexOf("loadOwnerCounts") <
+      calls.order.indexOf("writeGroup"),
+  );
+  assertEquals(calls.ownersGiven.length, 1);
+  assertEquals(calls.ownersGiven[0], owners);
+  // And the same read marks the channel-like playlists afterwards.
+  assertEquals(calls.marked, [["https://p"]]);
+});
+
+Deno.test("filing sweep - rows are stamped with the current rules version", async () => {
+  const { store, calls } = fakeStore({ rows: [row({ durationSeconds: 10 })] });
+  await runFilingSweep({ apply: true }, store);
+  assertEquals(calls.groups[0].rulesVersion, RULES_VERSION);
+  assertEquals(RULES_VERSION, 2);
+});
+
 Deno.test("filing sweep - a filed mapping's position is minus its added time in seconds, never positive", async () => {
   const added = new Date("2026-03-04T05:06:07.999Z");
   assertEquals(filedPosition(added), -Math.floor(added.getTime() / 1000));
@@ -148,6 +198,7 @@ Deno.test("filing sweep - a video already in the playlist gets no second mapping
     urlSegments: ["p", "1"],
     monitored: false,
     createdAt: new Date("2025-01-01"),
+    channelLike: true,
   };
   const inPlaylist = row({ realPlaylistUrl: "https://a.example/p/1" });
   const byHandle = row({ channelHandle: "p" });
@@ -185,6 +236,7 @@ Deno.test("filing sweep - an existing auto playlist is reused, not created again
     urlSegments: [],
     monitored: false,
     createdAt: new Date("2025-01-01"),
+    channelLike: true,
   };
   const { store, calls } = fakeStore({
     rows: longVideos("a.example:acct", 3),
@@ -251,6 +303,106 @@ Deno.test("filing sweep - a sweep marks channel-like playlists and reports rows 
   assertEquals(summary.withoutFacets, 7);
 });
 
+Deno.test("filing store - a playlist is channel-like by its kind, or by its videos while still of kind playlist", async () => {
+  const rows = [
+    ["https://a.example/own", "playlist", [9, 1]],
+    ["https://a.example/mixed", "playlist", [5, 5]],
+    ["https://a.example/flipped", "channel", [5, 5]],
+  ].map(([playlistUrl, kind]) => ({
+    playlistUrl,
+    kind,
+    monitoringType: "N/A",
+    createdAt: new Date("2025-01-01"),
+  }));
+  const restore = stub(
+    PlaylistMetadata,
+    "findAll",
+    () => Promise.resolve(rows),
+  );
+  try {
+    const owners = new Map<string, Map<string, number>>([
+      ["https://a.example/own", new Map([["a", 9], ["b", 1]])],
+      ["https://a.example/mixed", new Map([["a", 5], ["b", 5]])],
+      ["https://a.example/flipped", new Map([["a", 5], ["b", 5]])],
+    ]);
+    const playlists = await createDbFilingStore().loadPlaylists(owners);
+    assertEquals(
+      Object.fromEntries(playlists.map((p) => [p.playlistUrl, p.channelLike])),
+      {
+        "https://a.example/own": true,
+        "https://a.example/mixed": false,
+        "https://a.example/flipped": true,
+      },
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("filing undo - the filing rows you made by removing a video are kept, and not counted as removed", async () => {
+  const undo: UndoCandidates = {
+    negativeMappings: [],
+    // Eight rows are the job's own; three record something you did.
+    filingRows: 8,
+    lockedFilingRows: 3,
+    playlists: [],
+  };
+  const { store, calls } = fakeStore({ undo });
+  const dry = await undoFiling({ apply: false }, store);
+  assertEquals(calls.undone.length, 0);
+  assertEquals(dry.filingRowsRemoved, 8);
+  assertEquals(dry.lockedKept, 3);
+  const applied = await undoFiling({ apply: true }, store);
+  assertEquals(applied, dry);
+});
+
+Deno.test("filing store - undo deletes only the filing rows that aren't locked, and parks the rest in Archive", async () => {
+  const destroyed: AnyRecord[] = [];
+  const updated: Array<{ values: AnyRecord; where: AnyRecord }> = [];
+  const counted: AnyRecord[] = [];
+  const restores = [
+    stub(
+      sequelize,
+      "transaction",
+      (fn: (t: unknown) => Promise<void>) => fn({}),
+    ),
+    stub(PlaylistVideoMapping, "destroy", () => Promise.resolve(0)),
+    stub(VideoFiling, "destroy", (opts: AnyRecord) => {
+      destroyed.push(opts.where);
+      return Promise.resolve(0);
+    }),
+    stub(VideoFiling, "update", (values: AnyRecord, opts: AnyRecord) => {
+      updated.push({ values, where: opts.where });
+      return Promise.resolve([0]);
+    }),
+    stub(VideoFiling, "count", (opts: AnyRecord) => {
+      counted.push(opts.where);
+      return Promise.resolve(0);
+    }),
+    stub(PlaylistVideoMapping, "findAll", () => Promise.resolve([])),
+    stub(sequelize, "query", () => Promise.resolve([])),
+  ];
+  try {
+    const store = createDbFilingStore();
+    const found = await store.loadUndoCandidates();
+    assertEquals(found.filingRows, 0);
+    await store.applyUndo({
+      mappingIds: [],
+      removeAutoPlaylists: [],
+      resetKinds: [],
+    });
+  } finally {
+    restores.reverse().forEach((restore) => restore());
+  }
+  assertEquals(counted, [{ locked: false }, { locked: true }]);
+  // A locked row is something you did. Deleting it would let the next sweep
+  // file the video again, so it stays, with nowhere to point to.
+  assertEquals(destroyed, [{ locked: false }]);
+  assertEquals(updated.length, 1);
+  assertEquals(updated[0].values, { placement: "archive", playlistUrl: null });
+  assertEquals(updated[0].where.locked, true);
+});
+
 Deno.test("filing undo - removes only negative mappings and only empty auto playlists", async () => {
   const undo: UndoCandidates = {
     negativeMappings: [
@@ -260,6 +412,7 @@ Deno.test("filing undo - removes only negative mappings and only empty auto play
       { id: "m4", playlistUrl: "https://user" },
     ],
     filingRows: 9,
+    lockedFilingRows: 0,
     playlists: [
       {
         playlistUrl: "auto:emptied",
@@ -291,6 +444,7 @@ Deno.test("filing undo - removes only negative mappings and only empty auto play
     filingRowsRemoved: 9,
     channelsRemoved: 1,
     kindsReset: 1,
+    lockedKept: 0,
   });
 
   await undoFiling({ apply: true }, store);
@@ -304,6 +458,7 @@ Deno.test("filing undo - keeps a promoted channel and a user playlist that was a
   const undo: UndoCandidates = {
     negativeMappings: [{ id: "m1", playlistUrl: "https://promoted" }],
     filingRows: 1,
+    lockedFilingRows: 0,
     playlists: [
       // Promoted by Monitor channel: origin is user now, and the job did not
       // set its kind.

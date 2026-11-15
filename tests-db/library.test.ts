@@ -107,7 +107,7 @@ dbTest(
     const archive = await getsub({ view: "archive" });
 
     assertEquals(clips.status, 200);
-    assertEquals(clips.count, 148);
+    assertEquals(clips.count, 149);
     assertEquals(archive.count, 366);
     // `count` is what the pager shows: it must match the rows, not the join.
     assertEquals(clips.urls.length, clips.count);
@@ -462,7 +462,7 @@ dbTest(
     const after = (await summary()).body;
     assertEquals(after.all, expectedAll);
     assertEquals(after.notSwept, 0);
-    assertEquals(after.clips, 148);
+    assertEquals(after.clips, 149);
     assertEquals(after.archive, 366);
     assertEquals(
       after.bot,
@@ -579,6 +579,248 @@ dbTest(
     const oneil = got.creators.find((c) => c.key.startsWith("edge.example:"));
     assertEquals(oneil?.name, "O'Neil");
     assertEquals(oneil?.count, 3);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 05c Task 4: find a creator by name, and filter by upload date
+// ---------------------------------------------------------------------------
+
+/**
+ * 52 creators with two videos each, which push everyone with fewer than two
+ * out of the top 50, and one creator with a single video.
+ */
+async function insertCrowdAndALoneCreator() {
+  await sequelize.query(`
+    INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+      "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+      "channelName", "durationSeconds", "createdAt", "updatedAt")
+    SELECT 'https://many.example/' || c || '/' || n, 'many' || c || '-' || n,
+      'Crowd', 1, false, true, false, 'many.example',
+      'many.example:crowd' || c, 'Crowd ' || c, 500, now(), now()
+    FROM generate_series(1, 52) c, generate_series(1, 2) n;
+    INSERT INTO video_metadata ("videoUrl", "videoId", title, "approximateSize",
+      "downloadStatus", "isAvailable", "isMetaDataSynced", site, "channelKey",
+      "channelName", "durationSeconds", "createdAt", "updatedAt")
+    VALUES ('https://many.example/lone/1', 'lone1', 'Lone', 1, false, true,
+      false, 'many.example', 'many.example:ucneedle42', 'Zzz Needle', 500,
+      now(), now());
+    INSERT INTO playlist_video_mappings (id, "videoUrl", "playlistUrl",
+      "positionInPlaylist", "createdAt", "updatedAt")
+    SELECT gen_random_uuid(), v."videoUrl", 'None',
+      (SELECT max("positionInPlaylist") FROM playlist_video_mappings
+       WHERE "playlistUrl" = 'None') + row_number() OVER (ORDER BY v."videoUrl"),
+      now(), now()
+    FROM video_metadata v WHERE v.site = 'many.example'`);
+}
+
+dbTest(
+  "counts db - a creator with one video, outside the top 50, is found by name or key",
+  async () => {
+    await insertCrowdAndALoneCreator();
+    const lone = "many.example:ucneedle42";
+
+    const top = await facets();
+    assertEquals(top.creators.length, 50);
+    assert(
+      !top.creators.some((c) => c.key === lone),
+      "a creator with one video isn't in the top 50 by count",
+    );
+
+    // By name, without case, and by key.
+    for (const creatorQuery of ["zzz needle", "NEEDLE", "ucneedle42"]) {
+      const found = await facets({ creatorQuery });
+      assertEquals(
+        found.creators,
+        [{ key: lone, name: "Zzz Needle", count: 1 }],
+        creatorQuery,
+      );
+    }
+
+    // Nothing else moves: the search is for the creators list alone.
+    const searched = await facets({ creatorQuery: "needle" });
+    assertEquals(searched.saved, top.saved);
+    assertEquals(searched.sites, top.sites);
+    assertEquals(searched.years, top.years);
+    assertEquals(searched.months, top.months);
+    assertEquals(searched.lengths, top.lengths);
+    // The search is under the view too. Nothing is swept, so the lone video
+    // is in Archive and not in Clips.
+    assertEquals(
+      (await facets({ view: "archive", creatorQuery: "needle" })).creators
+        .length,
+      1,
+    );
+    assertEquals(
+      (await facets({ view: "clips", creatorQuery: "needle" })).creators,
+      [],
+    );
+  },
+);
+
+dbTest(
+  "counts db - a creator query is text: wildcards and SQL find only themselves",
+  async () => {
+    await insertCrowdAndALoneCreator();
+    await sequelize.query(
+      `UPDATE video_metadata SET "channelName" = '100% Real_Deal'
+       WHERE "channelKey" = 'many.example:ucneedle42'`,
+    );
+    for (const creatorQuery of ["%", "_", "100%", "l_d"]) {
+      const found = (await facets({ creatorQuery })).creators;
+      const expected = await count(
+        `SELECT COUNT(DISTINCT "channelKey") n FROM video_metadata v
+         JOIN playlist_video_mappings m USING ("videoUrl")
+         WHERE m."playlistUrl" = 'None' AND v."channelKey" IS NOT NULL
+           AND (position(lower(${
+          quote(creatorQuery)
+        }) in lower(v."channelKey")) > 0
+             OR position(lower(${
+          quote(creatorQuery)
+        }) in lower(v."channelName")) > 0)`,
+      );
+      assertEquals(found.length, Math.min(50, expected), creatorQuery);
+    }
+    // `%` matches only a key or name that holds a percent sign.
+    assertEquals(
+      (await facets({ creatorQuery: "%" })).creators.map((c) => c.key),
+      ["many.example:ucneedle42"],
+    );
+    // The edge cases hold a creator whose key is this very text, so it finds
+    // those and nothing else, and the table is still there.
+    const hostile = "'; DROP TABLE video_metadata;--";
+    const hostileKeys = (await facets({ creatorQuery: hostile })).creators
+      .map((c) => c.key).sort();
+    assertEquals(hostileKeys, [
+      "edge.example:o'neil'; drop table video_metadata;--",
+      "other.example:o'neil'; drop table video_metadata;--",
+    ]);
+    assertEquals(
+      (await facets({ creatorQuery: `${hostile}x` })).creators,
+      [],
+    );
+    assert(await count(`SELECT COUNT(*) n FROM video_metadata`) > 0);
+  },
+);
+
+/** The most common upload year among Unlisted rows, from plain SQL. */
+async function commonUploadYear() {
+  const [row] = await rows<{ year: number; n: string }>(
+    `SELECT EXTRACT(YEAR FROM v."uploadDate")::int AS year, COUNT(*) n ${NONE}
+     AND v."uploadDate" IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 1`,
+  );
+  return row.year;
+}
+
+dbTest(
+  "counts db - uploaded years add up to the rows that have an uploadDate",
+  async () => {
+    const withDate = await count(
+      `SELECT COUNT(*) n ${NONE} AND v."uploadDate" IS NOT NULL`,
+    );
+    const total = await count(`SELECT COUNT(*) n ${NONE}`);
+    assert(withDate > 0 && withDate < total, "the pack has both kinds of rows");
+
+    const uploaded = await facets({ filter: { dateField: "uploaded" } });
+    assertEquals(sum(uploaded.years), withDate);
+    // Each year is what plain SQL says, and the added years are untouched.
+    for (const { year, count: n } of uploaded.years) {
+      assertEquals(
+        n,
+        await count(
+          `SELECT COUNT(*) n ${NONE}
+           AND EXTRACT(YEAR FROM v."uploadDate") = ${year}`,
+        ),
+        `uploaded ${year}`,
+      );
+    }
+    assertEquals(sum((await facets()).years), total);
+    assertEquals(
+      sum((await facets({ filter: { dateField: "added" } })).years),
+      total,
+    );
+
+    // A dateField without a year filters nothing.
+    assertEquals(
+      (await getsub({ filter: { dateField: "uploaded" } })).count,
+      total,
+    );
+  },
+);
+
+dbTest(
+  "counts db - the uploaded year and month filter the list by plain dates",
+  async () => {
+    const year = await commonUploadYear();
+    const inYear = await count(
+      `SELECT COUNT(*) n ${NONE}
+       AND v."uploadDate" >= '${year}-01-01' AND v."uploadDate" < '${
+        year + 1
+      }-01-01'`,
+    );
+    assert(inYear > 0);
+
+    const filter = { dateField: "uploaded" as const, year };
+    assertEquals((await getsub({ filter })).count, inYear);
+    // A row with no uploadDate is never in an uploaded year.
+    const listed = (await getsub({ filter })).urls;
+    assertEquals(
+      await count(
+        `SELECT COUNT(*) n ${NONE} AND v."uploadDate" IS NULL
+         AND v."videoUrl" IN (${listed.map(quote).join(", ")})`,
+      ),
+      0,
+    );
+
+    // Months add up to the year, on the upload date, and each is what SQL says.
+    const got = await facets({ filter });
+    assertEquals(sum(got.months), inYear);
+    for (const { month, count: n } of got.months) {
+      assertEquals(
+        n,
+        await count(
+          `SELECT COUNT(*) n ${NONE}
+           AND EXTRACT(YEAR FROM v."uploadDate") = ${year}
+           AND EXTRACT(MONTH FROM v."uploadDate") = ${month}`,
+        ),
+        `month ${month}`,
+      );
+      assertEquals(
+        (await getsub({ filter: { ...filter, month } })).count,
+        n,
+        `listing month ${month}`,
+      );
+    }
+
+    // The added dates are a different question, and give their own answer.
+    const added = (await getsub({ filter: { year } })).count;
+    assertEquals(
+      added,
+      await count(
+        `SELECT COUNT(*) n ${NONE}
+         AND m."createdAt" >= make_timestamptz(${year}, 1, 1, 0, 0, 0, ${tz})
+         AND m."createdAt" < make_timestamptz(${
+          year + 1
+        }, 1, 1, 0, 0, 0, ${tz})`,
+      ),
+    );
+
+    // /locate reads the same filter through the same builder. Nothing is swept,
+    // so every row is in Archive, and the first row listed is on page 0.
+    const located = await locateVideo(listed[0], {
+      pageSize: 5000,
+      sortDownloaded: false,
+      view: "archive",
+      filter,
+    });
+    assertEquals(located.page, 0);
+    const last = await locateVideo(listed.at(-1)!, {
+      pageSize: 1,
+      sortDownloaded: false,
+      view: "archive",
+      filter,
+    });
+    assertEquals(last.page, listed.length - 1);
   },
 );
 

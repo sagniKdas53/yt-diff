@@ -8,6 +8,7 @@ import {
 import { MONITORED_TYPES } from "../pipeline/types.ts";
 import { coreHostname } from "../pipeline/dedup.ts";
 import {
+  isChannelLike,
   type KnownPlaylist,
   type PlacementKind,
   UNKNOWN_OWNER,
@@ -86,6 +87,13 @@ function urlSegments(playlistUrl: string): string[] {
   }
 }
 
+/** The id part of a "<site>:<id>" channel key, or null if it isn't one. */
+function channelIdOf(channelKey: string | null, site: string): string | null {
+  const prefix = `${site}:`;
+  if (channelKey === null || !channelKey.startsWith(prefix)) return null;
+  return channelKey.slice(prefix.length) || null;
+}
+
 export function createDbFilingStore(): FilingStore {
   return {
     async countWithoutFacets() {
@@ -110,6 +118,7 @@ export function createDbFilingStore(): FilingStore {
         channelKey: r.channelKey,
         channelName: r.channelName,
         channelHandle: r.channelHandle,
+        channelId: channelIdOf(r.channelKey, r.site),
         durationSeconds: r.durationSeconds === null
           ? null
           : Number(r.durationSeconds),
@@ -124,9 +133,9 @@ export function createDbFilingStore(): FilingStore {
       }));
     },
 
-    async loadPlaylists(): Promise<KnownPlaylist[]> {
+    async loadPlaylists(owners): Promise<KnownPlaylist[]> {
       const rows = await PlaylistMetadata.findAll({
-        attributes: ["playlistUrl", "monitoringType", "createdAt"],
+        attributes: ["playlistUrl", "monitoringType", "createdAt", "kind"],
         where: { playlistUrl: { [Op.notIn]: ["None", "init"] } },
         raw: true,
       });
@@ -138,6 +147,10 @@ export function createDbFilingStore(): FilingStore {
           urlSegments: isAuto ? [] : urlSegments(p.playlistUrl),
           monitored: MONITORED_TYPES.includes(p.monitoringType),
           createdAt: new Date(p.createdAt),
+          // `owners` covers user playlists still of kind "playlist", and a row
+          // already a channel is one by kind.
+          channelLike: p.kind === "channel" ||
+            isChannelLike(owners.get(p.playlistUrl) ?? new Map()),
         };
       });
     },
@@ -265,7 +278,8 @@ export function createDbFilingStore(): FilingStore {
       );
       return {
         negativeMappings,
-        filingRows: await VideoFiling.count(),
+        filingRows: await VideoFiling.count({ where: { locked: false } }),
+        lockedFilingRows: await VideoFiling.count({ where: { locked: true } }),
         playlists,
       };
     },
@@ -278,7 +292,24 @@ export function createDbFilingStore(): FilingStore {
           where: { positionInPlaylist: { [Op.lt]: 0 } },
           transaction,
         });
-        await VideoFiling.destroy({ where: {}, transaction });
+        // A locked row records something you did, and deleting it would let
+        // the next sweep file that video again. It stays as a plain Archive
+        // row: its playlist mapping is gone with the others, so it must not
+        // keep pointing at one.
+        await VideoFiling.destroy({ where: { locked: false }, transaction });
+        await VideoFiling.update(
+          { placement: "archive", playlistUrl: null },
+          {
+            where: {
+              locked: true,
+              [Op.or]: [
+                { placement: { [Op.ne]: "archive" } },
+                { playlistUrl: { [Op.ne]: null } },
+              ],
+            },
+            transaction,
+          },
+        );
         if (plan.removeAutoPlaylists.length > 0) {
           await PlaylistMetadata.destroy({
             where: {
