@@ -1,9 +1,8 @@
 # 05c: Filing follow-ups implementation plan (backend)
 
-> **2026-11-15:** built and open as #145. With the redesign dropped, the kind
-> override in this plan (`POST /playlists/kind`, `kindLocked`) has no use.
-> [05d](./05d-filing-adjustments.md) Task 0 takes it out, if the owner agrees.
-> The matching fixes and the two filters stay.
+> **2026-11-16:** merged as #145, without the kind override in this plan
+> (`POST /playlists/kind`, `kindLocked`), which the dropped redesign needed and
+> nothing else did. The matching fixes, the undo fix and the two filters are in.
 
 > **For agentic workers:** use superpowers:executing-plans inline. Read
 > `README.md` first, then "The design" in `05-unlisted-filing.md`. Steps use

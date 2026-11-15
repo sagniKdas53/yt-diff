@@ -1,77 +1,100 @@
-# Handoff: watch-first yt-diff
+# Handoff: yt-diff, Unlisted organised and small fixes
 
-> **Read this first, 2026-11-15.** The owner dropped the redesign. There is no
-> Home screen, no Library tabs and no new nav; the two-panel app stays.
-> `README.md` has the new scope and the list of what is approved. Where this
-> file says otherwise, it is out of date: plans 04 and 06 are dropped, 03 is not
-> planned, 02 and 05b were rewritten, and 05d and 07 are new. **No change to how
-> the app looks or behaves without the owner's approval.**
+**The redesign is off (2026-11-15).** There is no Home screen, no Library tabs
+and no new nav. The two-panel app stays. `README.md` has the scope and the table
+of what the owner approved. **Build nothing that isn't in that table.** If a
+task seems to need a change the table doesn't list, stop and ask.
 
-You're picking up an implementation that's been reviewed, decided and planned,
-but not started. **Don't redo the review or reopen the decisions.** The plans
-carry the design, so your job is to execute them one at a time.
+The decisions are made and the plans carry the design. Your job is to execute
+one plan at a time.
 
-## Where things stand (2026-11-06)
+## Where things stand (2026-11-16)
 
-| Item                       | State                                                             |
-| :------------------------- | :---------------------------------------------------------------- |
-| Review and plans           | Merged to `master`                                                |
-| 30-day login sessions      | Merged to `master` (PR #137). Not yet deployed to the Pi          |
-| Plans 01 to 06             | Not started                                                       |
-| Pi measurements (Phase 0a) | Done. Results in `notes-2026-11-06.md`                            |
-| Pi measurements (0b)       | Laptop done, in the notes. Phones to come                         |
-| Pi measurements (0c, 0d)   | Not run, and nothing depends on them                              |
-| Test data                  | `seed/`, loaded and checked against production                    |
-| Frontend `material`        | Unchanged at `a401984`                                            |
-| Test baseline              | 568 backend unit + 41 backend database, 316 frontend, all passing |
+| Item                   | State                                               |
+| :--------------------- | :-------------------------------------------------- |
+| 01 Player fixes        | Merged (yt-diff-react#129)                          |
+| 05 Unlisted filing     | Merged (#140)                                       |
+| 05c Filing follow-ups  | Merged (#145), without the kind override            |
+| Plans 05d, 05b, 02, 07 | Approved, not started                               |
+| Plans 03, 04, 06       | Dropped or not planned. Nothing of theirs was built |
+| Filing job             | Off everywhere. Run only against the seed database  |
+| Frontend `material`    | `ad26b3f`, which `master` points at                 |
+| Test baseline          | 592 backend unit, 50 backend database, 364 frontend |
+| Deployed to the Pi     | None of the above. The owner deploys                |
 
-The owner has approved everything in the `README.md` Decisions table, including
-the Home and Library layouts. On 2026-11-06 the owner chose the Unlisted design:
-Saved or Links only, one Archive with filters, one Channels list, and a Clips
-shelf. These plans run locally.
+Known and left alone: a video in a codec the browser can't decode, with playable
+audio, shows a black screen and no message. Two dependency updates are open and
+failing tests (jsdom 31, and a vite patch release).
 
-## Before the first session (owner)
+## What to build, in order
 
-1. **Stay on `docs/unlisted-filing-plan` until its PR merges.** Plans 05 and 05b
-   and `seed/` exist only there, so `master` would lose them. While it's open,
-   branch backend work from it and target backend PRs at it. Frontend branches
-   still start from `material`. After it merges, use
-   `git switch master && git pull`, and branch from `master`.
-2. **Deploy the 30-day sessions:** run `make pi5` to regenerate `.env`, then
-   recreate the container. A new image alone doesn't apply it, because the
-   change is in `docker-compose.yml` and `envs/base.env`.
-3. **Tick "Remember me" on your phone once.** Without it the session ends with
-   the tab, however long the token lasts.
+| Step | Plan                                            | Repo     | Branch                     | Needs                |
+| :--- | :---------------------------------------------- | :------- | :------------------------- | :------------------- |
+| 1    | [05d](./05d-filing-adjustments.md) Tasks 1 to 5 | backend  | `fix/filing-adjustments`   | Nothing              |
+| 2    | [07](./07-download-queue.md) Tasks 1 to 5       | backend  | `feat/download-queue`      | Step 1's PR open     |
+| 3    | [05b](./05b-library-views.md)                   | frontend | `feat/unlisted-left-panel` | Step 1 merged        |
+| 4    | [02](./02-safe-cards-and-nav.md)                | frontend | `fix/approved-small-fixes` | Step 3 merged        |
+| 5    | [07](./07-download-queue.md) Task 6             | frontend | `feat/download-drawer`     | Steps 2 and 4 merged |
 
-## How to run a session
+- 05d Task 0 is done: the kind override never reached `master`.
+- Steps 1 and 2 can't run at the same moment. `test:db` and the seed loader
+  share one port.
+- Steps 3, 4 and 5 edit the same components, so one at a time.
+- Each step ends in a PR. The owner merges. **Don't merge anything.**
+- A backend step that changes the API also opens a small frontend PR with the
+  regenerated types, and its backend PR bumps the `frontend` pointer to a commit
+  that has them. See "The generated-types test" under Traps.
 
-One Sonnet session per plan, with the advisor available and no subagents.
-`/clear` between plans. Paste this, changing the plan number:
+## How to run a step
+
+One Sonnet session or subagent per step. Paste this, changing the plan:
 
 ```
-Implement docs/plans/watch-first/01-playback-fixes.md.
+Implement docs/plans/watch-first/05d-filing-adjustments.md, Tasks 1 to 5.
 Read docs/plans/watch-first/HANDOFF.md and README.md first, then that plan, and
-nothing else from docs/plans. Use superpowers:executing-plans inline. Don't spawn
-subagents. Call the advisor only at the plan's Advisor checkpoints, if the same
-problem fails twice, and before saying you're finished. Stop and ask me if a task
-needs a decision the plan doesn't make. Don't merge anything.
+nothing else from docs/plans. Use superpowers:executing-plans inline. Stop and
+ask if a task needs a decision the plan doesn't make, or a change to how the
+app looks that README.md doesn't list as approved. Don't merge anything, and
+don't run the filing job against anything but the seed database.
 ```
 
-**Finishing a plan:** the full checks pass, the advisor has been called, and a
-PR is open. Then update the Progress table below, in that plan's branch.
+**Finishing a step:** every check exits 0, a PR is open with Summary, Evidence
+and Merge Danger sections, and the Progress table below is updated in that
+branch.
 
-## What each plan needs first
+## Rules that hold for every step
 
-| Plan | Before starting                                     |
-| :--- | :-------------------------------------------------- |
-| 01   | Nothing                                             |
-| 02   | 01 merged                                           |
-| 03   | 02 merged                                           |
-| 04   | 03 merged. Backend PR merges before its frontend PR |
-| 05   | Nothing. Run `seed/load.sh` for the test database   |
-| 05c  | Nothing. Run `seed/load.sh` for the test database   |
-| 05b  | 02, 05 and 05c merged                               |
-| 06   | 04, 05 and 05b merged, and their backfills run      |
+- **Never connect to the Pi or production, and never deploy.** Tests and the app
+  run against the seed database and a local Redis only.
+- **Don't read `.env` or `secrets/`.** The owner has filled them in.
+- **Don't enable the filing job.** `filing:run` and `filing:undo` are for the
+  seed database.
+- **Judge a check by its exit status,** not by reading its output.
+- **Don't run `npm run build` as written.** It writes into the deployed folder.
+  Use
+  `npx vite build --base=/ytdiff/ --outDir=<a scratch folder> --emptyOutDir`.
+- **Browser checks** use 1440×900, 800×1280 and 390×844.
+
+## Seeing it run locally
+
+There's no script for this in the repo. What worked:
+
+1. `seed/load.sh` for Postgres on `127.0.0.1:55432`, and a Redis container on a
+   spare port.
+2. Build the frontend into a scratch folder with the command above, and run the
+   backend from a folder that has that build as `dist/`.
+3. Start it with
+   `deno run --allow-all --config <repo>/deno.json
+   <repo>/index.ts`, with
+   `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`,
+   `REDIS_PORT`, `SECRET_KEY`, `PORT`, `HOSTNAME` and `SAVE_PATH` set, and
+   `UPDATE_SCHEDULED`, `EXTRAS_RETRY_INTERVAL` and `PRUNE_INTERVAL` set to a
+   date that never comes, such as `0 0 29 2 *`. The seed's credentials are in
+   `seed/README.md`.
+4. The seed has rows but no files. To play something, make short test clips with
+   ffmpeg and hard-link one to each saved row's `fileName`.
+5. The groups in Unlisted mode are empty until a sweep has run on the seed:
+   `deno task facets:backfill`, then `deno task filing:run` with `--apply`.
 
 ## Things already proven, so don't re-derive them
 
@@ -92,6 +115,23 @@ PR is open. Then update the Progress table below, in that plan's branch.
 
 ## Traps
 
+- **The generated-types test.** `tests/api_codegen.test.ts` compares
+  `frontend/src/api/generated/apiTypes.js`, at the commit the root repo points
+  to, with what `deno task gen:api` produces. A backend branch that changes the
+  API fails it until the frontend has the new file and the branch's `frontend`
+  pointer is bumped to that commit. Merge the types PR, then bump.
+- **A fresh worktree has an empty `frontend/`.** Run
+  `git submodule update --init` or that test can't run.
+- **GitNexus's bundled runner fails** on a storage version mismatch. Use
+  `npx --yes gitnexus@latest impact "<symbol>" --direction upstream --repo
+  yt-diff`
+  and `... detect-changes --scope all --repo yt-diff`. The repo name, not `.`.
+- **`lockedKept` in undo stays.** It keeps a video you took out of a playlist
+  from being filed again. It has nothing to do with the kind override that was
+  removed.
+- **The missing-file screen matches the server's exact words,** "File could not
+  be found" with a 400 (`src/handlers/files.ts`). Reword that and the player
+  falls back to plain error text.
 - **GitNexus understates this code.** It rates `VideoPlayer` LOW with one
   caller, while 19 props depend on `SubList`. It can't see hooks or `lazy()`
   imports. `partial: true`, `UNKNOWN` or "not found" means confirm with `grep`,
@@ -115,9 +155,8 @@ PR is open. Then update the Progress table below, in that plan's branch.
   See `seed/README.md`.
 - **Only the filing job writes negative positions.** Any code doing arithmetic
   on `positionInPlaylist` has to allow for them. Plan 05 lists the known places.
-- **`view` means a Library view, and only that.** `inbox`, `bot`, `clips` and
-  `archive`, in the route and in requests. Home or Library is the route's
-  `screen` (plan 06 Task 5). An earlier draft used `view` for both.
+- **`view` means an Unlisted group, and only that:** `inbox`, `bot`, `clips`,
+  `archive` and `all`, in the route and in requests.
 - **`approximateSize` can't be trusted.** It totals 8.7 GB for a 361.5 GB
   library.
 - **`raw_metadata` holds `cookies` in 230 rows,** and backups copy them. It
@@ -132,29 +171,29 @@ PR is open. Then update the Progress table below, in that plan's branch.
   unnoticed this way. Check with
   `docker compose --env-file <rendered env> config | grep <NAME>`.
 
-## After each plan (owner, on the Pi)
+## After each step merges (owner, on the Pi)
 
-| Plan | Run                                                                          |
-| :--- | :--------------------------------------------------------------------------- |
-| 03   | `deno task media:backfill`, then `media:remux-mkv` (dry run, then `--apply`) |
-| 04   | `deno task owners:backfill`, then with `--apply --assign-unowned <you>`      |
-| 05   | `facets:backfill`, then `filing:run` (dry run, then `--apply`), then enable  |
-| 06   | `deno task facets:backfill` again, to fill `downloadedAt`                    |
+| Plan | Run                                                                       |
+| :--- | :------------------------------------------------------------------------ |
+| 05   | `facets:backfill`, if not run yet                                         |
+| 05d  | `filing:run` as a dry run. Read it. Then `--apply`, then `FILING_ENABLED` |
+| 07   | Nothing. Queued and paused jobs come back paused after the restart        |
 
-Use the same method you use for `chapters:backfill` in the container.
+Wait for 05d before the first real sweep: before it, the job makes channels at 3
+videos. Use the same method you use for `chapters:backfill` in the container.
 
 ## Progress
 
-| Plan                           | Branch(es)                 | PR                             | State                  |
-| :----------------------------- | :------------------------- | :----------------------------- | :--------------------- |
-| 01 Playback fixes              | `fix/playback-failures`    | yt-diff-react#129              | Open                   |
-| 05 Unlisted filing             | `feat/unlisted-filing`     | #140, types: yt-diff-react#128 | Merged                 |
-| 05c Filing follow-ups          | `fix/filing-follow-ups`    | #145, types: yt-diff-react#135 | Open                   |
-| 05d Filing adjustments         | `fix/filing-adjustments`   |                                | Not started            |
-| 05b Unlisted in the left panel | `feat/unlisted-left-panel` |                                | Not started            |
-| 02 Approved small fixes        | `fix/approved-small-fixes` |                                | Not started            |
-| 07 Download queue              | `feat/download-queue`      |                                | Approved, not started  |
-| 03, 04, 06                     |                            |                                | Dropped or not planned |
+| Plan                           | Branch(es)                 | PR                             | State       |
+| :----------------------------- | :------------------------- | :----------------------------- | :---------- |
+| 01 Playback fixes              | `fix/playback-failures`    | yt-diff-react#129              | Merged      |
+| 05 Unlisted filing             | `feat/unlisted-filing`     | #140, types: yt-diff-react#128 | Merged      |
+| 05c Filing follow-ups          | `fix/filing-follow-ups`    | #145, types: yt-diff-react#135 | Merged      |
+| 05d Filing adjustments         | `fix/filing-adjustments`   |                                | Not started |
+| 07 Download queue, backend     | `feat/download-queue`      |                                | Not started |
+| 05b Unlisted in the left panel | `feat/unlisted-left-panel` |                                | Not started |
+| 02 Approved small fixes        | `fix/approved-small-fixes` |                                | Not started |
+| 07 Download queue, drawer      | `feat/download-drawer`     |                                | Not started |
 
 The filing job hasn't been run or enabled anywhere but the seed database.
 
