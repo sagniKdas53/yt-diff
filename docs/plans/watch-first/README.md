@@ -1,149 +1,144 @@
-# Watch-first yt-diff: roadmap and design
+# yt-diff: Unlisted organised, and small UX fixes
 
 Background and evidence:
 [`../design-architecture-playback-review.md`](../design-architecture-playback-review.md).
 Finding IDs such as P1 and D1 come from that report. Where the two disagree,
 this file wins.
 
+## Scope changed on 2026-11-15
+
+**The redesign is dropped.** The owner looked at the Home and Library mockups
+and decided against rebuilding the app. The two-panel view stays as it is. What
+remains:
+
+1. Unlisted gets organised, using the filing job that is already merged.
+2. Small UX fixes the owner approved one by one.
+3. Player fixes (plan 01), already built.
+4. A better download queue (plan 07), approved on 2026-11-15.
+
+**Rule for every session:** no change to how the app looks or behaves unless it
+is in the Approved table below. If a task seems to need one, stop and ask.
+
 ## Goal
 
-Keep the archive's reliability, and make watching good enough that Jellyfin and
-VLC stop being needed for everyday viewing, with the 3,400-video Unlisted pile
-organized automatically.
+Keep the app as it is, and make the Unlisted pile manageable: pressing UNLISTED
+fills the left panel with the groups the filing job made, so the pile gets both
+panels instead of one.
 
 ## Decisions
 
-| Topic         | Decision                                                                                                                                                     |
-| :------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formats       | Quality first. yt-dlp's format choice stays as it is. Lossless remux only. A file the browser can't play offers Download and VLC.                            |
-| Progress      | Per-user backend table.                                                                                                                                      |
-| Ownership     | Record who added or saved each video. **No restrictions:** nothing filters by owner yet.                                                                     |
-| Notifications | Persist them, with delivery per channel (web, Telegram): delivered, read, failed. Also no restrictions.                                                      |
-| Routes        | **Approved 2026-11-06, layouts included:** `#/` is Home, `#/library` is the two-panel view. Existing bot links keep working.                                 |
-| Unlisted      | **Chosen 2026-11-06:** a scheduled job files each video into a playlist, Clips, a channel or Archive. Nobody sorts by hand, and nothing is deleted or moved. |
-| Storage       | Filing frees no space, because each URL already has one file. Duplicate clean-up isn't planned: it would reclaim 1–2%.                                       |
-| Mini-player   | Not building one. Browser picture-in-picture stays.                                                                                                          |
+| Topic     | Decision                                                                                                                                 |
+| :-------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| Layout    | Two panels, unchanged. No Home screen, no Library tabs, no new nav.                                                                      |
+| Playlists | The left panel opens on your playlists, exactly as today. Nothing about that list changes.                                               |
+| Unlisted  | Pressing UNLISTED swaps the left panel to the Unlisted groups. Pressing it again brings the playlists back. The button carries no count. |
+| Filing    | A scheduled job files each Unlisted video into a playlist, Clips, a channel or Archive. Off until a dry run is reviewed. Can be undone.  |
+| Channels  | The job makes a channel only at 5 or more videos. A video whose channel or parent playlist already exists goes there instead ([05d]).    |
+| Card      | Quick actions stay as icons under each card. No More menu. Thumbnail plays, title links to the source.                                   |
+| Labels    | "Watch" stays "Watch".                                                                                                                   |
+| Formats   | Unchanged. yt-dlp's format choice stays as it is. A file the browser can't play offers Download and VLC.                                 |
+| Storage   | Filing frees no space and moves no files.                                                                                                |
 
-**Why the format choice stays:** tested on a 4K YouTube video. The default picks
-AV1 with AAC in MP4 at 743 MB. `-S "res,fps,hdr:12,vcodec:h264,acodec:aac"`
-picks VP9 with AAC in MKV at 1.39 GB, which is larger and in a worse container,
-so no compatibility sort is used.
+[05d]: ./05d-filing-adjustments.md
 
-**Ownership and notifications, confirmed 2026-11-06.** "Owner" means who asked
-for the video: a web user or a bot chat. "Delivery" means whether a notification
-reached that channel: delivered, read or failed.
+## Layout
 
-**Starting a session?** Read [`HANDOFF.md`](./HANDOFF.md) first.
-
-## Layouts
-
-### `#/` Home: what you open to watch
-
-Full width, with no management controls. Sections with nothing to show are
-hidden. A card click plays.
+Playlists mode is today's screen. Unlisted mode is the same screen with a
+different left list:
 
 ```
-┌ yt-diff   Home  Library                          ↓ 2   🔔 3   ⋮ ┐
-├──────────────────────────────────────────────────────────────────┤
-│  [ Search everything…                                          ] │
-│                                                                  │
-│  Continue watching                                               │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐                    │
-│  │ ▶    │ │ ▶    │ │ ▶    │ │ ▶    │ │ ▶    │  →                 │
-│  │▓▓▓░░░│ │▓░░░░░│ │▓▓▓▓░░│ │▓▓░░░░│ │▓░░░░░│                    │
-│  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘                    │
-│  Title    Title    Title    Title    Title                       │
-│  12m left 40m left 3m left  8m left  1h left                     │
-│                                                                  │
-│  Recently saved                                                  │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐  →                 │
-│                                                                  │
-│  Channels and playlists with new videos                          │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐  →                 │
-│  Name·42  Name·7   Name·19  Name·3   Name·11                     │
-└──────────────────────────────────────────────────────────────────┘
+┌ yt-diff      RE-INDEX [UNLISTED] LIGHT CONNECTED DOWNLOADS LOGOUT ┐
+├───────────────────────┬────────────────────────────────────────────┤
+│ [ Group or channel  ] │ ☐ [ Title ] Site ▾ Added ▾ Length ▾ Creator ▾  Saved ↓
+│ All unlisted      581 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐            │
+│ Inbox              22 │ │  ▶  │ │  ▶  │ │  ▶  │ │  ▶  │            │
+│ Via bot            80 │ └─────┘ └─────┘ └─────┘ └─────┘            │
+│ ───────────────────── │ Title    Title    Title    Title           │
+│ Clips             149 │ ☐ 🗑 ⬇   ☐ 🗑 ⬇   ☐ 🗑 ⬇   ☐ 🗑 ⬇            │
+│ Archive · saved    45 │                                            │
+│ Archive · links   321 │                                            │
+│ ───────────────────── │                                            │
+│ Channel A           7 │                                            │
+│ Channel B           5 │                       Item count  1–8 of 45│
+└───────────────────────┴────────────────────────────────────────────┘
 ```
 
-On a phone the rails stay horizontal and swipeable, and everything else is the
-same. With an empty library it shows one line and an Add button.
+- The filters sit in the existing header row beside the Title box, not in a
+  second row. They show only in Unlisted mode.
+- Counts are from the seed data. Channel counts will change with the 5-video
+  rule.
+- On a phone the left list is the first screen, as today, and a row slides in
+  its videos.
 
-### `#/library`: where things live and get managed
+## Approved, rejected, open
 
-Two panels, like today, but the left side has two tabs and the right side is
-never empty. On desktop, `#/library` opens the Inbox.
+From the owner's comments on the mockup, 2026-11-15.
 
-```
-┌ yt-diff   Home  Library                          ↓ 2   🔔 3   ⋮ ┐
-├───────────────────────┬──────────────────────────────────────────┤
-│ [Playlists] [Channels]│ Some Channel · 42 videos       [▶ Play]  │
-│ ───────────────────── │ [Monitor channel]  [Resume]              │
-│ 📥 Inbox           18 │ [ Search this list ]  Newest ▾  ☐ Hide watched
-│ 🤖 Via bot        210 │ [Saved 283|Links 1456] Site ▾ Added ▾ Length ▾ Creator ▾
-│ ✂ Clips           757 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐          │
-│ 🗄 Archive        1739 │ │  ▶  │ │  ▶  │ │  ▶  │ │  ☁  │          │
-│ 🗂 All unlisted   3430 │ │▓▓░░░│ │     │ │     │ │     │          │
-│ ───────────────────── │ └─────┘ └─────┘ └─────┘ └─────┘          │
-│ ◉ Some Channel     42 │ Title ⋮ Title ⋮ Title ⋮ Title ⋮          │
-│ ◉ Another          19 │                        [Save to archive] │
-│ ◉ Third             7 │ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐          │
-│         …      page ▾ │                          page 1 of 3  ▸  │
-└───────────────────────┴──────────────────────────────────────────┘
-```
+### Approved
 
-- **Playlists tab:** your playlists that aren't channels, about 63, with "Watch"
-  renamed "Auto-update".
-- **Channels tab:** every channel, yours and the job's, newest activity first.
-  About 261.
-- **On a phone:** `#/library` is the left panel alone; a row slides in the
-  videos.
-- **Deleting and similar:** moved into each card's ⋮ menu.
+| Change                                                                                                                                          | Plan |
+| :---------------------------------------------------------------------------------------------------------------------------------------------- | :--- |
+| UNLISTED swaps the left panel to the Unlisted groups; playlists open by default                                                                 | 05b  |
+| Groups: All unlisted, Inbox, Via bot, Clips, Archive saved, Archive links, job channels                                                         | 05b  |
+| Filters (Site, Added, Length, Creator) in the existing header row                                                                               | 05b  |
+| Watch on a job-made channel's row starts monitoring it. The job itself never indexes one                                                        | 05b  |
+| Newest first in Unlisted: a new video lands on page 1                                                                                           | 05b  |
+| Clips play straight through, with no Up next countdown                                                                                          | 05b  |
+| The job makes a channel at 5+ videos, and folds into an existing channel or playlist                                                            | 05d  |
+| The kind override comes out of #145, and the job stops relabelling your playlists                                                               | 05d  |
+| Download icon on a card with no file queues the download                                                                                        | 02   |
+| Thumbnails of downloaded videos stop being dimmed                                                                                               | 02   |
+| Delete dialog names the video and says when it can't be undone                                                                                  | 02   |
+| The open playlist's row is highlighted and its button says Open                                                                                 | 02   |
+| "Item count" becomes "Per page", page size 1 goes, number box past 50 pages                                                                     | 02   |
+| A finished download shows a toast with Open instead of switching the list                                                                       | 02   |
+| Connection status is only mentioned after it was lost                                                                                           | 02   |
+| Skeletons while loading, clearer empty text, a placeholder for a failed thumbnail                                                               | 02   |
+| Download queue: move up and down, resume to the front, pause fixes, hold and pause all, survive a restart, and the drawer redone with a summary | 07   |
+| Player: failure screen, retry cap, spinner, touch bar, Up next, lock-screen controls                                                            | 01   |
 
-### How the pile disappears
+**Monitoring, in the owner's words:** "say a channel has 1000's of vids but we
+have only collected 3 ... then don't try to index them, only if the watch mode
+is explicitly set by user then index them again."
 
-Measured on production, 2026-11-06. The design and rules are in
-[05](./05-unlisted-filing.md).
+**Resume, in the owner's words:** "if a download is already running and
+parallelism is set to 1 it should be 2nd." A resumed download goes to the front
+of the waiting line and never interrupts one that is running.
 
-| Where it goes                                 | Videos |
-| :-------------------------------------------- | :----- |
-| A playlist it's already in, or its uploader's | 555    |
-| Clips: known length under 2 minutes           | 757    |
-| A channel, with 3+ videos left (66 channels)  | 379    |
-| Archive, Saved: what the Archive opens on     | 283    |
-| Archive, Links only: one tap away             | 1,456  |
+### Rejected
 
-1. Each video gets a site, channel and length from metadata already stored, with
-   no re-index.
-2. A daily job places each one, and adds a mapping if it goes to a playlist or
-   channel. It's off until you've reviewed a dry run, and it can be undone.
-3. **Archive** has no site or time rows. Those are filters, along with creator
-   and length.
-4. **Inbox** holds only what you might want now: saved in the last 30 days and,
-   once plan 04 is in, not finished.
-5. **Hide watched** clears finished videos from any view, once plan 04 is in.
+| Change                                   | Owner's words                                                                |
+| :--------------------------------------- | :--------------------------------------------------------------------------- |
+| Card actions behind a More menu          | "I don't want to hide the quick actions behind one more drop down"           |
+| Title plays, small link opens the source | "only the thumbnail plays, I want the title to still link back"              |
+| Watch renamed Auto-update                | "leave watch alone as it is"                                                 |
+| A count on the UNLISTED button           | "I don't want the number here"                                               |
+| Any change to the playlists list         | "I still want the playlists to have their old view"                          |
+| A list title above the videos            | The search box already shows the playlist's name when nothing is typed in it |
+| Home, Library tabs, watch progress       | The redesign                                                                 |
 
-`#/unlisted` still exists as "All unlisted", so nothing is hidden for good, and
-old bot links still open.
+Nothing is waiting on the owner.
 
 ## Order
 
-| Plan                                           | Delivers                                     | Repo     | Size |
-| :--------------------------------------------- | :------------------------------------------- | :------- | :--- |
-| [01](./01-playback-fixes.md)                   | Failure screen, buffering, player basics     | frontend | M    |
-| [02](./02-safe-cards-and-nav.md)               | Safe cards, nav, labels, no background jumps | frontend | M    |
-| [03](./03-formats-and-media-info.md)           | Remux, codec info, playback check            | both     | M    |
-| [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notification log     | both     | L    |
-| [05](./05-unlisted-filing.md)                  | Newest first, filing job, views and filters  | backend  | L    |
-| [05b](./05b-library-views.md)                  | Rail, Channels, Clips, Archive filters       | frontend | M    |
-| [06](./06-player-lift-and-home.md)             | Invalidation store, player lift, Home        | both     | L    |
+| Plan                                           | Delivers                                          | Repo     | State                    |
+| :--------------------------------------------- | :------------------------------------------------ | :------- | :----------------------- |
+| [01](./01-playback-fixes.md)                   | Failure screen, buffering, player basics          | frontend | Built, yt-diff-react#129 |
+| [05](./05-unlisted-filing.md)                  | Filing job, views and filters                     | backend  | Merged, #140             |
+| [05c](./05c-filing-follow-ups.md)              | Tighter matching, two filters                     | backend  | Built, #145              |
+| [05d](./05d-filing-adjustments.md)             | 5-video rule, folding, counts the left list needs | backend  | Not started              |
+| [05b](./05b-library-views.md)                  | UNLISTED swaps the left panel                     | frontend | Not started              |
+| [02](./02-safe-cards-and-nav.md)               | The approved small fixes                          | frontend | Not started              |
+| [07](./07-download-queue.md)                   | Queue order, pause and resume fixes               | both     | Approved, not started    |
+| [03](./03-formats-and-media-info.md)           | Remux, codec info                                 | both     | Not planned              |
+| [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notifications             | both     | Dropped                  |
+| [06](./06-player-lift-and-home.md)             | Player lift, Home                                 | both     | Dropped                  |
 
-Each plan ships on its own.
+Run 05d, then 05b, then 02. 05b and 02 edit the same components, so one at a
+time. 07 doesn't touch the others and can go whenever it's approved.
 
-- **Frontend order:** 01, 02, 03 Task 5, 05b, then 04's and 06's frontend parts.
-  They edit the same components.
-- **Backend:** 05 can start now. It needs no other plan, and neither do 03 Tasks
-  1–4, which touch different code apart from `models.ts` and `queries.ts`.
-- **Needs both:** 06 needs 04 and 05. 04 adds "not finished" to Inbox, so if 05
-  went first, that's its Task 7.
+Which backend work from 05 and 05c is still needed is listed in
+[05d](./05d-filing-adjustments.md#what-the-merged-backend-work-is-still-for).
 
 **Test data:** [`seed/`](./seed/README.md) loads real-shaped data into a
 throwaway Postgres. **Phase 0a results and the storage audit:**
@@ -152,7 +147,9 @@ throwaway Postgres. **Phase 0a results and the storage audit:**
 ## How to run this with Sonnet
 
 1. **One session per plan file.** Run on Sonnet, `/clear` between plans, and
-   load only that plan plus this README. Don't spawn subagents.
+   load only that plan plus this README. An orchestrating session may instead
+   hand each plan to one Sonnet subagent, one at a time: `test:db` and the seed
+   loader share a fixed port, so two plans can't test at once.
 2. **Call the advisor only** at each `Advisor checkpoint` in a plan, when the
    same problem has failed twice, and before declaring a plan finished. Each
    call forwards the whole session, so short sessions keep it cheap.
@@ -215,16 +212,22 @@ There are five places, and nothing works until all are done:
   nullable or have defaults.
 - Recording progress, owners or notifications must never fail a download, a
   delivery or playback. Log the error and carry on.
+- Browser checks use three sizes: 1440×900, 800×1280 and 390×844. Watching on a
+  phone is the goal, and the first two never show a phone's width.
 - Keep the code style: explain why in comments, and use `Deno.test` names shaped
   like `area - behaviour`.
 
 ## Deliberately left out
 
+Dropped on 2026-11-15 with the redesign: the Home screen, the Library tabs and
+nav, watch progress, ownership, the notification log, the player lift, and
+remuxing (plans 03, 04 and 06). An unsupported codec that plays sound over a
+black screen with no message is also left, as too big for now.
+
 Each of these is a finding from the review with no task here. Pick them up later
 if they still bother you.
 
-- Search text and sort in the URL (L6). Home's search and clearer empty states
-  cover most of it.
+- Search text and sort in the URL (L6).
 - Stable thumbnail URLs (L8, S6). Only worth doing if a profile shows thumbnails
   costing real time.
 - On-demand transcoding. A file that can't play offers Download and VLC instead.

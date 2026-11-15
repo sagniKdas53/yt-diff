@@ -15,6 +15,8 @@ time and length are query filters, not rows anyone has to look at.
 **Tech stack:** Deno, Sequelize, Postgres. **Branch:** `feat/unlisted-filing`
 from `master`, once this plan is on `master`, because it brings the test data.
 **Frontend:** `05b-library-views.md`. **Data:** `seed/README.md`.
+**Follow-ups:** `05c-filing-follow-ups.md` tightens rule 1's uploader match and
+changes undo. Where the two differ, 05c is the newer.
 
 ## The design
 

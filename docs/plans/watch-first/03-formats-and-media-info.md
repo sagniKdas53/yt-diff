@@ -1,5 +1,9 @@
 # 03: Formats and media info implementation plan
 
+> **Not planned as of 2026-11-15.** The redesign is off, and remuxing was left
+> out with it unless the owner asks for it. Nothing here was built. See
+> `README.md`.
+
 > **For agentic workers:** use superpowers:executing-plans inline. No subagents.
 > Read `README.md` first. Steps use checkboxes.
 
