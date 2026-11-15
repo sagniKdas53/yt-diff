@@ -288,11 +288,6 @@ export class PlaylistMetadata extends Model<
    * to put back only what the job changed, and not a promoted channel.
    */
   declare kindSetByFiling: CreationOptional<boolean>;
-  /**
-   * You chose the kind by hand. The sweep never changes it and undo never
-   * resets it, and the sweep judges the playlist by its `kind` alone.
-   */
-  declare kindLocked: CreationOptional<boolean>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -354,12 +349,6 @@ PlaylistMetadata.init({
     allowNull: false,
     defaultValue: false,
     comment: "The filing sweep flipped kind to channel; undo reverses it",
-  },
-  kindLocked: {
-    type: DataTypes.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-    comment: "The kind was set by hand; the filing job leaves it alone",
   },
 }, {
   sequelize,

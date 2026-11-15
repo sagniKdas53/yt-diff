@@ -86,8 +86,6 @@ export const PlaylistDisplayRowSchema = z.object({
   /** "auto" for a channel the filing job created and nobody has monitored. */
   origin: z.enum(["user", "auto"]),
   kindSetByFiling: z.boolean(),
-  /** You chose the kind by hand: the filing job won't change it. */
-  kindLocked: z.boolean(),
   videoCount: z.number(),
   /** The newest video in it, by when the archive got it. Null when empty. */
   latestAddedAt: z.string().nullable(),
@@ -219,10 +217,6 @@ export const ResponseSchemas: Record<string, z.ZodType> = {
   "/channels/monitor": z.object({
     // The channel's URL, which is now its key: open it directly.
     playlistUrl: z.string(),
-  }),
-  "/playlists/kind": z.object({
-    playlistUrl: z.string(),
-    kind: z.enum(["playlist", "channel"]),
   }),
   "/library/summary": z.object({
     inbox: z.number(),

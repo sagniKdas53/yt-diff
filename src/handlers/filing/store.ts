@@ -135,13 +135,7 @@ export function createDbFilingStore(): FilingStore {
 
     async loadPlaylists(owners): Promise<KnownPlaylist[]> {
       const rows = await PlaylistMetadata.findAll({
-        attributes: [
-          "playlistUrl",
-          "monitoringType",
-          "createdAt",
-          "kind",
-          "kindLocked",
-        ],
+        attributes: ["playlistUrl", "monitoringType", "createdAt", "kind"],
         where: { playlistUrl: { [Op.notIn]: ["None", "init"] } },
         raw: true,
       });
@@ -153,12 +147,10 @@ export function createDbFilingStore(): FilingStore {
           urlSegments: isAuto ? [] : urlSegments(p.playlistUrl),
           monitored: MONITORED_TYPES.includes(p.monitoringType),
           createdAt: new Date(p.createdAt),
-          // A playlist whose kind you chose is what you said it is, however
-          // its videos count. Otherwise `owners` covers user playlists still
-          // of kind "playlist", and a row already a channel is one by kind.
+          // `owners` covers user playlists still of kind "playlist", and a row
+          // already a channel is one by kind.
           channelLike: p.kind === "channel" ||
-            (!p.kindLocked &&
-              isChannelLike(owners.get(p.playlistUrl) ?? new Map())),
+            isChannelLike(owners.get(p.playlistUrl) ?? new Map()),
         };
       });
     },
@@ -173,7 +165,6 @@ export function createDbFilingStore(): FilingStore {
          JOIN playlist_metadata p ON p."playlistUrl" = pm."playlistUrl"
          JOIN video_metadata v ON v."videoUrl" = pm."videoUrl"
          WHERE p."kind" = 'playlist' AND p."origin" = 'user'
-           AND p."kindLocked" = false
            AND pm."playlistUrl" NOT IN ('None', 'init')
          GROUP BY 1, 2`,
         {
@@ -258,11 +249,7 @@ export function createDbFilingStore(): FilingStore {
       await PlaylistMetadata.update(
         { kind: "channel", kindSetByFiling: true },
         {
-          where: {
-            playlistUrl: { [Op.in]: playlistUrls },
-            kind: "playlist",
-            kindLocked: false,
-          },
+          where: { playlistUrl: { [Op.in]: playlistUrls }, kind: "playlist" },
           silent: true,
         },
       );
@@ -279,22 +266,19 @@ export function createDbFilingStore(): FilingStore {
           playlistUrl: string;
           origin: "user" | "auto";
           kindSetByFiling: boolean;
-          kindLocked: boolean;
           mappingCount: number;
         }
       >(
-        `SELECT p."playlistUrl", p."origin", p."kindSetByFiling", p."kindLocked",
+        `SELECT p."playlistUrl", p."origin", p."kindSetByFiling",
                 (SELECT COUNT(*)::int FROM playlist_video_mappings m
                  WHERE m."playlistUrl" = p."playlistUrl") AS "mappingCount"
          FROM playlist_metadata p
-         WHERE p."origin" = 'auto'
-            OR (p."kindSetByFiling" AND NOT p."kindLocked")`,
+         WHERE p."origin" = 'auto' OR p."kindSetByFiling"`,
         { type: QueryTypes.SELECT },
       );
       return {
         negativeMappings,
-        filingRows: await VideoFiling.count({ where: { locked: false } }),
-        lockedFilingRows: await VideoFiling.count({ where: { locked: true } }),
+        filingRows: await VideoFiling.count(),
         playlists,
       };
     },
@@ -307,24 +291,7 @@ export function createDbFilingStore(): FilingStore {
           where: { positionInPlaylist: { [Op.lt]: 0 } },
           transaction,
         });
-        // A locked row records something you did, and deleting it would let
-        // the next sweep file that video again. It stays as a plain Archive
-        // row: its playlist mapping is gone with the others, so it must not
-        // keep pointing at one.
-        await VideoFiling.destroy({ where: { locked: false }, transaction });
-        await VideoFiling.update(
-          { placement: "archive", playlistUrl: null },
-          {
-            where: {
-              locked: true,
-              [Op.or]: [
-                { placement: { [Op.ne]: "archive" } },
-                { playlistUrl: { [Op.ne]: null } },
-              ],
-            },
-            transaction,
-          },
-        );
+        await VideoFiling.destroy({ where: {}, transaction });
         if (plan.removeAutoPlaylists.length > 0) {
           await PlaylistMetadata.destroy({
             where: {
@@ -338,10 +305,7 @@ export function createDbFilingStore(): FilingStore {
           await PlaylistMetadata.update(
             { kind: "playlist", kindSetByFiling: false },
             {
-              where: {
-                playlistUrl: { [Op.in]: plan.resetKinds },
-                kindLocked: false,
-              },
+              where: { playlistUrl: { [Op.in]: plan.resetKinds } },
               silent: true,
               transaction,
             },

@@ -45,20 +45,12 @@ export interface FilingGroup {
 export interface UndoCandidates {
   /** Mappings at negative positions: the job's, by construction. */
   negativeMappings: Array<{ id: string; playlistUrl: string }>;
-  /** Filing rows the job wrote, which undo deletes. */
   filingRows: number;
-  /**
-   * Filing rows that record something you did (you removed the video), which
-   * undo keeps: deleting one would let the next sweep file the video again.
-   */
-  lockedFilingRows: number;
   playlists: Array<{
     playlistUrl: string;
     origin: "user" | "auto";
     /** The sweep flipped this user playlist to kind "channel". */
     kindSetByFiling: boolean;
-    /** You set the kind by hand, so undo leaves it. */
-    kindLocked: boolean;
     mappingCount: number;
   }>;
 }
@@ -106,10 +98,7 @@ export interface FilingSummary {
 
 export interface UndoSummary {
   mappingsRemoved: number;
-  /** Not counting the locked rows, which undo keeps. */
   filingRowsRemoved: number;
-  /** Filing rows left in place because you removed that video. */
-  lockedKept: number;
   channelsRemoved: number;
   kindsReset: number;
 }
@@ -275,9 +264,8 @@ export async function runFilingSweep(
 
 /**
  * Reverses the job and nothing else. It removes mappings at negative
- * positions (only the job writes those), the filing rows that aren't locked,
- * the auto channels left empty, and the `kind` the sweep changed. A locked row
- * is a video you removed, and stays. It never goes through
+ * positions (only the job writes those), the filing rows, the auto channels
+ * left empty, and the `kind` the sweep changed. It never goes through
  * `/delplay`, which would renumber every other playlist.
  */
 export async function undoFiling(
@@ -300,7 +288,7 @@ export async function undoFiling(
     )
     .map((p) => p.playlistUrl);
   const resetKinds = found.playlists
-    .filter((p) => p.origin === "user" && p.kindSetByFiling && !p.kindLocked)
+    .filter((p) => p.origin === "user" && p.kindSetByFiling)
     .map((p) => p.playlistUrl);
 
   const plan: UndoPlan = {
@@ -313,7 +301,6 @@ export async function undoFiling(
   const summary: UndoSummary = {
     mappingsRemoved: plan.mappingIds.length,
     filingRowsRemoved: found.filingRows,
-    lockedKept: found.lockedFilingRows,
     channelsRemoved: removeAutoPlaylists.length,
     kindsReset: resetKinds.length,
   };

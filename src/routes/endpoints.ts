@@ -22,7 +22,6 @@ import {
   QueueStatusRequestBodySchema,
   RefreshSignedUrlRequestBodySchema,
   ReindexAllRequestBodySchema,
-  SetPlaylistKindRequestSchema,
   SignedFileRequestBodySchema,
   SubListRequestSchema,
   SyncExtrasRequestBodySchema,
@@ -70,9 +69,6 @@ export interface AuthenticatedHandlers {
   getLibraryFacets: BodyHandler<Body<typeof LibraryFacetsRequestSchema>>;
   processMonitorChannelRequest: BodyHandler<
     Body<typeof MonitorChannelRequestSchema>
-  >;
-  processSetPlaylistKindRequest: BodyHandler<
-    Body<typeof SetPlaylistKindRequestSchema>
   >;
   processDeleteVideosRequest: BodyHandler<
     Body<typeof DeleteVideosRequestBodySchema>
@@ -259,15 +255,6 @@ export const API_ENDPOINTS: readonly ApiEndpoint[] = [
     summary: "Start monitoring a channel the filing job created.",
     handler: "processMonitorChannelRequest",
     schema: MonitorChannelRequestSchema,
-    admission: "none",
-  },
-  {
-    kind: "authenticated",
-    method: "POST",
-    path: "/playlists/kind",
-    summary: "Set whether a playlist is listed as a playlist or a channel.",
-    handler: "processSetPlaylistKindRequest",
-    schema: SetPlaylistKindRequestSchema,
     admission: "none",
   },
   {
