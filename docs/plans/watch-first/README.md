@@ -121,18 +121,18 @@ Nothing is waiting on the owner.
 
 ## Order
 
-| Plan                                           | Delivers                                          | Repo     | State                    |
-| :--------------------------------------------- | :------------------------------------------------ | :------- | :----------------------- |
-| [01](./01-playback-fixes.md)                   | Failure screen, buffering, player basics          | frontend | Built, yt-diff-react#129 |
-| [05](./05-unlisted-filing.md)                  | Filing job, views and filters                     | backend  | Merged, #140             |
-| [05c](./05c-filing-follow-ups.md)              | Tighter matching, two filters                     | backend  | Built, #145              |
-| [05d](./05d-filing-adjustments.md)             | 5-video rule, folding, counts the left list needs | backend  | Not started              |
-| [05b](./05b-library-views.md)                  | UNLISTED swaps the left panel                     | frontend | Not started              |
-| [02](./02-safe-cards-and-nav.md)               | The approved small fixes                          | frontend | Not started              |
-| [07](./07-download-queue.md)                   | Queue order, pause and resume fixes               | both     | Approved, not started    |
-| [03](./03-formats-and-media-info.md)           | Remux, codec info                                 | both     | Not planned              |
-| [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notifications             | both     | Dropped                  |
-| [06](./06-player-lift-and-home.md)             | Player lift, Home                                 | both     | Dropped                  |
+| Plan                                           | Delivers                                          | Repo     | State                     |
+| :--------------------------------------------- | :------------------------------------------------ | :------- | :------------------------ |
+| [01](./01-playback-fixes.md)                   | Failure screen, buffering, player basics          | frontend | Merged, yt-diff-react#129 |
+| [05](./05-unlisted-filing.md)                  | Filing job, views and filters                     | backend  | Merged, #140              |
+| [05c](./05c-filing-follow-ups.md)              | Tighter matching, two filters                     | backend  | Merged, #145              |
+| [05d](./05d-filing-adjustments.md)             | 5-video rule, folding, counts the left list needs | backend  | Not started               |
+| [05b](./05b-library-views.md)                  | UNLISTED swaps the left panel                     | frontend | Not started               |
+| [02](./02-safe-cards-and-nav.md)               | The approved small fixes                          | frontend | Not started               |
+| [07](./07-download-queue.md)                   | Queue order, pause and resume fixes               | both     | Approved, not started     |
+| [03](./03-formats-and-media-info.md)           | Remux, codec info                                 | both     | Not planned               |
+| [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notifications             | both     | Dropped                   |
+| [06](./06-player-lift-and-home.md)             | Player lift, Home                                 | both     | Dropped                   |
 
 Run 05d, then 05b, then 02. 05b and 02 edit the same components, so one at a
 time. 07 doesn't touch the others and can go whenever it's approved.
@@ -178,12 +178,12 @@ throwaway Postgres. **Phase 0a results and the storage audit:**
 
 | Scope    | Command                                                                 | Baseline           |
 | :------- | :---------------------------------------------------------------------- | :----------------- |
-| Backend  | `deno task test:unit`                                                   | 568 passed, ~20 s  |
-| Backend  | `deno task test:db` (needs Docker; loads `seed/` each test)             | 41 passed, ~2 min  |
+| Backend  | `deno task test:unit`                                                   | 592 passed, ~20 s  |
+| Backend  | `deno task test:db` (needs Docker; loads `seed/` each test)             | 50 passed, ~2 min  |
 | Backend  | `deno task fmt:check && deno lint index.ts src/ tests/ scripts/`        |                    |
 | Backend  | `deno check index.ts src/ tests/ scripts/`                              |                    |
 | Frontend | `npx vitest run --project desktop tests/desktop/<file>` (during a task) |                    |
-| Frontend | `npx vitest run` (end of a task only)                                   | 316 passed, ~3 min |
+| Frontend | `npx vitest run` (end of a task only)                                   | 364 passed, ~3 min |
 | Frontend | `npm run lint && npm run typecheck`                                     |                    |
 
 Run frontend commands from `frontend/`.

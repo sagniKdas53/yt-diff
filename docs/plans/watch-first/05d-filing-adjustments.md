@@ -10,8 +10,8 @@ things it is missing.
 **Architecture:** backend only, all in `src/handlers/filing/` plus one
 `/getplay` filter. No new tables.
 
-**Branch:** `fix/filing-adjustments` from `master`, after #145 merges. **Don't
-enable the filing job anywhere.** Test against the seed only.
+**Branch:** `fix/filing-adjustments` from `master`. #145 is merged, and Task 0
+is done. **Don't enable the filing job anywhere.** Test against the seed only.
 
 ## What the merged backend work is still for
 
@@ -64,7 +64,7 @@ revert.
 
 ---
 
-### Task 0: Take the kind override out of #145 (approved 2026-11-15)
+### Task 0: Take the kind override out of #145 (done, 2026-11-15)
 
 **Files:** on `fix/filing-follow-ups`: `src/db/models.ts`,
 `src/handlers/filing/{channels,store,sweep}.ts`,
