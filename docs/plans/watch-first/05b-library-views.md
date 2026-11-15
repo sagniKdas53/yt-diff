@@ -120,14 +120,53 @@ select-all box, the Title box and the sort. No second row.
       `feat(unlisted): filter a group by site, date, length and
       creator`.
 
-### Task 4: Full check and PR
+### Task 4: Watch on a job-made channel
+
+The owner's rule: the job never indexes a channel it made. A channel with
+thousands of videos, of which you have collected three, stays at three. It is
+indexed only when you set its Watch mode yourself.
+
+**Files:** `src/components/UnlistedGroups.jsx`, tests beside it.
+
+- [ ] **Failing tests.**
+      `"a job-made channel's row has the Watch select,
+      set to N/A"`.
+      `"choosing a mode asks first, naming the channel"`.
+      `"confirming posts /channels/monitor once with that mode"`.
+      `"the
+      channel then leaves this list"`: it is a real playlist now, in
+      the playlists list.
+      `"a channel with no stored URL has the select
+      disabled, with a reason"`.
+- [ ] **Implement.** The same Watch control the playlist rows use. The
+      confirmation says the whole channel will be indexed.
+- [ ] **Backend check, no change expected.** `/channels/monitor` is the only
+      thing that lists a job-made channel. Add a `tests-db` test,
+      `"filing -
+      a sweep starts no listing"`, in 05d so it stays that way.
+- [ ] **Commit.** `feat(unlisted): set Watch on a channel the job made`.
+
+### Task 5: Newest first, and Clips straight through
+
+**Files:** `src/hooks/useSocketEvents.js`, `src/components/App.jsx`,
+`src/components/VideoPlayer.jsx`, the Up next overlay from plan 01. Needs
+yt-diff-react#129 merged.
+
+- [ ] **Failing tests.** `"a listing event for Unlisted goes to page 1"`, not to
+      a page worked out from the old oldest-first order.
+      `"in Clips,
+      the next video starts at once when one ends"`.
+      `"every other list
+      still counts down"`.
+      `"autoplay off still stops, in Clips too"`.
+- [ ] **Implement.** The player learns it is in Clips from the route's `view`.
+- [ ] **Commit.**
+      `feat(unlisted): page 1 for new videos, no countdown in
+      Clips`.
+
+### Task 6: Full check and PR
 
 - [ ] `npx vitest run`, `npm run lint && npm run typecheck`.
 - [ ] Browser check against the seed, after a sweep run with
       `deno task filing:run` on the seed database only.
 - [ ] Advisor checkpoint, then PR to `material`.
-
-## Not in this plan
-
-Monitor channel on a channel row, newest-first paging, and Clips playing
-straight through. The owner hasn't ruled on them.

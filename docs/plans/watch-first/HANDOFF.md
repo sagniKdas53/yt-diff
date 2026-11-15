@@ -153,7 +153,7 @@ Use the same method you use for `chapters:backfill` in the container.
 | 05d Filing adjustments         | `fix/filing-adjustments`   |                                | Not started            |
 | 05b Unlisted in the left panel | `feat/unlisted-left-panel` |                                | Not started            |
 | 02 Approved small fixes        | `fix/approved-small-fixes` |                                | Not started            |
-| 07 Download queue              |                            |                                | Proposal, not approved |
+| 07 Download queue              | `feat/download-queue`      |                                | Approved, not started  |
 | 03, 04, 06                     |                            |                                | Dropped or not planned |
 
 The filing job hasn't been run or enabled anywhere but the seed database.

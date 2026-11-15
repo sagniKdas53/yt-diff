@@ -1,4 +1,4 @@
-# 07: Download queue implementation plan (proposal, not approved)
+# 07: Download queue implementation plan
 
 > **For agentic workers:** nothing here is approved. Don't start a task until
 > the owner has marked it. Read `README.md` first.
@@ -62,7 +62,7 @@ and down arrows on queued rows only. Positions in `/queuestatus` come from
 Listings keep the plain semaphore. Extras sync shares the download slots and
 joins the new queue at the back.
 
-## Tasks, each needing a yes
+## Tasks
 
 ### Task 1: An ordered queue, and move up and down (findings 1, 5)
 
@@ -85,8 +85,17 @@ joins the new queue at the back.
 
 ### Task 2: Resume goes to the front (finding 3)
 
-- [ ] `resumeDownload` calls `enqueue(id, { front: true })`. Test:
-      `"jobs - a resumed download starts before queued ones"`.
+The owner's condition: a resume never interrupts a running download. With one
+slot and one download running, the resumed job is next, ahead of everything
+waiting.
+
+- [ ] `resumeDownload` calls `enqueue(id, { front: true })`. Tests:
+      `"jobs -
+      a resumed download starts before queued ones"`,
+      `"jobs - a resume
+      doesn't stop the running download"`,
+      `"jobs - with one slot busy, a
+      resumed job reports position 1"`.
 
 ### Task 3: Pause waits for the process (findings 6, 7)
 
@@ -105,5 +114,16 @@ joins the new queue at the back.
       back **as paused**, so nothing starts downloading by surprise after a
       deploy. Drop a paused job after 14 days, and delete its partial files.
 
-**Suggested order:** 1, 2, 3, then 4 and 5 if wanted. Task 1 is the one the
-owner asked for; 2 and 3 are small and ride on it.
+### Task 6: The drawer
+
+The owner approved the drawer summary "since we are redesigning it anyway". Keep
+the redesign to what these tasks need.
+
+- [ ] Up and down buttons on queued rows, Pause all and Resume all in the
+      header, one line per queued job, and the button reads like
+      `2 downloading · 5 queued`. A `role="status"` region announces a finished
+      job.
+- [ ] Checked at 1440×900, 800×1280 and 390×844.
+
+**Order:** 1, 2, 3, 4, 5, then 6. Backend PR to `master` first, then the
+regenerated types and the drawer as a frontend PR to `material`.

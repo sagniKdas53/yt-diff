@@ -18,24 +18,24 @@ enable the filing job anywhere.** Test against the seed only.
 Plans 05 (#140, merged) and 05c (#145, open) were written for the redesign. This
 is what each piece does now.
 
-| Piece                                                           | From    | Still needed? | Why                                                                   |
-| :-------------------------------------------------------------- | :------ | :------------ | :-------------------------------------------------------------------- |
-| `video_filing` table, the sweep, `filing:run`, `filing:undo`    | 05      | Yes           | It is the organising.                                                 |
-| Site, channel and length columns on videos, `facets:backfill`   | 05      | Yes           | The job and the filters both read them.                               |
-| `/getsub` with `view` and filters                               | 05      | Yes           | Opens a group in the right panel.                                     |
-| `/library/summary`                                              | 05      | Yes           | Counts on the group rows. Needs the Archive split (Task 3).           |
-| `/library/facets`, and `creatorQuery`                           | 05, 05c | Yes           | Fills the filter menus.                                               |
-| Job-made channels as playlist rows (`auto:` URL, origin `auto`) | 05      | Yes           | They are the channel rows in the left panel.                          |
-| `videoCount`, `latestAddedAt`, `channelUrl` on `/getplay` rows  | 05      | Yes           | Count and order of the channel rows.                                  |
-| `/channels/monitor`                                             | 05      | If wanted     | Only for a "Monitor channel" action, which the owner hasn't ruled on. |
-| Unlisted sorted newest first                                    | 05      | Yes           | Independent of the redesign.                                          |
-| Uploader matched by handle then id, channel-like playlists only | 05c     | Yes           | Stops videos landing in the wrong playlist.                           |
-| `dateField` (Added or Uploaded)                                 | 05c     | Yes           | The Added filter uses it.                                             |
-| `/getplay` with `kind: "playlist"`                              | 05      | **No**        | It fed the Playlists tab. Harmless, unused.                           |
-| The job relabelling your own playlists as kind `channel`        | 05      | **No**        | It fed the Channels tab. Nothing reads it now.                        |
-| `POST /playlists/kind`, the `kindLocked` column                 | 05c     | **No**        | They exist to overrule that relabelling.                              |
-| Undo keeping locked kinds (`lockedKept`)                        | 05c     | **No**        | Same.                                                                 |
-| Inbox view (saved in the last 30 days)                          | 05      | Owner's call  | Shown in the mockup and not objected to.                              |
+| Piece                                                           | From    | Still needed? | Why                                                         |
+| :-------------------------------------------------------------- | :------ | :------------ | :---------------------------------------------------------- |
+| `video_filing` table, the sweep, `filing:run`, `filing:undo`    | 05      | Yes           | It is the organising.                                       |
+| Site, channel and length columns on videos, `facets:backfill`   | 05      | Yes           | The job and the filters both read them.                     |
+| `/getsub` with `view` and filters                               | 05      | Yes           | Opens a group in the right panel.                           |
+| `/library/summary`                                              | 05      | Yes           | Counts on the group rows. Needs the Archive split (Task 3). |
+| `/library/facets`, and `creatorQuery`                           | 05, 05c | Yes           | Fills the filter menus.                                     |
+| Job-made channels as playlist rows (`auto:` URL, origin `auto`) | 05      | Yes           | They are the channel rows in the left panel.                |
+| `videoCount`, `latestAddedAt`, `channelUrl` on `/getplay` rows  | 05      | Yes           | Count and order of the channel rows.                        |
+| `/channels/monitor`                                             | 05      | Yes           | Setting Watch on a job-made channel. Approved.              |
+| Unlisted sorted newest first                                    | 05      | Yes           | Independent of the redesign.                                |
+| Uploader matched by handle then id, channel-like playlists only | 05c     | Yes           | Stops videos landing in the wrong playlist.                 |
+| `dateField` (Added or Uploaded)                                 | 05c     | Yes           | The Added filter uses it.                                   |
+| `/getplay` with `kind: "playlist"`                              | 05      | **No**        | It fed the Playlists tab. Harmless, unused.                 |
+| The job relabelling your own playlists as kind `channel`        | 05      | **No**        | It fed the Channels tab. Nothing reads it now.              |
+| `POST /playlists/kind`, the `kindLocked` column                 | 05c     | **No**        | They exist to overrule that relabelling.                    |
+| Undo keeping locked kinds (`lockedKept`)                        | 05c     | **No**        | Same.                                                       |
+| Inbox view (saved in the last 30 days)                          | 05      | Yes           | The owner said to keep it.                                  |
 
 Nothing from plans 03, 04 or 06 was built, so there is nothing of theirs to
 revert.
@@ -64,7 +64,7 @@ revert.
 
 ---
 
-### Task 0: Take the kind override out of #145 (needs the owner's yes)
+### Task 0: Take the kind override out of #145 (approved 2026-11-15)
 
 **Files:** on `fix/filing-follow-ups`: `src/db/models.ts`,
 `src/handlers/filing/{channels,store,sweep}.ts`,
@@ -147,13 +147,15 @@ a duplicate.
 - [ ] `deno task gen:api`. **Commit.**
       `feat(library): archive split and an origin filter for the left list`.
 
-### Task 4: Stop relabelling your playlists (needs the owner's yes)
+### Task 4: Stop relabelling your playlists (approved 2026-11-15)
 
 **Files:** `src/handlers/filing/sweep.ts`, `store.ts`, tests.
 
 - [ ] Remove the step that sets `kind: "channel"` and `kindSetByFiling` on user
       playlists. Keep `isChannelLike` for matching.
 - [ ] `filing:undo` still resets rows a past sweep relabelled.
+- [ ] Add `"filing - a sweep starts no listing"`: the job never indexes a
+      channel it made. Only Watch, set by the owner, does.
 - [ ] **Commit.** `fix(filing): leave the kind of your own playlists alone`.
 
 ### Task 5: Full check and PR

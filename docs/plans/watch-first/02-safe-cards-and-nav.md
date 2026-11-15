@@ -3,8 +3,7 @@
 > **For agentic workers:** use superpowers:executing-plans inline. Read
 > `README.md` first, above all "Approved, rejected, open". Steps use checkboxes.
 
-**Goal:** the handful of small changes the owner approved on 2026-11-15, and
-nothing else.
+**Goal:** the small changes the owner approved on 2026-11-15, and nothing else.
 
 **Cut on 2026-11-15:** this plan used to move card actions into a menu, rebuild
 the nav, rename Watch and make titles play. The owner rejected all four. Don't
@@ -58,11 +57,76 @@ Download button in the header. The owner asked for the icon to queue it.
       is what tells a saved video from a link.
 - [ ] **Commit.** `fix(cards): show downloaded thumbnails at full strength`.
 
-### Task 3 onward: waiting on the owner
+### Task 3: Delete dialog, open row, paging labels
 
-The eight rows under "Open" in `README.md`. Each is one small task once
-confirmed. The old text of this plan, in git history at `b51c594`, has the tests
-and file ranges for six of them (its Tasks 3, 5 and 6).
+**Files:** `src/components/SubListDeleteDialog.jsx`,
+`src/components/PlayList.jsx`, `src/components/PlayListItemRow.jsx`,
+`src/components/SubList.jsx`, `src/components/Pagination.jsx`. Tests: the
+matching suites.
+
+- [ ] **Failing tests.** `"the delete dialog names the video"`,
+      `"it says
+      this can't be undone when the row or the file goes"`.
+      `"the open
+      playlist's row is highlighted and its button says Open"`.
+      `"both lists
+      say Per page, and page size 1 is gone"`.
+      `"an unusual page size in an
+      old link still renders"`.
+      `"past 50 pages, the page control is a
+      number field"`: 999 goes to
+      the last page, 0 to the first.
+- [ ] **Implement.** Watch, LIST and everything else in the playlists list stay
+      as they are. No title above the videos: the search box already shows the
+      playlist's name.
+- [ ] **Commit.** `fix(ui): name what is deleted, mark the open row`.
+
+### Task 4: Nothing moves you by itself, quieter connection status
+
+**Files:** `src/contexts/NotificationContext.jsx`, `src/components/App.jsx`,
+`src/hooks/useSocketEvents.js`. Tests `tests/desktop/useSocketEvents.test.jsx`,
+`App*.test.jsx`.
+
+**Interface:**
+`setSnack(message, type?, action?: { label: string, onClick: () => void })`.
+
+- [ ] **Failing tests** (and update the ones that expect navigation).
+      `"a
+      single item finishing does not move you off Unlisted"`: the
+      toast has an action labelled Open.
+      `"a playlist finishing with nothing open
+      offers Open and does not navigate"`.
+      `"a chunk finishing does not
+      navigate"`.
+      `"the first connection is silent, and a reconnect says
+      so"`.
+      `"no connection toast while the player is open"`.
+- [ ] **Implement.** The action calls `setPlayListUrl` when clicked.
+- [ ] **Commit.**
+      `fix(sockets): stop moving people when background work
+      finishes`.
+
+### Task 5: Loading and empty states
+
+**Files:** `src/hooks/useSubListRows.js`, `src/components/SubList.jsx`,
+`src/components/PlayList.jsx`, `src/components/SubListItemCard.jsx`.
+
+**Interface:** `useSubListRows` also returns `loading` and `failed`.
+
+- [ ] **Failing tests.** `"a loading list shows skeletons"`,
+      `"no results
+      says so and names the search"`,
+      `"an empty playlist says so"`,
+      `"a
+      downloaded row waits for its local thumbnail"`,
+      `"a failed image falls
+      back to the placeholder"`.
+- [ ] **Implement**, then **commit.**
+      `feat(ui): real loading and empty
+      states`.
+
+The downloads drawer summary is approved too, and is built in
+[07](./07-download-queue.md), which redoes the drawer.
 
 ### Last task: full check and PR
 

@@ -14,7 +14,7 @@ remains:
 1. Unlisted gets organised, using the filing job that is already merged.
 2. Small UX fixes the owner approved one by one.
 3. Player fixes (plan 01), already built.
-4. A better download queue (plan 07), not yet approved.
+4. A better download queue (plan 07), approved on 2026-11-15.
 
 **Rule for every session:** no change to how the app looks or behaves unless it
 is in the Approved table below. If a task seems to need one, stop and ask.
@@ -76,47 +76,48 @@ From the owner's comments on the mockup, 2026-11-15.
 
 ### Approved
 
-| Change                                                                                  | Plan |
-| :-------------------------------------------------------------------------------------- | :--- |
-| UNLISTED swaps the left panel to the Unlisted groups; playlists open by default         | 05b  |
-| Groups: All unlisted, Inbox, Via bot, Clips, Archive saved, Archive links, job channels | 05b  |
-| Filters (Site, Added, Length, Creator) in the existing header row                       | 05b  |
-| The job makes a channel at 5+ videos, and folds into an existing channel or playlist    | 05d  |
-| Download icon on a card with no file queues the download                                | 02   |
-| Thumbnails of downloaded videos stop being dimmed                                       | 02   |
-| Player: failure screen, retry cap, spinner, touch bar, Up next, lock-screen controls    | 01   |
+| Change                                                                                                                                          | Plan |
+| :---------------------------------------------------------------------------------------------------------------------------------------------- | :--- |
+| UNLISTED swaps the left panel to the Unlisted groups; playlists open by default                                                                 | 05b  |
+| Groups: All unlisted, Inbox, Via bot, Clips, Archive saved, Archive links, job channels                                                         | 05b  |
+| Filters (Site, Added, Length, Creator) in the existing header row                                                                               | 05b  |
+| Watch on a job-made channel's row starts monitoring it. The job itself never indexes one                                                        | 05b  |
+| Newest first in Unlisted: a new video lands on page 1                                                                                           | 05b  |
+| Clips play straight through, with no Up next countdown                                                                                          | 05b  |
+| The job makes a channel at 5+ videos, and folds into an existing channel or playlist                                                            | 05d  |
+| The kind override comes out of #145, and the job stops relabelling your playlists                                                               | 05d  |
+| Download icon on a card with no file queues the download                                                                                        | 02   |
+| Thumbnails of downloaded videos stop being dimmed                                                                                               | 02   |
+| Delete dialog names the video and says when it can't be undone                                                                                  | 02   |
+| The open playlist's row is highlighted and its button says Open                                                                                 | 02   |
+| "Item count" becomes "Per page", page size 1 goes, number box past 50 pages                                                                     | 02   |
+| A finished download shows a toast with Open instead of switching the list                                                                       | 02   |
+| Connection status is only mentioned after it was lost                                                                                           | 02   |
+| Skeletons while loading, clearer empty text, a placeholder for a failed thumbnail                                                               | 02   |
+| Download queue: move up and down, resume to the front, pause fixes, hold and pause all, survive a restart, and the drawer redone with a summary | 07   |
+| Player: failure screen, retry cap, spinner, touch bar, Up next, lock-screen controls                                                            | 01   |
+
+**Monitoring, in the owner's words:** "say a channel has 1000's of vids but we
+have only collected 3 ... then don't try to index them, only if the watch mode
+is explicitly set by user then index them again."
+
+**Resume, in the owner's words:** "if a download is already running and
+parallelism is set to 1 it should be 2nd." A resumed download goes to the front
+of the waiting line and never interrupts one that is running.
 
 ### Rejected
 
-| Change                                   | Owner's words                                                      |
-| :--------------------------------------- | :----------------------------------------------------------------- |
-| Card actions behind a More menu          | "I don't want to hide the quick actions behind one more drop down" |
-| Title plays, small link opens the source | "only the thumbnail plays, I want the title to still link back"    |
-| Watch renamed Auto-update                | "leave watch alone as it is"                                       |
-| A count on the UNLISTED button           | "I don't want the number here"                                     |
-| Any change to the playlists list         | "I still want the playlists to have their old view"                |
-| Home, Library tabs, watch progress       | The redesign                                                       |
+| Change                                   | Owner's words                                                                |
+| :--------------------------------------- | :--------------------------------------------------------------------------- |
+| Card actions behind a More menu          | "I don't want to hide the quick actions behind one more drop down"           |
+| Title plays, small link opens the source | "only the thumbnail plays, I want the title to still link back"              |
+| Watch renamed Auto-update                | "leave watch alone as it is"                                                 |
+| A count on the UNLISTED button           | "I don't want the number here"                                               |
+| Any change to the playlists list         | "I still want the playlists to have their old view"                          |
+| A list title above the videos            | The search box already shows the playlist's name when nothing is typed in it |
+| Home, Library tabs, watch progress       | The redesign                                                                 |
 
-### Open: the owner answered, but the row isn't known
-
-Eight rows drew six comments (four "Sure", one "Okay", and one "Yes, but only
-when selected"). The comment tool attached all six to the same spot, so which
-two rows got no answer is unknown. Don't build any of these until the owner
-confirms each one:
-
-0. The delete dialog names the video and says when it can't be undone.
-1. The open playlist's row is highlighted and its button says Open.
-2. "Item count" becomes "Per page", page size 1 goes, and past 50 pages the page
-   picker is a number box.
-3. The list's title shows above the videos.
-4. A finished download shows a toast with Open instead of switching the list.
-5. Connection status is only mentioned after it was lost.
-6. The downloads drawer gets one line per queued job and a summary button.
-7. Skeletons while loading, clearer empty text, a placeholder for a failed
-   thumbnail.
-
-Not yet commented on: Monitor channel on a job-made channel's row, newest first
-in Unlisted, and Clips playing straight through with no countdown.
+Nothing is waiting on the owner.
 
 ## Order
 
@@ -128,7 +129,7 @@ in Unlisted, and Clips playing straight through with no countdown.
 | [05d](./05d-filing-adjustments.md)             | 5-video rule, folding, counts the left list needs | backend  | Not started              |
 | [05b](./05b-library-views.md)                  | UNLISTED swaps the left panel                     | frontend | Not started              |
 | [02](./02-safe-cards-and-nav.md)               | The approved small fixes                          | frontend | Not started              |
-| [07](./07-download-queue.md)                   | Queue order, pause and resume fixes               | both     | Proposal, not approved   |
+| [07](./07-download-queue.md)                   | Queue order, pause and resume fixes               | both     | Approved, not started    |
 | [03](./03-formats-and-media-info.md)           | Remux, codec info                                 | both     | Not planned              |
 | [04](./04-progress-ownership-notifications.md) | Watch progress, owners, notifications             | both     | Dropped                  |
 | [06](./06-player-lift-and-home.md)             | Player lift, Home                                 | both     | Dropped                  |
