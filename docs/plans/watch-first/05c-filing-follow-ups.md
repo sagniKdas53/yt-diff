@@ -1,16 +1,21 @@
 # 05c: Filing follow-ups implementation plan (backend)
 
+> **2026-11-15:** built and open as #145. With the redesign dropped, the kind
+> override in this plan (`POST /playlists/kind`, `kindLocked`) has no use.
+> [05d](./05d-filing-adjustments.md) Task 0 takes it out, if the owner agrees.
+> The matching fixes and the two filters stay.
+
 > **For agentic workers:** use superpowers:executing-plans inline. Read
 > `README.md` first, then "The design" in `05-unlisted-filing.md`. Steps use
 > checkboxes.
 
 **Goal:** close the gaps a review of the merged plan 05 found on 2026-11-10,
-before the filing job is switched on anywhere: a handle match that is too
-loose, no way to overrule the job's "channel" label, an undo that forgets your
+before the filing job is switched on anywhere: a handle match that is too loose,
+no way to overrule the job's "channel" label, an undo that forgets your
 removals, and two filters the Archive needs.
 
-**Architecture:** small changes inside `src/handlers/filing/`, one new column
-on `playlist_metadata`, one new endpoint, and two optional fields on existing
+**Architecture:** small changes inside `src/handlers/filing/`, one new column on
+`playlist_metadata`, one new endpoint, and two optional fields on existing
 requests. Nothing here changes what plan 05 promised never to do.
 
 **Tech stack:** Deno, Sequelize, Postgres. **Branch:** `fix/filing-follow-ups`
@@ -19,15 +24,15 @@ from `master`. **Frontend:** the controls that use this are in
 
 ## What the review found
 
-| Finding                                                                                                                                                              | Task |
-| :------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--- |
-| `channelFromHandle` matches a handle against any path segment of any playlist URL on the site, so a curated playlist under a user's path collects all their videos   | 1    |
-| It never matches on channel id, so a channel stored under an id-style URL is missed                                                                                  | 1    |
-| The sweep flips a single-owner playlist to kind `channel`, never flips back, and there is no way to set `kind` by hand                                               | 2    |
-| Undo deletes every filing row, the `locked` ones too, so a later sweep re-files what you removed                                                                     | 3    |
-| The Creator menu is a top 50 by count. Archive is, by construction, creators with one or two videos, so the menu is least useful where it's most needed              | 4    |
-| "Added" is the only time filter, and 714 rows were added in one three-day import. `uploadDate` is stored and unused                                                  | 4    |
-| The comment on `filedPosition` says the newest video is the least negative. It is the most negative. The behaviour is right                                          | 3    |
+| Finding                                                                                                                                                            | Task |
+| :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--- |
+| `channelFromHandle` matches a handle against any path segment of any playlist URL on the site, so a curated playlist under a user's path collects all their videos | 1    |
+| It never matches on channel id, so a channel stored under an id-style URL is missed                                                                                | 1    |
+| The sweep flips a single-owner playlist to kind `channel`, never flips back, and there is no way to set `kind` by hand                                             | 2    |
+| Undo deletes every filing row, the `locked` ones too, so a later sweep re-files what you removed                                                                   | 3    |
+| The Creator menu is a top 50 by count. Archive is, by construction, creators with one or two videos, so the menu is least useful where it's most needed            | 4    |
+| "Added" is the only time filter, and 714 rows were added in one three-day import. `uploadDate` is stored and unused                                                | 4    |
+| The comment on `filedPosition` says the newest video is the least negative. It is the most negative. The behaviour is right                                        | 3    |
 
 ## Global constraints
 
@@ -42,13 +47,13 @@ placement rule changes.
 
 1. A handle or id match only ever lands in a playlist that is one account's
    videos. A mixed or curated playlist is never a target.
-2. A playlist whose `kind` you set by hand is never changed by a sweep, and
-   undo leaves it alone.
+2. A playlist whose `kind` you set by hand is never changed by a sweep, and undo
+   leaves it alone.
 3. Undo, then a sweep, doesn't re-file a video you removed.
-4. `creatorQuery` and the uploaded range are parameters, never concatenated,
-   and a malformed value is a 400.
-5. Every count in `tests-db/` that changes is explained by Task 1's rule
-   against `seed/check.sql`. No number is edited just to pass.
+4. `creatorQuery` and the uploaded range are parameters, never concatenated, and
+   a malformed value is a 400.
+5. Every count in `tests-db/` that changes is explained by Task 1's rule against
+   `seed/check.sql`. No number is edited just to pass.
 
 ---
 
@@ -60,8 +65,8 @@ placement rule changes.
 `tests/filing_place.test.ts`, `tests/filing_sweep.test.ts`,
 `tests-db/filing.test.ts`.
 
-**Advisor checkpoint:** before Step 3, because this changes a placement rule
-and the measured totals with it.
+**Advisor checkpoint:** before Step 3, because this changes a placement rule and
+the measured totals with it.
 
 **Interfaces:**
 
@@ -81,8 +86,8 @@ channelFromUploader(row: UnlistedRow, playlists: KnownPlaylist[]): string | null
 - [ ] **Step 1: Write failing tests.**
   - A handle that matches a playlist with `channelLike: false` matches nothing,
     and the video goes on to the clip, channel and Archive rules.
-  - A handle that matches two playlists, one channel-like and one not, picks
-    the channel-like one.
+  - A handle that matches two playlists, one channel-like and one not, picks the
+    channel-like one.
   - With no handle match, a `channelId` equal to a URL segment (compared
     lowercased) matches, on the same site only.
   - A `channelId` in `URL_WORDS` matches nothing.
@@ -92,10 +97,10 @@ channelFromUploader(row: UnlistedRow, playlists: KnownPlaylist[]): string | null
     reconsidered rows see the new rule.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement.** The sweep already calls `loadOwnerCounts` after
-      placing; move that read before `placeVideos`, and have `loadPlaylists`
-      set `channelLike` from the row's `kind` or from `isChannelLike` over
-      those counts. A `kindLocked` playlist (Task 2) uses its `kind` alone.
-      Bump `RULES_VERSION`.
+      placing; move that read before `placeVideos`, and have `loadPlaylists` set
+      `channelLike` from the row's `kind` or from `isChannelLike` over those
+      counts. A `kindLocked` playlist (Task 2) uses its `kind` alone. Bump
+      `RULES_VERSION`.
 - [ ] **Step 4: Update `seed/check.sql`** to the same rule, run it against the
       pack, and update the expected totals in `tests-db/filing.test.ts` and in
       plan 05 Task 6's list from what it prints. If a count moves in a way the
@@ -109,8 +114,8 @@ channelFromUploader(row: UnlistedRow, playlists: KnownPlaylist[]): string | null
 
 **Files:** Modify `src/db/models.ts`, `src/handlers/filing/store.ts`
 (`loadOwnerCounts`, `markChannelLike`, `loadUndoCandidates`),
-`src/handlers/filing/channels.ts`, and the five places in `README.md`'s
-endpoint recipe. Tests `tests/channels.test.ts`, `tests-db/channels.test.ts`.
+`src/handlers/filing/channels.ts`, and the five places in `README.md`'s endpoint
+recipe. Tests `tests/channels.test.ts`, `tests-db/channels.test.ts`.
 
 **Interfaces:**
 
@@ -150,18 +155,18 @@ A `locked` filing row records something you did, not something the job did, so
 undo has no business removing it.
 
 - [ ] **Step 1: Write failing tests.**
-  - Undo deletes the filing rows that aren't `locked`, and keeps the locked
-    ones as `archive` with a null `playlistUrl`.
+  - Undo deletes the filing rows that aren't `locked`, and keeps the locked ones
+    as `archive` with a null `playlistUrl`.
   - `UndoSummary` gains `lockedKept`, and `filingRowsRemoved` no longer counts
     them.
-  - Sweep, remove a filed video from its channel, sweep, undo, sweep: the
-    video is in Archive and locked at the end, with no mapping in the channel.
+  - Sweep, remove a filed video from its channel, sweep, undo, sweep: the video
+    is in Archive and locked at the end, with no mapping in the channel.
   - Undo still restores the counts of `playlist_video_mappings` and
     `playlist_metadata`.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement.** Correct the `filedPosition` comment: the newest
-      video is the most negative, so it sorts first in position order, which
-      is what puts filed videos newest first above position 1.
+      video is the most negative, so it sorts first in position order, which is
+      what puts filed videos newest first above position 1.
 - [ ] **Step 4: Run `deno task test:unit` and `deno task test:db`.** Expected:
       PASS.
 - [ ] **Step 5: Commit.** `fix(library): undo keeps the videos you removed`.
@@ -169,8 +174,8 @@ undo has no business removing it.
 ### Task 4: Find a creator by name, and filter by upload date
 
 **Files:** Modify `src/middleware/validator.ts` (`LibraryFilterSchema`, the
-facets request), `src/handlers/filing/views.ts`, `src/routes/openapi.ts`.
-Tests `tests/library_views.test.ts`, `tests-db/library.test.ts`.
+facets request), `src/handlers/filing/views.ts`, `src/routes/openapi.ts`. Tests
+`tests/library_views.test.ts`, `tests-db/library.test.ts`.
 
 **Advisor checkpoint:** before writing the SQL in Step 3.
 
@@ -188,22 +193,22 @@ interface LibraryFilter {
 ```
 
 - [ ] **Step 1: Write failing tests** (pure parts).
-  - `dateField: "uploaded"` with a year puts the range on `uploadDate`, as
-    plain dates with no time zone, and a row with no `uploadDate` is excluded.
-  - `dateField` without a year filters nothing, and still switches which
-    column `years` counts.
-  - An unknown `dateField`, an empty `creatorQuery` and one over 100
-    characters give 400.
+  - `dateField: "uploaded"` with a year puts the range on `uploadDate`, as plain
+    dates with no time zone, and a row with no `uploadDate` is excluded.
+  - `dateField` without a year filters nothing, and still switches which column
+    `years` counts.
+  - An unknown `dateField`, an empty `creatorQuery` and one over 100 characters
+    give 400.
   - `creatorQuery` of `%`, `_` or `'; DROP TABLE` is matched as text: the
     wildcards are escaped and nothing is concatenated.
   - `creatorQuery` doesn't change `sites`, `years`, `lengths` or `saved`.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement,** then run `deno task gen:api`. `/getsub` and
-      `/locate` take `dateField` through the same `buildLibraryFilter`, so
-      they need no other change.
-- [ ] **Step 4: Add to `tests-db/`.** A creator with one video, outside the
-      top 50, is found by name. Uploaded-year counts add up to the rows that
-      have an `uploadDate`.
+      `/locate` take `dateField` through the same `buildLibraryFilter`, so they
+      need no other change.
+- [ ] **Step 4: Add to `tests-db/`.** A creator with one video, outside the top
+      50, is found by name. Uploaded-year counts add up to the rows that have an
+      `uploadDate`.
 - [ ] **Step 5: Run the full backend check.** Expected: all pass.
 - [ ] **Step 6: Commit, advisor checkpoint, open the backend PR.**
       `feat(library): find a creator by name, and filter by upload date`.

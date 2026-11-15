@@ -1,5 +1,9 @@
 # 04: Progress, ownership and notifications implementation plan
 
+> **Dropped on 2026-11-15.** Watch progress, ownership and the notification log
+> existed to feed the Home screen, and the redesign is off. Nothing here was
+> built. Kept for the record; see `README.md`.
+
 > **For agentic workers:** use superpowers:executing-plans inline. No subagents.
 > Read `README.md` first. Steps use checkboxes.
 

@@ -1,5 +1,8 @@
 # 06: Player lift and Home implementation plan
 
+> **Dropped on 2026-11-15.** The owner decided against the Home screen and the
+> redesign. Nothing here was built. Kept for the record; see `README.md`.
+
 > **For agentic workers:** use superpowers:executing-plans inline. No subagents.
 > Read `README.md` first. Steps use checkboxes.
 
@@ -182,9 +185,8 @@ understates it, since 19 props move.
 - [ ] **Step 4: Run `npx vitest run`, `npm run lint && npm run typecheck`.**
       Expected: all pass.
 - [ ] **Step 5: Try it in a browser** with `playwright-cli`, at 1440×900 and
-      390×844: open a video, Next
-      through a page boundary, Back closes the player, reload resumes, and a
-      pasted link opens.
+      390×844: open a video, Next through a page boundary, Back closes the
+      player, reload resumes, and a pasted link opens.
 - [ ] **Step 6: Commit.** `feat(player): host the player at the app level`.
 
 ### Task 5: Home and Library routes
@@ -232,8 +234,7 @@ passes that one to `/locate`.
 `scripts/facets_backfill.ts` (fill null from `updatedAt` for downloaded rows),
 `src/handlers/filing/views.ts` (Inbox), `src/handlers/filing/channels.ts`
 (`latestSavedAt`), plus an endpoint by the README recipe. Tests
-`tests/recent.test.ts`, `tests/library_views.test.ts`,
-`tests/channels.test.ts`.
+`tests/recent.test.ts`, `tests/library_views.test.ts`, `tests/channels.test.ts`.
 
 **Frontend files:** Create `src/components/Home.jsx`,
 `src/components/WatchCard.jsx`, `src/hooks/useHomeFeed.js`,
@@ -247,18 +248,18 @@ passes that one to `/locate`.
 `channels` comes from `POST /getplay`, once for each `kind`, merged, newest
 `latestSavedAt` first, without the rows that have none. `/getplay` rows gain
 `latestSavedAt`: the newest `downloadedAt` among the list's videos. The rail is
-for watching, so a channel whose new videos are all links stays off it, and
-the rail's title says playlists too, so it shows them.
+for watching, so a channel whose new videos are all links stays off it, and the
+rail's title says playlists too, so it shows them.
 
 - [ ] **Step 1: Write failing backend tests,** then implement `/recent`.
       Downloaded only, newest `downloadedAt` first, null last, with `limit`
       capped at 60. Two more, with their own tests:
-  - **Inbox reads `downloadedAt`.** "Saved in the last 30 days" has meant
-    "added in the last 30 days, and saved". It becomes `downloadedAt` within
-    `INBOX_DAYS`, falling back to the mapping's `createdAt` while
-    `downloadedAt` is null, so the Inbox is right before the backfill runs
-    too. A link added a year ago and saved yesterday is in; one added
-    yesterday and never saved still isn't.
+  - **Inbox reads `downloadedAt`.** "Saved in the last 30 days" has meant "added
+    in the last 30 days, and saved". It becomes `downloadedAt` within
+    `INBOX_DAYS`, falling back to the mapping's `createdAt` while `downloadedAt`
+    is null, so the Inbox is right before the backfill runs too. A link added a
+    year ago and saved yesterday is in; one added yesterday and never saved
+    still isn't.
   - **`latestSavedAt` on `/getplay` rows,** null when nothing in the list is
     saved.
 
@@ -274,8 +275,8 @@ the rail's title says playlists too, so it shows them.
   - A card has no delete or manage control. It shows the progress bar and
     `12m left`.
   - A channel card goes to `#/playlist/<url>`.
-  - The third rail holds channels and playlists together, newest
-    `latestSavedAt` first, and a row with a null one isn't shown.
+  - The third rail holds channels and playlists together, newest `latestSavedAt`
+    first, and a row with a null one isn't shown.
   - `"search treats what you type as text"`: `a+b(` posts `query` with regex
     characters escaped under `global:`, and doesn't throw on invalid regex.
   - Mobile: rails scroll horizontally, and the page has no sideways scroll.

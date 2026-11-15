@@ -1,5 +1,12 @@
 # Handoff: watch-first yt-diff
 
+> **Read this first, 2026-11-15.** The owner dropped the redesign. There is no
+> Home screen, no Library tabs and no new nav; the two-panel app stays.
+> `README.md` has the new scope and the list of what is approved. Where this
+> file says otherwise, it is out of date: plans 04 and 06 are dropped, 03 is not
+> planned, 02 and 05b were rewritten, and 05d and 07 are new. **No change to how
+> the app looks or behaves without the owner's approval.**
+
 You're picking up an implementation that's been reviewed, decided and planned,
 but not started. **Don't redo the review or reopen the decisions.** The plans
 carry the design, so your job is to execute them one at a time.
@@ -138,16 +145,18 @@ Use the same method you use for `chapters:backfill` in the container.
 
 ## Progress
 
-| Plan                                  | Branch(es)                                     | PR                             | Merged | Backfill run |
-| :------------------------------------ | :--------------------------------------------- | :----------------------------- | :----- | :----------- |
-| 01 Playback fixes                     | `fix/playback-failures`                        |                                |        | n/a          |
-| 02 Safe cards and nav                 | `fix/safe-cards-and-nav`                       |                                |        | n/a          |
-| 03 Formats and media info             | `feat/media-info`, `feat/playability-check`    |                                |        |              |
-| 04 Progress, ownership, notifications | `feat/user-tracking`, `feat/watch-progress-ui` |                                |        |              |
-| 05 Unlisted filing                    | `feat/unlisted-filing`                         | #140, types: yt-diff-react#128 |        |              |
-| 05b Library views                     | `feat/library-views`                           |                                |        | n/a          |
-| 06 Player lift and Home               | `feat/player-lift`, `feat/home-feed`           |                                |        |              |
-| 05c Filing follow-ups                 | `fix/filing-follow-ups`                        |                                |        | n/a          |
+| Plan                           | Branch(es)                 | PR                             | State                  |
+| :----------------------------- | :------------------------- | :----------------------------- | :--------------------- |
+| 01 Playback fixes              | `fix/playback-failures`    | yt-diff-react#129              | Open                   |
+| 05 Unlisted filing             | `feat/unlisted-filing`     | #140, types: yt-diff-react#128 | Merged                 |
+| 05c Filing follow-ups          | `fix/filing-follow-ups`    | #145, types: yt-diff-react#135 | Open                   |
+| 05d Filing adjustments         | `fix/filing-adjustments`   |                                | Not started            |
+| 05b Unlisted in the left panel | `feat/unlisted-left-panel` |                                | Not started            |
+| 02 Approved small fixes        | `fix/approved-small-fixes` |                                | Not started            |
+| 07 Download queue              |                            |                                | Proposal, not approved |
+| 03, 04, 06                     |                            |                                | Dropped or not planned |
+
+The filing job hasn't been run or enabled anywhere but the seed database.
 
 ## Not in scope
 
